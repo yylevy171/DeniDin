@@ -15,9 +15,7 @@ password-hash file, mounted read-only - if it breaks, every login fails; (c) its
 ledger index, built once at startup from that data root; (d) its own logging pipeline. There is
 no OpenAI / Green API / ChromaDB dependency here - the other two apps' checks for those have
 no webapp equivalent. (e) Since Feature 087 (Clients tab) it also depends on the live Morning
-API for the client list; that is reported as ``morning_connectivity`` but is INFORMATIONAL - it
-never fails ``/health`` (see ``INFORMATIONAL_CHECKS``), because restarting the container cannot
-fix a Morning outage and the health prober would otherwise restart-loop prod over it.
+API for the client list; that is the ``morning_connectivity`` check and is part of overall health status.
 """
 from __future__ import annotations
 
@@ -34,8 +32,9 @@ from typing import Callable, Dict, Optional
 # pipeline) does.
 HEARTBEAT_INTERVAL_SECONDS = 600  # 10 minutes
 
-# Checks reported in /health's body but excluded from its overall pass/fail status (bugfix-066).
-INFORMATIONAL_CHECKS = frozenset({"morning_connectivity"})
+# Checks reported in /health's body but excluded from its overall pass/fail status. Empty: Morning
+# connectivity is part of health (bugfix-066 decision).
+INFORMATIONAL_CHECKS: frozenset = frozenset()
 
 MORNING_PING_CACHE_SECONDS = 60.0
 

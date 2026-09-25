@@ -109,54 +109,6 @@ def write_last_up_time(state_path: Path, timestamp: float) -> None:
     state_path.write_text(json.dumps({"last_up_time": timestamp}))
 
 
-# bugfix-066 (2026-09-25): consecutive failed LAUNCH attempts (run_soft_restart's script exiting
-# non-zero) tolerated before the prober stops re-bootstrapping and gives up until a human steps in.
-# A launch failure (e.g. `docker compose up` cannot start a container) is deterministic, not a
-# transient boot delay: retrying it every 60s only tears the healthy apps down over and over
-# (2026-09-25: morning-mcp-app was killed and restarted every minute for 6+ minutes while
-# denidin-app could never start, because of a missing bind-mounted config file).
-MAX_CONSECUTIVE_LAUNCH_FAILURES = 3
-LAUNCH_ERROR_TAIL_CHARS = 3000
-
-
-def launch_failures_path(state_path: Path) -> Path:
-    return state_path.parent / "launch_failures.json"
-
-
-def read_launch_failures(state_path: Path) -> dict:
-    """{"consecutive_failures": int, "last_error": str|None, "last_failure_time": float|None};
-    zeros/None when absent or unreadable."""
-    try:
-        data = json.loads(launch_failures_path(state_path).read_text())
-        return {
-            "consecutive_failures": int(data.get("consecutive_failures", 0)),
-            "last_error": data.get("last_error"),
-            "last_failure_time": data.get("last_failure_time"),
-        }
-    except (OSError, json.JSONDecodeError, TypeError, ValueError):
-        return {"consecutive_failures": 0, "last_error": None, "last_failure_time": None}
-
-
-def record_launch_failure(state_path: Path, now: float, error: str) -> int:
-    """Increments the consecutive-failure count, keeps the latest error text, returns the new count."""
-    count = read_launch_failures(state_path)["consecutive_failures"] + 1
-    path = launch_failures_path(state_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({
-        "consecutive_failures": count,
-        "last_error": error[-LAUNCH_ERROR_TAIL_CHARS:],
-        "last_failure_time": now,
-    }))
-    return count
-
-
-def clear_launch_failures(state_path: Path) -> None:
-    try:
-        launch_failures_path(state_path).unlink()
-    except FileNotFoundError:
-        pass
-
-
 def archive_state_file(state_path: Path, now: float) -> Optional[Path]:
     """Called by stop_env.sh when an admin deliberately stops an environment. Renames the live
     state file (if any) to a timestamped archive path instead of deleting it - the last-known-up
@@ -170,9 +122,6 @@ def archive_state_file(state_path: Path, now: float) -> Optional[Path]:
     Returns the archive path, or None if there was no state file to archive (e.g. the env was
     never successfully probed even once before being stopped).
     """
-    # A deliberate stop (admin intervention) forgives any recorded launch failures, even when there
-    # is no state file to archive - that absence is exactly the state a failed bootstrap leaves.
-    clear_launch_failures(state_path)
     if not state_path.exists():
         return None
     try:
@@ -213,6 +162,9 @@ def decide_action(last_up_time: Optional[float], now: float) -> str:
     return "none"
 
 
+_LAUNCH_ERROR_TAIL_CHARS = 3000
+
+
 def run_soft_restart(env: str, scripts_dir: Path) -> Tuple[int, str]:
     """The proper-channels restart: the same sanctioned scripts a human
     would run by hand (env_lock acquire/release, active_env.json
@@ -246,7 +198,7 @@ def run_soft_restart(env: str, scripts_dir: Path) -> Tuple[int, str]:
     output = (result.stdout or "") + (result.stderr or "")
     if output:
         print(output, file=sys.stderr)
-    return result.returncode, output[-LAUNCH_ERROR_TAIL_CHARS:]
+    return result.returncode, output[-_LAUNCH_ERROR_TAIL_CHARS:]
 
 
 def run_hard_restart(
@@ -313,8 +265,7 @@ def _write_log_entry(
     if webapp_frontend_ok is not None:
         entry["webapp_frontend_health"] = "success" if webapp_frontend_ok else "fail"
         entry["webapp_frontend_checks"] = webapp_frontend_checks
-    # bugfix-066: only present when a launch attempt failed (or the prober gave up after repeated
-    # failures) - carries the launch script's own output, incl. Docker's start error.
+    # bugfix-066: only present when a launch attempt failed - carries the launch script's own output, incl. Docker's start error.
     if launch_error is not None:
         entry["launch_error"] = launch_error
     with log_file.open("a", encoding="utf-8") as f:
@@ -339,7 +290,7 @@ def run_once(
     webapp_frontend_container: Optional[str] = None,
 ) -> str:
     """Runs exactly one probe-and-decide cycle. Returns the action taken
-    ("none"/"bootstrap"/"soft"/"hard"/"give_up") so callers (tests, a manual dev demo) can assert
+    ("none"/"bootstrap"/"soft"/"hard") so callers (tests, a manual dev demo) can assert
     on it directly instead of parsing the log file."""
     now = now if now is not None else time.time()
     denidin_body = fetch_health_body(denidin_health_url, log_file=verify_log_file, app_name="denidin")
@@ -380,30 +331,14 @@ def run_once(
     launch_error: Optional[str] = None
     if all_ok:
         write_last_up_time(state_file, now)
-        clear_launch_failures(state_file)
         action = "none"
     else:
         action = decide_action(last_up_time, now)
-        if action in ("soft", "bootstrap"):
-            failures = read_launch_failures(state_file)
-            if failures["consecutive_failures"] >= MAX_CONSECUTIVE_LAUNCH_FAILURES:
-                # Deterministic launch failure, already retried enough: stop tearing the
-                # environment down every tick. A human runs stop_env.sh/run_env.sh (which
-                # forgives the record) after fixing the reported cause.
-                launch_error = failures["last_error"]
-                action = "give_up"
-                print(
-                    f"GIVING UP on {env}: {failures['consecutive_failures']} consecutive launch failures. "
-                    f"Last error:\n{launch_error}",
-                    file=sys.stderr,
-                )
-            elif not dry_run:
-                exit_code, output = run_soft_restart(env, scripts_dir)
-                if exit_code != 0:
-                    record_launch_failure(state_file, now, output or f"launch exited {exit_code} with no output")
-                    launch_error = output or f"launch exited {exit_code} with no output"
-                else:
-                    clear_launch_failures(state_file)
+        if action in ("soft", "bootstrap") and not dry_run:
+            exit_code, output = run_soft_restart(env, scripts_dir)
+            if exit_code != 0:
+                # bugfix-066: surface the launch script's own output (incl. Docker's start error)
+                launch_error = output or f"launch exited {exit_code} with no output"
         elif action == "hard" and not dry_run:
             run_hard_restart(
                 denidin_container, morning_container, webapp_container, webapp_frontend_container

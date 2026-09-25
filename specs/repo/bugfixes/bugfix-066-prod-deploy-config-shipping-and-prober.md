@@ -4,10 +4,10 @@
 
 ## Fix summary
 - 1/3/4: `RELEASE_CONFIG_ASSET_FILES` + compose file added to the release scripts bundle; `scripts/lib/prepare_compose_service.sh` (sourced by all three run scripts) refuses to start on a missing/wrong-type config bind source and removes `created`-state containers.
-- 2: `prober.py` captures the launch script's output, logs `launch_error`, counts consecutive failures (`launch_failures.json`), and gives up after 3 (`give_up` action); stop_env/archive and a healthy tick clear the record. `run_all_and_verify_healthy.sh` prints each container's Docker `State.Error` on launch failure.
+- 2: `prober.py` captures the launch script's output, logs `launch_error`, (no give-up/backoff, by decision). `run_all_and_verify_healthy.sh` prints each container's Docker `State.Error` on launch failure.
 - 5: `deploy_release.sh` R9 prints `State.Error` and a prober warning.
 - 6: `provision_webapp.sh` never touches `password.hash`, recognises `to-paste-here`, correct closing syntax, checks config assets in [4/4].
-- 7: webapp `/health` gains `morning_connectivity` (informational only - never fails status, to avoid prober restart loops) and `ledger_complete`; docstring fixed.
+- 7: webapp `/health` gains `morning_connectivity` (part of overall status) and `ledger_complete`; docstring fixed.
 - 8: frontend nginx sends `Cache-Control: no-cache` for `index.html`.
 - Open: prod's stale `runtime_constitution.md` is shipped by the bundle but the prod update is a human decision.
 **Scope**: `scripts/deploy_release.sh prod 0.7.6` (all apps) failed at step R9; prod was left partly
