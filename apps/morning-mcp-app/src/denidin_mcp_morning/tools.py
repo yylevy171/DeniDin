@@ -2218,10 +2218,19 @@ def _normalize_israeli_phone(phone: str) -> str:
     +972/972-prefixed, local, dashed, or undashed input; rejects anything
     that doesn't resolve to a plausible Israeli number (9 or 10 digits
     starting with 0).
+
+    A number whose leading zero was dropped (bugfix-032, e.g. `50-822-5928`)
+    is repaired only when it has one unambiguous reading: 9 digits starting
+    with 5/7 (mobile/VoIP) or 8 digits starting with 2/3/4/8/9 (landline).
     """
     digits = re.sub(r"\D", "", phone)
     if digits.startswith("972"):
         digits = "0" + digits[3:]
+    elif not digits.startswith("0") and (
+        (len(digits) == _ISRAELI_PHONE_MOBILE_LENGTH - 1 and digits[:1] in ("5", "7"))
+        or (len(digits) == _ISRAELI_PHONE_LANDLINE_LENGTH - 1 and digits[:1] in ("2", "3", "4", "8", "9"))
+    ):
+        digits = "0" + digits
     if not digits.startswith("0") or len(digits) not in (
         _ISRAELI_PHONE_LANDLINE_LENGTH,
         _ISRAELI_PHONE_MOBILE_LENGTH,

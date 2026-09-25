@@ -144,6 +144,37 @@ def test_normalize_israeli_phone_landline_variant():
 
 
 @pytest.mark.parametrize(
+    "raw_phone",
+    ["50-822-5928", "508225928", "50 822 5928", "+972-50-822-5928"],
+)
+def test_normalize_israeli_phone_repairs_mobile_missing_its_leading_zero(raw_phone):
+    """bugfix-032: 9 digits starting with 5 is an unambiguous mobile number."""
+    assert tools._normalize_israeli_phone(raw_phone) == "050-8225928"
+
+
+def test_normalize_israeli_phone_repairs_voip_missing_its_leading_zero():
+    assert tools._normalize_israeli_phone("772345678") == "077-2345678"
+
+
+def test_normalize_israeli_phone_repairs_landline_missing_its_leading_zero():
+    assert tools._normalize_israeli_phone("3-123-4567") == "03-1234567"
+
+
+@pytest.mark.parametrize(
+    "ambiguous_phone",
+    [
+        "108225928",  # 9 digits, prefix 1 is not a mobile/VoIP prefix
+        "50822592",  # 8 digits starting with 5 - not a landline prefix
+        "5082259281",  # 10 digits without a leading zero
+        "312345",  # too short to be a landline
+    ],
+)
+def test_normalize_israeli_phone_still_rejects_ambiguous_missing_zero(ambiguous_phone):
+    with pytest.raises(ValueError):
+        tools._normalize_israeli_phone(ambiguous_phone)
+
+
+@pytest.mark.parametrize(
     "bad_phone",
     [
         "12345",  # too few digits
