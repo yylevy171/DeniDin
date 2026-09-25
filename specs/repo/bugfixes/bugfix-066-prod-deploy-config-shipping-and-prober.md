@@ -3,7 +3,7 @@
 **Status**: Fixed on branch `bugfix/066-prod-deploy-config-shipping-and-prober` (fixed without BDD, per operator instruction). Ships in the next release (version chosen by the human).
 
 ## Fix summary
-- 1/3/4: `RELEASE_CONFIG_ASSET_FILES` + compose file added to the release scripts bundle; `scripts/lib/prepare_compose_service.sh` (sourced by all three run scripts) refuses to start on a missing/wrong-type config bind source and removes `created`-state containers.
+- 1/3/4: `RELEASE_CONFIG_ASSET_FILES` added to the release scripts bundle (the compose file is per-box and stays bootstrapped via `provision_webapp.sh`, re-run when its mounts change); `scripts/lib/prepare_compose_service.sh` (sourced by all three run scripts) refuses to start on a missing/wrong-type config bind source and removes `created`-state containers.
 - 2: `prober.py` captures the launch script's output, logs `launch_error`, (no give-up/backoff, by decision). `run_all_and_verify_healthy.sh` prints each container's Docker `State.Error` on launch failure.
 - 5: `deploy_release.sh` R9 prints `State.Error` and a prober warning.
 - 6: `provision_webapp.sh` never touches `password.hash`, recognises `to-paste-here`, correct closing syntax, checks config assets in [4/4].
