@@ -55,5 +55,9 @@ env_lock_acquire "$ENV"
 # serving stale code (real incident, 2026-08-12: a stop/run cycle here alone
 # was mistaken for a rebuild - see CLAUDE.md's "Merging a code fix to master
 # does not redeploy it" for the general rule this is one instance of).
+# bugfix-066: refuse to start if bind-mounted config is missing (Docker would silently create it
+# as an empty root-owned directory), and clear never-started containers so a fixed mount takes.
+source "$REPO_ROOT/scripts/lib/prepare_compose_service.sh"
+prepare_compose_service "$SERVICE" "${COMPOSE_ARGS[@]}" || exit 1
 docker compose "${COMPOSE_ARGS[@]}" up -d "$SERVICE"
 docker compose "${COMPOSE_ARGS[@]}" ps "$SERVICE"

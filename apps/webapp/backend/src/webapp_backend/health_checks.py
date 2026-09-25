@@ -13,8 +13,11 @@ webapp-backend is a read-only viewer. Its real dependencies are: (a) denidin-app
 mounted read-only off disk - if that mount breaks, the UI silently shows nothing; (b) the
 password-hash file, mounted read-only - if it breaks, every login fails; (c) its own in-memory
 ledger index, built once at startup from that data root; (d) its own logging pipeline. There is
-no OpenAI / Green API / Morning / ChromaDB dependency here - the other two apps' checks for
-those have no webapp equivalent.
+no OpenAI / Green API / ChromaDB dependency here - the other two apps' checks for those have
+no webapp equivalent. (e) Since Feature 087 (Clients tab) it also depends on the live Morning
+API for the client list; that is reported as ``morning_connectivity`` but is INFORMATIONAL - it
+never fails ``/health`` (see ``INFORMATIONAL_CHECKS``), because restarting the container cannot
+fix a Morning outage and the health prober would otherwise restart-loop prod over it.
 """
 from __future__ import annotations
 
@@ -30,6 +33,11 @@ from typing import Callable, Dict, Optional
 # single missed heartbeat doesn't false-positive but two in a row (a real stuck logging
 # pipeline) does.
 HEARTBEAT_INTERVAL_SECONDS = 600  # 10 minutes
+
+# Checks reported in /health's body but excluded from its overall pass/fail status (bugfix-066).
+INFORMATIONAL_CHECKS = frozenset({"morning_connectivity"})
+
+MORNING_PING_CACHE_SECONDS = 60.0
 
 _HEX64 = re.compile(r"^[0-9a-fA-F]{64}$")
 
@@ -75,6 +83,44 @@ def check_password_hash_readable(hash_file: str) -> bool:
         logger.warning("check_password_hash_readable: %s is not 64 hex chars", hash_file)
         return False
     return True
+
+
+def check_ledger_complete(reader, data_root: str) -> bool:
+    """Catches an index that silently loaded nothing (e.g. the data mount was empty/broken at
+    startup and recovered later): fails iff ``events/`` holds event files on disk right now but
+    the in-memory index holds none. Deliberately NOT an exact count comparison - denidin-app keeps
+    writing events after this process built its index, so a small lag is normal, not a fault."""
+    try:
+        on_disk = any(Path(data_root, "events").glob("*.json"))
+        if not on_disk:
+            return True
+        return len(reader.events()) > 0
+    except Exception:  # noqa: BLE001
+        logger.warning("check_ledger_complete: failed", exc_info=True)
+        return False
+
+
+def make_morning_ping_check(ping: Callable[[], object], cache_seconds: float = MORNING_PING_CACHE_SECONDS) -> Callable[[], bool]:
+    """Wraps a read-only Morning call (``ping`` raises on failure) into a check cached for
+    ``cache_seconds``, so a frequent /health poll never hammers the real Morning API."""
+    state = {"at": 0.0, "ok": False}
+    lock = threading.Lock()
+
+    def _check() -> bool:
+        with lock:
+            now = time.monotonic()
+            if state["at"] and now - state["at"] < cache_seconds:
+                return bool(state["ok"])
+            try:
+                ping()
+                state["ok"] = True
+            except Exception:  # noqa: BLE001
+                logger.warning("morning_connectivity: ping failed", exc_info=True)
+                state["ok"] = False
+            state["at"] = now
+            return bool(state["ok"])
+
+    return _check
 
 
 def check_ledger_index(reader) -> bool:
@@ -130,6 +176,7 @@ def build_health_check_fns(
     password_hash_file: Optional[str] = None,
     ledger_reader=None,
     log_path: Optional[Path] = None,
+    morning_ping: Optional[Callable[[], object]] = None,
 ) -> Dict[str, Callable[[], bool]]:
     """Binds each live value to its check via closure, once, producing the zero-arg callables
     ``server.py``'s ``/health`` handler actually calls per request. Any argument left None
@@ -142,6 +189,10 @@ def build_health_check_fns(
         checks["password_hash_readable"] = lambda: check_password_hash_readable(password_hash_file)
     if ledger_reader is not None:
         checks["ledger_index"] = lambda: check_ledger_index(ledger_reader)
+        if denidin_data_root is not None:
+            checks["ledger_complete"] = lambda: check_ledger_complete(ledger_reader, denidin_data_root)
     if log_path is not None:
         checks["logs_writing"] = lambda: check_log_freshness(log_path)
+    if morning_ping is not None:
+        checks["morning_connectivity"] = make_morning_ping_check(morning_ping)
     return checks

@@ -31,6 +31,13 @@ server {
         proxy_pass http://${BACKEND_UPSTREAM}/health;
     }
 
+    # The app shell must never be served from a browser cache (bugfix-066): index.html names the
+    # hashed JS bundle, so a cached copy keeps an old UI alive after a deploy (2026-09-25: the new
+    # Clients tab was invisible until a hard reload). Hashed assets under /assets stay cacheable.
+    location = /index.html {
+        add_header Cache-Control "no-cache";
+    }
+
     # SPA: any other path serves the app shell (client-side routing / hard refreshes).
     location / {
         try_files $uri $uri/ /index.html;

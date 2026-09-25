@@ -51,7 +51,19 @@ source "$SCRIPT_DIR/health_monitoring/prober_paths.sh"
 GRACE_SECONDS=300
 POLL_INTERVAL_SECONDS=10
 
-"$SCRIPT_DIR/run_all.sh" "$ENV"
+# bugfix-066: a launch failure (docker cannot start a container) must be REPORTED with Docker's own
+# error, not just abort under `set -e` with the cause buried in `docker inspect`. The prober captures
+# this output, logs it as launch_error and stops retrying after repeated identical failures.
+if ! "$SCRIPT_DIR/run_all.sh" "$ENV"; then
+    echo "ERROR: LAUNCH FAILED for $ENV - run_all.sh could not start every container." >&2
+    for c in "$(prober_denidin_container "$ENV")" "$(prober_morning_container "$ENV")" \
+             "$(prober_webapp_container "$ENV")" "$(prober_webapp_frontend_container "$ENV")"; do
+        if docker inspect "$c" >/dev/null 2>&1; then
+            echo "  $c: state=$(docker inspect -f '{{.State.Status}}' "$c") error=$(docker inspect -f '{{.State.Error}}' "$c")" >&2
+        fi
+    done
+    exit 1
+fi
 
 # webapp (Feature 068) - include it in the health gate only when its containers exist on this
 # box/env (it's deployed independently, not present everywhere). Both containers checked

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ONE-TIME (re-runnable): teach the Windows prod box about the webapp app, so
-# `scripts/deploy_release.sh webapp prod <version>` can deploy to it. Originally
+# `scripts/deploy_release.sh prod <version>` can deploy to it. Originally
 # Feature 068; updated 2026-09-24 for Feature 087's config consolidation + webapp_data root.
 #
 # The box's deploy dir (~/denidin-prod) is NOT a git checkout - it's a curated
@@ -10,7 +10,10 @@
 #     (2026-09-24: no more separate ".container.json" file — this is the SAME file config.py
 #     loads for both host and container mode; must have the real Morning API secrets pasted
 #     in ON THE BOX itself after this runs, never committed anywhere), and
-#     apps/webapp/backend/auth/password.hash.
+#     NEVER the password: apps/webapp/backend/auth/password.hash already lives on the box and is
+#     deliberately NOT shipped, packaged, placed, or overwritten by this script (2026-09-25,
+#     operator instruction - "you don't change passwords"). It is only checked for existence
+#     (read-only) and the script aborts, before touching anything, if it is missing.
 #   - Creates apps/webapp/webapp_data/clients/ if missing (empty scaffold only - this script
 #     never copies real client data; that's a separate, explicit seed step - see its own
 #     printed reminder at the end).
@@ -26,7 +29,7 @@
 # never starts / stops / rebuilds / recreates a container. The running denidin-app-prod /
 # morning-mcp-app-prod / webapp-backend-prod / webapp-frontend-prod are untouched - re-running
 # this does NOT pick up a new webapp code/config shape in the already-running container; that
-# still requires an explicit scripts/deploy_release.sh webapp prod <version> afterward.
+# still requires an explicit scripts/deploy_release.sh prod <version> afterward.
 #
 # Usage (from the Mac, repo root):
 #   ./scripts/windows_prod/provision_webapp.sh [ssh-host-alias] [deploy-dir-name]
@@ -46,21 +49,24 @@ run() { wsl_ssh_run "$SSH_HOST" "$1"; }
 
 COMPOSE_SRC="docker/docker-compose.prod.yml"
 CONFIG_SRC="apps/webapp/backend/config/config.prod.json"
-PWHASH_SRC="apps/webapp/backend/auth/password.hash"
 
-for f in "$COMPOSE_SRC" "$CONFIG_SRC" "$PWHASH_SRC"; do
+for f in "$COMPOSE_SRC" "$CONFIG_SRC"; do
     [ -f "$f" ] || { echo "ERROR: missing local file: $f" >&2; exit 1; }
 done
 
 echo "== Preflight =="
 run 'echo reachable' >/dev/null || { echo "ERROR: cannot reach $SSH_HOST." >&2; exit 1; }
+# The password is never provisioned by this script - it must already be on the box. Read-only
+# existence check only (never prints or copies it); abort BEFORE any file is shipped/placed.
+run "test -f ~/$DEPLOY_DIR/apps/webapp/backend/auth/password.hash" \
+    || { echo "ERROR: ~/$DEPLOY_DIR/apps/webapp/backend/auth/password.hash is missing on $SSH_HOST. This script does not provision passwords - put the existing one there first. Nothing was changed." >&2; exit 1; }
+echo "password.hash present on the box - left untouched"
 run "cd ~/$DEPLOY_DIR; printf 'compose webapp lines (before): '; grep -c webapp docker/docker-compose.prod.yml || true; printf 'local.yml already patched: '; grep -q webapp-backend-prod docker/docker-compose.prod.local.yml && echo yes || echo no"
 
 echo
 echo "== [1/4] Shipping files to $SSH_HOST (Windows home) =="
 scp -o BatchMode=yes -o ConnectTimeout=10 "$COMPOSE_SRC" "$SSH_HOST:~/_webapp_compose.prod.yml"
 scp -o BatchMode=yes -o ConnectTimeout=10 "$CONFIG_SRC"  "$SSH_HOST:~/_webapp_config.prod.json"
-scp -o BatchMode=yes -o ConnectTimeout=10 "$PWHASH_SRC"  "$SSH_HOST:~/_webapp_password.hash"
 
 echo
 echo "== [2/4] Placing files into ~/$DEPLOY_DIR on the box =="
@@ -77,15 +83,14 @@ PLACE=$(cat <<REMOTE
 set -e
 WH="$WIN_HOME"
 DD="$DEPLOY_DIR"
-for f in _webapp_compose.prod.yml _webapp_config.prod.json _webapp_password.hash; do
+for f in _webapp_compose.prod.yml _webapp_config.prod.json; do
     test -f "\$WH/\$f" || { echo "ERROR: shipped file missing: \$WH/\$f" >&2; exit 1; }
 done
 cd ~/"\$DD"
 mkdir -p apps/webapp/backend/config apps/webapp/backend/auth apps/webapp/webapp_data/clients
 cp "\$WH/_webapp_compose.prod.yml"  docker/docker-compose.prod.yml
 cp "\$WH/_webapp_config.prod.json"  apps/webapp/backend/config/config.prod.json
-cp "\$WH/_webapp_password.hash"     apps/webapp/backend/auth/password.hash
-rm -f "\$WH/_webapp_compose.prod.yml" "\$WH/_webapp_config.prod.json" "\$WH/_webapp_password.hash"
+rm -f "\$WH/_webapp_compose.prod.yml" "\$WH/_webapp_config.prod.json"
 # Cleanup: obsolete pre-087 file, superseded by config.prod.json above - never needed again.
 if [ -f apps/webapp/backend/config/config.prod.container.json ]; then
     rm -f apps/webapp/backend/config/config.prod.container.json
@@ -159,6 +164,10 @@ grep -A40 'webapp-backend-prod:' /tmp/_webapp_cfg.yml | grep -m1 denidin-prod-da
 echo "  existing prod services still present:"
 grep -E '^  (denidin-app|morning-mcp-app)-prod:' /tmp/_webapp_cfg.yml | sed 's/^/    /'
 rm -f /tmp/_webapp_cfg.yml
+echo "  compose bind-mounted config assets present (would otherwise become empty root-owned dirs):"
+for f in apps/denidin-app/config/runtime_constitution.md apps/denidin-app/config/ledger_recognition_prompt.md apps/denidin-app/config/fee_agreement_templates/manifest.json; do
+    [ -f "$f" ] && echo "    ok  $f" || { echo "    MISSING  $f - a release ships these (RELEASE_CONFIG_ASSET_FILES); deploy_release.sh will put them in place" >&2; }
+done
 echo "  no obsolete config.prod.container.json left behind:"
 if [ -f apps/webapp/backend/config/config.prod.container.json ]; then
     echo "    WARNING: still present - cleanup step above should have removed it"
@@ -172,7 +181,7 @@ python3 -c "
 import json
 d = json.load(open('apps/webapp/backend/config/config.prod.json'))
 kid = d.get('morning_api_key_id', '')
-if not kid or kid.startswith('PASTE_YOUR'):
+if not kid or kid.startswith('PASTE_YOUR') or kid == 'to-paste-here':
     print('    NOT SET - paste real prod Morning credentials into config.prod.json on this box before deploying')
 else:
     print('    set (value not printed)')
@@ -187,4 +196,4 @@ echo "Remaining manual steps on the box before a real deploy:"
 echo "  1. Paste real prod Morning API credentials into apps/webapp/backend/config/config.prod.json"
 echo "  2. Seed apps/webapp/webapp_data/clients/ from Rapaport's live analyst files (see"
 echo "     apps/webapp/webapp_data/README.md) if not already done"
-echo "Then (from the Mac): scripts/cut_release.sh webapp <VERSION> --summary \"...\"  then  scripts/deploy_release.sh webapp prod <VERSION>"
+echo "Then (from the Mac): scripts/cut_release.sh webapp <VERSION> --summary \"...\"  then  scripts/deploy_release.sh prod <VERSION>   (all apps; or deploy_release_single.sh webapp prod <VERSION>)"

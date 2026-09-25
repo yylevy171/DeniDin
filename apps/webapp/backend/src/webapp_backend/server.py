@@ -22,7 +22,7 @@ from webapp_backend.auth import PasswordVerifier, SessionStore
 from webapp_backend.clients_reader import ClientsReader
 from webapp_backend.config import AppConfig
 from webapp_backend.context_reader import ContextReader
-from webapp_backend.health_checks import build_health_check_fns, start_heartbeat_thread
+from webapp_backend.health_checks import INFORMATIONAL_CHECKS, build_health_check_fns, start_heartbeat_thread
 from webapp_backend.ledger_reader import DEFAULT_DAYS_BACK, LedgerReader
 from webapp_backend.logger import resolve_log_path, setup_logging
 from webapp_backend.morning_client_source import MorningClientSource, MorningClientSourceError
@@ -100,6 +100,7 @@ def build_app(config: AppConfig, log_path: Optional[Path] = None) -> Starlette:
         password_hash_file=config.password_hash_file,
         ledger_reader=reader,
         log_path=log_path,
+        morning_ping=morning_source.ping,
     )
 
     def health(_request: Request) -> JSONResponse:
@@ -116,7 +117,8 @@ def build_app(config: AppConfig, log_path: Optional[Path] = None) -> Starlette:
                 logger.warning("health check %r raised", name, exc_info=True)
                 ok = False
             body[name] = "success" if ok else "fail"
-            all_ok = all_ok and ok
+            if name not in INFORMATIONAL_CHECKS:
+                all_ok = all_ok and ok
         body["status"] = "ok" if all_ok else "fail"
         return JSONResponse(body, status_code=200 if all_ok else 503)
 

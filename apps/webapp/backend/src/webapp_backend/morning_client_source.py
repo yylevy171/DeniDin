@@ -43,6 +43,11 @@ class MorningClientSource:
             base_url=self._api_url,
         )
 
+    def ping(self) -> None:
+        """Cheapest real, read-only Morning call (one client, page size 1) - proves auth + reachability.
+        Raises on any failure (used by /health's informational morning_connectivity check)."""
+        self._build_client().search_clients({"pageSize": 1})
+
     def list_active_client_names(self) -> List[str]:
         """The full, live official-client-name list — one page-walked call, no
         local persistence. Raises ``MorningClientSourceError`` on any failure."""
