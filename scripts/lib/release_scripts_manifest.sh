@@ -74,6 +74,5 @@ RELEASE_SCRIPTS_BUNDLE_FILES=(
     "apps/webapp/run_webapp.sh"
     "apps/webapp/stop_webapp.sh"
     "scripts/lib/prepare_compose_service.sh"
-    "docker/docker-compose.prod.yml"
     "${RELEASE_CONFIG_ASSET_FILES[@]}"
 )
