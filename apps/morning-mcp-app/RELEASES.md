@@ -115,3 +115,7 @@ Feature 083: Fee agreement document generation over WhatsApp (RBAC-gated get/ren
 ## morning-mcp-app v0.7.5 — 2026-09-15
 
 Reconciliation release: combines Feature 083 (fee agreement document generation) with Feature 078 (prod daily backups) and the v0.7.4 fee-agreement-docs cut, which was mistakenly cut from a stale pre-078 branch base and is being superseded.
+
+## morning-mcp-app v0.7.6 — 2026-09-25
+
+Webapp: new Clients tab (Morning client status dashboard, operator comments, aliasing unmatched ledger names), in-memory caching with refresh-only reloads, correct WhatsApp conversation ordering, no refetch on tab switch (Feature 087). DeniDin: fee-agreement DOCX date/title order and bold party lines (bugfix-063).
