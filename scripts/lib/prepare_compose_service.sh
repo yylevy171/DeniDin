@@ -82,8 +82,8 @@ if problems:
     print(f"ERROR: refusing to start {service} - its bind-mounted config is not in place:", file=sys.stderr)
     for p in problems:
         print(f"  - {p}", file=sys.stderr)
-    print("  Ship these with the release bundle / scripts/windows_prod/provision_webapp.sh "
-          "(see RELEASE_CONFIG_ASSET_FILES in scripts/lib/release_scripts_manifest.sh).", file=sys.stderr)
+    print("  Only per-environment config (config.<env>.json) is mounted from the host and must be "
+          "created on the box by hand; everything else under config/ is baked into the image.", file=sys.stderr)
     sys.exit(1)
 ' "$service"
 }

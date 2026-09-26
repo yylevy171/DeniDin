@@ -3,7 +3,8 @@
 **Status**: Fixed on branch `bugfix/066-prod-deploy-config-shipping-and-prober` (fixed without BDD, per operator instruction). Ships in the next release (version chosen by the human).
 
 ## Fix summary
-- 1/3/4: `RELEASE_CONFIG_ASSET_FILES` added to the release scripts bundle (the compose file is per-box and stays bootstrapped via `provision_webapp.sh`, re-run when its mounts change); `scripts/lib/prepare_compose_service.sh` (sourced by all three run scripts) refuses to start on a missing/wrong-type config bind source and removes `created`-state containers.
+- 1: ROOT CAUSE (found later): the compose files bind-mounted `runtime_constitution.md`, `ledger_recognition_prompt.md` and `fee_agreement_templates/` from the box's folder OVER the image's baked copies; prod's constitution was months stale. Fix: the compose files (dev and prod) now mount ONLY `config.<env>.json`; all other config is baked into the release and used as shipped. Config files and compose files are per-env and never bundled/overwritten by a release. `.dockerignore` now excludes any `config.*.json` (except `config.example.json`/`config.schema.json`), `.DS_Store`, log files and test logs (previously a stray `config.json` [environment: test] and `config.player_prod.json` were baked into the denidin-app image).
+- 3/4: `scripts/lib/prepare_compose_service.sh` (sourced by all three run scripts) refuses to start on a missing/wrong-type config bind source and removes `created`-state containers.
 - 2: `prober.py` captures the launch script's output, logs `launch_error`, (no give-up/backoff, by decision). `run_all_and_verify_healthy.sh` prints each container's Docker `State.Error` on launch failure.
 - 5: `deploy_release.sh` R9 prints `State.Error` and a prober warning.
 - 6: `provision_webapp.sh` never touches `password.hash`, recognises `to-paste-here`, correct closing syntax, checks config assets in [4/4].

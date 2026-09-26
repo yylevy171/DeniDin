@@ -40,9 +40,16 @@ specs
 **/.DS_Store
 
 # Secrets / per-clone files
-**/config/config.dev.json
-**/config/config.prod.json
-**/config/config.test.json
+# Any per-env / local config (config.dev/prod/test.json, config.player_prod.json, *-preview.json, ...):
+# only the safe placeholder template and the schema ship in an image. Env config is mounted at runtime.
+**/config/config.*.json
+**/config/config.json
+!**/config/config.example.json
+!**/config/config.schema.json
+apps/webapp/backend/auth/*.hash
+apps/webapp/backend/logs
+**/test_logs
+**/*.log.*
 apps/webapp/backend/auth/password.hash
 creds
 docker/docker-compose.*.local.yml

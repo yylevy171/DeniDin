@@ -22,28 +22,12 @@
 # real config (same treatment as config.dev.json/config.prod.json/docker-compose.*.local.yml),
 # created once by hand on each host and left untouched by every future bundle unpack (an overlay
 # extract, never a wipe - see unpack_scripts_bundle.sh).
-# bugfix-066 (2026-09-25): git-tracked, non-secret config files that docker-compose.prod.yml
-# bind-mounts into denidin-app-prod from the deploy dir. The box's deploy dir is a curated
-# file tree (not a git checkout), and nothing shipped these - so a compose file that mounted
-# them (bugfix-062) pointed at host paths that did not exist, Docker silently created them as
-# root-owned EMPTY DIRECTORIES, and denidin-app-prod failed to start (prod outage, 2026-09-25).
-# They now travel with every release bundle exactly like the ops scripts. Real per-environment
-# secrets (config.prod.json etc.) are deliberately NOT here - never bundled, never overwritten.
-# scripts/windows_prod/provision_webapp.sh ships this same list on provisioning. When a file is
-# added to fee_agreement_templates/, add it here too (scripts/lib/prepare_compose_service.sh
-# fails the start loudly if a mounted config path is missing on the box).
-RELEASE_CONFIG_ASSET_FILES=(
-    "apps/denidin-app/config/runtime_constitution.md"
-    "apps/denidin-app/config/ledger_recognition_prompt.md"
-    "apps/denidin-app/config/fee_agreement_templates/manifest.json"
-    "apps/denidin-app/config/fee_agreement_templates/alternative_tracks.docx"
-    "apps/denidin-app/config/fee_agreement_templates/hourly_consultation.docx"
-    "apps/denidin-app/config/fee_agreement_templates/multi_component_agreement.docx"
-    "apps/denidin-app/config/fee_agreement_templates/examples/README.md"
-    "apps/denidin-app/config/fee_agreement_templates/examples/alternative_tracks.json"
-    "apps/denidin-app/config/fee_agreement_templates/examples/hourly_consultation.json"
-    "apps/denidin-app/config/fee_agreement_templates/examples/multi_component_agreement.json"
-)
+# bugfix-066 (2026-09-25): config files are deliberately NOT bundled. Everything under an app's
+# config/ dir except config.<env>.json (runtime_constitution.md, ledger_recognition_prompt.md,
+# fee_agreement_templates/, ...) is BAKED INTO THE RELEASE IMAGE and used as shipped - the
+# compose files mount only config.<env>.json (per-env secrets) over /app/config/config.json.
+# config.<env>.json and docker/docker-compose.<env>.yml are per-environment, created once on
+# each box, and are never overwritten by a release.
 
 RELEASE_SCRIPTS_BUNDLE_FILES=(
     "scripts/run_all.sh"
@@ -74,5 +58,4 @@ RELEASE_SCRIPTS_BUNDLE_FILES=(
     "apps/webapp/run_webapp.sh"
     "apps/webapp/stop_webapp.sh"
     "scripts/lib/prepare_compose_service.sh"
-    "${RELEASE_CONFIG_ASSET_FILES[@]}"
 )

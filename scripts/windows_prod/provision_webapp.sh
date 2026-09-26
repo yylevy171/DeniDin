@@ -164,10 +164,6 @@ grep -A40 'webapp-backend-prod:' /tmp/_webapp_cfg.yml | grep -m1 denidin-prod-da
 echo "  existing prod services still present:"
 grep -E '^  (denidin-app|morning-mcp-app)-prod:' /tmp/_webapp_cfg.yml | sed 's/^/    /'
 rm -f /tmp/_webapp_cfg.yml
-echo "  compose bind-mounted config assets present (would otherwise become empty root-owned dirs):"
-for f in apps/denidin-app/config/runtime_constitution.md apps/denidin-app/config/ledger_recognition_prompt.md apps/denidin-app/config/fee_agreement_templates/manifest.json; do
-    [ -f "$f" ] && echo "    ok  $f" || { echo "    MISSING  $f - a release ships these (RELEASE_CONFIG_ASSET_FILES); deploy_release.sh will put them in place" >&2; }
-done
 echo "  no obsolete config.prod.container.json left behind:"
 if [ -f apps/webapp/backend/config/config.prod.container.json ]; then
     echo "    WARNING: still present - cleanup step above should have removed it"

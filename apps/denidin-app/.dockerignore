@@ -1,9 +1,13 @@
 # Secrets: real per-environment config files must never be baked into image
 # layers (VOLUME ["/app/config"] overrides them at runtime anyway — only
 # config.example.json, the safe placeholder template, should ship in the image).
-config/config.dev.json
-config/config.prod.json
-config/config.test.json
+# Any per-env / local config (config.json, config.dev/prod/test.json, config.player_prod.json, ...).
+config/config.json
+config/config.*.json
+!config/config.example.json
+**/.DS_Store
+**/*.log
+**/*.log.*
 
 # Runtime data/logs — also volume-mounted, never needed in the image itself.
 dev_data/
