@@ -1,6 +1,6 @@
 # bugfix-066: prod deploy of v0.7.6 failed - config shipping, prober launch-failure handling (2026-09-25)
 
-**Status**: Fixed on branch `bugfix/066-prod-deploy-config-shipping-and-prober` (fixed without BDD, per operator instruction). Ships in the next release (version chosen by the human).
+**Status**: Done - Merged to master (PR #TBD). Fixed without BDD, per operator instruction. Ships in the next release (version chosen by the human). Prod was brought onto the fixed compose (baked config, no host overrides) on 0.7.6 on 2026-09-26; stale box copies deleted.
 
 ## Fix summary
 - 1: ROOT CAUSE (found later): the compose files bind-mounted `runtime_constitution.md`, `ledger_recognition_prompt.md` and `fee_agreement_templates/` from the box's folder OVER the image's baked copies; prod's constitution was months stale. Fix: the compose files (dev and prod) now mount ONLY `config.<env>.json`; all other config is baked into the release and used as shipped. Config files and compose files are per-env and never bundled/overwritten by a release. `.dockerignore` now excludes any `config.*.json` (NOT `config.json` itself) (except `config.example.json`/`config.schema.json`), `.DS_Store`, log files and test logs (previously a stray `config.json` [environment: test] and `config.player_prod.json` were baked into the denidin-app image).
