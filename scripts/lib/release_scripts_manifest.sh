@@ -22,6 +22,13 @@
 # real config (same treatment as config.dev.json/config.prod.json/docker-compose.*.local.yml),
 # created once by hand on each host and left untouched by every future bundle unpack (an overlay
 # extract, never a wipe - see unpack_scripts_bundle.sh).
+# bugfix-066 (2026-09-25): config files are deliberately NOT bundled. Everything under an app's
+# config/ dir except config.<env>.json (runtime_constitution.md, ledger_recognition_prompt.md,
+# fee_agreement_templates/, ...) is BAKED INTO THE RELEASE IMAGE and used as shipped - the
+# compose files mount only config.<env>.json (per-env secrets) over /app/config/config.json.
+# config.<env>.json and docker/docker-compose.<env>.yml are per-environment, created once on
+# each box, and are never overwritten by a release.
+
 RELEASE_SCRIPTS_BUNDLE_FILES=(
     "scripts/run_all.sh"
     "scripts/stop_all.sh"
@@ -50,4 +57,5 @@ RELEASE_SCRIPTS_BUNDLE_FILES=(
     "apps/morning-mcp-app/stop_morning_mcp.sh"
     "apps/webapp/run_webapp.sh"
     "apps/webapp/stop_webapp.sh"
+    "scripts/lib/prepare_compose_service.sh"
 )

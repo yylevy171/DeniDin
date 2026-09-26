@@ -369,7 +369,11 @@ if [ "$REMOTE" -eq 1 ]; then
             done
             if [ "$CONTAINER_UP" -ne 1 ]; then
                 echo "🚨 DEPLOY FAILED at step R9 (${_cname} on ${REMOTE_HOST}): expected status 'running' within ${VERIFY_TIMEOUT}s, got '${CONTAINER_STATUS}'." >&2
+                # bugfix-066: Docker's own start error (e.g. a bind-mount failure) lives in
+                # State.Error, not in the logs of a container that never started.
+                echo "   Docker State.Error: $(remote_run "docker inspect --format '{{.State.Error}}' ${_cname}" 2>&1)" >&2
                 remote_run "docker logs ${_cname} --tail 20" >&2 2>&1 || true
+                echo "   WARNING: ${ENV} is left ENABLED with the health prober running - it retries the launch and gives up after repeated failures (see launch_failures.json / prober.log launch_error on ${REMOTE_HOST}). Fix the cause, then stop_env.sh + run_env.sh." >&2
                 exit 1
             fi
         done

@@ -73,6 +73,12 @@ case "$MODE" in
 
     COMPOSE_ARGS=(--project-directory "$REPO_ROOT" -f "$COMPOSE_FILE" -f "$LOCAL_OVERRIDE")
 
+    # bugfix-066: refuse to start if bind-mounted config is missing / clear never-started containers.
+    source "$REPO_ROOT/scripts/lib/prepare_compose_service.sh"
+    for _svc in "${SERVICES[@]}"; do
+        prepare_compose_service "$_svc" "${COMPOSE_ARGS[@]}" || exit 1
+    done
+
     docker compose "${COMPOSE_ARGS[@]}" up -d "${SERVICES[@]}"
     docker compose "${COMPOSE_ARGS[@]}" ps "${SERVICES[@]}"
 
