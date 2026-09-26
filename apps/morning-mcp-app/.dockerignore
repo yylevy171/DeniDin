@@ -2,7 +2,6 @@
 # layers (VOLUME ["/app/config"] overrides them at runtime anyway — only
 # config.example.json and config.schema.json, which hold no secrets, should
 # ship in the image).
-config/config.json
 config/config.*.json
 !config/config.example.json
 !config/config.schema.json
