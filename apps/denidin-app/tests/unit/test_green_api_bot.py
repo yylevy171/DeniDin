@@ -55,39 +55,6 @@ def _make_bot(**overrides):
     return bot
 
 
-class TestDrainStartupNotifications:
-    def test_stops_immediately_on_empty_body_fallback_string(self):
-        """The exact bugfix-020 scenario: a fresh/drained instance whose backend returns the
-        empty-body fallback "[]" right away must not crash and must not call deleteNotification."""
-        bot = _make_bot()
-        bot.api.receiving.receiveNotification.return_value = _fake_response("[]")
-
-        bot._drain_startup_notifications()
-
-        bot.api.receiving.deleteNotification.assert_not_called()
-
-    def test_stops_on_null_body(self):
-        bot = _make_bot()
-        bot.api.receiving.receiveNotification.return_value = _fake_response(None)
-
-        bot._drain_startup_notifications()
-
-        bot.api.receiving.deleteNotification.assert_not_called()
-
-    def test_drains_real_backlog_then_stops(self):
-        bot = _make_bot()
-        bot.api.receiving.receiveNotification.side_effect = [
-            _fake_response({"receiptId": 1, "body": {}}),
-            _fake_response({"receiptId": 2, "body": {}}),
-            _fake_response("[]"),
-        ]
-
-        bot._drain_startup_notifications()
-
-        bot.api.receiving.deleteNotification.assert_has_calls([call(1), call(2)])
-        assert bot.api.receiving.deleteNotification.call_count == 2
-
-
 class TestRunForever:
     @patch("src.utils.green_api_bot.time.sleep")
     def test_empty_body_does_not_log_error_or_sleep(self, mock_sleep):
@@ -153,22 +120,22 @@ class TestRunForever:
 
 
 class TestInit:
-    def test_forces_library_drain_off_and_runs_own_drain_by_default(self):
-        with patch("src.utils.green_api_bot.GreenAPIBot.__init__", return_value=None) as mock_init, \
-             patch.object(DeniDinGreenAPIBot, "_drain_startup_notifications") as mock_drain:
-            DeniDinGreenAPIBot("id123", "token123")
+    def test_forces_library_drain_off_and_never_drains(self):
+        """bugfix-054: startup must not delete the queued backlog - the library's drain is forced
+        off and there is no drain of our own; run_forever() routes the backlog instead."""
+        with patch("src.utils.green_api_bot.GreenAPIBot.__init__", return_value=None) as mock_init:
+            bot = DeniDinGreenAPIBot("id123", "token123")
 
         mock_init.assert_called_once()
         assert mock_init.call_args.kwargs["delete_notifications_at_startup"] is False
-        mock_drain.assert_called_once()
+        assert not hasattr(bot, "_drain_startup_notifications")
+        assert bot.on_notification_received is None
 
-    def test_delete_notifications_at_startup_false_skips_our_drain_too(self):
-        with patch("src.utils.green_api_bot.GreenAPIBot.__init__", return_value=None) as mock_init, \
-             patch.object(DeniDinGreenAPIBot, "_drain_startup_notifications") as mock_drain:
-            DeniDinGreenAPIBot("id123", "token123", delete_notifications_at_startup=False)
+    def test_a_caller_cannot_switch_the_library_drain_back_on(self):
+        with patch("src.utils.green_api_bot.GreenAPIBot.__init__", return_value=None) as mock_init:
+            DeniDinGreenAPIBot("id123", "token123", delete_notifications_at_startup=True)
 
         assert mock_init.call_args.kwargs["delete_notifications_at_startup"] is False
-        mock_drain.assert_not_called()
 
     def test_is_a_real_green_api_bot(self):
         assert issubclass(DeniDinGreenAPIBot, GreenAPIBot)
