@@ -1,0 +1,1 @@
+../repo/bugfixes/bugfix-067-morning-anonymous-config-volume.md
