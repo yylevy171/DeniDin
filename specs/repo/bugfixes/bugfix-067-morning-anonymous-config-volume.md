@@ -1,6 +1,6 @@
 # bugfix-067: morning-mcp-app declares an anonymous `/app/config` volume
 
-**Status**: Done - implemented and verified (image builds with no declared volumes), merging to master. Ships in the next release (version chosen by the human).
+**Status**: Done - implemented and verified (image builds with no declared volumes), merging to master (PR #647). Ships in the next release (version chosen by the human).
 **Found via**: verifying prod's mounts after the 0.7.7 deploy (2026-09-26), a follow-up to bugfix-066.
 
 ## Problem
