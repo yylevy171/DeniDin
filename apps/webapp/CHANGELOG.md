@@ -37,3 +37,7 @@ Reconciliation release: combines Feature 083 (fee agreement document generation)
 ## [0.7.6] - 2026-09-25
 
 Webapp: new Clients tab (Morning client status dashboard, operator comments, aliasing unmatched ledger names), in-memory caching with refresh-only reloads, correct WhatsApp conversation ordering, no refetch on tab switch (Feature 087). DeniDin: fee-agreement DOCX date/title order and bold party lines (bugfix-063).
+
+## [0.7.7] - 2026-09-26
+
+bugfix-066: config baked into the image is now used as shipped (compose files mount only config.<env>.json; no host copies of the constitution, ledger prompt or fee templates override the release); .dockerignore no longer bakes stray config/log/preview files; launch failures are reported with Docker's error; webapp /health adds Morning connectivity and ledger completeness; webapp index.html is served no-cache.
