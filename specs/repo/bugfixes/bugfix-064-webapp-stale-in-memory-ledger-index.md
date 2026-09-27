@@ -4,6 +4,7 @@
 **Components**: `apps/webapp/backend/src/webapp_backend/ledger_reader.py`, `apps/denidin-app/src/managers/ledger_event_manager.py`  
 **Affected Service**: `webapp-backend-prod` (Docker container `denidin-prod-webapp-backend-prod-1`)  
 **Category**: Capability  
+**Status**: Done — fixed as a side effect of Feature 087 (commit `1a5419a`, PR #643), released in **v0.7.6**. Verified 2026-09-27: `LedgerReader.reload()` (`ledger_reader.py`) rebuilds `LedgerEventManager` from disk, and `server.py`'s `GET /api/events` handler calls `reader.reload()` whenever `?refresh=1` is present — the frontend's "רענון" refresh button sends `refresh=1` on every click, and any caller can pass it directly. Both UAT-1 and UAT-2 below hold. This bugfix's own spec/symlink was never closed out when the fix landed under Feature 087's branch, hence this addendum.
 
 ---
 

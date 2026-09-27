@@ -1,1 +1,0 @@
-../repo/bugfixes/bugfix-064-webapp-stale-in-memory-ledger-index.md
