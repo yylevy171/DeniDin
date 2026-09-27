@@ -17,12 +17,15 @@ that use a geresh-marked consonant (ג׳/צ׳/ח׳/ז׳-type sounds) AND where t
 omits the geresh character rather than merely using the wrong punctuation mark for it.
 
 ## Status
-Open - deferred by explicit user decision (2026-08-07) at the same time the sibling
-apostrophe/geresh **punctuation-variant** bug was fixed directly under Feature 027 (see
-"Related Work" below), because this is a distinct and meaningfully more complex problem, not a
-one-line extension of that fix. No fix has been designed or implemented. Per Bug-Driven
-Development (METHODOLOGY.md §VII), next step is human approval of the root cause/complexity
-assessment below before any test-gap analysis or fix design begins.
+**Fixed** (2026-09-25, `fix(bugfix-027)`). Root cause: `morning-mcp-app` rewrote every stored/
+searched client name to the geresh form before searching, so a client actually stored with the
+*other* quote spelling (e.g. an apostrophe, "מג'די עטילה") could never be found by the exact
+lookup document creation needs — a real prod miss, 2026-09-08. Fixed by removing all name
+rewriting (`_normalize_hebrew_geresh` deleted) and instead searching both quote spellings
+(`_search_clients_by_name`, one search per spelling, merged by id) for client resolution and the
+`list_clients` filter alike; a differing quote surfaces as a "did you mean" the user confirms,
+never a silent rewrite. `runtime_constitution.md` updated to never make the user retype a client
+name. See PR for this branch for the full diff and added tests.
 
 ## Date Opened
 2026-08-07

@@ -12,8 +12,12 @@ normalising it to `050-822-5928`.
 **P2** — pure friction; no data is corrupted and the user can work around it by retyping.
 
 ## Status
-**Open — backlogged.** No fix designed. Per Bug-Driven Development (METHODOLOGY.md §VII), next
-step is human approval of the root cause before test-gap analysis.
+**Fixed** (2026-09-25, `fix(bugfix-032)`). `_normalize_israeli_phone` rejected a real number
+missing its leading zero (`50-822-5928`, 9 digits) even after the user had already approved the
+`add_client` prompt. It now prepends the zero when the reading is unambiguous — 9 digits starting
+5/7 (mobile/VoIP) or 8 digits starting 2/3/4/8/9 (landline) — and still rejects everything else.
+Pre-approval validation was deliberately not added (option A, per the analysis below). See PR for
+this branch for the full diff and added tests.
 
 ## Date Opened
 2026-08-09

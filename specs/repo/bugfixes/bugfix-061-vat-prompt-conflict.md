@@ -27,3 +27,15 @@ Instead of defaulting VAT to true and proceeding, the model halted and replied:
 
 ## Solution
 Add a top-level exception placed directly in the "Missing Fields" section of the constitution, explicitly stating that creating 320 documents from deposit screenshots is exempt from the VAT interrogation rule and must unconditionally default to true unless manually overridden by the user.
+
+## Status
+**Fixed** (2026-09-27, `fix(bugfix-061)`). The originally-described 320/deposit-screenshot
+exception described above was already in place in `runtime_constitution.md` by the time a full
+categorization of every VAT-related test in the suite was done (see
+`bugfix-061-vat-test-categorization.md`, same directory) — but that categorization surfaced a
+second, previously-unnoticed gap with the same root shape: `create_invoice` (type 305, an
+ordinary tax invoice) had **zero** VAT guidance at all, so the model silently assumed VAT-included
+instead of asking, exactly the mirror-image failure of the original bug. Fixed by giving
+`create_invoice` the same mandatory-ask rule `create_transaction_account` (300) already had (no
+deposit-reference exception applies there, since a 305 by definition covers money not yet
+received). See PR for this branch for the full diff, the test categorization, and added tests.
