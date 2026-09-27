@@ -25,7 +25,7 @@ rewriting (`_normalize_hebrew_geresh` deleted) and instead searching both quote 
 (`_search_clients_by_name`, one search per spelling, merged by id) for client resolution and the
 `list_clients` filter alike; a differing quote surfaces as a "did you mean" the user confirms,
 never a silent rewrite. `runtime_constitution.md` updated to never make the user retype a client
-name. See PR for this branch for the full diff and added tests.
+name. See PR #649 for the full diff and added tests.
 
 ## Date Opened
 2026-08-07

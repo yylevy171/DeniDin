@@ -38,4 +38,4 @@ ordinary tax invoice) had **zero** VAT guidance at all, so the model silently as
 instead of asking, exactly the mirror-image failure of the original bug. Fixed by giving
 `create_invoice` the same mandatory-ask rule `create_transaction_account` (300) already had (no
 deposit-reference exception applies there, since a 305 by definition covers money not yet
-received). See PR for this branch for the full diff, the test categorization, and added tests.
+received). See PR #649 for the full diff, the test categorization, and added tests.

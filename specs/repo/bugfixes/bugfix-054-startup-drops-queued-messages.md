@@ -23,7 +23,7 @@ receives the backlog like any live notification, routes each one, and deletes it
 the library's own startup drain stays forced off. **Not yet implemented**: the age bound on
 replayed messages (`startup_backlog_max_age_hours`) from the originally-approved fix — a restart
 today replays whatever backlog Green API still holds, with no age cutoff. Tracked as follow-up
-work, not a new bugfix. See PR for this branch for the full diff and added tests.
+work, not a new bugfix. See PR #649 for the full diff and added tests.
 
 ## Date Opened
 2026-09-06
