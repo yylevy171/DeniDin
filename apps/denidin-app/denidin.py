@@ -446,6 +446,9 @@ def initialize_app(config_dict: dict, green_api: Optional[Any] = None) -> DeniDi
     # monkey-patching - WhatsAppHandler itself never depends on AIHandler,
     # so this can't be a constructor arg without a circular dependency).
     ai_handler.whatsapp_handler = whatsapp_handler
+    # bugfix-058: error/notice exchanges that never reach AIHandler.get_response (unsupported
+    # types, failed media, ...) are still recorded in the session - same post-construction DI.
+    whatsapp_handler.record_exchange = ai_handler.record_exchange
 
     # Feature 039: most-permissive-role RBAC resolution for group turns - built off
     # the injected green_api's own Green API groups client (Feature 043: no longer a
@@ -775,6 +778,16 @@ def _process_conversational_message(notification: Notification) -> None:
                 notification.event.get("senderData", {}).get("chatId", ""),
                 ERROR_PROCESSING_MESSAGE_TRY_AGAIN, kind="text",
             )
+            # bugfix-058: the user's message and this error reply belong in the session too
+            # (the user message is skipped if get_response already stored it before failing).
+            try:
+                from src.models.message import WhatsAppMessage  # local import - matches existing style
+                _failed_text = WhatsAppMessage.from_notification(notification).text_content
+            except Exception:  # pylint: disable=broad-except
+                _failed_text = None
+            denidin_app.whatsapp_handler.record_error_exchange(
+                notification, _failed_text, ERROR_PROCESSING_MESSAGE_TRY_AGAIN
+            )
             try:
                 logger.info(f"{tracking} Generic fallback message sent to user")
             except (NameError, AttributeError):
@@ -905,6 +918,9 @@ def handle_contacts_array_message(notification: Notification) -> None:
 
     notification.answer(CONTACT_CARD_ONE_AT_A_TIME)
     log_outbound(notification.event.get("senderData", {}).get("chatId", ""), CONTACT_CARD_ONE_AT_A_TIME, kind="text")
+    denidin_app.whatsapp_handler.record_error_exchange(
+        notification, "[contacts sent]", CONTACT_CARD_ONE_AT_A_TIME
+    )
 
 
 def handle_image_message(notification: Notification) -> None:
