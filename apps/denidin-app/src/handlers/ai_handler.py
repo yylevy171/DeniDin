@@ -184,6 +184,13 @@ _active_progress_callback: "contextvars.ContextVar[Optional[Callable[[str], None
     "denidin_active_progress_callback", default=None
 )
 
+# bugfix-058: the text of every interim progress message actually sent to the user this turn, in
+# send order - so the turn's persistence step can record them (between the user's message and the
+# final reply) instead of leaving them out of the session. Set per get_response() call.
+_active_interim_messages: "contextvars.ContextVar[Optional[List[str]]]" = contextvars.ContextVar(
+    "denidin_active_interim_messages", default=None
+)
+
 # Architectural fix (2026-08-25): _finalize_response used to run the local-tool
 # handlers (_handle_query_ledger_events / _handle_list_reminders) exactly
 # ONCE each, against the turn's original
@@ -2466,6 +2473,7 @@ class AIHandler:
         is what actually gates whether the model can ever reach this path, not this parameter's
         presence."""
         callback_token = _active_progress_callback.set(progress_callback)
+        interim_token = _active_interim_messages.set([])
         try:
             if self.telemetry_manager is None:
                 return self._get_response_impl(
@@ -2494,6 +2502,7 @@ class AIHandler:
                     logger.warning(f"Feature 080 telemetry finalize/record failed: {telemetry_error}")
         finally:
             _active_progress_callback.reset(callback_token)
+            _active_interim_messages.reset(interim_token)
 
     def _get_response_impl(self, request: AIRequest, chat_id: Optional[str] = None,
                      user_role: str = 'client', sender: Optional[str] = None,
@@ -2598,7 +2607,9 @@ class AIHandler:
                     "routing to _resolve_pending_local_tool_approval instead of a normal turn"
                 )
                 local_resolved = self._resolve_pending_local_tool_approval(
-                    local_pending, request, effective_chat_id, user_obj, user_role, sender, recipient
+                    local_pending, request, effective_chat_id, user_obj, user_role, sender, recipient,
+                    user_phone=user_phone, is_group=is_group, chat_name=chat_name,
+                    sender_phone=sender_phone,
                 )
                 if local_resolved is not None:
                     return local_resolved
@@ -2647,8 +2658,9 @@ class AIHandler:
                 f"OpenAI API timeout for request {request.request_id} after retries: {e}",
                 exc_info=True
             )
-            return self._create_fallback_response(
-                request.request_id,
+            return self._fallback_and_persist(
+                request, effective_chat_id, user_obj, user_role, sender, user_phone, sender_phone,
+                is_group, chat_name,
                 "Sorry, I'm having trouble connecting to my AI service. Please try again later."
             )
 
@@ -2657,8 +2669,9 @@ class AIHandler:
                 f"OpenAI rate limit exceeded for request {request.request_id} after retries: {e}",
                 exc_info=True
             )
-            return self._create_fallback_response(
-                request.request_id,
+            return self._fallback_and_persist(
+                request, effective_chat_id, user_obj, user_role, sender, user_phone, sender_phone,
+                is_group, chat_name,
                 "I'm currently at capacity. Please try again in a minute."
             )
 
@@ -2667,8 +2680,9 @@ class AIHandler:
                 f"OpenAI API error for request {request.request_id} after retries: {e}",
                 exc_info=True
             )
-            return self._create_fallback_response(
-                request.request_id,
+            return self._fallback_and_persist(
+                request, effective_chat_id, user_obj, user_role, sender, user_phone, sender_phone,
+                is_group, chat_name,
                 "Sorry, I encountered an error processing your request. Please try again."
             )
 
@@ -2677,8 +2691,9 @@ class AIHandler:
                 f"Unexpected error in get_response for request {request.request_id}: {e}",
                 exc_info=True
             )
-            return self._create_fallback_response(
-                request.request_id,
+            return self._fallback_and_persist(
+                request, effective_chat_id, user_obj, user_role, sender, user_phone, sender_phone,
+                is_group, chat_name,
                 "Sorry, I encountered an unexpected error. Please try again."
             )
 
@@ -3007,6 +3022,9 @@ class AIHandler:
             try:
                 callback(text)
                 sent = True
+                interim = _active_interim_messages.get()
+                if interim is not None:
+                    interim.append(text)
                 builder = _active_telemetry_builder.get()
                 if builder is not None:
                     builder.mark_progress_update_sent()
@@ -3803,6 +3821,154 @@ class AIHandler:
             accumulated_mcp_calls,
         )
 
+    def _persist_turn(self, request: AIRequest, response_text: str, should_reply: bool,
+                      effective_chat_id: Optional[str], user_obj, user_role: str,
+                      sender: Optional[str], *, user_phone: Optional[str] = None,
+                      sender_phone: Optional[str] = None, is_group: bool = False,
+                      chat_name: Optional[str] = None, ledger_event_ids=None,
+                      mcp_calls=None) -> None:
+        """Stores one turn - the user's message and, when `should_reply`, the assistant's
+        `response_text` - in the chat's session, with the same sender/recipient/timestamp
+        conventions everywhere. Used by `_finalize_response` for a normal turn and (bugfix-058)
+        by `_get_response_impl`'s error branches so the fallback text the user actually saw is
+        recorded too. Never raises: a storage failure is logged and must not affect the reply."""
+        if self.memory_enabled and self.session_manager and effective_chat_id:
+            try:
+                # 2026-08-19: real WhatsApp identifiers for Message.sender/
+                # .recipient, replacing the old Feature 039 sentinel-retirement
+                # scheme (recipient=None for role="user", sender=None for
+                # role="assistant"). `sender` (this method's own parameter) stays
+                # the resolved display name - now Message.sender_name.
+                # own_whatsapp_number is bare digits (bugfix-024's getWaSettings
+                # call) - "" when unresolved (e.g. no live Green API client, the
+                # player), same fail-open convention as everywhere else it's used.
+                own_number_jid = f"{self.own_whatsapp_number}@c.us" if self.own_whatsapp_number else None
+                # sender_phone (this method's own param) is the ACTUAL sender's
+                # JID - deliberately NOT user_phone, which for a group turn is
+                # the most-permissive MEMBER's phone (possibly someone else
+                # entirely - see get_response's docstring). Falls back to
+                # user_phone (1:1 case, always the same person), then to
+                # effective_chat_id as a last resort (Green API's own 1:1
+                # chatId IS the contact's JID - never true for a group).
+                resolved_sender_phone = sender_phone or user_phone or (
+                    effective_chat_id if not is_group else None
+                )
+                sender_name_val = sender
+                # A group message is addressed to the whole group (its own
+                # JID/name), regardless of which individual sent it or that
+                # DeniDin is replying - never to one member, never to DeniDin
+                # alone.
+                user_msg_recipient = effective_chat_id if is_group else own_number_jid
+                user_msg_recipient_name = (chat_name or effective_chat_id) if is_group else "DeniDin"
+                assistant_msg_recipient = effective_chat_id if is_group else resolved_sender_phone
+                assistant_msg_recipient_name = (chat_name or effective_chat_id) if is_group else sender_name_val
+
+                # Feature 069: the persisted Message.timestamp. Live - the
+                # operator message's own wall-clock send time (request.timestamp,
+                # the Green API notification epoch). WhatsApp-export player replay
+                # - the injected ORIGINAL conversation time (+10s for the reply,
+                # so it sorts just after the operator turn it answers). This is
+                # what `_run_post_turn_ledger_recognition` dates a `הסכם`/`בנק`
+                # event from (session.message_ids[-1], Decision #10) AND what
+                # Feature 070's rolling window filters on - so an absent or
+                # implausible epoch (a malformed webhook, a test sentinel) must
+                # fall back to processing time, never land the message in 1970.
+                replayed = bool(getattr(request.original_message, "is_replay", False))
+                _src_epoch = _sane_source_epoch(request.timestamp)
+                user_source_ts = (
+                    None if _src_epoch is None else local_from_timestamp(_src_epoch)
+                )
+                assistant_source_ts = (
+                    None if _src_epoch is None
+                    else local_from_timestamp(_src_epoch + (10 if replayed else 0))
+                )
+
+                if self.rbac_enabled and user_obj:
+                    # Store user message with token limit
+                    self.session_manager.add_message_with_tokens(
+                        chat_id=effective_chat_id,
+                        role="user",
+                        content=request.user_prompt,
+                        user_role=user_obj.role,
+                        sender=resolved_sender_phone,
+                        sender_name=sender_name_val,
+                        recipient=user_msg_recipient,
+                        recipient_name=user_msg_recipient_name,
+                        ledger_event_ids=ledger_event_ids,
+                        message_id=request.message_id,
+                        timestamp=user_source_ts,
+                        whatsapp_id_message=getattr(
+                            request.original_message, "whatsapp_id_message", None
+                        ),
+                    )
+
+                    self._persist_interim_messages(
+                        effective_chat_id, user_obj.role, own_number_jid, assistant_msg_recipient,
+                        assistant_msg_recipient_name, assistant_source_ts,
+                    )
+
+                    if should_reply:
+                        # Store AI response with token limit
+                        self.session_manager.add_message_with_tokens(
+                            chat_id=effective_chat_id,
+                            role="assistant",
+                            content=response_text,
+                            user_role=user_obj.role,
+                            sender=own_number_jid,
+                            sender_name="DeniDin",
+                            recipient=assistant_msg_recipient,
+                            recipient_name=assistant_msg_recipient_name,
+                            mcp_calls=mcp_calls,
+                            timestamp=assistant_source_ts,
+                        )
+                else:
+                    # Existing behavior: regular add_message without token limits
+                    self.session_manager.add_message(
+                        chat_id=effective_chat_id,
+                        role="user",
+                        content=request.user_prompt,
+                        user_role=user_role or "client",
+                        sender=resolved_sender_phone,
+                        sender_name=sender_name_val,
+                        recipient=user_msg_recipient,
+                        recipient_name=user_msg_recipient_name,
+                        ledger_event_ids=ledger_event_ids,
+                        message_id=request.message_id,
+                        timestamp=user_source_ts,
+                        whatsapp_id_message=getattr(
+                            request.original_message, "whatsapp_id_message", None
+                        ),
+                    )
+
+                    self._persist_interim_messages(
+                        effective_chat_id, user_role or "client", own_number_jid,
+                        assistant_msg_recipient, assistant_msg_recipient_name, assistant_source_ts,
+                    )
+
+                    if should_reply:
+                        # Store AI response
+                        self.session_manager.add_message(
+                            chat_id=effective_chat_id,
+                            role="assistant",
+                            content=response_text,
+                            user_role=user_role or "client",
+                            sender=own_number_jid,
+                            sender_name="DeniDin",
+                            recipient=assistant_msg_recipient,
+                            recipient_name=assistant_msg_recipient_name,
+                            mcp_calls=mcp_calls,
+                            timestamp=assistant_source_ts,
+                        )
+
+                storage_note = (
+                    " + assistant reply" if should_reply
+                    else " (no-reply sentinel, no assistant message stored)"
+                )
+                logger.debug(f"Stored user message{storage_note} in session {effective_chat_id}")
+            except Exception as e:
+                logger.error(f"Failed to store messages in session: {e}", exc_info=True)
+
+
     def _finalize_response(self, request: AIRequest, response, effective_chat_id: Optional[str],
                            user_obj, user_role: str, sender: Optional[str],
                            recipient: Optional[str], tools: Optional[List[Dict]], *,
@@ -4070,132 +4236,12 @@ class AIHandler:
         # reply is stored, and the caller (denidin.py) must not send anything.
         should_reply = response_text.strip() != NO_REPLY_SENTINEL
 
-        # Store messages in session if memory enabled
-        if self.memory_enabled and self.session_manager and effective_chat_id:
-            try:
-                # 2026-08-19: real WhatsApp identifiers for Message.sender/
-                # .recipient, replacing the old Feature 039 sentinel-retirement
-                # scheme (recipient=None for role="user", sender=None for
-                # role="assistant"). `sender` (this method's own parameter) stays
-                # the resolved display name - now Message.sender_name.
-                # own_whatsapp_number is bare digits (bugfix-024's getWaSettings
-                # call) - "" when unresolved (e.g. no live Green API client, the
-                # player), same fail-open convention as everywhere else it's used.
-                own_number_jid = f"{self.own_whatsapp_number}@c.us" if self.own_whatsapp_number else None
-                # sender_phone (this method's own param) is the ACTUAL sender's
-                # JID - deliberately NOT user_phone, which for a group turn is
-                # the most-permissive MEMBER's phone (possibly someone else
-                # entirely - see get_response's docstring). Falls back to
-                # user_phone (1:1 case, always the same person), then to
-                # effective_chat_id as a last resort (Green API's own 1:1
-                # chatId IS the contact's JID - never true for a group).
-                resolved_sender_phone = sender_phone or user_phone or (
-                    effective_chat_id if not is_group else None
-                )
-                sender_name_val = sender
-                # A group message is addressed to the whole group (its own
-                # JID/name), regardless of which individual sent it or that
-                # DeniDin is replying - never to one member, never to DeniDin
-                # alone.
-                user_msg_recipient = effective_chat_id if is_group else own_number_jid
-                user_msg_recipient_name = (chat_name or effective_chat_id) if is_group else "DeniDin"
-                assistant_msg_recipient = effective_chat_id if is_group else resolved_sender_phone
-                assistant_msg_recipient_name = (chat_name or effective_chat_id) if is_group else sender_name_val
-
-                # Feature 069: the persisted Message.timestamp. Live - the
-                # operator message's own wall-clock send time (request.timestamp,
-                # the Green API notification epoch). WhatsApp-export player replay
-                # - the injected ORIGINAL conversation time (+10s for the reply,
-                # so it sorts just after the operator turn it answers). This is
-                # what `_run_post_turn_ledger_recognition` dates a `הסכם`/`בנק`
-                # event from (session.message_ids[-1], Decision #10) AND what
-                # Feature 070's rolling window filters on - so an absent or
-                # implausible epoch (a malformed webhook, a test sentinel) must
-                # fall back to processing time, never land the message in 1970.
-                replayed = bool(getattr(request.original_message, "is_replay", False))
-                _src_epoch = _sane_source_epoch(request.timestamp)
-                user_source_ts = (
-                    None if _src_epoch is None else local_from_timestamp(_src_epoch)
-                )
-                assistant_source_ts = (
-                    None if _src_epoch is None
-                    else local_from_timestamp(_src_epoch + (10 if replayed else 0))
-                )
-
-                if self.rbac_enabled and user_obj:
-                    # Store user message with token limit
-                    self.session_manager.add_message_with_tokens(
-                        chat_id=effective_chat_id,
-                        role="user",
-                        content=request.user_prompt,
-                        user_role=user_obj.role,
-                        sender=resolved_sender_phone,
-                        sender_name=sender_name_val,
-                        recipient=user_msg_recipient,
-                        recipient_name=user_msg_recipient_name,
-                        ledger_event_ids=ledger_event_ids,
-                        message_id=request.message_id,
-                        timestamp=user_source_ts,
-                        whatsapp_id_message=getattr(
-                            request.original_message, "whatsapp_id_message", None
-                        ),
-                    )
-
-                    if should_reply:
-                        # Store AI response with token limit
-                        self.session_manager.add_message_with_tokens(
-                            chat_id=effective_chat_id,
-                            role="assistant",
-                            content=response_text,
-                            user_role=user_obj.role,
-                            sender=own_number_jid,
-                            sender_name="DeniDin",
-                            recipient=assistant_msg_recipient,
-                            recipient_name=assistant_msg_recipient_name,
-                            mcp_calls=mcp_calls,
-                            timestamp=assistant_source_ts,
-                        )
-                else:
-                    # Existing behavior: regular add_message without token limits
-                    self.session_manager.add_message(
-                        chat_id=effective_chat_id,
-                        role="user",
-                        content=request.user_prompt,
-                        user_role=user_role or "client",
-                        sender=resolved_sender_phone,
-                        sender_name=sender_name_val,
-                        recipient=user_msg_recipient,
-                        recipient_name=user_msg_recipient_name,
-                        ledger_event_ids=ledger_event_ids,
-                        message_id=request.message_id,
-                        timestamp=user_source_ts,
-                        whatsapp_id_message=getattr(
-                            request.original_message, "whatsapp_id_message", None
-                        ),
-                    )
-
-                    if should_reply:
-                        # Store AI response
-                        self.session_manager.add_message(
-                            chat_id=effective_chat_id,
-                            role="assistant",
-                            content=response_text,
-                            user_role=user_role or "client",
-                            sender=own_number_jid,
-                            sender_name="DeniDin",
-                            recipient=assistant_msg_recipient,
-                            recipient_name=assistant_msg_recipient_name,
-                            mcp_calls=mcp_calls,
-                            timestamp=assistant_source_ts,
-                        )
-
-                storage_note = (
-                    " + assistant reply" if should_reply
-                    else " (no-reply sentinel, no assistant message stored)"
-                )
-                logger.debug(f"Stored user message{storage_note} in session {effective_chat_id}")
-            except Exception as e:
-                logger.error(f"Failed to store messages in session: {e}", exc_info=True)
+        # Store messages in session if memory enabled (shared with the error paths, bugfix-058)
+        self._persist_turn(
+            request, response_text, should_reply, effective_chat_id, user_obj, user_role, sender,
+            user_phone=user_phone, sender_phone=sender_phone, is_group=is_group,
+            chat_name=chat_name, ledger_event_ids=ledger_event_ids, mcp_calls=mcp_calls,
+        )
 
         # Create response object.
         # Responses API has no per-choice finish_reason; derive from
@@ -4745,7 +4791,9 @@ class AIHandler:
                     f"tool={pending.tool_name!r}, approval_request_id={pending.approval_request_id!r}: {e}",
                     exc_info=True
                 )
-                return self._create_fallback_response(request.request_id, APPROVAL_FAILED_TRY_AGAIN)
+                return self._fallback_and_persist(
+                    request, effective_chat_id, user_obj, user_role, sender, user_phone,
+                    sender_phone, is_group, chat_name, APPROVAL_FAILED_TRY_AGAIN)
 
             executed_calls = [
                 item for item in (response.output or [])
@@ -4786,7 +4834,9 @@ class AIHandler:
                     f"in one response (expected exactly 1). All mcp_calls: {executed_calls!r}"
                 )
                 self.pending_approval_manager.clear(effective_chat_id)
-                return self._create_fallback_response(request.request_id, APPROVAL_POSSIBLY_DUPLICATED)
+                return self._fallback_and_persist(
+                    request, effective_chat_id, user_obj, user_role, sender, user_phone,
+                    sender_phone, is_group, chat_name, APPROVAL_POSSIBLY_DUPLICATED)
 
             if not approved_tool_executions:
                 # bugfix-028 B4(b): the approved tool ran ZERO times. The guard
@@ -4817,8 +4867,9 @@ class AIHandler:
                     f"All mcp_calls: {executed_calls!r}"
                 )
                 self.pending_approval_manager.clear(effective_chat_id)
-                return self._create_fallback_response(
-                    request.request_id,
+                return self._fallback_and_persist(
+                    request, effective_chat_id, user_obj, user_role, sender, user_phone,
+                    sender_phone, is_group, chat_name,
                     f"אישרת, אבל הפעולה לא בוצעה בפועל{failure_detail}. "
                     f"לא נוצר שום מסמך. נסי שוב או ספרי לי איך להמשיך."
                 )
@@ -4855,7 +4906,9 @@ class AIHandler:
     def _resolve_pending_local_tool_approval(
         self, pending: PendingLocalToolApproval, request: AIRequest,
         effective_chat_id: str, user_obj, user_role: str,
-        sender: Optional[str], recipient: Optional[str],
+        sender: Optional[str], recipient: Optional[str], *,
+        user_phone: Optional[str] = None, is_group: bool = False,
+        chat_name: Optional[str] = None, sender_phone: Optional[str] = None,
     ) -> Optional[AIResponse]:
         """
         Resolve a pending local reminder tool call (Feature 054) using this
@@ -4962,7 +5015,9 @@ class AIHandler:
                 f"{effective_chat_id!r}, tool={pending.tool_name!r}: {e}", exc_info=True
             )
             self.pending_local_tool_approval_manager.clear(effective_chat_id)
-            return self._create_fallback_response(request.request_id, REMINDER_ACTION_FAILED_TRY_AGAIN)
+            return self._fallback_and_persist(
+                request, effective_chat_id, user_obj, user_role, sender, user_phone,
+                sender_phone, is_group, chat_name, REMINDER_ACTION_FAILED_TRY_AGAIN)
 
         self.pending_local_tool_approval_manager.clear(effective_chat_id)
         logger.info(f"[054] Approved and cleared pending local-tool approval for chat={effective_chat_id!r}")
@@ -5027,29 +5082,13 @@ class AIHandler:
                 "fallback text so the user never receives a silently empty reply."
             )
 
-        if self.memory_enabled and self.session_manager and effective_chat_id and self.rbac_enabled and user_obj:
-            try:
-                _rem_epoch = _sane_source_epoch(request.timestamp)
-                _rem_replayed = bool(getattr(request.original_message, "is_replay", False))
-                self.session_manager.add_message_with_tokens(
-                    chat_id=effective_chat_id, role="user", content=request.user_prompt,
-                    user_role=user_obj.role,
-                    sender=sender or effective_chat_id, message_id=request.message_id,
-                    timestamp=(
-                        None if _rem_epoch is None else local_from_timestamp(_rem_epoch)
-                    ),
-                )
-                self.session_manager.add_message_with_tokens(
-                    chat_id=effective_chat_id, role="assistant", content=response_text,
-                    user_role=user_obj.role,
-                    recipient=sender or effective_chat_id,
-                    timestamp=(
-                        None if _rem_epoch is None
-                        else local_from_timestamp(_rem_epoch + (10 if _rem_replayed else 0))
-                    ),
-                )
-            except Exception as e:
-                logger.error(f"[054] Failed to store reminder-approval messages in session: {e}", exc_info=True)
+        # Same shared persistence as every other turn (bugfix-058) - full sender/recipient
+        # conventions, interim messages, and its own never-raises guard.
+        self._persist_turn(
+            request, response_text, True, effective_chat_id, user_obj, user_role, sender,
+            user_phone=user_phone, sender_phone=sender_phone, is_group=is_group,
+            chat_name=chat_name,
+        )
 
         ai_response = AIResponse(
             request_id=request.request_id,
@@ -5164,6 +5203,86 @@ class AIHandler:
             is_group=message.is_group, chat_name=message.chat_name,
             sender_phone=message.sender_id,
         )
+
+    def _persist_interim_messages(self, chat_id: str, user_role: str, own_number_jid: Optional[str],
+                                  recipient: Optional[str], recipient_name: Optional[str],
+                                  timestamp) -> None:
+        """bugfix-058: stores, as assistant messages, every interim progress message this turn
+        actually sent to the user (see `_active_interim_messages`) - called right after the turn's
+        user message is stored so the session order matches what the user saw. Consumes the list
+        so a second persistence call in the same turn cannot store them again."""
+        interim = _active_interim_messages.get()
+        if not interim:
+            return
+        texts = list(interim)
+        interim.clear()
+        for text in texts:
+            self.session_manager.add_message(
+                chat_id=chat_id, role="assistant", content=text, user_role=user_role,
+                sender=own_number_jid, sender_name="DeniDin",
+                recipient=recipient, recipient_name=recipient_name, timestamp=timestamp,
+            )
+
+    def record_exchange(self, chat_id: str, *, user_text: Optional[str],
+                        assistant_text: Optional[str], sender_phone: Optional[str],
+                        sender_display: Optional[str], is_group: bool = False,
+                        chat_name: Optional[str] = None,
+                        whatsapp_id_message: Optional[str] = None,
+                        source_timestamp: Optional[int] = None) -> None:
+        """bugfix-058: records a exchange that never reached the AI pipeline - e.g. an
+        unsupported-type auto-reply, a failed media turn, a declined multi-contact card, the
+        catch-all error reply - so what the user sent and what they were told is still in the
+        session. `user_text=None` records only the assistant text (a notice with no new user
+        message). The user message is skipped when the chat already holds one with the same
+        `whatsapp_id_message` (the turn persisted it before failing). Same sender/recipient
+        conventions as `_persist_turn`/media turns. Never raises."""
+        if not (self.memory_enabled and self.session_manager and chat_id):
+            return
+        try:
+            if self.rbac_enabled and self.user_manager and sender_phone:
+                role = self.user_manager.get_user(sender_phone).role
+            else:
+                role = "client"
+            own_number_jid = f"{self.own_whatsapp_number}@c.us" if self.own_whatsapp_number else None
+            epoch = _sane_source_epoch(source_timestamp)
+            user_ts = None if epoch is None else local_from_timestamp(epoch)
+            already_stored = bool(
+                whatsapp_id_message
+                and self.session_manager.has_whatsapp_id_message(chat_id, whatsapp_id_message)
+            )
+            if user_text and not already_stored:
+                self.session_manager.add_message(
+                    chat_id=chat_id, role="user", content=user_text, user_role=role,
+                    sender=sender_phone, sender_name=sender_display,
+                    recipient=chat_id if is_group else own_number_jid,
+                    recipient_name=(chat_name or chat_id) if is_group else "DeniDin",
+                    whatsapp_id_message=whatsapp_id_message, timestamp=user_ts,
+                )
+            if assistant_text:
+                self.session_manager.add_message(
+                    chat_id=chat_id, role="assistant", content=assistant_text, user_role=role,
+                    sender=own_number_jid, sender_name="DeniDin",
+                    recipient=chat_id if is_group else sender_phone,
+                    recipient_name=(chat_name or chat_id) if is_group else sender_display,
+                )
+        except Exception as e:  # pylint: disable=broad-except
+            logger.error(f"Failed to record exchange in session: {e}", exc_info=True)
+
+    def _fallback_and_persist(self, request: AIRequest, effective_chat_id: Optional[str],
+                              user_obj, user_role: str, sender: Optional[str],
+                              user_phone: Optional[str], sender_phone: Optional[str],
+                              is_group: bool, chat_name: Optional[str],
+                              message: str) -> AIResponse:
+        """bugfix-058: builds the fallback AIResponse for an error the user is about to be told
+        about, and first records that turn - the user's own message and exactly the fallback text
+        they will receive - in the session like any other turn. Every path that answers a user
+        with a fallback goes through here so an error is never an unrecorded exchange."""
+        self._persist_turn(
+            request, message, True, effective_chat_id, user_obj, user_role, sender,
+            user_phone=user_phone, sender_phone=sender_phone, is_group=is_group,
+            chat_name=chat_name,
+        )
+        return self._create_fallback_response(request.request_id, message)
 
     def _create_fallback_response(self, request_id: str, message: str) -> AIResponse:
         """

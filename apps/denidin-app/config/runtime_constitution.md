@@ -531,6 +531,15 @@ and never fall back to a 305 because it is the simplest option.**
   request for payment that has NOT yet been received. Default only when the user
   asks for an invoice for money still owed; never for a payment already made
   (see the rule above).
+  🚨 **`vat_included` is required and has no default — same rule as
+  `create_transaction_account` below, with no exception at all** (a 305 by
+  definition covers money that has NOT arrived yet, so the deposit-reference
+  carve-out that tool has never applies here). If the user hasn't said
+  whether the amount includes VAT, **ask — "האם הסכום כולל מע\"מ?" — before
+  creating anything.** Never assume VAT-included (or VAT-excluded) just
+  because the amount, client, and purpose are all otherwise clear — VAT is
+  its own separate fact that has to be either stated or asked about, every
+  time, for this document type.
 - `create_transaction_account` — a non-tax transaction account (חשבון עסקה,
   type 300). Use only when the user's own wording names this document type
   explicitly (e.g. "חשבון עסקה") — never infer it from context.
@@ -644,6 +653,18 @@ matching document via `list_invoices`/session memory first.
        given in the question) — do not guess, do not silently proceed.
      - A list of candidates → relay it and ask the user to be more specific,
        never pick one yourself.
+     - 🚨 **Never make the user retype a client name to choose or confirm
+       one** (bugfix-027). A phone keyboard offers only the apostrophe `'`,
+       while Morning stores some names with the Hebrew geresh `׳` (and `"`
+       vs `״` likewise), so a name the user typed can legitimately come
+       back as a "did you mean" question showing the stored spelling. The
+       user only ever answers yes/no ("כן"/"לא") or picks one of the listed
+       candidates (by number, position, or a short reference such as "השני"
+       or "האחרון"). Once they do, use that candidate's name **exactly as
+       `resolve_client_name` returned it** (its own apostrophe/geresh
+       characters included — never your own retyping of it) as the name for
+       `resolve_client_name`'s confirming call and for every later tool
+       call, with `name_resolved=true`.
      - "לא נמצא לקוח בשם הזה" → this client doesn't exist yet — ask for that
        client's phone and email (e.g. "אין לי לקוח בשם [שם] — מה הטלפון
        והמייל שלו כדי שאוכל להוסיף אותו?"), then call `add_client` (its own
@@ -878,9 +899,13 @@ matching document via `list_invoices`/session memory first.
   your own text with a competing question** ("לאשר?", "להפיק?"): the block asks
   it once, in a form the approval parser understands.
 - **Anything the block would show as "(לא צוין)" or "(חסר)" is a question you
-  should have asked first.** A missing VAT treatment, purpose, transaction date
-  or client is not something to fill in with a plausible guess — ask, then call
-  the tool once you have the answer.
+  should have asked first.** A missing purpose, transaction date, or client is
+  not something to fill in with a plausible guess — ask, then call the tool
+  once you have the answer. **VAT treatment is the one exception to "ask" here**
+  — several tools give it an unconditional default instead (`create_combo_document`'s
+  always-`true` rule, `create_transaction_account`'s deposit-reference carve-out
+  above) — use that default rather than asking whenever it applies; this generic
+  bullet governs VAT only where no such tool-specific default exists.
 - **`add_client` needs name, email, AND phone — all three are required.** If
   the user's request is missing any of them, ask for the missing piece(s) in
   plain language before calling the tool (e.g. "מה המייל והטלפון של הלקוח?")

@@ -2,7 +2,7 @@
 WhatsAppHandler - Handles WhatsApp message processing with retry logic
 Phase 5: US3 - Error Handling & Resilience
 """
-from typing import cast, Dict, Optional
+from typing import Callable, cast, Dict, Optional
 import requests
 from tenacity import (
     retry,
@@ -41,6 +41,10 @@ class WhatsAppHandler:
             media_handler: Optional MediaHandler instance for processing media messages
         """
         self.media_handler = media_handler
+        # bugfix-058: AIHandler.record_exchange, injected post-construction by denidin.py's
+        # initialize_app (same DI idiom as green_api_bot below - WhatsAppHandler never depends
+        # on AIHandler). None = nothing is recorded (e.g. a bare handler in a unit test).
+        self.record_exchange: Optional[Callable[..., None]] = None
         # Feature 083: injected post-construction (denidin.py's `__main__`,
         # same idiom as denidin_app.green_api_bot) - the real, live bot
         # object (`.api.sending.sendFileByUpload`), only available once this
@@ -90,6 +94,25 @@ class WhatsAppHandler:
 
         return True
 
+    def record_error_exchange(self, notification: Notification, user_text: Optional[str],
+                              assistant_text: Optional[str]) -> None:
+        """bugfix-058: records in the chat's session what the user sent (`user_text`, None when
+        only a notice is being recorded) and the message DeniDin sent back (`assistant_text`) for
+        an exchange that never reached the AI pipeline. Best-effort: never raises."""
+        if self.record_exchange is None:
+            return
+        try:
+            message = WhatsAppMessage.from_notification(notification)
+            self.record_exchange(
+                message.chat_id, user_text=user_text, assistant_text=assistant_text,
+                sender_phone=message.sender_id, sender_display=message.sender_display_name,
+                is_group=message.is_group, chat_name=message.chat_name,
+                whatsapp_id_message=message.whatsapp_id_message,
+                source_timestamp=message.timestamp,
+            )
+        except Exception as e:  # pylint: disable=broad-except
+            logger.error(f"Failed to record error exchange in session: {e}", exc_info=True)
+
     def handle_unsupported_message(self, notification: Notification) -> None:
         """
         Send auto-reply for unsupported message types.
@@ -108,6 +131,7 @@ class WhatsAppHandler:
             notification.answer(auto_reply)
             log_outbound(notification.event.get("senderData", {}).get("chatId", ""), auto_reply, kind="text")
             logger.debug("Unsupported message auto-reply sent successfully")
+            self.record_error_exchange(notification, f"[{message_type} message]", auto_reply)
         except Exception as e:
             logger.error(f"Failed to send unsupported message auto-reply: {e}", exc_info=True)
 
@@ -367,6 +391,7 @@ class WhatsAppHandler:
                     notification.event.get("senderData", {}).get("chatId", ""),
                     APPROVAL_BUTTONS_SEND_FAILED, kind="text",
                 )
+                self.record_error_exchange(notification, None, APPROVAL_BUTTONS_SEND_FAILED)
             except Exception as notice_error:  # pylint: disable=broad-except
                 logger.error(
                     f"Failed to send approval-buttons failure notice for request "
@@ -498,6 +523,9 @@ class WhatsAppHandler:
             logger.warning(f"Media processing failed: {result.get('error_message', 'Unknown error')}")
             notification.answer(FAILED_TO_PROCESS_FILE_DEFAULT)
             log_outbound(chat_id, FAILED_TO_PROCESS_FILE_DEFAULT, kind="text")
+            self.record_error_exchange(
+                notification, caption or f"[{filename} sent]", FAILED_TO_PROCESS_FILE_DEFAULT
+            )
             return None
 
         # Feature 069 (Phase 9/10): a recognised fee-agreement / bank-deposit image

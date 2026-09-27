@@ -12,5 +12,5 @@ Architectural refactoring, prompt/constitution optimizations, code health, and d
 
 ## Bugfixes
 
-- **063**: `bugfix-063-docx-template-formatting-refinements` — Status: Bugfixes
+- **063**: `bugfix-063-docx-template-formatting-refinements` — Status: Repo
 - **016**: `bugfix-016-logger-level-defaults-ignore-config` — Status: Done (v0.0.1)

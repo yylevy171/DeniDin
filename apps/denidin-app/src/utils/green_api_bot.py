@@ -1,7 +1,7 @@
 """
 Corrected GreenAPIBot subclass (bugfix-020).
 
-whatsapp_chatbot_python.Bot._delete_notifications_at_startup and Bot.run_forever both assume
+whatsapp_chatbot_python.Bot.run_forever (and its startup drain, no longer used - bugfix-054) assumes
 Response.data is always a dict once the HTTP status is 200. Green API's own docs state an empty
 notification queue can end in a genuinely empty HTTP body (not the JSON literal `null`), and
 whatsapp_api_client_python.Response.__init__ turns any JSON-decode failure - including that empty
@@ -289,36 +289,25 @@ def stop_typing_keepalive(scheduler: Any, job_id: Optional[str]) -> None:
 
 
 class DeniDinGreenAPIBot(GreenAPIBot):
-    """GreenAPIBot with a startup-notification-drain and polling loop that survive a Green API
-    backend serving a genuinely empty HTTP body for "notification queue is empty" (bugfix-020),
-    instead of the upstream crash (startup) / swallowed-exception-and-5s-stall (run_forever).
+    """GreenAPIBot with a polling loop that survives a Green API backend serving a genuinely
+    empty HTTP body for "notification queue is empty" (bugfix-020), instead of the upstream
+    swallowed-exception-and-5s-stall (run_forever).
+
+    Startup never deletes the queued notifications (bugfix-054): the library's own startup drain
+    (and the corrected re-implementation bugfix-020 kept here) fetched every message that arrived
+    while the bot was down and deleted it without routing it, so the sender was never answered.
+    Now `run_forever()` receives that backlog like any live notification - in order, through the
+    hook and router, deleting each one only after it has been routed.
     """
 
-    def __init__(self, *args: Any, delete_notifications_at_startup: bool = True, **kwargs: Any):
-        # Always disable the library's own (buggy) startup drain; run our corrected one after,
-        # once self.api/self.logger exist.
+    def __init__(self, *args: Any, **kwargs: Any):
+        # Always disable the library's own startup drain - it deletes the backlog undelivered.
+        kwargs.pop("delete_notifications_at_startup", None)
         super().__init__(*args, delete_notifications_at_startup=False, **kwargs)
-        if delete_notifications_at_startup:
-            self._drain_startup_notifications()
         # Feature 045: optional hook invoked with the raw notification body for every
         # notification, before it's dispatched to any router handler. Set by denidin.py once
         # denidin_app exists (needed for the blocked-sender check). None = no-op.
         self.on_notification_received: Optional[Callable[[dict], None]] = None
-
-    def _drain_startup_notifications(self) -> None:
-        self.api.session.headers["Connection"] = "keep-alive"
-        self.logger.log(logging.DEBUG, "Started deleting old incoming notifications.")
-
-        while True:
-            response = self.api.receiving.receiveNotification()
-            data = _notification_data_or_none(response.data)
-            if data is None:
-                break
-            self.api.receiving.deleteNotification(data["receiptId"])
-
-        self.api.session.headers["Connection"] = "close"
-        self.logger.log(logging.DEBUG, "Stopped deleting old incoming notifications.")
-        self.logger.log(logging.INFO, "Deleted old incoming notifications.")
 
     def run_forever(self) -> None:
         self.api.session.headers["Connection"] = "keep-alive"

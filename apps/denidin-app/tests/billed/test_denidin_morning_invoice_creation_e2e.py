@@ -61,7 +61,7 @@ from .denidin_mcp_e2e_helpers import (
     _HEBREW_NAME_SPELLING_VARIANTS,
     _SEED_PHONE,
     _calls_for,
-    _normalize_hebrew_geresh,
+    _strip_invisible_marks,
     _is_genuine_document_creation,
     _is_real_approval_prompt,
     _random_amount,
@@ -141,6 +141,15 @@ def test_godfather_creates_invoice_via_whatsapp(denidin_app):
         f"{ask_ai_response.mcp_calls if ask_ai_response else None!r}"
     )
 
+    # bugfix-061: a type-320 records money already received, so VAT is included by
+    # definition and the request above never states it - the bot must not ask about it.
+    vat_questions = (
+        "האם הסכום כולל", "האם המחיר כולל", "כולל מע\"מ או", "כולל מע״מ או",
+        "לפני מע\"מ", "לפני מע״מ", "עם מע\"מ או בלי",
+    )
+    asked = [q for q in vat_questions if q in (ask_response or "")]
+    assert not asked, f"bugfix-061: the bot asked a VAT question ({asked!r}): {ask_response!r}"
+
     create_calls = _calls_for(ai_response, "create_combo_document")
 
     assert response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
@@ -178,7 +187,15 @@ def test_godfather_creates_invoice_via_whatsapp_button_tap(denidin_app):
     against real OpenAI/Morning MCP traffic: the ASK turn must actually send
     real interactive buttons (not just a plain-text prompt), and the tap must
     resolve to the same real, single create_invoice execution the text path
-    produces."""
+    produces.
+
+    bugfix-061 (C2b): this prompt never states VAT and create_invoice is a
+    type-305 document, so a VAT-inclusion question is mandatory before any
+    pending approval is created - a plain tax invoice's amount is ambiguous
+    without it (unlike a type-320 combo document, which is unconditionally
+    VAT-included by definition). This is genuinely three-turn: ASK (must ask
+    about VAT, must NOT create a pending approval yet) -> VAT ANSWER (now the
+    real pending approval with buttons is created) -> TAP (executes)."""
     amount = _random_amount()
     description = _random_description()
     client_name = pick_existing_client()["name"]  # Feature 059 item 5: any existing client works
@@ -194,25 +211,63 @@ def test_godfather_creates_invoice_via_whatsapp_button_tap(denidin_app):
         f"{ask_ai_response.mcp_calls if ask_ai_response else None!r}"
     )
 
-    # The ASK turn must have actually sent real interactive buttons - not
-    # silently fallen back to plain text (which would make this test
-    # indistinguishable from the text-path test above, and mask a real
-    # regression the way this exact scenario did before the E2E harness
-    # gained answer_with_interactive_buttons support, 2026-08-14). Checked
-    # right here, between the ASK and TAP turns - checking any later (e.g.
-    # after the tap has already resolved and cleared it) would always show
-    # None regardless of whether the buttons send itself actually worked, a
-    # real ordering bug caught in this test's own first run, 2026-08-14.
-    # sent_message_id is populated by the exact same production wiring
-    # (denidin.py's attach_sent_message_id call) that requires a real,
-    # successful buttons send in the first place, so its presence here is
-    # direct proof - no need for get_button_send()'s captured body/buttons.
+    # bugfix-061: VAT was never stated for this type-305 invoice, so the bot
+    # must ask about it before proposing anything to approve - not silently
+    # assume a default the way a type-320 combo document may. Checked as
+    # "mentions VAT AND asks a question" rather than a fixed phrase - the
+    # model may legitimately insert the resolved client name/amount between
+    # words (e.g. "האם הסכום של 95 ₪ כולל מע״מ?"), which a rigid substring
+    # match would wrongly report as "no VAT question asked" (a real false
+    # negative hit live, 2026-09-27).
+    vat_keywords = ('מע"מ', "מע״מ", "מעמ")
+    asked = any(k in (ask_response or "") for k in vat_keywords) and "?" in (ask_response or "")
+    assert asked, (
+        f"bugfix-061: unstated VAT on a type-305 invoice request must produce a "
+        f"VAT question before any pending approval - the bot said: {ask_response!r}"
+    )
+
     import denidin as denidin_module
     pending_after_ask = denidin_module.denidin_app.ai_handler.pending_approval_manager.get(
         GODFATHER_CHAT_ID
     )
-    assert pending_after_ask is not None and pending_after_ask.sent_message_id, (
-        "ASK turn did not result in a pending approval with a real "
+    assert pending_after_ask is None or not pending_after_ask.sent_message_id, (
+        "bugfix-061: a real pending approval (with interactive buttons already "
+        "sent) must not exist yet - VAT is still unresolved at this point, "
+        f"but found: {pending_after_ask!r}"
+    )
+
+    # Answer the VAT question - THIS turn is what should produce the real
+    # pending approval with buttons attached. Unlike create_transaction_account's
+    # yes/no phrasing ("האם הסכום כולל מעמ?"), create_invoice's VAT question is an
+    # explicit either/or ("... כולל מע״מ או לא כולל מע״מ?") - a bare "כן" does not
+    # resolve it (confirmed live: the model correctly re-asks rather than guess),
+    # so the answer must state the VAT treatment unambiguously.
+    vat_response, vat_ai_response = _send_turn(
+        chat_id=GODFATHER_CHAT_ID, text="כן, כולל מע\"מ", id_prefix="E2E_CREATE_TAP_VAT",
+    )
+    assert not _calls_for(vat_ai_response, "create_invoice"), (
+        f"create_invoice executed on the VAT-answering turn, before the actual "
+        f"approval was given: {vat_ai_response.mcp_calls if vat_ai_response else None!r}"
+    )
+
+    # The VAT-answer turn must have actually sent real interactive buttons - not
+    # silently fallen back to plain text (which would make this test
+    # indistinguishable from the text-path test above, and mask a real
+    # regression the way this exact scenario did before the E2E harness
+    # gained answer_with_interactive_buttons support, 2026-08-14). Checked
+    # right here, between the VAT-answer and TAP turns - checking any later
+    # (e.g. after the tap has already resolved and cleared it) would always
+    # show None regardless of whether the buttons send itself actually worked,
+    # a real ordering bug caught in this test's own first run, 2026-08-14.
+    # sent_message_id is populated by the exact same production wiring
+    # (denidin.py's attach_sent_message_id call) that requires a real,
+    # successful buttons send in the first place, so its presence here is
+    # direct proof - no need for get_button_send()'s captured body/buttons.
+    pending_after_vat = denidin_module.denidin_app.ai_handler.pending_approval_manager.get(
+        GODFATHER_CHAT_ID
+    )
+    assert pending_after_vat is not None and pending_after_vat.sent_message_id, (
+        "VAT-answer turn did not result in a pending approval with a real "
         "sent_message_id attached - either no pending approval was created, "
         "or the interactive-buttons send failed and silently fell back "
         "(check for 'Failed to send approval buttons' in the log)."
@@ -586,7 +641,7 @@ def test_godfather_add_client_near_duplicate_name_is_asked_before_creating(denid
         f"exactly the silent-duplicate risk the courtesy check exists to "
         f"prevent: {pending!r}"
     )
-    assert _normalize_hebrew_geresh(seed_name) in (ask_response or ""), (
+    assert _strip_invisible_marks(seed_name) in (ask_response or ""), (
         f"Expected the reply to explicitly name the existing similar client "
         f"{seed_name!r} (per runtime_constitution.md's mandatory disclosure) "
         f"before offering to create a new one under {near_duplicate_name!r} - "

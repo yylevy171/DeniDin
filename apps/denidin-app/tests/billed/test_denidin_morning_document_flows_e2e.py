@@ -28,7 +28,7 @@ from .denidin_mcp_e2e_helpers import (
     GODFATHER_CHAT_ID,
     _SEED_PHONE,
     _calls_for,
-    _normalize_hebrew_geresh,
+    _strip_invisible_marks,
     _is_genuine_document_creation,
     _is_real_approval_prompt,
     _random_amount,
@@ -101,7 +101,7 @@ def test_create_document_for_existing_client_happy_path(denidin_app):
     # architecture, 2026-08-12), which is Morning's own normalized form - a
     # client_name containing a raw ASCII/typographic apostrophe (e.g.
     # "לוסי צ'ורנוב") won't match verbatim against that (e.g. "לוסי צ׳ורנוב").
-    assert _normalize_hebrew_geresh(client_name) in (create_calls[0]["arguments"] or ""), (
+    assert _strip_invisible_marks(client_name) in (create_calls[0]["arguments"] or ""), (
         f"create_invoice was not called with {client_name!r}: {create_calls!r}"
     )
 
@@ -123,8 +123,8 @@ def test_create_document_for_existing_client_happy_path(denidin_app):
     docs = [p for p in payloads if "documents" not in p] + [
         d for p in payloads for d in p.get("documents", [])
     ]
-    client_names = [_normalize_hebrew_geresh(d.get("client_name") or "") for d in docs]
-    assert _normalize_hebrew_geresh(client_name) in client_names, (
+    client_names = [_strip_invisible_marks(d.get("client_name") or "") for d in docs]
+    assert _strip_invisible_marks(client_name) in client_names, (
         f"Follow-up real Morning lookup did not confirm the invoice for "
         f"{client_name!r}: {combined_output!r}. Bot reply: {details_response!r}"
     )

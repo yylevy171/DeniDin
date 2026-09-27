@@ -1,7 +1,7 @@
 {
   "pulled_at": "2026-09-14T14:44:38.923804+03:00",
   "source": "https://sandbox.d.greeninvoice.co.il/api/v1/",
-  "note": "Feature 059: real Morning sandbox clients, filtered to names safe to pick blindly. Group 2 billed/expensive tests random.choice from this instead of seeding a throwaway client. Regenerate with apps/morning-mcp-app/scripts/pull_sandbox_clients.py 2026-09-14: two entries (אריאל בכר, יוסי זאנזן) added by hand outside the automatic pull - deliberately used by tests/billed/test_fee_agreement_generation_flow.py BY EXACT NAME (not random.choice), seeded once via a real add_client conversational turn specifically so resolve_client_name treats them as an EXACT match instead of surfacing ambiguous fuzzy candidates during fee-agreement drafting; the automatic pull will keep dropping them from its own output (both share a first name/token with other real sandbox clients, tripping its own ambiguous-first-word filter) - re-adding them here is required after every refresh. 2026-09-15: a third hand-added entry (דורית אשכנזי) - a real, pre-existing exact-match sandbox client (resolve_client_name confirmed live: {\"status\": \"resolved\", \"name\": \"דורית אשכנזי\"}), used by pick_existing_client(name=...) wherever a test wants a KNOWN client by exact name rather than a random pick - same re-add-after-refresh caveat applies.",
+  "note": "Feature 059: real Morning sandbox clients, filtered to names safe to pick blindly. Group 2 billed/expensive tests random.choice from this instead of seeding a throwaway client. Regenerate with apps/morning-mcp-app/scripts/pull_sandbox_clients.py 2026-09-14: two entries (אריאל בכר, יוסי זאנזן) added by hand outside the automatic pull - deliberately used by tests/billed/test_fee_agreement_generation_flow.py BY EXACT NAME (not random.choice), seeded once via a real add_client conversational turn specifically so resolve_client_name treats them as an EXACT match instead of surfacing ambiguous fuzzy candidates during fee-agreement drafting; the automatic pull will keep dropping them from its own output (both share a first name/token with other real sandbox clients, tripping its own ambiguous-first-word filter) - re-adding them here is required after every refresh. 2026-09-15: a third hand-added entry (דורית אשכנזי) - a real, pre-existing exact-match sandbox client (resolve_client_name confirmed live: {\"status\": \"resolved\", \"name\": \"דורית אשכנזי\"}), used by pick_existing_client(name=...) wherever a test wants a KNOWN client by exact name rather than a random pick - same re-add-after-refresh caveat applies. 2026-09-24: a fourth hand-added entry (כג'די בלבואה) - created by hand in the sandbox with a plain ASCII apostrophe (U+0027, verified via the API: a geresh search returns 0 matches); used by bugfix-027's reproduction test by exact name.",
   "clients": [
     {
       "name": "אביה אוסיפוביץ׳",
@@ -1457,6 +1457,13 @@
       "id": "b2d72853-207d-4f9a-85e5-cb8309f6eb7c",
       "email": "doritash@example.com",
       "phone": "055-5559999",
+      "tax_id": null
+    },
+    {
+      "name": "כג'די בלבואה",
+      "id": "25f0ecf8-563f-4b3c-9629-a2a44fd9e4fc",
+      "email": null,
+      "phone": null,
       "tax_id": null
     }
   ]
