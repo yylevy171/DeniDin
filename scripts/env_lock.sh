@@ -36,6 +36,94 @@ _env_lock_repo_root() {
     echo "$REPO_ROOT"
 }
 
+# The one canonical, machine-wide DEV clone (Mac only). Hardcoded (same convention already used
+# for scripts/deploy_release.sh's DEFAULT_ARTIFACTS_ROOT and the shared-state dir) rather than
+# derived, because it must be a single fixed answer independent of which clone is asking. This has
+# NOTHING to do with prod: prod runs on an entirely different machine (Feature 035's Windows box,
+# a totally different folder, e.g. ~/denidin-prod) reached over SSH, is never owner-locked (see
+# this file's header), and has no multi-clone concept at all - there is exactly one copy of prod's
+# checkout, so there is nothing for it to ever collide with. Every function below that uses this
+# constant is therefore dev-only and a hard no-op for prod, by construction (scoped on `$ENV`,
+# never on `uname`/platform - see env_lock_require_canonical_root's own comment for why a
+# platform-only gate isn't enough).
+_ENV_LOCK_CANONICAL_ROOT="/Users/yaron/Projects/DeniDin"
+
+# True iff $repo_root is either the canonical root itself, or a clone nested inside it
+# (teammate1-5 are real subdirectories of the canonical root's own working tree, not siblings -
+# confirmed via `git status` listing them as untracked entries inside it). This is what makes
+# every function below automatically safe for: prod (an unrelated path on a different machine,
+# never matches), and every existing test's scratch tmp_path fixture (scripts/tests/,
+# scripts/health_monitoring/tests/, which copy these real scripts into an isolated throwaway tree
+# under pytest's own tmp dir - nowhere near this constant either) - neither needs any special
+# platform/env carve-out, because neither path ever matches this pattern in the first place.
+_env_lock_is_canonical_family() {
+    case "$1" in
+        "$_ENV_LOCK_CANONICAL_ROOT"|"$_ENV_LOCK_CANONICAL_ROOT"/*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Resolves the right absolute deploy-target root for THIS invocation of scripts/deploy_release.sh
+# (its local, dev/prod-on-this-Mac path only): if this checkout is the canonical root clone or one
+# of its nested teammate clones, always the canonical root itself (regardless of which one was
+# actually invoked) - if it's anything else (a test's scratch repo, living entirely outside this
+# family), the checkout's own REPO_ROOT, unchanged, so self-contained test fixtures keep working
+# exactly as before. deploy_release.sh's own top-level code still runs wherever it was invoked
+# (its flags/logic never move) - only which stop_env.sh/run_env.sh it hands off to changes.
+env_lock_deploy_target_root() {
+    local repo_root
+    repo_root="$(_env_lock_repo_root)"
+    if _env_lock_is_canonical_family "$repo_root"; then
+        echo "$_ENV_LOCK_CANONICAL_ROOT"
+    else
+        echo "$repo_root"
+    fi
+}
+
+# Refuses to continue if THIS script is a nested teammate clone's own copy being run directly for
+# `dev` (bypassing deploy_release.sh's own hand-off above) - dev's runtime state
+# (config.dev.json, active_env.json, mcp-status-dev, logs, the health-monitoring LaunchAgent) is a
+# single, machine-global target, never per-clone. A true no-op for: `prod` (never owner-locked, no
+# multi-clone concept at all - not even worth a platform check, since prod's real path, on a
+# different machine entirely, could never accidentally match this constant anyway - see this
+# file's header), running from the canonical root itself, and every existing test's scratch
+# tmp_path fixture (never lives anywhere under $_ENV_LOCK_CANONICAL_ROOT to begin with).
+#
+# 2026-09-28 design (replaces an earlier same-day attempt at silently RETARGETING REPO_ROOT
+# mid-script, and before that, a `uname`-only Darwin gate - both were too broad: the first
+# accumulated "did every downstream path get retargeted correctly" bugs, the second would have
+# refused inside this exact same Mac's own real, non-mocked test suite, which copies these real
+# scripts into scratch tmp_path trees and runs them for real). Path-prefix + `$ENV` scoping is both
+# necessary and sufficient: it catches exactly the real incident (a nested teammate clone invoked
+# directly for dev) and nothing else.
+#
+# Real incident this exists to prevent (2026-09-27): a dev deploy run from a teammate clone
+# silently rebound the local docker compose --project-directory AND the health-monitoring
+# LaunchAgent to that clone's own checkout.
+#
+# Usage: env_lock_require_canonical_root <dev|prod>   (reads $REPO_ROOT, already set by the caller)
+env_lock_require_canonical_root() {
+    local env="$1" repo_root
+    if [ "$env" != "dev" ]; then
+        return 0
+    fi
+    repo_root="$(_env_lock_repo_root)"
+    if [ "$repo_root" = "$_ENV_LOCK_CANONICAL_ROOT" ]; then
+        return 0
+    fi
+    if ! _env_lock_is_canonical_family "$repo_root"; then
+        return 0
+    fi
+    echo "🚨 ERROR: this script must run from the canonical DeniDin folder ($_ENV_LOCK_CANONICAL_ROOT)," >&2
+    echo "          not $repo_root." >&2
+    echo "" >&2
+    echo "dev's runtime state (config.dev.json, active_env.json, mcp-status-dev, logs, the" >&2
+    echo "health-monitoring LaunchAgent) is a single, machine-global target - it is never per-clone." >&2
+    echo "Run this via scripts/deploy_release.sh (fine to invoke from any clone - it resolves this" >&2
+    echo "path itself before handing off), or run it directly from $_ENV_LOCK_CANONICAL_ROOT." >&2
+    exit 1
+}
+
 # Identity of the clone invoking the script: the personality NAME assigned
 # to that clone (not the folder name) - each coder's lock ownership is
 # tracked by who they are, not where they happen to be checked out.

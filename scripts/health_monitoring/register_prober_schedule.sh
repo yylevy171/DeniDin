@@ -43,6 +43,14 @@ if [ "$ACTION" != "enable" ] && [ "$ACTION" != "disable" ] && [ "$ACTION" != "tr
     exit 1
 fi
 
+# 2026-09-28: the LaunchAgent this registers is a single, machine-global resource with no
+# per-clone namespacing - refuse outright unless this really is the canonical root clone's own
+# checkout (Darwin only; a no-op on prod's Linux/WSL box, which has no multi-clone concept at
+# all). See env_lock.sh's env_lock_require_canonical_root for the full rationale/incident.
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/../env_lock.sh"
+env_lock_require_canonical_root "$ENV"
+
 RUNNER="$SCRIPT_DIR/run_prober_for_env.sh"
 LABEL="com.denidin.healthprobe.${ENV}"
 

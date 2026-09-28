@@ -28,6 +28,10 @@ SERVICE="morning-mcp-app-$ENV"
 # - see scripts/env_lock.sh.
 source "$REPO_ROOT/scripts/env_lock.sh"
 
+# 2026-09-28: same guard as run_denidin.sh - see there, and env_lock.sh's
+# env_lock_require_canonical_root, for the full rationale/incident.
+env_lock_require_canonical_root "$ENV"
+
 # MANDATORY per-clone override (plain relative paths, no env vars/symlinks -
 # see CLAUDE.md's "Multi-clone lock" section) for dev/prod log volume
 # paths, so it doesn't matter which clone last started dev/prod. Gitignored,
