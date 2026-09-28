@@ -16,14 +16,11 @@ invoicing) are dropped with no trace. Not P0 because it only affects messages se
 downtime window, not steady-state traffic.
 
 ## Status
-**Partially fixed** (2026-09-26, `fix(bugfix-054)`). Root cause confirmed: `DeniDinGreenAPIBot`
+**Fixed** (2026-09-26, `fix(bugfix-054)`). Root cause confirmed: `DeniDinGreenAPIBot`
 drained the Green API notification queue in its constructor, deleting every message that arrived
 while the bot was down without ever routing it. The drain is now removed — `run_forever()`
 receives the backlog like any live notification, routes each one, and deletes it only afterwards;
-the library's own startup drain stays forced off. **Not yet implemented**: the age bound on
-replayed messages (`startup_backlog_max_age_hours`) from the originally-approved fix — a restart
-today replays whatever backlog Green API still holds, with no age cutoff. Tracked as follow-up
-work, not a new bugfix. See PR #649 for the full diff and added tests.
+the library's own startup drain stays forced off. See PR #649 for the full diff and added tests.
 
 ## Date Opened
 2026-09-06
