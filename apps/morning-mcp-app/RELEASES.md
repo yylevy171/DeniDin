@@ -123,3 +123,7 @@ Webapp: new Clients tab (Morning client status dashboard, operator comments, ali
 ## morning-mcp-app v0.7.7 — 2026-09-26
 
 bugfix-066: config baked into the image is now used as shipped (compose files mount only config.<env>.json; no host copies of the constitution, ledger prompt or fee templates override the release); .dockerignore no longer bakes stray config/log/preview files; launch failures are reported with Docker's error; webapp /health adds Morning connectivity and ledger completeness; webapp index.html is served no-cache.
+
+## morning-mcp-app v0.7.8 — 2026-09-28
+
+Fixes: client search now matches geresh-containing names when the geresh is typed omitted; Israeli phone numbers are normalised before validation; queued WhatsApp messages are processed on startup instead of dropped; user-facing error messages are persisted in session history; and the constitution's VAT-included default for deposit screenshots/bank transfers no longer triggers a redundant VAT prompt. Also includes a chore fix: dev deploy/ops scripts now refuse to run from a nested teammate clone and always target the canonical DeniDin root, closing a gap that caused a dev deployment crash on 2026-09-27.
