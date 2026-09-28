@@ -25,6 +25,11 @@ COMPOSE_FILE="$REPO_ROOT/docker/docker-compose.$ENV.yml"
 LOCAL_OVERRIDE="$REPO_ROOT/docker/docker-compose.$ENV.local.yml"
 SERVICES=("webapp-backend-$ENV" "webapp-frontend-$ENV")
 
+# 2026-09-28: same guard as run_webapp.sh - see there, and env_lock.sh's
+# env_lock_require_canonical_root, for the full rationale/incident.
+source "$REPO_ROOT/scripts/env_lock.sh"
+env_lock_require_canonical_root "$ENV"
+
 COMPOSE_ARGS=(--project-directory "$REPO_ROOT" -f "$COMPOSE_FILE")
 if [ -f "$LOCAL_OVERRIDE" ]; then
     COMPOSE_ARGS+=(-f "$LOCAL_OVERRIDE")
