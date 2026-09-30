@@ -128,13 +128,13 @@ def test_flows_persist_across_turns_and_rebuild_every_round(env):
         _call("load_flows", {"flows": ["flow_add_client"]}, "r1"),
         _call("send_to_user", {"text": "x"}, "r2"),
     ]
-    _orch(env, client).get_response(_request(), chat_id="chat1", user_role="godfather")
+    _orch(env, client).turn_with_rounds(_request(), chat_id="chat1", user_role="godfather")
     first, second = (c.kwargs for c in client.responses.create.call_args_list)
     assert "FLOW[flow_add_client]" not in first["instructions"] and "FLOW[flow_add_client]" in second["instructions"]
 
     client2 = MagicMock()
     client2.responses.create.return_value = _call("send_to_user", {"text": "y"})
-    _orch(env, client2).get_response(_request(), chat_id="chat1", user_role="godfather")
+    _orch(env, client2).turn_with_rounds(_request(), chat_id="chat1", user_role="godfather")
     assert "FLOW[flow_add_client]" in client2.responses.create.call_args.kwargs["instructions"]
 
 

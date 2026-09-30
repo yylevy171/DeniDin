@@ -787,7 +787,7 @@ def _process_conversational_message(notification: Notification) -> None:
         effective_user_phone = group_user_phone or message.sender_id
         if denidin_app.backbone_orchestrator is not None:
             resolved_user = denidin_app.ai_handler.user_manager.get_user(effective_user_phone)
-            ai_response = denidin_app.backbone_orchestrator.get_response(
+            ai_response = denidin_app.backbone_orchestrator.turn_with_rounds(
                 ai_request,
                 chat_id=message.chat_id,
                 user_role=resolved_user.role if resolved_user else 'client',
@@ -983,7 +983,7 @@ def _process_media_message_via_backbone(notification: Notification, message, kee
         timestamp=message.timestamp,
         original_message=message,
     )
-    response = denidin_app.backbone_orchestrator.get_response(
+    response = denidin_app.backbone_orchestrator.turn_with_rounds(
         request, chat_id=message.chat_id, is_media=True, media=media, media_type=media_type,
         sender=message.sender_display_name, user_phone=message.sender_id,
         sender_phone=message.sender_id, is_group=message.is_group, chat_name=message.chat_name,

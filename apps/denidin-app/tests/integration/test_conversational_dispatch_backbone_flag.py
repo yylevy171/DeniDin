@@ -1,6 +1,6 @@
 """
 Integration test: flag-on text-message dispatch (denidin.py's
-_process_conversational_message) reaches BackboneOrchestrator.get_response
+_process_conversational_message) reaches BackboneOrchestrator.turn_with_rounds
 instead of AIHandler.get_response; flag-off dispatch is provably unchanged.
 
 Added 2026-09-14 (Feature 063) after a real billed test showed text turns were
@@ -68,7 +68,7 @@ def _base_fake_denidin():
 @pytest.mark.integration
 def test_flag_on_text_dispatch_calls_backbone_orchestrator_not_legacy_handler():
     fake_denidin = _base_fake_denidin()
-    fake_denidin.backbone_orchestrator.get_response.return_value = AIResponse(
+    fake_denidin.backbone_orchestrator.turn_with_rounds.return_value = AIResponse(
         request_id="r1", response_text="לאישור — תזכורת חדשה...", tokens_used=0,
         prompt_tokens=0, completion_tokens=0, model="gpt-5.6-luna",
         finish_reason="stop", timestamp=1735689600,
@@ -81,11 +81,11 @@ def test_flag_on_text_dispatch_calls_backbone_orchestrator_not_legacy_handler():
     finally:
         denidin_module.denidin_app = original_app
 
-    fake_denidin.backbone_orchestrator.get_response.assert_called_once()
+    fake_denidin.backbone_orchestrator.turn_with_rounds.assert_called_once()
     fake_denidin.ai_handler.get_response.assert_not_called()
     # RBAC role resolved off ai_handler's own UserManager and passed through -
     # the orchestrator has no UserManager of its own (REQ-063-03).
-    call_kwargs = fake_denidin.backbone_orchestrator.get_response.call_args.kwargs
+    call_kwargs = fake_denidin.backbone_orchestrator.turn_with_rounds.call_args.kwargs
     assert call_kwargs["user_role"] == Role.GODFATHER
 
 

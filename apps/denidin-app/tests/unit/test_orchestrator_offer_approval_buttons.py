@@ -1,5 +1,5 @@
 """Unit tests (rewritten 2026-09-16 for the capability-resolution-loop.md
-stateless-approval redesign): BackboneOrchestrator.get_response sets
+stateless-approval redesign): BackboneOrchestrator.turn_with_rounds sets
 AIResponse.offer_approval_buttons whenever the model called the stateless,
 domain-agnostic `approval_with_yes_no_buttons` orchestration tool this turn -
 the backbone's own equivalent of AIHandler's `new_pending_approval_created`
@@ -52,7 +52,7 @@ def test_offer_approval_buttons_true_when_the_model_calls_the_approval_tool(prom
     )
     orchestrator = _orchestrator(prompts_root, client)
 
-    response = orchestrator.get_response(_request(), chat_id="chat1", user_role="godfather")
+    response = orchestrator.turn_with_rounds(_request(), chat_id="chat1", user_role="godfather")
 
     assert response.offer_approval_buttons is True
     assert response.response_text == "📋 לאישור — תזכורת חדשה..."
@@ -63,7 +63,7 @@ def test_offer_approval_buttons_false_when_only_send_to_user_is_called(prompts_r
     client.responses.create.return_value = _function_call_response("send_to_user", {"text": "בוקר טוב!"})
     orchestrator = _orchestrator(prompts_root, client)
 
-    response = orchestrator.get_response(_request(), chat_id="chat1", user_role="godfather")
+    response = orchestrator.turn_with_rounds(_request(), chat_id="chat1", user_role="godfather")
 
     assert response.offer_approval_buttons is False
 
@@ -76,8 +76,8 @@ def test_offer_approval_buttons_resets_between_turns(prompts_root):
     ]
     orchestrator = _orchestrator(prompts_root, client)
 
-    first = orchestrator.get_response(_request(), chat_id="chat1", user_role="godfather")
-    second = orchestrator.get_response(_request(), chat_id="chat1", user_role="godfather")
+    first = orchestrator.turn_with_rounds(_request(), chat_id="chat1", user_role="godfather")
+    second = orchestrator.turn_with_rounds(_request(), chat_id="chat1", user_role="godfather")
 
     assert first.offer_approval_buttons is True
     assert second.offer_approval_buttons is False

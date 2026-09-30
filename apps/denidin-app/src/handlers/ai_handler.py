@@ -1932,7 +1932,7 @@ class AIHandler:
         row on the way out - success OR exception alike, complete no-op when
         self.telemetry_manager is None) is now the ONE shared
         model_call_actions.telemetry_span implementation, also used by
-        BackboneOrchestrator.get_response - the two were byte-for-byte identical in shape
+        BackboneOrchestrator.turn_with_rounds - the two were byte-for-byte identical in shape
         before this change, just stored the active builder differently (this class's
         module-level contextvar vs. the orchestrator's instance attribute), which
         telemetry_span is agnostic to.

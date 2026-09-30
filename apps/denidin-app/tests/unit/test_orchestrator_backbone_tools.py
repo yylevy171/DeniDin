@@ -56,7 +56,7 @@ def _resp(items, rid, text=""):
 
 
 def _run(orchestrator, progress_callback=None):
-    return orchestrator.get_response(_request(), chat_id="chat1", user_role="godfather",
+    return orchestrator.turn_with_rounds(_request(), chat_id="chat1", user_role="godfather",
                                      progress_callback=progress_callback)
 
 

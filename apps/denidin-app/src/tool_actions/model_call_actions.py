@@ -89,7 +89,7 @@ def telemetry_span(telemetry_manager: Optional[Any], request_id: str, effective_
     """2026-09-30 consolidation: the ONE turn-level telemetry lifecycle (Feature 080,
     REQ-080-04) - previously copy-pasted, byte-for-byte identically in shape, into both
     AIHandler.get_response (a module-level contextvar) and
-    BackboneOrchestrator.get_response (an instance attribute). Yields the constructed
+    BackboneOrchestrator.turn_with_rounds (an instance attribute). Yields the constructed
     TelemetryBuilder for the caller to install into whichever turn-scoped mechanism it
     uses (this function is agnostic to that), and records the finished RequestTelemetry
     row on the way out - success OR exception alike. Yields None and is a complete no-op

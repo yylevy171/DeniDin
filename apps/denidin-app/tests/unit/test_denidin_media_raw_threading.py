@@ -1,6 +1,6 @@
 """Unit tests (Feature 063, 2026-09-15 real design correction): the flag-on media
 dispatch in denidin.py's `_process_media_message` threads RAW, not-yet-extracted
-media into BackboneOrchestrator.get_response - downloading and validating only
+media into BackboneOrchestrator.turn_with_rounds - downloading and validating only
 (reusing the unmodified, standalone MediaFileManager methods), never running the
 full legacy MediaHandler.process_media_message pipeline (which also extracts/
 persists/ledger-detects in one call) for the flag-on path. Extraction itself is
@@ -42,7 +42,7 @@ def app(monkeypatch):
     fake.green_api_bot = None
     fake.typing_keepalive_scheduler = None
     fake.ai_handler.user_manager.get_user.return_value.is_blocked = False
-    fake.backbone_orchestrator.get_response.return_value = AIResponse(
+    fake.backbone_orchestrator.turn_with_rounds.return_value = AIResponse(
         request_id="r1", response_text="בסדר.", tokens_used=0,
         prompt_tokens=0, completion_tokens=0, model="gpt-5.6-luna",
         finish_reason="stop", timestamp=1735689600,
@@ -68,7 +68,7 @@ def test_flag_on_media_dispatch_never_calls_the_legacy_extraction_pipeline(app):
 
 
 def test_flag_on_media_dispatch_passes_raw_media_not_pre_extracted_result(app):
-    """get_response is called with a raw Media object + media_type, is_media=True,
+    """turn_with_rounds is called with a raw Media object + media_type, is_media=True,
     and no media_extraction - Planning is what decides whether to extract, not
     denidin.py."""
     from src.models.media import Media
@@ -79,14 +79,14 @@ def test_flag_on_media_dispatch_passes_raw_media_not_pre_extracted_result(app):
 
     denidin_module._process_media_message(_media_notification(caption="קבלה"))  # pylint: disable=protected-access
 
-    kwargs = app.backbone_orchestrator.get_response.call_args.kwargs
+    kwargs = app.backbone_orchestrator.turn_with_rounds.call_args.kwargs
     assert kwargs["is_media"] is True
     assert kwargs["media_type"] == "image"
     assert isinstance(kwargs["media"], Media)
     assert kwargs["media"].data == b"fake jpeg bytes"
     assert kwargs["media"].mime_type == "image/jpeg"
     assert kwargs.get("media_extraction") is None
-    request = app.backbone_orchestrator.get_response.call_args.args[0]
+    request = app.backbone_orchestrator.turn_with_rounds.call_args.args[0]
     assert request.user_prompt == "קבלה"
 
 
@@ -96,7 +96,7 @@ def test_flag_on_media_dispatch_download_failure_sends_friendly_error_without_ca
 
     denidin_module._process_media_message(_media_notification())  # pylint: disable=protected-access
 
-    app.backbone_orchestrator.get_response.assert_not_called()
+    app.backbone_orchestrator.turn_with_rounds.assert_not_called()
     assert len(_media_notification()._test_sent_messages) == 0  # sanity: fresh fixture is empty
 
 
@@ -108,5 +108,5 @@ def test_flag_on_media_dispatch_unsupported_format_sends_friendly_error_without_
     notification = _media_notification()
     denidin_module._process_media_message(notification)  # pylint: disable=protected-access
 
-    app.backbone_orchestrator.get_response.assert_not_called()
+    app.backbone_orchestrator.turn_with_rounds.assert_not_called()
     assert len(notification._test_sent_messages) == 1

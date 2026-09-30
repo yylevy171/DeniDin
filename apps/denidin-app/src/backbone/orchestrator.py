@@ -85,10 +85,12 @@ _DEFAULT_BACKBONE_CONFIG = {
 
 
 class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
-    """The new orchestrator kernel. Exposes the same interface
+    """The new orchestrator kernel. Same call SHAPE as the entry points
     `denidin.py`'s routing layer already calls against `AIHandler`
-    (`get_response`, `resolve_button_tap`), so the rest of the app is unaware
-    which implementation it is talking to (REQ-063-07)."""
+    (`turn_with_rounds` ~ `AIHandler.get_response`, `resolve_button_tap`) -
+    denidin.py dispatches explicitly by name (REQ-063-07), not via a
+    duck-typed interface, so the two implementations' method names don't
+    need to match."""
 
     def __init__(self, ai_client: Any, config: AppConfiguration, *,
                  session_manager: Any,
@@ -143,7 +145,7 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         # call sites are spread across many separate methods), this orchestrator
         # already threads all per-turn state as plain instance attributes (see
         # _turn_mcp_calls etc. above), so a TelemetryBuilder is simply one more
-        # such attribute (_turn_telemetry_builder, set in get_response) -
+        # such attribute (_turn_telemetry_builder, set in turn_with_rounds) -
         # simpler, same end result.
         self.telemetry_manager = telemetry_manager
         self._turn_telemetry_builder: Optional[Any] = None
@@ -171,7 +173,7 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         # new persisted cross-turn state the resolution redesign adds: a plain
         # internal-note history entry, threaded back into the next turn purely
         # via the existing rolling-window conversation history (no new store, no
-        # schema). Reset every turn in get_response.
+        # schema). Reset every turn in turn_with_rounds.
         self._turn_planning_status: Optional[str] = None
 
         self._backbone_content: str = ""
@@ -181,7 +183,7 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         self._user_memory_content: str = ""
         self._user_memory_mtime: Optional[float] = None
 
-        # Set once per get_response() call, read by the orchestration loop for
+        # Set once per turn_with_rounds() call, read by the orchestration loop for
         # every round within that SAME turn (2026-09-14). Deliberately a plain
         # instance attribute, not threaded as an explicit parameter through
         # every one of the ~6 call sites across src/capabilities/* + planning.py
@@ -190,7 +192,7 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         # concurrent-turn clobbering risk in practice.
         self._turn_conversation_history: List[Dict[str, Any]] = []
 
-        # Set once per get_response() call, same lifecycle/reasoning as
+        # Set once per turn_with_rounds() call, same lifecycle/reasoning as
         # _turn_conversation_history above - read by the loop's
         # backbone-tool resolution (send_progress_update/react_to_message) for
         # every round this turn makes.
@@ -198,7 +200,7 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         self._turn_chat_id: Optional[str] = None
         self._turn_message_id: Optional[str] = None
 
-        # Set False at the top of every get_response() call; flipped True by
+        # Set False at the top of every turn_with_rounds() call; flipped True by
         # ApprovalCapability.handle() iff the approval capability was used
         # THIS turn (2026-09-16) - _finalize_response reads this instead of
         # checking pending-approval managers to decide whether to offer
@@ -206,7 +208,7 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         # pending-approval record of its own.
         self._turn_offered_approval: bool = False
 
-        # Set once per get_response() call (2026-09-15) - the ChromaDB
+        # Set once per turn_with_rounds() call (2026-09-15) - the ChromaDB
         # daily_summary semantic recall for this turn's own query, appended into
         # every round's instructions the same way AIHandler appends it to
         # `constitution` (see _recall_memory's own docstring for the exact
@@ -384,7 +386,7 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
     # The orchestration loop (contracts/capability-resolution-loop.md)
     # ------------------------------------------------------------------
 
-    def get_response(  # pylint: disable=too-many-locals
+    def turn_with_rounds(  # pylint: disable=too-many-locals
             self, request: AIRequest, chat_id: Optional[str] = None, *,
             user_role: str = "client", sender: Optional[str] = None,
             recipient: Optional[str] = None, user_phone: Optional[str] = None,
@@ -395,9 +397,17 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
             media_extraction: Optional[Dict[str, Any]] = None,
             media: Optional[Any] = None,
             media_type: Optional[str] = None) -> AIResponse:
-        """The orchestrator's entry point — same shape `AIHandler.get_response` already
-        exposes, so denidin.py's calling code is unaffected by which implementation
-        produced the returned AIResponse (REQ-063-07).
+        """The orchestrator's entry point: resolves one WhatsApp turn (one incoming
+        message → one final reply) via one or more OpenAI call "rounds" (2026-09-30
+        rename, from the generic `get_response` — see `_call_model`'s "first round"/
+        "follow-up round" context labels: a turn is NOT guaranteed to be a single
+        OpenAI call, since the model may spend a round loading a flow/capability
+        before it can actually answer). Same call SHAPE `AIHandler.get_response`
+        already exposes (chat_id/user_role/sender/... in, `AIResponse` out) so
+        denidin.py's `backbone_orchestrator is not None` branches can call either
+        implementation the same way, but denidin.py already dispatches explicitly by
+        name (REQ-063-07) - there's no duck-typed/polymorphic interface requiring the
+        two method NAMES to match, which is what made this rename safe.
 
         media_extraction: an ALREADY-computed extraction result
         (extracted_text/document_analysis/media_type), when a caller has one to hand
@@ -435,21 +445,21 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         effective_chat_id_for_telemetry = chat_id or request.chat_id
         with telemetry_span(self.telemetry_manager, request.request_id, effective_chat_id_for_telemetry) as builder:
             self._turn_telemetry_builder = builder
-            return self._get_response_body(
+            return self._turn_with_rounds_body(
                 request, chat_id=chat_id, user_role=user_role, sender=sender, recipient=recipient,
                 user_phone=user_phone, is_group=is_group, chat_name=chat_name, sender_phone=sender_phone,
                 progress_callback=progress_callback, is_media=is_media, media_extraction=media_extraction,
                 media=media, media_type=media_type,
             )
 
-    def _get_response_body(  # pylint: disable=too-many-locals,too-many-arguments
+    def _turn_with_rounds_body(  # pylint: disable=too-many-locals,too-many-arguments
             self, request: AIRequest, *, chat_id: Optional[str], user_role: str,
             sender: Optional[str], recipient: Optional[str], user_phone: Optional[str],
             is_group: bool, chat_name: Optional[str], sender_phone: Optional[str],
             progress_callback: Optional[Callable[[str], None]], is_media: bool,
             media_extraction: Optional[Dict[str, Any]], media: Optional[Any],
             media_type: Optional[str]) -> AIResponse:
-        """The actual per-turn logic, split out of get_response so the telemetry_span
+        """The actual per-turn logic, split out of turn_with_rounds so the telemetry_span
         context manager above wraps it cleanly (a context manager's body can't easily
         `return` from inside a try/except/finally spanning the whole call otherwise)."""
         try:
@@ -514,7 +524,7 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
             return self._finalize_response(request, final_text, parties)
         except Exception as exc:  # pylint: disable=broad-except
             logger.error(
-                "Unexpected error in BackboneOrchestrator.get_response for request %s: %s",
+                "Unexpected error in BackboneOrchestrator.turn_with_rounds for request %s: %s",
                 request.request_id, exc, exc_info=True,
             )
             # 2026-09-30 (closing a real gap): persist what the user sent and the
@@ -1018,9 +1028,9 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         already-used tap returns None - the caller sends nothing at all. A live
         tap is consumed (cleared, so a second tap on the same message is stale)
         and then resolved like a typed "כן"/"לא": `request` is the caller's
-        synthetic "כן"/"לא" AIRequest, run through the ordinary get_response()
+        synthetic "כן"/"לא" AIRequest, run through the ordinary turn_with_rounds()
         loop, where the model reads its own history and acts on the answer."""
         if self.session_manager.get_session(chat_id).approval_message_id != stanza_id:
             logger.info("[047] Stale button tap ignored: chat=%r stanza_id=%r", chat_id, stanza_id)
             return None
-        return self.get_response(request, chat_id=chat_id, user_role=user_role)
+        return self.turn_with_rounds(request, chat_id=chat_id, user_role=user_role)

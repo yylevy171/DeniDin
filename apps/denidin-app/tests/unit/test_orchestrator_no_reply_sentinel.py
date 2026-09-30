@@ -49,7 +49,7 @@ def test_no_reply_sentinel_suppresses_reply(prompts_root):
     client.responses.create.return_value = _send_to_user_response(NO_REPLY_SENTINEL)
     orchestrator = _orchestrator(prompts_root, client)
 
-    response = orchestrator.get_response(_request(), user_role="client")
+    response = orchestrator.turn_with_rounds(_request(), user_role="client")
 
     assert response.should_reply is False
     assert response.response_text == NO_REPLY_SENTINEL
@@ -60,7 +60,7 @@ def test_ordinary_reply_is_sent(prompts_root):
     client.responses.create.return_value = _send_to_user_response("בוקר טוב!")
     orchestrator = _orchestrator(prompts_root, client)
 
-    response = orchestrator.get_response(_request(), user_role="client")
+    response = orchestrator.turn_with_rounds(_request(), user_role="client")
 
     assert response.should_reply is True
     assert response.response_text == "בוקר טוב!"

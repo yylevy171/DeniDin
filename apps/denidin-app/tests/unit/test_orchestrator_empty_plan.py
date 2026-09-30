@@ -61,7 +61,7 @@ def test_small_talk_turn_never_loads_domain_capability_content(prompts_root):
 
     orchestrator.load_capability_prompt = tracking_load
 
-    response = orchestrator.get_response(_request(), user_role="client")
+    response = orchestrator.turn_with_rounds(_request(), user_role="client")
 
     assert response.response_text == "This is ordinary small talk with no action needed."
     # No load_capabilities tool call was made, so no domain
