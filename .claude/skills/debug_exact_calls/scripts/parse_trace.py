@@ -500,7 +500,11 @@ def main():
     # incremented once per section actually printed below - always goes up
     # by 1, straight through the file in chronological order, regardless
     # of which boundary/direction/branch produced it.
+    consumed = set()  # indices already rendered as the partner of an earlier line
     while i < n:
+        if i in consumed:
+            i += 1
+            continue
         ts, msg = events[i]
         ts_str = ts.strftime("%Y-%m-%d %H:%M:%S")
 
@@ -526,11 +530,17 @@ def main():
             else:
                 debug_payload_text = rest[len("payload="):] if rest.startswith("payload=") else rest
 
-            # Look ahead one line: same boundary/direction/context, the
-            # other kind, same second - they are always logged back-to-back
-            # at the same call site (see module docstring).
-            if i + 1 < n:
-                ts2, msg2 = events[i + 1]
+            # Look ahead to the next [WIRE-*] line in the same second: same
+            # boundary/direction/context, the other kind - they are logged
+            # back-to-back at the same call site (see module docstring), but
+            # an unrelated line from another thread (e.g. the apscheduler
+            # typing keepalive) can land between them, so skip non-wire lines.
+            j = i + 1
+            while (j < n and events[j][0] == ts
+                   and not events[j][1].startswith(("[WIRE-AUDIT]", "[WIRE-DEBUG]"))):
+                j += 1
+            if j < n and j not in consumed:
+                ts2, msg2 = events[j]
                 m2 = WIRE_RE.match(msg2) if (msg2.startswith("[WIRE-AUDIT]") or msg2.startswith("[WIRE-DEBUG]")) else None
                 if m2 and ts2 == ts:
                     kind2 = m2.group("kind")
@@ -544,7 +554,7 @@ def main():
                             audit_rest = rest2
                         else:
                             debug_payload_text = rest2[len("payload="):] if rest2.startswith("payload=") else rest2
-                        i += 1  # consume the paired line too
+                        consumed.add(j)  # the paired line is rendered here, not again
 
             blocks, next_index = render_event(event_index + 1, ts_str, kind, boundary, direction, context,
                                                audit_rest, debug_payload_text)
