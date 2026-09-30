@@ -32,14 +32,16 @@ from src.capabilities.toolsets import (
 )
 from src.constants.error_messages import BACKBONE_UNEXPECTED_ERROR
 from src.models.config import AppConfiguration
-from src.models.message import AIRequest, AIResponse, NO_REPLY_SENTINEL
+from src.models.message import AIRequest, AIResponse, NO_REPLY_SENTINEL, should_reply_for
 from src.models.user import Role
 from src.utils.capability_audit_log import log_capability_action, log_loading_action
 from src.utils.logger import read_version, DEFAULT_VERSION_FILE
 from src.tool_actions.messaging_actions import (
     build_react_to_message_payload, send_progress_update_message,
 )
-from src.tool_actions.model_call_actions import (
+from src.core.turn_context import load_rolling_window, recall_memory_context
+from src.core.turn_persistence import persist_turn
+from src.core.model_calls import (
     build_fallback_response, call_model_with_retry, record_exchange as shared_record_exchange,
     telemetry_span,
 )
@@ -68,13 +70,6 @@ class _TurnParties:
 # the old cap of 10, which silently dropped a genuinely-produced final
 # send_to_user answer - see the loop-cap fallback's own known bug noted below.
 MAX_BACKBONE_TOOL_LOOP_ITERATIONS = 100
-
-# 2026-09-15: standalone equivalent of ai_handler.py's _MIN_PLAUSIBLE_SOURCE_EPOCH
-# (REQ-063-07 - never imported from there). A plausible real WhatsApp send epoch
-# floor (2020-01-01 UTC) - a malformed webhook/test sentinel timestamp below this
-# falls back to None (processing time) rather than landing a persisted message in
-# 1970, same reasoning as the legacy constant.
-_MIN_PLAUSIBLE_SOURCE_EPOCH = 1_577_836_800
 
 _DEFAULT_BACKBONE_CONFIG = {
     "file": "backbone.md",
@@ -224,6 +219,11 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
         # _run_post_turn_ledger_recognition) sees this turn's real Morning
         # activity under the flag-on path too, not an empty list.
         self._turn_mcp_calls: List[Dict[str, Any]] = []
+
+        # bugfix-058 parity (2026-09-30): the text of every interim
+        # send_progress_update message actually sent this turn, stored in the
+        # session right after the user's message (core.turn_persistence).
+        self._turn_interim_messages: List[str] = []
 
         # Which capabilities are loaded is NOT per-turn instance state - it lives
         # in Session.active_capabilities (persisted with the session on every
@@ -437,7 +437,7 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
         # telemetry_manager docstring), 2026-09-30 consolidation: the telemetry
         # lifecycle itself (one TelemetryBuilder per turn, recorded on the way out -
         # success OR exception alike, complete no-op when self.telemetry_manager is
-        # None) is now the ONE shared model_call_actions.telemetry_span
+        # None) is now the ONE shared model_calls.telemetry_span
         # implementation, also used by AIHandler.get_response - the two were
         # byte-for-byte identical in shape before this change, just stored the
         # active builder differently (this class's own instance attribute vs.
@@ -476,6 +476,7 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
             # Reset per-turn MCP-call accumulator (2026-09-15) - see __init__'s
             # _turn_mcp_calls docstring.
             self._turn_mcp_calls = []
+            self._turn_interim_messages = []
             # Reset per-turn approval-buttons flag (2026-09-16) - see __init__'s
             # _turn_offered_approval docstring.
             self._turn_offered_approval = False
@@ -719,10 +720,13 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
         outputs: List[Dict[str, Any]] = []
         for call_id, tool_name, args in calls:
             if tool_name == "send_progress_update":
-                payload = {"sent": send_progress_update_message(
+                sent = send_progress_update_message(
                     self._turn_progress_callback, self._turn_telemetry_builder,
                     self._turn_chat_id, args.get("text"),
-                )}
+                )
+                if sent:
+                    self._turn_interim_messages.append(args.get("text"))
+                payload = {"sent": sent}
             else:
                 payload = build_react_to_message_payload(
                     self.green_api_bot, self.session_manager, request, self._turn_chat_id, args, call_id,
@@ -735,7 +739,7 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
         """One Responses API call, wire-logged both directions, its mcp_call
         items accumulated for this turn, telemetry recorded. 2026-09-30: retries
         explicitly once on an HTTP 424 (a gap the OpenAI SDK's own max_retries
-        never covers - see model_call_actions.call_model_with_retry's docstring),
+        never covers - see model_calls.call_model_with_retry's docstring),
         the same shared retry AIHandler._timed_llm_call also uses."""
         audit_wire("openai", "out", context, kwargs)
         debug_wire("openai", "out", context, kwargs)
@@ -816,14 +820,13 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
                                 flows_now=flows_now, capabilities_now=capabilities_now)
 
     def _finalize_response(self, request: AIRequest, final_text: str, parties: _TurnParties) -> AIResponse:
-        """Same [[NO_REPLY]] sentinel handling as AIHandler._finalize_response
-        (contracts/capability-resolution-loop.md) — reimplemented here, not shared
-        code, per REQ-063-07.
+        """[[NO_REPLY]] sentinel handling via the shared models.message.should_reply_for
+        (the same check AIHandler._finalize_response uses).
 
         offer_approval_buttons (Feature 047 parity): True iff the model called
         `approval_with_yes_no_buttons` THIS turn (self._turn_offered_approval),
         which asks WhatsAppHandler to render the reply as tappable buttons."""
-        should_reply = final_text.strip() != NO_REPLY_SENTINEL
+        should_reply = should_reply_for(final_text)
         offer_approval_buttons = bool(self._turn_offered_approval)
         self._persist_turn(request, final_text, should_reply, parties)
         return AIResponse(
@@ -842,7 +845,7 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
 
     @staticmethod
     def _create_fallback_response(request_id: str, message: str) -> AIResponse:
-        """2026-09-30 consolidation: delegates to model_call_actions.build_fallback_response,
+        """2026-09-30 consolidation: delegates to model_calls.build_fallback_response,
         the one shared implementation also used by AIHandler._create_fallback_response - the
         two were byte-identical AIResponse shapes before this change. Unlike the legacy
         fallback strings (English, predating this session's Hebrew-only audit), `message`
@@ -857,158 +860,54 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
             return Role.CLIENT
 
     def _load_conversation_history(self, chat_id: Optional[str]) -> List[Dict[str, Any]]:
-        """Same source/shape as AIHandler._call_openai_api's own conversation_history
-        (SessionManager.get_rolling_window - oldest-first {"role", "content"} dicts,
-        role-token-capped). Godfather/Admin-only scope for now (explicit decision,
-        2026-09-14) - always uses the godfather/admin token limit from
-        config.memory['session']['max_tokens_by_role'], same default AIHandler falls
-        back to. Returns [] (never raises) when session_manager isn't configured or
-        the lookup fails - a turn with no history is a degraded turn, not a crashed
-        one, matching AIHandler's own try/except around this same call."""
-        if not chat_id:
-            return []
-        try:
-            session_config = (self.config.memory or {}).get('session', {})
-            window_days = session_config.get('window_days', 14)
-            max_tokens = session_config.get('max_tokens_by_role', {}).get('godfather', 100000)
-            history = self.session_manager.get_rolling_window(
-                chat_id, window_days=window_days, max_tokens=max_tokens,
-            )
-            return list(history) if history else []
-        except Exception as exc:  # pylint: disable=broad-except
-            logger.error("Failed to load conversation history for %s: %s", chat_id, exc)
-            return []
+        """Feature 070 rolling window via the shared core.turn_context.load_rolling_window.
+        Godfather/Admin-only scope for now (explicit decision, 2026-09-14): always the
+        godfather/admin token limit from config.memory['session']['max_tokens_by_role']."""
+        session_config = (self.config.memory or {}).get('session', {})
+        return load_rolling_window(
+            self.session_manager, chat_id,
+            window_days=session_config.get('window_days', 14),
+            max_tokens=session_config.get('max_tokens_by_role', {}).get('godfather', 100000),
+        )
 
     def _recall_memory(self, user_prompt: str, chat_id: Optional[str],
                         user_phone: Optional[str], sender_phone: Optional[str]) -> str:
-        """2026-09-15 (closing a real gap - long-term memory recall was never
-        wired into this backbone at all). Mirrors
-        AIHandler.create_request's own recall block (ai_handler.py ~2095-2131):
-        a single ChromaDB `daily_summary` semantic-similarity query over this
-        chat's own collection, RBAC-filtered by the resolving user's
-        allowed_memory_scopes/can_see_all_memories when user_manager is
-        available (same `recall_with_rbac_filter` call legacy makes), else a
-        plain `recall` call. Returns a "" (never raises) on any failure or
-        when nothing relevant is found - a turn with no recalled memory is a
-        degraded turn, not a crashed one, matching AIHandler's own
-        try/except around this same call."""
-        if self.memory_manager is None or not chat_id:
-            return ""
-        try:
-            # pylint: disable=import-outside-toplevel
-            from src.managers.memory_collections import collection_name_for_chat
-            collection_name = collection_name_for_chat(chat_id)
-            longterm_config = (self.config.memory or {}).get('longterm', {})
-            top_k = longterm_config.get('daily_summary_top_k', 10)
-            min_similarity = longterm_config.get('min_similarity', 0.7)
-
-            effective_user_phone = user_phone or sender_phone
-            if self.user_manager is not None and effective_user_phone:
-                user = self.user_manager.get_user(effective_user_phone)
-                recalled = self.memory_manager.recall_with_rbac_filter(
-                    query=user_prompt,
-                    collection_names=[collection_name],
-                    user_phone=effective_user_phone,
-                    allowed_scopes=user.allowed_memory_scopes,
-                    can_see_all_memories=user.can_see_all_memories,
-                    top_k=top_k,
-                    min_similarity=min_similarity,
-                )
-            else:
-                recalled = self.memory_manager.recall(
-                    query=user_prompt,
-                    collection_names=[collection_name],
-                    top_k=top_k,
-                    min_similarity=min_similarity,
-                )
-            if not recalled:
-                return ""
-            lines = "\n".join(
-                f"- {mem['content']} (relevance: {mem['similarity']:.2f})" for mem in recalled
-            )
-            return f"RECALLED MEMORIES (from past conversations):\n{lines}"
-        except Exception as exc:  # pylint: disable=broad-except
-            logger.error("Failed to recall memories for %s: %s", chat_id, exc)
-            return ""
+        """Long-term daily_summary recall via the shared core.turn_context.recall_memory_context
+        (the same call AIHandler.create_request makes): RBAC-filtered when user_manager is
+        available, plain recall otherwise. "" (never raises) when nothing is found."""
+        longterm_config = (self.config.memory or {}).get('longterm', {})
+        return recall_memory_context(
+            self.memory_manager, query=user_prompt, chat_id=chat_id,
+            top_k=longterm_config.get('daily_summary_top_k', 10),
+            min_similarity=longterm_config.get('min_similarity', 0.7),
+            user_manager=self.user_manager, user_phone=user_phone or sender_phone,
+        )
 
     def _persist_turn(self, request: AIRequest, final_text: str, should_reply: bool,
                        parties: _TurnParties) -> None:
-        """2026-09-15 (closing a real gap - flag-on turns never persisted a
-        single message to the session; every rolling-window read this
-        backbone itself does was reading a session that this backbone
-        never wrote to). New, standalone code mirroring
-        AIHandler.get_response's own persistence block (ai_handler.py
-        ~3746-3862) shape-for-shape (RBAC-token-limited storage,
-        sender/recipient JID resolution, source timestamps) so the rolling
-        window, post-turn ledger recognition, and the nightly daily-summary
-        roll all see flag-on turns exactly as they'd see a flag-off turn —
-        REQ-063-05. Best-effort: any failure is logged, never raised (a
-        storage failure must not turn an already-composed, already-sendable
-        reply into a hard error)."""
-        try:
-            own_number_jid = f"{self.own_whatsapp_number}@c.us" if self.own_whatsapp_number else None
-            resolved_sender_phone = parties.sender_phone or parties.user_phone or (
-                parties.chat_id if not parties.is_group else None
-            )
-            user_msg_recipient = parties.chat_id if parties.is_group else own_number_jid
-            user_msg_recipient_name = (parties.chat_name or parties.chat_id) if parties.is_group else "DeniDin"
-            assistant_msg_recipient = parties.chat_id if parties.is_group else resolved_sender_phone
-            assistant_msg_recipient_name = (
-                (parties.chat_name or parties.chat_id) if parties.is_group else parties.sender
-            )
-
-            source_epoch = request.timestamp if (
-                request.timestamp is not None and request.timestamp >= _MIN_PLAUSIBLE_SOURCE_EPOCH
-            ) else None
-            source_ts = None if source_epoch is None else local_from_timestamp(source_epoch)
-
-            self.session_manager.add_message_with_tokens(
-                chat_id=parties.chat_id,
-                role="user",
-                content=request.user_prompt,
-                user_role=parties.role,
-                sender=resolved_sender_phone,
-                sender_name=parties.sender,
-                recipient=user_msg_recipient,
-                recipient_name=user_msg_recipient_name,
-                message_id=request.message_id,
-                timestamp=source_ts,
-            )
-            if should_reply:
-                self.session_manager.add_message_with_tokens(
-                    chat_id=parties.chat_id,
-                    role="assistant",
-                    content=final_text,
-                    user_role=parties.role,
-                    sender=own_number_jid,
-                    sender_name="DeniDin",
-                    recipient=assistant_msg_recipient,
-                    recipient_name=assistant_msg_recipient_name,
-                    mcp_calls=list(self._turn_mcp_calls),
-                    timestamp=source_ts,
-                )
-            # record_planning_status (2026-09-16): the ONLY new persisted
-            # cross-turn state the resolution redesign adds - a plain,
-            # clearly-tagged internal-note history entry, persisted via this
-            # SAME add_message_with_tokens call (never merged into the real
-            # send_to_user reply above). Flows back into the next turn purely
-            # via the existing rolling-window conversation history - no new
-            # store, no schema. Persisted regardless of should_reply (a
-            # [[NO_REPLY]] turn can still usefully record status).
-            if self._turn_planning_status:
-                self.session_manager.add_message_with_tokens(
-                    chat_id=parties.chat_id,
-                    role="assistant",
-                    content=f"[[INTERNAL_PLANNING_NOTE]]\n{self._turn_planning_status}",
-                    user_role=parties.role,
-                    sender=own_number_jid,
-                    sender_name="DeniDin",
-                    recipient=assistant_msg_recipient,
-                    recipient_name=assistant_msg_recipient_name,
-                    timestamp=source_ts,
-                )
-        except Exception as exc:  # pylint: disable=broad-except
-            logger.error("Failed to persist turn to session %s: %s", parties.chat_id, exc)
+        """Stores the turn via the shared core.turn_persistence.persist_turn (the same
+        implementation AIHandler and MediaHandler use): user message, interim progress
+        messages, the reply (when should_reply), then this turn's record_planning_status
+        note as a clearly-tagged [[INTERNAL_PLANNING_NOTE]] entry (stored regardless of
+        should_reply; flows into the next turn via the rolling window). Never raises."""
+        notes = (
+            [f"[[INTERNAL_PLANNING_NOTE]]\n{self._turn_planning_status}"]
+            if self._turn_planning_status else None
+        )
+        persist_turn(
+            self.session_manager, chat_id=parties.chat_id, user_role=parties.role,
+            count_tokens=True, own_whatsapp_number=self.own_whatsapp_number,
+            user_text=request.user_prompt, reply_text=final_text, should_reply=should_reply,
+            sender_phone=parties.sender_phone, sender_display=parties.sender,
+            user_phone=parties.user_phone, is_group=parties.is_group, chat_name=parties.chat_name,
+            source_timestamp=request.timestamp,
+            replayed=bool(getattr(request.original_message, "is_replay", False)),
+            message_id=request.message_id,
+            whatsapp_id_message=getattr(request.original_message, "whatsapp_id_message", None),
+            mcp_calls=list(self._turn_mcp_calls),
+            interim_messages=self._turn_interim_messages,
+            trailing_notes=notes,
+        )
 
     # ------------------------------------------------------------------
     # Button-tap resolution (a tap is just an ordinary "כן"/"לא" turn)

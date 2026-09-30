@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 # investigation, 2026-09-30).
 EXPLICIT_RETRY_STATUS_CODES = frozenset({424})
 
-# 2026-01-01 00:00:00 UTC (Israel local). Anything below this - 0, a negative
+# 2020-01-01 00:00:00 UTC (Feature 069). Anything below this - 0, a negative
 # value, a malformed webhook timestamp, a test sentinel - is treated as "no
 # usable source time", so the persisted Message.timestamp falls back to
 # processing time instead of landing the message decades in the past.

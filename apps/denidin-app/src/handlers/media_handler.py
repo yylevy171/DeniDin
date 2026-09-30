@@ -19,8 +19,9 @@ from src.handlers.extractors.pdf_extractor import PDFExtractor
 from src.handlers.extractors.docx_extractor import DOCXExtractor
 from src.managers.media_file_manager import MediaFileManager
 from src.utils.logger import get_logger
-from src.utils.time_utils import local_from_timestamp, now_local
-from src.handlers.ai_handler import _MIN_PLAUSIBLE_SOURCE_EPOCH, build_ledger_stash_text
+from src.utils.time_utils import now_local
+from src.handlers.ai_handler import build_ledger_stash_text
+from src.core.turn_persistence import persist_turn, resolve_user_role
 
 logger = get_logger(__name__)
 
@@ -353,46 +354,19 @@ class MediaHandler:
         .recipient_name resolution exactly like the text path - a group
         message is addressed to the group's own JID/name, never to one
         member or to DeniDin alone."""
-        # RBAC role: resolved here (not hardcoded "client" as before
-        # 2026-08-19) via the same UserManager the text path uses -
-        # media messages get a real role now that Message.role carries one.
-        # Falls back to "client" when RBAC is disabled, matching the text
-        # path's own RBAC-disabled fallback (AIHandler._finalize_response).
-        user_manager = self.denidin.ai_handler.user_manager
-        if self.denidin.ai_handler.rbac_enabled and user_manager and sender_phone:
-            real_role = user_manager.get_user(sender_phone).role
-        else:
-            real_role = "client"
-
-        own_number = self.denidin.ai_handler.own_whatsapp_number
-        own_number_jid = f"{own_number}@c.us" if own_number else None
-
-        user_msg_recipient = chat_id if is_group else own_number_jid
-        user_msg_recipient_name = (chat_name or chat_id) if is_group else "DeniDin"
-        assistant_msg_recipient = chat_id if is_group else sender_phone
-        assistant_msg_recipient_name = (chat_name or chat_id) if is_group else sender_display
-
-        try:
-            user_content = caption or f"[{media_type} sent]"
-            self.session_manager.add_message(
-                chat_id=chat_id, role="user", content=user_content,
-                user_role=real_role, sender=sender_phone, sender_name=sender_display,
-                recipient=user_msg_recipient, recipient_name=user_msg_recipient_name,
-                ledger_event_ids=ledger_event_ids, message_id=message_id,
-                image_path=image_path, extracted_text=extracted_text,
-                timestamp=(
-                    local_from_timestamp(source_timestamp)
-                    if source_timestamp is not None
-                    and source_timestamp >= _MIN_PLAUSIBLE_SOURCE_EPOCH else None
-                ),
-            )
-            self.session_manager.add_message(
-                chat_id=chat_id, role="assistant", content=summary,
-                user_role=real_role, sender=own_number_jid, sender_name="DeniDin",
-                recipient=assistant_msg_recipient, recipient_name=assistant_msg_recipient_name,
-            )
-        except Exception as e:
-            logger.error(f"Failed to store media turn in session: {e}", exc_info=True)
+        # 2026-09-30: thin wrapper over src/core/turn_persistence.persist_turn - the one
+        # implementation shared with the text path and the Backbone.
+        ai_handler = self.denidin.ai_handler
+        persist_turn(
+            self.session_manager, chat_id=chat_id,
+            user_role=resolve_user_role(ai_handler.user_manager, ai_handler.rbac_enabled, sender_phone),
+            count_tokens=False, own_whatsapp_number=ai_handler.own_whatsapp_number,
+            user_text=caption or f"[{media_type} sent]", reply_text=summary, should_reply=True,
+            sender_phone=sender_phone, sender_display=sender_display,
+            is_group=is_group, chat_name=chat_name, source_timestamp=source_timestamp,
+            message_id=message_id, ledger_event_ids=ledger_event_ids,
+            image_path=image_path, extracted_text=extracted_text,
+        )
 
     def _extract_text(self, media_type: str, media: Media, caption: str = "",
                        today_timestamp: Optional[int] = None) -> Dict:

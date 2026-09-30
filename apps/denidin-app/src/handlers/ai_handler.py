@@ -17,14 +17,15 @@ from openai import OpenAI, APITimeoutError, RateLimitError, APIError
 from src.models.config import AppConfiguration
 from src.models.message import (
     WhatsAppMessage, AIRequest, AIResponse,
-    NO_REPLY_SENTINEL as _NO_REPLY_SENTINEL,
+    NO_REPLY_SENTINEL as _NO_REPLY_SENTINEL, should_reply_for,
 )
 from src.utils.logger import get_logger, read_version, DEFAULT_VERSION_FILE
 from src.utils.green_api_bot import send_reaction
 from src.utils.time_utils import now_local, local_from_timestamp, to_local
 from src.utils.wire_log import audit_wire, debug_wire
 from src.managers.session_manager import SessionManager, Session
-from src.managers.memory_collections import collection_name_for_chat
+from src.core.turn_context import load_rolling_window, recall_memory_context
+from src.core.turn_persistence import persist_turn
 from src.managers.roll_marker_store import RollMarkerStore
 from src.managers.memory_manager import MemoryManager
 from src.managers.ledger_event_manager import LedgerEventManager, is_incomplete_capture
@@ -170,23 +171,6 @@ _active_interim_messages: "contextvars.ContextVar[Optional[List[str]]]" = contex
 # kind of multi-tool back-and-forth, not a claim that looping this deep is
 # expected or desired behavior.
 MAX_LOCAL_TOOL_LOOP_ITERATIONS = 10
-
-# Feature 069: earliest epoch we accept as a real message send-time (2020-01-01
-# Israel local). Anything below this - 0, a negative value, a malformed webhook
-# `timestamp`, a test sentinel - is treated as "no usable source time", so the
-# persisted Message.timestamp falls back to processing time instead of landing
-# the message decades in the past (which would misdate its ledger event AND
-# drop it out of Feature 070's rolling context window).
-_MIN_PLAUSIBLE_SOURCE_EPOCH = 1_577_836_800
-
-
-def _sane_source_epoch(epoch: Optional[int]) -> Optional[int]:
-    """Return `epoch` when it's a plausible real send-time, else None.
-    2026-09-30 consolidation: thin wrapper around
-    model_call_actions.sane_source_epoch, the one shared implementation."""
-    from src.tool_actions.model_call_actions import sane_source_epoch
-    return sane_source_epoch(epoch)
-
 
 def _normalize_self_mentions(text: str, own_whatsapp_number: str) -> str:
     """bugfix-024: rewrite an @-mention of DeniDin's own WhatsApp number (WhatsApp's
@@ -1426,7 +1410,7 @@ class AIHandler:
 
     def _timed_llm_call(self, call_fn: Callable[[], Any], *, context: str = "responses.create") -> Any:
         """Wraps one responses.create() call site with an explicit retry for the OpenAI SDK's
-        own retry gap (2026-09-30 - see model_call_actions.call_model_with_retry's docstring),
+        own retry gap (2026-09-30 - see model_calls.call_model_with_retry's docstring),
         plus timing + token accounting, recorded into the active turn's TelemetryBuilder
         (contextvars - see _active_telemetry_builder's module docstring), if any. Times success
         AND failure alike (a timed-out/errored call still consumed wall-clock time and must
@@ -1435,7 +1419,7 @@ class AIHandler:
         modes. Telemetry recording is a complete no-op when no telemetry builder is active -
         the exact common case when the feature flag is off; the explicit retry always applies."""
         from src.managers.telemetry_manager import monotonic_ms
-        from src.tool_actions.model_call_actions import call_model_with_retry
+        from src.core.model_calls import call_model_with_retry
 
         retrying_call_fn = lambda: call_model_with_retry(call_fn, context=context)  # noqa: E731
 
@@ -1631,44 +1615,17 @@ class AIHandler:
         # Build system message with constitution (if configured) + optional memory context
         constitution = self._load_constitution()
 
-        # Add recalled memories if memory system enabled
+        # Add recalled memories if memory system enabled (shared with the Backbone -
+        # src/core/turn_context.recall_memory_context).
         if self.memory_enabled and self.memory_manager:
-            try:
-                # Recall relevant long-term memories
-                collection_name = collection_name_for_chat(effective_chat_id)
-
-                # RBAC: Use RBAC-filtered recall if enabled
-                if self.rbac_enabled and self.user_manager:
-                    effective_user_phone = user_phone or message.sender_id
-                    user = self.user_manager.get_user(effective_user_phone)
-
-                    recalled_memories = self.memory_manager.recall_with_rbac_filter(
-                        query=user_prompt,
-                        collection_names=[collection_name],
-                        user_phone=effective_user_phone,
-                        allowed_scopes=user.allowed_memory_scopes,
-                        can_see_all_memories=user.can_see_all_memories,
-                        top_k=self.daily_summary_top_k,
-                        min_similarity=self.memory_min_similarity
-                    )
-                else:
-                    # Existing behavior: regular recall without RBAC
-                    recalled_memories = self.memory_manager.recall(
-                        query=user_prompt,
-                        collection_names=[collection_name],
-                        top_k=self.daily_summary_top_k,
-                        min_similarity=self.memory_min_similarity
-                    )
-
-                if recalled_memories:
-                    memory_context = "\n\nRECALLED MEMORIES (from past conversations):\n"
-                    for mem in recalled_memories:
-                        memory_context += f"- {mem['content']} (relevance: {mem['similarity']:.2f})\n"
-
-                    constitution += memory_context
-                    logger.info(f"Added {len(recalled_memories)} recalled memories to system prompt")
-            except Exception as e:
-                logger.error(f"Failed to recall memories: {e}", exc_info=True)
+            memory_context = recall_memory_context(
+                self.memory_manager, query=user_prompt, chat_id=effective_chat_id,
+                top_k=self.daily_summary_top_k, min_similarity=self.memory_min_similarity,
+                user_manager=self.user_manager if self.rbac_enabled else None,
+                user_phone=(user_phone or message.sender_id) if self.rbac_enabled else None,
+            )
+            if memory_context:
+                constitution += "\n\n" + memory_context
 
         # Create AI request
         request = AIRequest(
@@ -1931,7 +1888,7 @@ class AIHandler:
         itself (construct one TelemetryBuilder per turn, record the finished RequestTelemetry
         row on the way out - success OR exception alike, complete no-op when
         self.telemetry_manager is None) is now the ONE shared
-        model_call_actions.telemetry_span implementation, also used by
+        model_calls.telemetry_span implementation, also used by
         Backbone.turn_with_rounds - the two were byte-for-byte identical in shape
         before this change, just stored the active builder differently (this class's
         module-level contextvar vs. the backbone's instance attribute), which
@@ -1944,7 +1901,7 @@ class AIHandler:
         is configured - send_progress_update's own tool attachment (_build_progress_update_tools)
         is what actually gates whether the model can ever reach this path, not this parameter's
         presence."""
-        from src.tool_actions.model_call_actions import telemetry_span
+        from src.core.model_calls import telemetry_span
 
         callback_token = _active_progress_callback.set(progress_callback)
         interim_token = _active_interim_messages.set([])
@@ -2074,29 +2031,18 @@ class AIHandler:
                 if local_resolved is not None:
                     return local_resolved
 
-        # Retrieve conversation history if memory enabled
+        # Retrieve conversation history if memory enabled (Feature 070 rolling window,
+        # shared with the Backbone - src/core/turn_context.load_rolling_window).
         conversation_history = None
         if self.memory_enabled and self.session_manager and effective_chat_id:
-            try:
-                # RBAC: Use user's token limit if enabled
-                if self.rbac_enabled and user_obj:
-                    max_tokens = user_obj.token_limit
-                else:
-                    # Existing behavior: use role-based token limits
-                    max_tokens = self.max_tokens_by_role.get(user_role, 4000)
-
-                # Feature 070: rolling 14-day verbatim window with a read-only
-                # per-turn token backstop (drops oldest, keeps newest, moves
-                # nothing on disk).
-                conversation_history = self.session_manager.get_rolling_window(
-                    effective_chat_id,
-                    window_days=self.window_days,
-                    max_tokens=max_tokens,
-                )
-                if conversation_history:
-                    logger.info(f"Retrieved {len(conversation_history)} messages from session history")
-            except Exception as e:
-                logger.error(f"Failed to retrieve conversation history: {e}", exc_info=True)
+            if self.rbac_enabled and user_obj:
+                max_tokens = user_obj.token_limit
+            else:
+                max_tokens = self.max_tokens_by_role.get(user_role, 4000)
+            conversation_history = load_rolling_window(
+                self.session_manager, effective_chat_id,
+                window_days=self.window_days, max_tokens=max_tokens,
+            ) or None
 
         try:
             # Morning MCP tools (Feature 018, RBAC-gated) + the ledger-event tool
@@ -2476,7 +2422,7 @@ class AIHandler:
             _active_progress_callback.get(), _active_telemetry_builder.get(), request.chat_id, text,
         )
         # bugfix-058: track every interim message actually sent this turn (see
-        # _active_interim_messages/_persist_interim_messages) so it survives even
+        # _active_interim_messages and src/core/turn_persistence.persist_turn) so it survives even
         # if the turn later fails before the assistant's real final reply is
         # persisted - the shared send_progress_update_message() helper (used by
         # both this legacy path and the backbone) intentionally
@@ -3274,146 +3220,27 @@ class AIHandler:
                       sender_phone: Optional[str] = None, is_group: bool = False,
                       chat_name: Optional[str] = None, ledger_event_ids=None,
                       mcp_calls=None) -> None:
-        """Stores one turn - the user's message and, when `should_reply`, the assistant's
-        `response_text` - in the chat's session, with the same sender/recipient/timestamp
-        conventions everywhere. Used by `_finalize_response` for a normal turn and (bugfix-058)
-        by `_get_response_impl`'s error branches so the fallback text the user actually saw is
-        recorded too. Never raises: a storage failure is logged and must not affect the reply."""
-        if self.memory_enabled and self.session_manager and effective_chat_id:
-            try:
-                # 2026-08-19: real WhatsApp identifiers for Message.sender/
-                # .recipient, replacing the old Feature 039 sentinel-retirement
-                # scheme (recipient=None for role="user", sender=None for
-                # role="assistant"). `sender` (this method's own parameter) stays
-                # the resolved display name - now Message.sender_name.
-                # own_whatsapp_number is bare digits (bugfix-024's getWaSettings
-                # call) - "" when unresolved (e.g. no live Green API client, the
-                # player), same fail-open convention as everywhere else it's used.
-                own_number_jid = f"{self.own_whatsapp_number}@c.us" if self.own_whatsapp_number else None
-                # sender_phone (this method's own param) is the ACTUAL sender's
-                # JID - deliberately NOT user_phone, which for a group turn is
-                # the most-permissive MEMBER's phone (possibly someone else
-                # entirely - see get_response's docstring). Falls back to
-                # user_phone (1:1 case, always the same person), then to
-                # effective_chat_id as a last resort (Green API's own 1:1
-                # chatId IS the contact's JID - never true for a group).
-                resolved_sender_phone = sender_phone or user_phone or (
-                    effective_chat_id if not is_group else None
-                )
-                sender_name_val = sender
-                # A group message is addressed to the whole group (its own
-                # JID/name), regardless of which individual sent it or that
-                # DeniDin is replying - never to one member, never to DeniDin
-                # alone.
-                user_msg_recipient = effective_chat_id if is_group else own_number_jid
-                user_msg_recipient_name = (chat_name or effective_chat_id) if is_group else "DeniDin"
-                assistant_msg_recipient = effective_chat_id if is_group else resolved_sender_phone
-                assistant_msg_recipient_name = (chat_name or effective_chat_id) if is_group else sender_name_val
-
-                # Feature 069: the persisted Message.timestamp. Live - the
-                # operator message's own wall-clock send time (request.timestamp,
-                # the Green API notification epoch). WhatsApp-export player replay
-                # - the injected ORIGINAL conversation time (+10s for the reply,
-                # so it sorts just after the operator turn it answers). This is
-                # what `_run_post_turn_ledger_recognition` dates a `הסכם`/`בנק`
-                # event from (session.message_ids[-1], Decision #10) AND what
-                # Feature 070's rolling window filters on - so an absent or
-                # implausible epoch (a malformed webhook, a test sentinel) must
-                # fall back to processing time, never land the message in 1970.
-                replayed = bool(getattr(request.original_message, "is_replay", False))
-                _src_epoch = _sane_source_epoch(request.timestamp)
-                user_source_ts = (
-                    None if _src_epoch is None else local_from_timestamp(_src_epoch)
-                )
-                assistant_source_ts = (
-                    None if _src_epoch is None
-                    else local_from_timestamp(_src_epoch + (10 if replayed else 0))
-                )
-
-                if self.rbac_enabled and user_obj:
-                    # Store user message with token limit
-                    self.session_manager.add_message_with_tokens(
-                        chat_id=effective_chat_id,
-                        role="user",
-                        content=request.user_prompt,
-                        user_role=user_obj.role,
-                        sender=resolved_sender_phone,
-                        sender_name=sender_name_val,
-                        recipient=user_msg_recipient,
-                        recipient_name=user_msg_recipient_name,
-                        ledger_event_ids=ledger_event_ids,
-                        message_id=request.message_id,
-                        timestamp=user_source_ts,
-                        whatsapp_id_message=getattr(
-                            request.original_message, "whatsapp_id_message", None
-                        ),
-                    )
-
-                    self._persist_interim_messages(
-                        effective_chat_id, user_obj.role, own_number_jid, assistant_msg_recipient,
-                        assistant_msg_recipient_name, assistant_source_ts,
-                    )
-
-                    if should_reply:
-                        # Store AI response with token limit
-                        self.session_manager.add_message_with_tokens(
-                            chat_id=effective_chat_id,
-                            role="assistant",
-                            content=response_text,
-                            user_role=user_obj.role,
-                            sender=own_number_jid,
-                            sender_name="DeniDin",
-                            recipient=assistant_msg_recipient,
-                            recipient_name=assistant_msg_recipient_name,
-                            mcp_calls=mcp_calls,
-                            timestamp=assistant_source_ts,
-                        )
-                else:
-                    # Existing behavior: regular add_message without token limits
-                    self.session_manager.add_message(
-                        chat_id=effective_chat_id,
-                        role="user",
-                        content=request.user_prompt,
-                        user_role=user_role or "client",
-                        sender=resolved_sender_phone,
-                        sender_name=sender_name_val,
-                        recipient=user_msg_recipient,
-                        recipient_name=user_msg_recipient_name,
-                        ledger_event_ids=ledger_event_ids,
-                        message_id=request.message_id,
-                        timestamp=user_source_ts,
-                        whatsapp_id_message=getattr(
-                            request.original_message, "whatsapp_id_message", None
-                        ),
-                    )
-
-                    self._persist_interim_messages(
-                        effective_chat_id, user_role or "client", own_number_jid,
-                        assistant_msg_recipient, assistant_msg_recipient_name, assistant_source_ts,
-                    )
-
-                    if should_reply:
-                        # Store AI response
-                        self.session_manager.add_message(
-                            chat_id=effective_chat_id,
-                            role="assistant",
-                            content=response_text,
-                            user_role=user_role or "client",
-                            sender=own_number_jid,
-                            sender_name="DeniDin",
-                            recipient=assistant_msg_recipient,
-                            recipient_name=assistant_msg_recipient_name,
-                            mcp_calls=mcp_calls,
-                            timestamp=assistant_source_ts,
-                        )
-
-                storage_note = (
-                    " + assistant reply" if should_reply
-                    else " (no-reply sentinel, no assistant message stored)"
-                )
-                logger.debug(f"Stored user message{storage_note} in session {effective_chat_id}")
-            except Exception as e:
-                logger.error(f"Failed to store messages in session: {e}", exc_info=True)
+        """Stores one turn - the user's message, any interim progress messages, and (when
+        `should_reply`) the assistant's `response_text`. Used by `_finalize_response` for a
+        normal turn and (bugfix-058) by `_get_response_impl`'s error branches. Thin wrapper
+        over src/core/turn_persistence.persist_turn, the one implementation shared with the
+        Backbone and MediaHandler. Never raises."""
+        if not self.memory_enabled:
+            return
+        use_tokens = bool(self.rbac_enabled and user_obj)
+        persist_turn(
+            self.session_manager, chat_id=effective_chat_id,
+            user_role=user_obj.role if use_tokens else (user_role or "client"),
+            count_tokens=use_tokens, own_whatsapp_number=self.own_whatsapp_number,
+            user_text=request.user_prompt, reply_text=response_text, should_reply=should_reply,
+            sender_phone=sender_phone, sender_display=sender, user_phone=user_phone,
+            is_group=is_group, chat_name=chat_name, source_timestamp=request.timestamp,
+            replayed=bool(getattr(request.original_message, "is_replay", False)),
+            message_id=request.message_id,
+            whatsapp_id_message=getattr(request.original_message, "whatsapp_id_message", None),
+            ledger_event_ids=ledger_event_ids, mcp_calls=mcp_calls,
+            interim_messages=_active_interim_messages.get(),
+        )
 
 
     def _finalize_response(self, request: AIRequest, response, effective_chat_id: Optional[str],
@@ -3681,7 +3508,7 @@ class AIHandler:
         # the sentinel as its entire response - the user's message is still
         # persisted below (conversation context isn't lost), but no assistant
         # reply is stored, and the caller (denidin.py) must not send anything.
-        should_reply = response_text.strip() != NO_REPLY_SENTINEL
+        should_reply = should_reply_for(response_text)
 
         # Store messages in session if memory enabled (shared with the error paths, bugfix-058)
         self._persist_turn(
@@ -4631,25 +4458,6 @@ class AIHandler:
             sender_phone=message.sender_id,
         )
 
-    def _persist_interim_messages(self, chat_id: str, user_role: str, own_number_jid: Optional[str],
-                                  recipient: Optional[str], recipient_name: Optional[str],
-                                  timestamp) -> None:
-        """bugfix-058: stores, as assistant messages, every interim progress message this turn
-        actually sent to the user (see `_active_interim_messages`) - called right after the turn's
-        user message is stored so the session order matches what the user saw. Consumes the list
-        so a second persistence call in the same turn cannot store them again."""
-        interim = _active_interim_messages.get()
-        if not interim:
-            return
-        texts = list(interim)
-        interim.clear()
-        for text in texts:
-            self.session_manager.add_message(
-                chat_id=chat_id, role="assistant", content=text, user_role=user_role,
-                sender=own_number_jid, sender_name="DeniDin",
-                recipient=recipient, recipient_name=recipient_name, timestamp=timestamp,
-            )
-
     def record_exchange(self, chat_id: str, *, user_text: Optional[str],
                         assistant_text: Optional[str], sender_phone: Optional[str],
                         sender_display: Optional[str], is_group: bool = False,
@@ -4660,9 +4468,9 @@ class AIHandler:
         unsupported-type auto-reply, a failed media turn, a declined multi-contact card, the
         catch-all error reply - so what the user sent and what they were told is still in the
         session. 2026-09-30 consolidation: thin wrapper delegating to
-        model_call_actions.record_exchange, the one shared implementation also used by
+        model_calls.record_exchange, the one shared implementation also used by
         Backbone (e.g. on an OpenAI-call exception)."""
-        from src.tool_actions.model_call_actions import record_exchange as _shared_record_exchange
+        from src.core.model_calls import record_exchange as _shared_record_exchange
         _shared_record_exchange(
             self.session_manager, memory_enabled=self.memory_enabled,
             rbac_enabled=self.rbac_enabled, user_manager=self.user_manager,
@@ -4689,9 +4497,9 @@ class AIHandler:
         return self._create_fallback_response(request.request_id, message)
 
     def _create_fallback_response(self, request_id: str, message: str) -> AIResponse:
-        """2026-09-30 consolidation: delegates to model_call_actions.build_fallback_response,
+        """2026-09-30 consolidation: delegates to model_calls.build_fallback_response,
         the one shared implementation also used by Backbone._create_fallback_response
         - the two were byte-identical AIResponse shapes before this change."""
-        from src.tool_actions.model_call_actions import build_fallback_response
+        from src.core.model_calls import build_fallback_response
         return build_fallback_response(request_id, message)
 

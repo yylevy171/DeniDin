@@ -969,6 +969,8 @@ class SessionManager:
         mcp_calls: Optional[List[Dict]] = None,
         timestamp: Optional[datetime] = None,
         whatsapp_id_message: Optional[str] = None,
+        image_path: Optional[str] = None,
+        extracted_text: Optional[str] = None,
     ) -> str:
         """
         Add message and update session token count.
@@ -1006,6 +1008,7 @@ class SessionManager:
             ledger_event_ids=ledger_event_ids, message_id=message_id,
             mcp_calls=mcp_calls, timestamp=timestamp,
             whatsapp_id_message=whatsapp_id_message,
+            image_path=image_path, extracted_text=extracted_text,
         )
 
         # Count and add tokens

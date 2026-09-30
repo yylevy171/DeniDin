@@ -17,6 +17,12 @@ from src.utils.time_utils import now_local
 NO_REPLY_SENTINEL = "[[NO_REPLY]]"
 
 
+def should_reply_for(text: str) -> bool:
+    """False iff the model's final text is exactly the [[NO_REPLY]] sentinel
+    (Feature 039) - the one check both the legacy AIHandler and the Backbone use."""
+    return (text or "").strip() != NO_REPLY_SENTINEL
+
+
 def _frame_contact_message_text(contact_message_data: Dict[str, Any]) -> str:
     """Frame a shared WhatsApp contact card's displayName/vcard into readable
     text_content (Feature 030). No dedicated vCard parser - the raw vCard text is
