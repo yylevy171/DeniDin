@@ -51,6 +51,7 @@ class TestMediaHandlerHappyPaths:
         handler.media_file_manager.validate_format = Mock(return_value="image")
         handler.media_file_manager.create_storage_path = Mock(return_value=Path("/tmp/test_data/media"))
         handler.media_file_manager.save_file = Mock(return_value=Path("/tmp/test_data/media/DD-972501234567-uuid.jpg"))
+        handler.media_file_manager.relative_to_data_root = Mock(side_effect=str)
         handler.media_file_manager.save_rawtext = Mock(return_value=Path("/tmp/test_data/media/DD-972501234567-uuid.jpg.rawtext"))
         
         # Process image with sender_phone
@@ -111,6 +112,7 @@ class TestMediaHandlerHappyPaths:
         handler.media_file_manager.validate_format = Mock(return_value="pdf")
         handler.media_file_manager.create_storage_path = Mock(return_value=Path("/tmp/test_data/media"))
         handler.media_file_manager.save_file = Mock(return_value=Path("/tmp/test_data/media/DD-972509876543-uuid.pdf"))
+        handler.media_file_manager.relative_to_data_root = Mock(side_effect=str)
         handler.media_file_manager.save_rawtext = Mock(return_value=Path("/tmp/test_data/media/DD-972509876543-uuid.pdf.rawtext"))
         
         result = handler.process_media_message(
@@ -153,6 +155,7 @@ class TestMediaHandlerHappyPaths:
         handler.media_file_manager.validate_format = Mock(return_value="docx")
         handler.media_file_manager.create_storage_path = Mock(return_value=Path("/tmp/test_data/media"))
         handler.media_file_manager.save_file = Mock(return_value=Path("/tmp/test_data/media/DD-972501234567-uuid.docx"))
+        handler.media_file_manager.relative_to_data_root = Mock(side_effect=str)
         handler.media_file_manager.save_rawtext = Mock(return_value=Path("/tmp/test_data/media/DD-972501234567-uuid.docx.rawtext"))
         
         result = handler.process_media_message(
@@ -206,6 +209,7 @@ class TestMediaHandlerHappyPaths:
         handler.media_file_manager.validate_format = Mock(return_value="pdf")
         handler.media_file_manager.create_storage_path = Mock(return_value=Path("/tmp/media"))
         handler.media_file_manager.save_file = Mock(return_value=Path("/tmp/media/DD-972501234567-uuid.pdf"))
+        handler.media_file_manager.relative_to_data_root = Mock(side_effect=str)
         handler.media_file_manager.save_rawtext = Mock(return_value=Path("/tmp/media/DD-972501234567-uuid.pdf.rawtext"))
         
         result = handler.process_media_message(
@@ -263,6 +267,7 @@ class TestMediaHandlerHappyPaths:
         handler.media_file_manager.validate_format = Mock(return_value="image")
         handler.media_file_manager.create_storage_path = Mock(return_value=Path("/tmp/media"))
         handler.media_file_manager.save_file = Mock(return_value=Path("/tmp/media/DD-972501234567-uuid.jpg"))
+        handler.media_file_manager.relative_to_data_root = Mock(side_effect=str)
         handler.media_file_manager.save_rawtext = Mock(return_value=Path("/tmp/media/DD-972501234567-uuid.jpg.rawtext"))
         
         result = handler.process_media_message(
@@ -310,6 +315,7 @@ class TestMediaHandlerHappyPaths:
         handler.media_file_manager.validate_format = Mock(return_value="image")
         handler.media_file_manager.create_storage_path = Mock(return_value=Path("/tmp/media"))
         handler.media_file_manager.save_file = Mock(return_value=Path("/tmp/media/DD-972501234567-uuid.jpg"))
+        handler.media_file_manager.relative_to_data_root = Mock(side_effect=str)
         handler.media_file_manager.save_rawtext = Mock(return_value=Path("/tmp/media/DD-972501234567-uuid.jpg.rawtext"))
         
         # No caption provided (CHK060)
@@ -393,6 +399,7 @@ class TestMediaHandlerErrorHandling:
         handler.media_file_manager.validate_format = Mock(return_value="pdf")
         handler.media_file_manager.create_storage_path = Mock(return_value=Path("/tmp/media"))
         handler.media_file_manager.save_file = Mock(return_value=Path("/tmp/media/DD-972501234567-uuid.pdf"))
+        handler.media_file_manager.relative_to_data_root = Mock(side_effect=str)
         
         result = handler.process_media_message(
             file_url="https://example.com/big.pdf",
@@ -494,6 +501,7 @@ class TestMediaHandlerErrorHandling:
         handler.media_file_manager.validate_format = Mock(return_value="image")
         handler.media_file_manager.create_storage_path = Mock(return_value=Path("/tmp/media"))
         handler.media_file_manager.save_file = Mock(return_value=Path("/tmp/media/DD-972501234567-uuid.jpg"))
+        handler.media_file_manager.relative_to_data_root = Mock(side_effect=str)
         
         result = handler.process_media_message(
             file_url="https://example.com/corrupted.jpg",
@@ -536,6 +544,7 @@ class TestMediaHandlerErrorHandling:
         handler.media_file_manager.validate_format = Mock(return_value="docx")
         handler.media_file_manager.create_storage_path = Mock(return_value=Path("/tmp/media"))
         handler.media_file_manager.save_file = Mock(return_value=Path("/tmp/media/DD-972501234567-uuid.docx"))
+        handler.media_file_manager.relative_to_data_root = Mock(side_effect=str)
         
         result = handler.process_media_message(
             file_url="https://example.com/empty.docx",
@@ -615,6 +624,7 @@ class TestMediaHandlerErrorHandling:
         handler.media_file_manager.validate_file_size = Mock(return_value=None)
         handler.media_file_manager.create_storage_path = Mock(return_value=Path("/tmp/media"))
         handler.media_file_manager.save_file = Mock(return_value=Path("/tmp/media/file"))
+        handler.media_file_manager.relative_to_data_root = Mock(side_effect=str)
         handler.media_file_manager.save_rawtext = Mock(return_value=Path("/tmp/media/file.rawtext"))
         
         # Test image routing
@@ -693,6 +703,7 @@ class TestLedgerEventPersistenceViaMediaHandler:
         handler.media_file_manager.validate_format = Mock(return_value="image")
         handler.media_file_manager.create_storage_path = Mock(return_value=tmp_path / "media")
         handler.media_file_manager.save_file = Mock(return_value=tmp_path / "media" / "DD-x.jpg")
+        handler.media_file_manager.relative_to_data_root = Mock(side_effect=str)
 
         result = handler.process_media_message(
             file_url="https://example.com/bank.jpg", filename="bank.jpg",
@@ -749,6 +760,7 @@ class TestLedgerEventPersistenceViaMediaHandler:
         handler.media_file_manager.validate_format = Mock(return_value="docx")
         handler.media_file_manager.create_storage_path = Mock(return_value=tmp_path / "media")
         handler.media_file_manager.save_file = Mock(return_value=tmp_path / "media" / "DD-a.docx")
+        handler.media_file_manager.relative_to_data_root = Mock(side_effect=str)
 
         result = handler.process_media_message(
             file_url="https://example.com/agreement.docx", filename="agreement.docx",
@@ -779,6 +791,7 @@ class TestLedgerEventPersistenceViaMediaHandler:
         handler.media_file_manager.validate_format = Mock(return_value="image")
         handler.media_file_manager.create_storage_path = Mock(return_value=tmp_path / "media")
         handler.media_file_manager.save_file = Mock(return_value=tmp_path / "media" / "DD-y.jpg")
+        handler.media_file_manager.relative_to_data_root = Mock(side_effect=str)
 
         handler.process_media_message(
             file_url="https://example.com/photo.jpg", filename="photo.jpg",
@@ -838,6 +851,7 @@ class TestExtractedTextPersistence:
         handler.media_file_manager.validate_format = Mock(return_value="image")
         handler.media_file_manager.create_storage_path = Mock(return_value=tmp_path / "media")
         handler.media_file_manager.save_file = Mock(return_value=tmp_path / "media" / "DD-x.jpg")
+        handler.media_file_manager.relative_to_data_root = Mock(side_effect=str)
 
         result = handler.process_media_message(
             file_url="https://example.com/photo.jpg", filename="photo.jpg",

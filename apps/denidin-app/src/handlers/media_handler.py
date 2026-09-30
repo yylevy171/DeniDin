@@ -264,10 +264,7 @@ class MediaHandler:
             # bugfix-009 (reopened 2026-07-30): image_path is stored relative to
             # data_root (matching the original bugfix-009 convention), so it survives
             # data_root moving/being mounted at a different absolute path.
-            try:
-                relative_image_path = str(file_path.relative_to(Path(self.config.data_root)))
-            except ValueError:
-                relative_image_path = str(file_path)
+            relative_image_path = self.media_file_manager.relative_to_data_root(file_path)
             # Feature 043 (Phase 11 follow-up, 2026-08-18): the extractor already
             # computed this for every media type (image/PDF/DOCX share the common
             # extracted_text/document_analysis contract - see extractors' own

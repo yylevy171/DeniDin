@@ -71,6 +71,10 @@ class _TurnParties:
 # send_to_user answer - see the loop-cap fallback's own known bug noted below.
 MAX_BACKBONE_TOOL_LOOP_ITERATIONS = 100
 
+# Hebrew label per MediaFileManager.validate_format result, used in the
+# first-round "[מדיה מצורפת: ...]" marker of a media turn.
+MEDIA_TYPE_LABELS = {"image": "תמונה", "pdf": "PDF", "docx": "מסמך Word"}
+
 _DEFAULT_BACKBONE_CONFIG = {
     "file": "backbone.md",
     "base_dir": "config",
@@ -396,7 +400,8 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
             is_media: bool = False,
             media_extraction: Optional[Dict[str, Any]] = None,
             media: Optional[Any] = None,
-            media_type: Optional[str] = None) -> AIResponse:
+            media_type: Optional[str] = None,
+            media_path: Optional[str] = None) -> AIResponse:
         """The backbone's entry point: resolves one WhatsApp turn (one incoming
         message → one final reply) via one or more OpenAI call "rounds" (2026-09-30
         rename, from the generic `get_response` — see `_call_model`'s "first round"/
@@ -427,6 +432,11 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
         real vision/PDF/DOCX extraction call, via `turn_context["media"]`/
         `["media_type"]` below. media_extraction (above) and media/media_type are
         mutually exclusive in practice — a caller passes at most one.
+
+        media_path (2026-09-30): where denidin.py archived the incoming file,
+        relative to data_root (MediaFileManager.store_media) - persisted as the user
+        message's image_path, same as the legacy media path. None if archiving failed
+        (the turn still proceeds on the in-memory bytes).
         """
         # The ENTIRE turn below is wrapped in one top-level try/except, mirroring
         # AIHandler._get_response_impl's own APITimeoutError/RateLimitError/
@@ -449,7 +459,7 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
                 request, chat_id=chat_id, user_role=user_role, sender=sender, recipient=recipient,
                 user_phone=user_phone, is_group=is_group, chat_name=chat_name, sender_phone=sender_phone,
                 progress_callback=progress_callback, is_media=is_media, media_extraction=media_extraction,
-                media=media, media_type=media_type,
+                media=media, media_type=media_type, media_path=media_path,
             )
 
     def _turn_with_rounds_body(  # pylint: disable=too-many-locals,too-many-arguments
@@ -458,7 +468,7 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
             is_group: bool, chat_name: Optional[str], sender_phone: Optional[str],
             progress_callback: Optional[Callable[[str], None]], is_media: bool,
             media_extraction: Optional[Dict[str, Any]], media: Optional[Any],
-            media_type: Optional[str]) -> AIResponse:
+            media_type: Optional[str], media_path: Optional[str] = None) -> AIResponse:
         """The actual per-turn logic, split out of turn_with_rounds so the telemetry_span
         context manager above wraps it cleanly (a context manager's body can't easily
         `return` from inside a try/except/finally spanning the whole call otherwise)."""
@@ -497,6 +507,13 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
                 "media": media,
                 "media_type": media_type,
                 "timestamp": request.timestamp,
+                # Media turn (2026-09-30): the caption (request.user_prompt, may be ""),
+                # where the file was archived, and - once analyze_media runs - the
+                # extractor's extracted_text; all persisted onto the user message.
+                "is_media": is_media,
+                "caption": request.user_prompt if is_media else "",
+                "media_path": media_path,
+                "extracted_text": None,
             }
 
             # Conversation history (2026-09-14): the SAME rolling-window shape/source
@@ -522,7 +539,7 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
             parties = _TurnParties(
                 effective_chat_id, role, sender, user_phone, sender_phone, is_group, chat_name,
             )
-            return self._finalize_response(request, final_text, parties)
+            return self._finalize_response(request, final_text, parties, turn_context)
         except Exception as exc:  # pylint: disable=broad-except
             logger.error(
                 "Unexpected error in Backbone.turn_with_rounds for request %s: %s",
@@ -607,6 +624,20 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
     # The resolution loop (contracts/capability-resolution-loop.md)
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _first_round_user_content(request: AIRequest, turn_context: Dict[str, Any], *,
+                                   is_media: bool) -> str:
+        """The user message the first round sends. For a media turn (2026-09-30) the
+        model gets NO media bytes here - only a marker saying a file is attached (type +
+        filename), followed by the caption if any; backbone.md tells it to load
+        cap_media_analysis and call analyze_media, which does the real extraction."""
+        if not is_media:
+            return request.user_prompt
+        type_label = MEDIA_TYPE_LABELS.get(turn_context.get("media_type"), "קובץ")
+        filename = getattr(turn_context.get("media"), "filename", "") or ""
+        marker = f"[מדיה מצורפת: {type_label}, קובץ: {filename}]"
+        return f"{marker}\n{request.user_prompt}" if request.user_prompt else marker
+
     def _run_resolution_loop(self, request: AIRequest, turn_context: Dict[str, Any],
                                  *, is_media: bool = False) -> str:
         """The tool-driven "resolution" loop - one continuous conversation, no
@@ -619,11 +650,11 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
         until send_to_user / approval_with_yes_no_buttons is called, or the
         cap is hit (falls back to the last round's plain text - "never leave
         a turn silent")."""
-        del is_media  # the model itself judges media-attached state from turn_context/backbone.md
         chat_id = turn_context.get("chat_id")
         tags, instructions, tools = self._build_round_inputs(request, chat_id, turn_context)
         input_items = list(self._turn_conversation_history)
-        input_items.append({"role": "user", "content": request.user_prompt})
+        input_items.append({"role": "user", "content": self._first_round_user_content(
+            request, turn_context, is_media=is_media)})
 
         response = self._call_model("_run_resolution_loop (first round)", {
             "model": request.model,
@@ -819,7 +850,8 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
         return describe_loading(kind, loading=loading, valid=valid, unknown=unknown,
                                 flows_now=flows_now, capabilities_now=capabilities_now)
 
-    def _finalize_response(self, request: AIRequest, final_text: str, parties: _TurnParties) -> AIResponse:
+    def _finalize_response(self, request: AIRequest, final_text: str, parties: _TurnParties,
+                           turn_context: Optional[Dict[str, Any]] = None) -> AIResponse:
         """[[NO_REPLY]] sentinel handling via the shared models.message.should_reply_for
         (the same check AIHandler._finalize_response uses).
 
@@ -828,7 +860,7 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
         which asks WhatsAppHandler to render the reply as tappable buttons."""
         should_reply = should_reply_for(final_text)
         offer_approval_buttons = bool(self._turn_offered_approval)
-        self._persist_turn(request, final_text, should_reply, parties)
+        self._persist_turn(request, final_text, should_reply, parties, turn_context)
         return AIResponse(
             request_id=request.request_id,
             response_text=final_text,
@@ -884,12 +916,18 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
         )
 
     def _persist_turn(self, request: AIRequest, final_text: str, should_reply: bool,
-                       parties: _TurnParties) -> None:
+                       parties: _TurnParties, turn_context: Optional[Dict[str, Any]] = None) -> None:
         """Stores the turn via the shared core.turn_persistence.persist_turn (the same
         implementation AIHandler and MediaHandler use): user message, interim progress
         messages, the reply (when should_reply), then this turn's record_planning_status
         note as a clearly-tagged [[INTERNAL_PLANNING_NOTE]] entry (stored regardless of
-        should_reply; flows into the next turn via the rolling window). Never raises."""
+        should_reply; flows into the next turn via the rolling window). A media turn
+        stores the caption (or "[<type> sent]", same as MediaHandler) with its
+        image_path/extracted_text. Never raises."""
+        turn_context = turn_context or {}
+        user_text = request.user_prompt
+        if turn_context.get("is_media"):
+            user_text = request.user_prompt or f"[{turn_context.get('media_type') or 'media'} sent]"
         notes = (
             [f"[[INTERNAL_PLANNING_NOTE]]\n{self._turn_planning_status}"]
             if self._turn_planning_status else None
@@ -897,7 +935,7 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
         persist_turn(
             self.session_manager, chat_id=parties.chat_id, user_role=parties.role,
             count_tokens=True, own_whatsapp_number=self.own_whatsapp_number,
-            user_text=request.user_prompt, reply_text=final_text, should_reply=should_reply,
+            user_text=user_text, reply_text=final_text, should_reply=should_reply,
             sender_phone=parties.sender_phone, sender_display=parties.sender,
             user_phone=parties.user_phone, is_group=parties.is_group, chat_name=parties.chat_name,
             source_timestamp=request.timestamp,
@@ -905,6 +943,8 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
             message_id=request.message_id,
             whatsapp_id_message=getattr(request.original_message, "whatsapp_id_message", None),
             mcp_calls=list(self._turn_mcp_calls),
+            image_path=turn_context.get("media_path"),
+            extracted_text=turn_context.get("extracted_text"),
             interim_messages=self._turn_interim_messages,
             trailing_notes=notes,
         )

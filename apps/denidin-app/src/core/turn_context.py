@@ -42,8 +42,9 @@ def recall_memory_context(memory_manager: Any, *, query: str, chat_id: Optional[
     "- <content> (relevance: 0.NN)" line per memory). RBAC-filtered by the
     user's allowed_memory_scopes/can_see_all_memories when `user_manager` and
     `user_phone` are given, else a plain recall. Returns "" - never raises - when
-    nothing relevant is found or recall fails."""
-    if memory_manager is None or not chat_id:
+    there's no query (e.g. a media message without a caption), nothing relevant
+    is found, or recall fails."""
+    if memory_manager is None or not chat_id or not query:
         return ""
     try:
         collection_name = collection_name_for_chat(chat_id)

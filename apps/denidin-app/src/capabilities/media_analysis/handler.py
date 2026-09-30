@@ -88,6 +88,7 @@ def dispatch_direct_tool_call(backbone, tool_name: str, args: Dict[str, Any],
     if media_extraction:
         extracted_text = media_extraction.get("extracted_text", "")
         analysis = media_extraction.get("document_analysis", {})
+        turn_context["extracted_text"] = extracted_text or None
         return f"Extracted text: {extracted_text}\n\nDocument analysis: {analysis}"
 
     media = turn_context.get("media")
@@ -100,4 +101,7 @@ def dispatch_direct_tool_call(backbone, tool_name: str, args: Dict[str, Any],
                                       today_timestamp=turn_context.get("timestamp"))
     extracted_text = result.get("extracted_text", "")
     analysis = result.get("document_analysis", {})
+    # Persisted onto this turn's user message (Backbone._persist_turn), same as the
+    # legacy media path; "" normalizes to None (Message.extracted_text contract).
+    turn_context["extracted_text"] = extracted_text or None
     return f"Extracted text: {extracted_text}\n\nDocument analysis: {analysis}"

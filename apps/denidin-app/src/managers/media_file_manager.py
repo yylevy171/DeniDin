@@ -177,3 +177,19 @@ class MediaFileManager:
         with open(file_path, 'wb') as f:
             f.write(content)
         return file_path
+
+    def relative_to_data_root(self, file_path: Path) -> str:
+        """bugfix-009 (reopened 2026-07-30): the path persisted as Message.image_path is
+        relative to data_root, so it survives data_root moving/being mounted elsewhere.
+        Falls back to the absolute path if the file is somehow outside data_root."""
+        try:
+            return str(Path(file_path).relative_to(Path(self.config.data_root)))
+        except ValueError:
+            return str(file_path)
+
+    def store_media(self, content: bytes, original_filename: str, sender_phone: str) -> str:
+        """create_storage_path + save_file, returning the data_root-relative path
+        (relative_to_data_root) - the one "archive this incoming media file" step
+        shared by MediaHandler (legacy) and denidin.py's Backbone media path."""
+        file_path = self.save_file(content, self.create_storage_path(), original_filename, sender_phone)
+        return self.relative_to_data_root(file_path)

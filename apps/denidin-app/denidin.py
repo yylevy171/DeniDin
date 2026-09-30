@@ -972,12 +972,25 @@ def _process_media_message_via_backbone(notification: Notification, message, kee
     if denidin_app.typing_keepalive_scheduler is not None:
         stop_typing_keepalive(denidin_app.typing_keepalive_scheduler, keepalive_job_id)
 
+    # Archive the file (2026-09-30) - the same MediaFileManager.store_media step the
+    # legacy MediaHandler uses; its data_root-relative path is persisted as the user
+    # message's image_path. A storage failure is logged and the turn continues on the
+    # in-memory bytes (image_path stays None) - the user still gets an answer.
+    media_path = None
+    try:
+        media_path = file_manager.store_media(content, filename, message.sender_id)
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.error(f"Failed to archive incoming media file (flag-on path): {exc}", exc_info=True)
+
     media = Media(data=content, mime_type=mime_type, filename=filename)
+    # user_prompt is the caption only ("" when none) - the backbone prepends the
+    # "[מדיה מצורפת: ...]" marker itself. The turn runs on config.ai_model like any
+    # other turn; only analyze_media's extractor uses config.ai_vision_model.
     request = AIRequest(
-        user_prompt=caption or "[media message]",
+        user_prompt=caption,
         constitution="",
         max_tokens=denidin_app.config.ai_reply_max_tokens,
-        model=denidin_app.config.ai_vision_model,
+        model=denidin_app.config.ai_model,
         chat_id=message.chat_id,
         message_id=message.message_id,
         timestamp=message.timestamp,
@@ -985,7 +998,7 @@ def _process_media_message_via_backbone(notification: Notification, message, kee
     )
     response = denidin_app.backbone.turn_with_rounds(
         request, chat_id=message.chat_id, is_media=True, media=media, media_type=media_type,
-        sender=message.sender_display_name, user_phone=message.sender_id,
+        media_path=media_path, sender=message.sender_display_name, user_phone=message.sender_id,
         sender_phone=message.sender_id, is_group=message.is_group, chat_name=message.chat_name,
     )
     # 2026-09-15 (closing a real gap - same fix as the text-turn call site
