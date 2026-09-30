@@ -199,6 +199,14 @@ class TestLedgerEventCaptureE2E:
                 'mcp': config.mcp,
             }
             denidin.denidin_app = denidin.initialize_app(config_dict)
+            # 2026-09-30: same placeholder bot tests/billed/conftest.py gives both paths -
+            # without it every react_to_message bails out before the send, so reactions
+            # never reach the wire log or a trace.
+            if denidin.denidin_app.green_api_bot is None:
+                denidin.denidin_app.green_api_bot = object()
+            denidin.denidin_app.ai_handler.green_api_bot = denidin.denidin_app.green_api_bot
+            if denidin.denidin_app.backbone is not None:
+                denidin.denidin_app.backbone.green_api_bot = denidin.denidin_app.green_api_bot
 
         # Safety guard, every call: LedgerEventManager.storage_dir MUST resolve
         # under this test's isolated data_root (test_data/), never the real
