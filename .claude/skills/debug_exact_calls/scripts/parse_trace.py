@@ -448,7 +448,7 @@ def render_event(index: int, ts: str, kind_seen: str, boundary: str, direction: 
 
 
 def handle_capability_audit(index: int, ts, msg) -> str:
-    return details(f"{index}. [{ts}] APP-INTERNAL: use_capability dispatch outcome",
+    return details(f"{index}. [{ts}] APP-INTERNAL: tool dispatch outcome",
                     code_block(msg, "text"))
 
 

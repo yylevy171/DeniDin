@@ -5575,7 +5575,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>36. [2026-09-30 14:44:19] APP-INTERNAL: use_capability dispatch outcome</summary>
+<summary>36. [2026-09-30 14:44:19] APP-INTERNAL: tool dispatch outcome</summary>
 
 ```text
 [CAPABILITY-AUDIT] capability='cap_reminders_write' outcome='success' note="create_reminder({'message_text': 'לשלוח חשבונית ללקוח', 'schedule_type': 'one_time', 'one_time_due_at': '2026-09-30T16:45:00+03:00', 'recurrence': None})" detail='✅ נוצרה תזכורת (מזהה d1722e49-12f1-49e2-806f-83a2e7d9a7e4), מועד: 2026-09-30T16:45:00+03:00'

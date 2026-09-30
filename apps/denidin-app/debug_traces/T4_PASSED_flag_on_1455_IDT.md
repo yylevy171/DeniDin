@@ -6930,7 +6930,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>46. [2026-09-30 14:56:03] APP-INTERNAL: use_capability dispatch outcome</summary>
+<summary>46. [2026-09-30 14:56:03] APP-INTERNAL: tool dispatch outcome</summary>
 
 ```text
 [CAPABILITY-AUDIT] capability='cap_reminders_write' outcome='success' note="create_reminder({'message_text': 'לשתות מים', 'schedule_type': 'recurring', 'one_time_due_at': None, 'recurrence': {'interval': 1, 'freq': 'daily', 'weekdays': None, 'month_day': None, 'month_nth_weekday': None, 'first_occurrence_at': '2026-10-01T09:00:00+03:00', 'end_condition': 'never', 'end_count': None, 'end_until': None}})" detail='✅ נוצרה תזכורת (מזהה 4efa168c-5ca8-4b2b-9109-4bae04e02c34), מועד: 2026-10-01T09:00:00+03:00'
@@ -11127,7 +11127,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>69. [2026-09-30 14:56:21] APP-INTERNAL: use_capability dispatch outcome</summary>
+<summary>69. [2026-09-30 14:56:21] APP-INTERNAL: tool dispatch outcome</summary>
 
 ```text
 [CAPABILITY-AUDIT] capability='cap_reminders_read' outcome='success' note='list_reminders({})' detail='{"reminders": [{"reminder_id": "4efa168c-5ca8-4b2b-9109-4bae04e02c34", "message_text": "לשתות מים", "schedule": "יומי, החל מ-01/10/2026 09:00"}]}'
@@ -13110,7 +13110,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>80. [2026-09-30 14:56:34] APP-INTERNAL: use_capability dispatch outcome</summary>
+<summary>80. [2026-09-30 14:56:34] APP-INTERNAL: tool dispatch outcome</summary>
 
 ```text
 [CAPABILITY-AUDIT] capability='cap_reminders_write' outcome='success' note="modify_reminder({'reminder_id': '4efa168c-5ca8-4b2b-9109-4bae04e02c34', 'scope': 'single_occurrence', 'occurrence_date_hint': '2026-10-01', 'new_message_text': None, 'new_due_at': '2026-10-01T10:00:00+03:00', 'new_recurrence': None})" detail='✅ התזכורת עודכנה.'
