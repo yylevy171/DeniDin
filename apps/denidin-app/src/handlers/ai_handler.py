@@ -1927,14 +1927,15 @@ class AIHandler:
                      sender_phone: Optional[str] = None,
                      progress_callback: Optional[Callable[[str], None]] = None) -> AIResponse:
         """Feature 080 (REQ-080-04): thin telemetry wrapper around _get_response_impl (the
-        real logic, unchanged below) - constructs one TelemetryBuilder per turn, activates it
-        via the module-level contextvar for the duration of this call (every instrumented
-        responses.create()/tool-dispatch site below reads it), and records the finished
-        RequestTelemetry row once the turn concludes (success OR exception - the finally
-        block guarantees both context cleanup and recording regardless of how the turn ends).
-        The telemetry half is a complete no-op - just calls _get_response_impl() directly -
-        whenever self.telemetry_manager is None (the flag is off, or was never configured),
-        preserving byte-identical behavior to before this feature existed.
+        real logic, unchanged below). 2026-09-30 consolidation: the telemetry lifecycle
+        itself (construct one TelemetryBuilder per turn, record the finished RequestTelemetry
+        row on the way out - success OR exception alike, complete no-op when
+        self.telemetry_manager is None) is now the ONE shared
+        model_call_actions.telemetry_span implementation, also used by
+        BackboneOrchestrator.get_response - the two were byte-for-byte identical in shape
+        before this change, just stored the active builder differently (this class's
+        module-level contextvar vs. the orchestrator's instance attribute), which
+        telemetry_span is agnostic to.
 
         progress_callback (REQ-080-02): the caller's real "send this text to the user right
         now" function (denidin.py passes a wrapper around notification.answer, feature-flag
@@ -1943,34 +1944,22 @@ class AIHandler:
         is configured - send_progress_update's own tool attachment (_build_progress_update_tools)
         is what actually gates whether the model can ever reach this path, not this parameter's
         presence."""
+        from src.tool_actions.model_call_actions import telemetry_span
+
         callback_token = _active_progress_callback.set(progress_callback)
         interim_token = _active_interim_messages.set([])
+        effective_chat_id = chat_id or request.chat_id
         try:
-            if self.telemetry_manager is None:
-                return self._get_response_impl(
-                    request, chat_id=chat_id, user_role=user_role, sender=sender,
-                    recipient=recipient, user_phone=user_phone, is_group=is_group,
-                    chat_name=chat_name, sender_phone=sender_phone,
-                )
-
-            from src.managers.telemetry_manager import TelemetryBuilder
-
-            effective_chat_id = chat_id or request.chat_id
-            builder = TelemetryBuilder(request.request_id, effective_chat_id, now_local().isoformat())
-            telemetry_token = _active_telemetry_builder.set(builder)
-            try:
-                return self._get_response_impl(
-                    request, chat_id=chat_id, user_role=user_role, sender=sender,
-                    recipient=recipient, user_phone=user_phone, is_group=is_group,
-                    chat_name=chat_name, sender_phone=sender_phone,
-                )
-            finally:
-                _active_telemetry_builder.reset(telemetry_token)
+            with telemetry_span(self.telemetry_manager, request.request_id, effective_chat_id) as builder:
+                telemetry_token = _active_telemetry_builder.set(builder)
                 try:
-                    record = builder.finalize(now_local().isoformat())
-                    self.telemetry_manager.record(record)
-                except Exception as telemetry_error:  # pylint: disable=broad-except
-                    logger.warning(f"Feature 080 telemetry finalize/record failed: {telemetry_error}")
+                    return self._get_response_impl(
+                        request, chat_id=chat_id, user_role=user_role, sender=sender,
+                        recipient=recipient, user_phone=user_phone, is_group=is_group,
+                        chat_name=chat_name, sender_phone=sender_phone,
+                    )
+                finally:
+                    _active_telemetry_builder.reset(telemetry_token)
         finally:
             _active_progress_callback.reset(callback_token)
             _active_interim_messages.reset(interim_token)

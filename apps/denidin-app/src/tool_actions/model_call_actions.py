@@ -6,6 +6,7 @@ ONE fallback-response shape, and ONE "record what the user sent/was told" write
 for a turn that never reached a normal reply - moved out of handlers/ai_handler.py
 with behavior unchanged, one implementation, used by both paths.
 """
+import contextlib
 import logging
 import time
 from typing import Any, Callable, Optional
@@ -13,7 +14,7 @@ from typing import Any, Callable, Optional
 from openai import APIStatusError
 
 from src.models.message import AIResponse
-from src.utils.time_utils import local_from_timestamp
+from src.utils.time_utils import local_from_timestamp, now_local
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +82,32 @@ def sane_source_epoch(epoch: Optional[int]) -> Optional[int]:
     if epoch is None or epoch < _MIN_PLAUSIBLE_SOURCE_EPOCH:
         return None
     return epoch
+
+
+@contextlib.contextmanager
+def telemetry_span(telemetry_manager: Optional[Any], request_id: str, effective_chat_id: Optional[str]):
+    """2026-09-30 consolidation: the ONE turn-level telemetry lifecycle (Feature 080,
+    REQ-080-04) - previously copy-pasted, byte-for-byte identically in shape, into both
+    AIHandler.get_response (a module-level contextvar) and
+    BackboneOrchestrator.get_response (an instance attribute). Yields the constructed
+    TelemetryBuilder for the caller to install into whichever turn-scoped mechanism it
+    uses (this function is agnostic to that), and records the finished RequestTelemetry
+    row on the way out - success OR exception alike. Yields None and is a complete no-op
+    when telemetry_manager is None (the flag is off, or was never configured) -
+    preserving byte-identical behavior to before Feature 080 existed."""
+    if telemetry_manager is None:
+        yield None
+        return
+    from src.managers.telemetry_manager import TelemetryBuilder  # pylint: disable=import-outside-toplevel
+    builder = TelemetryBuilder(request_id, effective_chat_id, now_local().isoformat())
+    try:
+        yield builder
+    finally:
+        try:
+            record = builder.finalize(now_local().isoformat())
+            telemetry_manager.record(record)
+        except Exception as telemetry_error:  # pylint: disable=broad-except
+            logger.warning("Feature 080 telemetry finalize/record failed: %s", telemetry_error)
 
 
 def record_exchange(session_manager, *, memory_enabled: bool, rbac_enabled: bool,

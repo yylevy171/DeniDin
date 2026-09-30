@@ -41,6 +41,7 @@ from src.tool_actions.messaging_actions import (
 )
 from src.tool_actions.model_call_actions import (
     build_fallback_response, call_model_with_retry, record_exchange as shared_record_exchange,
+    telemetry_span,
 )
 from src.utils.wire_log import audit_wire, debug_wire
 from src.utils.time_utils import now_local, local_from_timestamp
@@ -423,19 +424,34 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         # (memory recall, session persistence, finalize, a model call) replies
         # with a friendly fallback instead of crashing the turn.
         # Feature 080 telemetry (2026-09-15, closing a real gap - see __init__'s
-        # telemetry_manager docstring): one TelemetryBuilder per turn, recorded in
-        # the `finally` below regardless of how the turn ends (success or the
-        # except above) - mirrors AIHandler.get_response's own
-        # "success OR exception" recording contract exactly. Complete no-op
-        # whenever self.telemetry_manager is None.
+        # telemetry_manager docstring), 2026-09-30 consolidation: the telemetry
+        # lifecycle itself (one TelemetryBuilder per turn, recorded on the way out -
+        # success OR exception alike, complete no-op when self.telemetry_manager is
+        # None) is now the ONE shared model_call_actions.telemetry_span
+        # implementation, also used by AIHandler.get_response - the two were
+        # byte-for-byte identical in shape before this change, just stored the
+        # active builder differently (this class's own instance attribute vs.
+        # AIHandler's module-level contextvar), which telemetry_span is agnostic to.
         effective_chat_id_for_telemetry = chat_id or request.chat_id
-        if self.telemetry_manager is not None:
-            from src.managers.telemetry_manager import TelemetryBuilder  # pylint: disable=import-outside-toplevel
-            self._turn_telemetry_builder = TelemetryBuilder(
-                request.request_id, effective_chat_id_for_telemetry, now_local().isoformat(),
+        with telemetry_span(self.telemetry_manager, request.request_id, effective_chat_id_for_telemetry) as builder:
+            self._turn_telemetry_builder = builder
+            return self._get_response_body(
+                request, chat_id=chat_id, user_role=user_role, sender=sender, recipient=recipient,
+                user_phone=user_phone, is_group=is_group, chat_name=chat_name, sender_phone=sender_phone,
+                progress_callback=progress_callback, is_media=is_media, media_extraction=media_extraction,
+                media=media, media_type=media_type,
             )
-        else:
-            self._turn_telemetry_builder = None
+
+    def _get_response_body(  # pylint: disable=too-many-locals,too-many-arguments
+            self, request: AIRequest, *, chat_id: Optional[str], user_role: str,
+            sender: Optional[str], recipient: Optional[str], user_phone: Optional[str],
+            is_group: bool, chat_name: Optional[str], sender_phone: Optional[str],
+            progress_callback: Optional[Callable[[str], None]], is_media: bool,
+            media_extraction: Optional[Dict[str, Any]], media: Optional[Any],
+            media_type: Optional[str]) -> AIResponse:
+        """The actual per-turn logic, split out of get_response so the telemetry_span
+        context manager above wraps it cleanly (a context manager's body can't easily
+        `return` from inside a try/except/finally spanning the whole call otherwise)."""
         try:
             role = self._resolve_role(user_role)
             effective_chat_id = chat_id or request.chat_id
@@ -519,13 +535,6 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
                 source_timestamp=request.timestamp,
             )
             return self._create_fallback_response(request.request_id, BACKBONE_UNEXPECTED_ERROR)
-        finally:
-            if self._turn_telemetry_builder is not None and self.telemetry_manager is not None:
-                try:
-                    record = self._turn_telemetry_builder.finalize(now_local().isoformat())
-                    self.telemetry_manager.record(record)
-                except Exception as telemetry_error:  # pylint: disable=broad-except
-                    logger.warning("Feature 080 telemetry finalize/record failed: %s", telemetry_error)
 
     # ------------------------------------------------------------------
     # Loaded-capability state (persisted on Session.active_capabilities)
