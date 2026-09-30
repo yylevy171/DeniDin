@@ -1,7 +1,7 @@
 # Feature Specification: Removing the Concept of a "Turn"
 
-**Feature ID**: 088
-**Feature Branch**: `feature/088-remove-turn-concept`
+**Feature ID**: 090
+**Feature Branch**: `feature/090-remove-turn-concept`
 **Created**: 2026-09-30
 **Status**: Backlog - not yet clarified/planned
 **Category**: Architecture
