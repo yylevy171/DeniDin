@@ -181,10 +181,11 @@ _MIN_PLAUSIBLE_SOURCE_EPOCH = 1_577_836_800
 
 
 def _sane_source_epoch(epoch: Optional[int]) -> Optional[int]:
-    """Return `epoch` when it's a plausible real send-time, else None."""
-    if epoch is None or epoch < _MIN_PLAUSIBLE_SOURCE_EPOCH:
-        return None
-    return epoch
+    """Return `epoch` when it's a plausible real send-time, else None.
+    2026-09-30 consolidation: thin wrapper around
+    model_call_actions.sane_source_epoch, the one shared implementation."""
+    from src.tool_actions.model_call_actions import sane_source_epoch
+    return sane_source_epoch(epoch)
 
 
 def _normalize_self_mentions(text: str, own_whatsapp_number: str) -> str:
@@ -1423,24 +1424,29 @@ class AIHandler:
     # Feature 080 (REQ-080-04): telemetry instrumentation helpers.
     # ------------------------------------------------------------------
 
-    def _timed_llm_call(self, call_fn: Callable[[], Any]) -> Any:
-        """Wraps one responses.create() call site with timing + token accounting, recorded
-        into the active turn's TelemetryBuilder (contextvars - see _active_telemetry_builder's
-        module docstring), if any. Times success AND failure alike (a timed-out/errored call
-        still consumed wall-clock time and must count, per contracts/telemetry-recorder.md) -
-        the original call's own exception propagates unchanged; this never adds new failure
-        modes. A complete no-op (just calls call_fn() and returns) when no telemetry builder
-        is active - the exact common case when the feature flag is off."""
+    def _timed_llm_call(self, call_fn: Callable[[], Any], *, context: str = "responses.create") -> Any:
+        """Wraps one responses.create() call site with an explicit retry for the OpenAI SDK's
+        own retry gap (2026-09-30 - see model_call_actions.call_model_with_retry's docstring),
+        plus timing + token accounting, recorded into the active turn's TelemetryBuilder
+        (contextvars - see _active_telemetry_builder's module docstring), if any. Times success
+        AND failure alike (a timed-out/errored call still consumed wall-clock time and must
+        count, per contracts/telemetry-recorder.md) - the original call's own exception (after
+        the explicit retry above is exhausted) propagates unchanged; this never adds new failure
+        modes. Telemetry recording is a complete no-op when no telemetry builder is active -
+        the exact common case when the feature flag is off; the explicit retry always applies."""
         from src.managers.telemetry_manager import monotonic_ms
+        from src.tool_actions.model_call_actions import call_model_with_retry
+
+        retrying_call_fn = lambda: call_model_with_retry(call_fn, context=context)  # noqa: E731
 
         builder = _active_telemetry_builder.get()
         if builder is None:
-            return call_fn()
+            return retrying_call_fn()
 
         start_ms = monotonic_ms()
         response = None
         try:
-            response = call_fn()
+            response = retrying_call_fn()
             return response
         finally:
             duration_ms = monotonic_ms() - start_ms
@@ -4661,44 +4667,21 @@ class AIHandler:
                         chat_name: Optional[str] = None,
                         whatsapp_id_message: Optional[str] = None,
                         source_timestamp: Optional[int] = None) -> None:
-        """bugfix-058: records a exchange that never reached the AI pipeline - e.g. an
+        """bugfix-058: records an exchange that never reached the AI pipeline - e.g. an
         unsupported-type auto-reply, a failed media turn, a declined multi-contact card, the
         catch-all error reply - so what the user sent and what they were told is still in the
-        session. `user_text=None` records only the assistant text (a notice with no new user
-        message). The user message is skipped when the chat already holds one with the same
-        `whatsapp_id_message` (the turn persisted it before failing). Same sender/recipient
-        conventions as `_persist_turn`/media turns. Never raises."""
-        if not (self.memory_enabled and self.session_manager and chat_id):
-            return
-        try:
-            if self.rbac_enabled and self.user_manager and sender_phone:
-                role = self.user_manager.get_user(sender_phone).role
-            else:
-                role = "client"
-            own_number_jid = f"{self.own_whatsapp_number}@c.us" if self.own_whatsapp_number else None
-            epoch = _sane_source_epoch(source_timestamp)
-            user_ts = None if epoch is None else local_from_timestamp(epoch)
-            already_stored = bool(
-                whatsapp_id_message
-                and self.session_manager.has_whatsapp_id_message(chat_id, whatsapp_id_message)
-            )
-            if user_text and not already_stored:
-                self.session_manager.add_message(
-                    chat_id=chat_id, role="user", content=user_text, user_role=role,
-                    sender=sender_phone, sender_name=sender_display,
-                    recipient=chat_id if is_group else own_number_jid,
-                    recipient_name=(chat_name or chat_id) if is_group else "DeniDin",
-                    whatsapp_id_message=whatsapp_id_message, timestamp=user_ts,
-                )
-            if assistant_text:
-                self.session_manager.add_message(
-                    chat_id=chat_id, role="assistant", content=assistant_text, user_role=role,
-                    sender=own_number_jid, sender_name="DeniDin",
-                    recipient=chat_id if is_group else sender_phone,
-                    recipient_name=(chat_name or chat_id) if is_group else sender_display,
-                )
-        except Exception as e:  # pylint: disable=broad-except
-            logger.error(f"Failed to record exchange in session: {e}", exc_info=True)
+        session. 2026-09-30 consolidation: thin wrapper delegating to
+        model_call_actions.record_exchange, the one shared implementation also used by
+        BackboneOrchestrator (e.g. on an OpenAI-call exception)."""
+        from src.tool_actions.model_call_actions import record_exchange as _shared_record_exchange
+        _shared_record_exchange(
+            self.session_manager, memory_enabled=self.memory_enabled,
+            rbac_enabled=self.rbac_enabled, user_manager=self.user_manager,
+            own_whatsapp_number=self.own_whatsapp_number, chat_id=chat_id,
+            user_text=user_text, assistant_text=assistant_text, sender_phone=sender_phone,
+            sender_display=sender_display, is_group=is_group, chat_name=chat_name,
+            whatsapp_id_message=whatsapp_id_message, source_timestamp=source_timestamp,
+        )
 
     def _fallback_and_persist(self, request: AIRequest, effective_chat_id: Optional[str],
                               user_obj, user_role: str, sender: Optional[str],
@@ -4717,25 +4700,9 @@ class AIHandler:
         return self._create_fallback_response(request.request_id, message)
 
     def _create_fallback_response(self, request_id: str, message: str) -> AIResponse:
-        """
-        Create a fallback AIResponse for error cases.
-
-        Args:
-            request_id: Original request ID
-            message: Fallback message to send
-
-        Returns:
-            AIResponse with fallback content
-        """
-        return AIResponse(
-            request_id=request_id,
-            response_text=message,
-            tokens_used=0,
-            prompt_tokens=0,
-            completion_tokens=0,
-            model="error-fallback",
-            finish_reason="error",
-            timestamp=int(time.time()),
-            is_truncated=False
-        )
+        """2026-09-30 consolidation: delegates to model_call_actions.build_fallback_response,
+        the one shared implementation also used by BackboneOrchestrator._create_fallback_response
+        - the two were byte-identical AIResponse shapes before this change."""
+        from src.tool_actions.model_call_actions import build_fallback_response
+        return build_fallback_response(request_id, message)
 

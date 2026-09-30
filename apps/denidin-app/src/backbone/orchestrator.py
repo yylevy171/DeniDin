@@ -39,6 +39,9 @@ from src.utils.logger import read_version, DEFAULT_VERSION_FILE
 from src.tool_actions.messaging_actions import (
     build_react_to_message_payload, send_progress_update_message,
 )
+from src.tool_actions.model_call_actions import (
+    build_fallback_response, call_model_with_retry, record_exchange as shared_record_exchange,
+)
 from src.utils.wire_log import audit_wire, debug_wire
 from src.utils.time_utils import now_local, local_from_timestamp
 
@@ -498,6 +501,23 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
                 "Unexpected error in BackboneOrchestrator.get_response for request %s: %s",
                 request.request_id, exc, exc_info=True,
             )
+            # 2026-09-30 (closing a real gap): persist what the user sent and the
+            # fallback text they're about to be told, the same as AIHandler's own
+            # _fallback_and_persist - previously an exception here (e.g. an OpenAI
+            # 424 on an image turn) left the user's message, and any image, with
+            # no record in the session at all. effective_chat_id may not exist yet
+            # if the exception happened before it was computed above, so it's
+            # re-derived here rather than assumed.
+            shared_record_exchange(
+                self.session_manager, memory_enabled=True,
+                rbac_enabled=bool(self.user_manager), user_manager=self.user_manager,
+                own_whatsapp_number=self.own_whatsapp_number,
+                chat_id=chat_id or request.chat_id, user_text=request.user_prompt,
+                assistant_text=BACKBONE_UNEXPECTED_ERROR, sender_phone=sender_phone or user_phone,
+                sender_display=sender, is_group=is_group, chat_name=chat_name,
+                whatsapp_id_message=getattr(request.original_message, "whatsapp_id_message", None),
+                source_timestamp=request.timestamp,
+            )
             return self._create_fallback_response(request.request_id, BACKBONE_UNEXPECTED_ERROR)
         finally:
             if self._turn_telemetry_builder is not None and self.telemetry_manager is not None:
@@ -694,11 +714,16 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
 
     def _call_model(self, context: str, kwargs: Dict[str, Any]) -> Any:
         """One Responses API call, wire-logged both directions, its mcp_call
-        items accumulated for this turn, telemetry recorded."""
+        items accumulated for this turn, telemetry recorded. 2026-09-30: retries
+        explicitly once on an HTTP 424 (a gap the OpenAI SDK's own max_retries
+        never covers - see model_call_actions.call_model_with_retry's docstring),
+        the same shared retry AIHandler._timed_llm_call also uses."""
         audit_wire("openai", "out", context, kwargs)
         debug_wire("openai", "out", context, kwargs)
         start = time.monotonic()
-        response = self.client.responses.create(**kwargs)
+        response = call_model_with_retry(
+            lambda: self.client.responses.create(**kwargs), context=context,
+        )
         duration_ms = (time.monotonic() - start) * 1000
         audit_wire("openai", "in", context, response)
         debug_wire("openai", "in", context, response)
@@ -798,23 +823,12 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
 
     @staticmethod
     def _create_fallback_response(request_id: str, message: str) -> AIResponse:
-        """2026-09-15 (closing a real gap): mirrors AIHandler._create_fallback_response's
-        role exactly - a friendly AIResponse for the case where get_response's own
-        try/except below catches something unexpected, so a turn NEVER crashes
-        upward with no reply at all. Unlike the legacy fallback strings (English,
-        predating this session's Hebrew-only audit), `message` here is always one
-        of the Hebrew BACKBONE_* constants in error_messages.py."""
-        return AIResponse(
-            request_id=request_id,
-            response_text=message,
-            tokens_used=0,
-            prompt_tokens=0,
-            completion_tokens=0,
-            model="error-fallback",
-            finish_reason="error",
-            timestamp=int(now_local().timestamp()),
-            should_reply=True,
-        )
+        """2026-09-30 consolidation: delegates to model_call_actions.build_fallback_response,
+        the one shared implementation also used by AIHandler._create_fallback_response - the
+        two were byte-identical AIResponse shapes before this change. Unlike the legacy
+        fallback strings (English, predating this session's Hebrew-only audit), `message`
+        here is always one of the Hebrew BACKBONE_* constants in error_messages.py."""
+        return build_fallback_response(request_id, message)
 
     @staticmethod
     def _resolve_role(user_role: str) -> Role:
