@@ -60,7 +60,7 @@ def test_godfather_records_a_deposit_as_a_standalone_receipt(denidin_app):
         _send_turn_and_approve_receipt(
             chat_id=GODFATHER_CHAT_ID,
             text=(
-                f"קיבלתי פיקדון של {amount} שקל מ{client_name}, זה לא הכנסה, "
+                f"קיבלתי פיקדון של {amount} שקל מ-{client_name}, זה לא הכנסה, "
                 f"תוציא לי קבלה על זה. התשלום התקבל היום."
             ),
             id_prefix="E2E_056_STANDALONE",

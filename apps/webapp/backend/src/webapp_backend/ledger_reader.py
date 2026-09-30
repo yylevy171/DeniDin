@@ -202,7 +202,23 @@ def _build_detail_fields(record: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 class LedgerReader:
     def __init__(self, data_root: str) -> None:
-        self._manager = LedgerEventManager(str(Path(data_root) / "events"))
+        self._events_dir = str(Path(data_root) / "events")
+        self._manager = LedgerEventManager(self._events_dir)
+        self._by_id: Optional[Dict[str, Dict[str, Any]]] = None
+        # Bumped on every reload so dependents (the clients report cache) can tell their
+        # cached result was computed from an older event set.
+        self.generation = 0
+
+    def reload(self) -> None:
+        """Re-read every event from disk (the manager only indexes at construction). The new
+        manager is built fully before the swap, so concurrent readers keep the old one."""
+        fresh = LedgerEventManager(self._events_dir)
+        self._manager = fresh
+        self._by_id = None
+        self.generation += 1
+
+    def events(self) -> List[Dict[str, Any]]:
+        return self._manager.list_events()
 
     def list_event_rows(self, days_back: int = DEFAULT_DAYS_BACK) -> Dict[str, Any]:
         if days_back < 0:
@@ -222,10 +238,14 @@ class LedgerReader:
     def raw_event(self, event_id: str) -> Optional[Dict[str, Any]]:
         """The unfiltered persisted record — for internal use (session/message resolution),
         never served to the client as-is."""
-        for record in self._manager.list_events():
-            if record.get("event_id") == event_id:
-                return dict(record)
-        return None
+        by_id = self._by_id
+        if by_id is None:
+            by_id = {}
+            for record in self._manager.list_events():
+                by_id.setdefault(record.get("event_id"), record)  # first match wins, as the old scan did
+            self._by_id = by_id
+        record = by_id.get(event_id)
+        return dict(record) if record is not None else None
 
     def get_event_detail(self, event_id: str) -> Optional[Dict[str, Any]]:
         """Right-panel view: a curated, per-type, Hebrew-labelled field list

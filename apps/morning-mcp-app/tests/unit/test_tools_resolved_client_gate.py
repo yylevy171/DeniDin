@@ -83,22 +83,48 @@ def test_resolve_exact_client_name_returns_none_on_zero_matches():
     assert result is None
 
 
-def test_resolve_exact_client_name_resolves_apostrophe_query_against_geresh_stored_name():
-    """The exact scenario that broke live (2026-08-07; relocated here
-    2026-08-12 from test_tools_client_management.py, since
-    `_resolve_client_for_document_creation` was deleted): a document-
-    creation call retypes the seeded client's name with a different
-    apostrophe/geresh variant than what's actually stored - must still
-    resolve as exact, not refuse."""
-    apostrophe_name = "סידורוביץ'"  # ASCII apostrophe (U+0027)
-    geresh_name = "סידורוביץ׳"  # correct Hebrew geresh (U+05F3)
-    record = _client_record(client_id="c-1", name=geresh_name)
-    client = _FakeMorningClient(search_clients_response={"items": [record], "total": 1})
+def test_resolve_exact_client_name_resolves_an_apostrophe_stored_client_by_its_stored_name():
+    """bugfix-027 (prod 2026-09-08, "מג'די עטילה"): the stored name carries an
+    ASCII apostrophe and resolve_client_name hands that exact name back - the
+    exact lookup must search it verbatim, not a rewritten geresh spelling."""
+    stored_name = "סידורוביץ'"  # ASCII apostrophe (U+0027)
+    record = _client_record(client_id="c-1", name=stored_name)
 
-    result = tools._resolve_exact_client_name(client, apostrophe_name)
+    class _StoredSpellingOnly(_FakeMorningClient):
+        def search_clients(self, payload):
+            self.search_clients_calls.append(payload)
+            if payload.get("name") == stored_name:
+                return {"items": [record], "total": 1}
+            return {"items": [], "total": 0}
+
+    client = _StoredSpellingOnly()
+
+    result = tools._resolve_exact_client_name(client, stored_name)
 
     assert result is not None
     assert result.id == "c-1"
+
+
+def test_resolve_exact_client_name_resolves_a_geresh_stored_client_by_its_stored_name():
+    stored_name = "סידורוביץ׳"  # Hebrew geresh (U+05F3)
+    record = _client_record(client_id="c-1", name=stored_name)
+    client = _FakeMorningClient(search_clients_response={"items": [record], "total": 1})
+
+    result = tools._resolve_exact_client_name(client, stored_name)
+
+    assert result is not None
+    assert result.id == "c-1"
+
+
+def test_resolve_exact_client_name_does_not_accept_a_different_quote_spelling_as_exact():
+    """A differing quote character is a "did you mean" for resolve_client_name
+    to put to the user - never silently accepted as exact here."""
+    record = _client_record(client_id="c-1", name="סידורוביץ׳")  # geresh stored
+    client = _FakeMorningClient(search_clients_response={"items": [record], "total": 1})
+
+    result = tools._resolve_exact_client_name(client, "סידורוביץ'")  # apostrophe typed
+
+    assert result is None
 
 
 # --- _require_resolved_client ---

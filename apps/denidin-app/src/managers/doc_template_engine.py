@@ -308,16 +308,20 @@ class DocTemplateEngine:
         # centered, inconsistent with the rest of the header) - not one
         # merged sentence -
         # compact by design since this must still fit on one page. --
+        # bugfix-063 follow-up (2026-09-17, human correction): the upper date
+        # comes BEFORE the title, not after - as in a real formal Israeli
+        # legal letterhead. Left-aligned, alone - unlike every other line in
+        # the document, which stays right-aligned RTL text (UAT-1).
+        _insert(self._build_rtl_paragraph(f"תאריך: {today}", left=True, space_after=80))
         _insert(self._build_rtl_paragraph(
             self._TITLE_TEXT, bold=True, underline=True, center=True, space_after=80
         ))
-        _insert(self._build_rtl_paragraph(f"תאריך: {today}", space_after=80))
         _insert(self._build_rtl_paragraph(
-            f"בין {client_name} (להלן – הלקוח)", space_after=0
+            f"בין {client_name} (להלן – **הלקוח**)", space_after=0
         ))
         _insert(self._build_rtl_paragraph("לבין", space_after=0))
         _insert(self._build_rtl_paragraph(
-            f'{self.FIRM_LAWYER_NAME} (להלן – עוה"ד)', space_after=160
+            f'{self.FIRM_LAWYER_NAME} (להלן – **עוה"ד**)', space_after=160
         ))
 
         _insert_section_break()
@@ -394,6 +398,7 @@ class DocTemplateEngine:
         size: Optional[int] = None,
         center: bool = False,
         justify: bool = False,
+        left: bool = False,
         hanging_indent: bool = False,
         space_after: int = 120,
     ):
@@ -422,7 +427,10 @@ class DocTemplateEngine:
         p = OxmlElement("w:p")
         pPr = OxmlElement("w:pPr")
         jc = OxmlElement("w:jc")
-        jc.set(qn("w:val"), "center" if center else ("both" if justify else "right"))
+        jc.set(
+            qn("w:val"),
+            "center" if center else ("both" if justify else ("left" if left else "right")),
+        )
         pPr.append(jc)
         if justify:
             # 2026-09-14 bug fix (found via a real rendered screenshot: a

@@ -31,12 +31,21 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 ENV="$1"
 if [ "$ENV" != "dev" ] && [ "$ENV" != "prod" ]; then
     echo "Usage: $0 dev|prod" >&2
     exit 1
 fi
+
+# 2026-09-28: --project-directory (via run_all.sh) and the health-monitoring LaunchAgent this
+# enables are both single, machine-global resources with no per-clone namespacing - refuse
+# outright unless this really is the canonical root clone's own checkout (Darwin only; a no-op on
+# prod's Linux/WSL box). See env_lock.sh's env_lock_require_canonical_root for the full
+# rationale/incident.
+source "$SCRIPT_DIR/env_lock.sh"
+env_lock_require_canonical_root "$ENV"
 
 echo "== Enabling health-monitoring prober for ${ENV} (RunAtLoad bootstraps the apps if not already up) =="
 "$SCRIPT_DIR/health_monitoring/register_prober_schedule.sh" "$ENV" enable

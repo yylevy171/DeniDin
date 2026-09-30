@@ -25,7 +25,11 @@ RUN chmod +x docker-entrypoint.sh
 # set PYTHONPATH so it's importable for any in-container usage, not just pytest.
 ENV PYTHONPATH=/app/src
 
-VOLUME ["/app/config"]
+# bugfix-067 (2026-09-26): NO `VOLUME ["/app/config"]`. Declaring it made Docker attach an ANONYMOUS
+# volume at /app/config that `docker compose up -d` reuses across recreates, freezing whatever
+# config files it held at first creation and hiding the image's own (the same trap bugfix-062 hit for
+# denidin-app). Everything under /app/config except config.json is baked into the image and must be
+# used as shipped; only config.<env>.json is bind-mounted over /app/config/config.json by compose.
 
 # Starts the FastMCP server (streamable-HTTP), optionally behind an ngrok
 # tunnel (see docker-entrypoint.sh). Server startup itself is still gated

@@ -1,5 +1,14 @@
+# config.dev.json/config.prod.json hold real Morning API secrets (see config.example.json
+# for the placeholder template) and are the SAME single file used by both host mode and
+# Docker container mode (2026-09-24 fix — there is no separate ".container.json" variant
+# anymore; that split was unnecessary duplication and, worse, wasn't gitignored at all).
 config/config.dev.json
 config/config.prod.json
+# Ad hoc, per-clone: local host-mode preview of the webapp against real prod ledger data +
+# real prod Morning credentials (points at the read-only sshfs mount, uses an isolated
+# webapp_data_preview copy so it never touches the shared canonical webapp_data). Never used
+# by provision_webapp.sh or any deploy script - config.prod.json above stays the real one.
+config/config.prod-local-preview.json
 test_data/
 logs/
 venv/

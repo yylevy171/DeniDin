@@ -66,12 +66,23 @@ case "$MODE" in
 
     source "$REPO_ROOT/scripts/env_lock.sh"
 
+    # 2026-09-28: --project-directory below is a single, machine-global runtime target - refuse
+    # outright unless this really is the canonical root clone's own checkout (Darwin only; a
+    # no-op on prod's Linux/WSL box). See env_lock.sh's env_lock_require_canonical_root.
+    env_lock_require_canonical_root
+
     # MANDATORY per-clone volume override - refuses to start rather than silently falling
     # back to this clone's own dev-data paths (real incident, 2026-07-30). This is NOT the
     # env-lock: the webapp is lock-agnostic (see header) but still must not fragment dev data.
     env_lock_require_local_override "$ENV"
 
     COMPOSE_ARGS=(--project-directory "$REPO_ROOT" -f "$COMPOSE_FILE" -f "$LOCAL_OVERRIDE")
+
+    # bugfix-066: refuse to start if bind-mounted config is missing / clear never-started containers.
+    source "$REPO_ROOT/scripts/lib/prepare_compose_service.sh"
+    for _svc in "${SERVICES[@]}"; do
+        prepare_compose_service "$_svc" "${COMPOSE_ARGS[@]}" || exit 1
+    done
 
     docker compose "${COMPOSE_ARGS[@]}" up -d "${SERVICES[@]}"
     docker compose "${COMPOSE_ARGS[@]}" ps "${SERVICES[@]}"

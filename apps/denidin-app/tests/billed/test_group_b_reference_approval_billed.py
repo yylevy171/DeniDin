@@ -295,12 +295,19 @@ class TestGroupBReferenceApprovalBilled:
         exist for every document" section stating the rule explicitly and
         unconditionally.
 
-        Deliberately does NOT state date/VAT inline in the opening message -
-        the whole point is to force the same multi-turn shape (separate
-        clarifying turns, with the model's own reply naming the display
-        number in between) that produced the real failure. Bounded to 4
-        clarifying turns so a genuine regression fails loudly rather than
-        hanging."""
+        Deliberately does NOT state the payment date inline in the opening
+        message - the whole point is to force the same multi-turn shape
+        (separate clarifying turns, with the model's own reply naming the
+        display number in between) that produced the real failure. Bounded to
+        4 clarifying turns so a genuine regression fails loudly rather than
+        hanging.
+
+        bugfix-061 (C3b): create_combo_document_as_reference here is a
+        by-reference action closing an existing type-300 - VAT was already
+        decided when that original document was created, so the bot must
+        NEVER ask about it again on this closing turn, regardless of the
+        opening message also never stating it. Only a date clarification is
+        ever expected."""
         amount = _random_amount()
         client_name, doc_number, real_id = _seed_transaction_account_300_with_real_id(
             amount, _random_description()
@@ -317,9 +324,16 @@ class TestGroupBReferenceApprovalBilled:
         for i in range(4):
             if _is_real_approval_prompt(response):
                 break
-            answer = "כן" if "מע" in (response or "") else "היום"
+            # bugfix-061 (C3b): a by-reference action must never ask about VAT -
+            # the original document already settled it. Only "מתי שולם"/missing
+            # payment-date clarifications are legitimate here.
+            assert not any(k in (response or "") for k in ('מע"מ', "מע״מ", "מעמ")), (
+                f"bugfix-061: create_combo_document_as_reference (C3b, closing an "
+                f"existing type-300) must never ask a VAT clarifying question - "
+                f"got: {response!r}"
+            )
             response, ai_response = _send_turn(
-                GODFATHER_CHAT_ID, answer, id_prefix=f"B038_MULTITURN_CLARIFY_{i}"
+                GODFATHER_CHAT_ID, "היום", id_prefix=f"B038_MULTITURN_CLARIFY_{i}"
             )
             assert not _calls_for(ai_response, "create_combo_document_as_reference"), (
                 f"executed before the actual approval turn: "

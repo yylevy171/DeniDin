@@ -25,8 +25,10 @@ artifacts
 
 # Not COPYed by either webapp Dockerfile — keep them out of the (repo-root) build context so
 # the context transfer to the daemon stays small. Backend COPYs only apps/webapp/backend/ +
-# apps/denidin-app/src/ (+ a few named files); frontend only apps/webapp/frontend/.
-apps/morning-mcp-app
+# apps/denidin-app/src/ + apps/morning-mcp-app/src/ (+ a few named files); frontend only apps/webapp/frontend/.
+# morning-mcp-app: only src/ is COPYed (backend Dockerfile - Clients tab imports MorningClient).
+apps/morning-mcp-app/*
+!apps/morning-mcp-app/src
 apps/webapp/e2e
 specs
 .github
@@ -38,9 +40,15 @@ specs
 **/.DS_Store
 
 # Secrets / per-clone files
-**/config/config.dev.json
-**/config/config.prod.json
-**/config/config.test.json
+# Any per-env / local config (config.dev/prod/test.json, config.player_prod.json, *-preview.json, ...):
+# only the safe placeholder template and the schema ship in an image. Env config is mounted at runtime.
+**/config/config.*.json
+!**/config/config.example.json
+!**/config/config.schema.json
+apps/webapp/backend/auth/*.hash
+apps/webapp/backend/logs
+**/test_logs
+**/*.log.*
 apps/webapp/backend/auth/password.hash
 creds
 docker/docker-compose.*.local.yml

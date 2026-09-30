@@ -1,1 +1,0 @@
-../repo/bugfixes/bugfix-049-financial-status-answers-from-conversation-not-ledger.md

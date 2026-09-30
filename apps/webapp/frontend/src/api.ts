@@ -88,8 +88,15 @@ export interface EventRow {
   search_blob?: string; // full-record lowercased text, for the free-text filter
 }
 
-export async function fetchEvents(daysBack: number): Promise<{ events: EventRow[]; days_back: number; count: number }> {
-  const resp = await request(`/api/events?days_back=${encodeURIComponent(daysBack)}`);
+// refresh=true is a hard reload: the backend re-reads event files and drops its cached
+// conversations. Without it the backend answers from memory.
+export async function fetchEvents(
+  daysBack: number,
+  refresh = false
+): Promise<{ events: EventRow[]; days_back: number; count: number }> {
+  const resp = await request(
+    `/api/events?days_back=${encodeURIComponent(daysBack)}${refresh ? "&refresh=1" : ""}`
+  );
   return resp.json();
 }
 
@@ -122,6 +129,74 @@ export async function searchClients(prefix: string): Promise<string[]> {
   const resp = await request(`/api/clients/search?prefix=${encodeURIComponent(prefix)}`);
   const body = await resp.json();
   return body.clients || [];
+}
+
+export interface ClientEvent {
+  date: string;
+  amount: number;
+  type: string;
+  subtype: string;
+  desc: string;
+}
+export interface ClientRow {
+  official_name: string;
+  raw_names: string[];
+  agreements_total: number;
+  deposits_total: number;
+  invoices_net: number;
+  manual_agreement_amount: number | null;
+  agreed_status: "WHITE" | "YELLOW" | "GRAY";
+  paid_status: "WHITE" | "YELLOW" | "GRAY";
+  display_agreed: number;
+  display_paid: number;
+  status: "active" | "settled" | "debt" | "missing_agreement" | "check" | "past";
+  is_manually_settled: boolean;
+  latest_activity: string | null;
+  comment: string;
+  events: ClientEvent[];
+}
+export interface SuggestedMatch {
+  name: string;
+  reasons: string[];
+}
+export interface UnmatchedEntry {
+  raw_name: string;
+  suggested_matches: SuggestedMatch[];
+  event_count: number;
+  raw_text: string[];
+  note: string;
+}
+// refresh=true re-fetches Morning's client list and recomputes; otherwise served from memory.
+export async function fetchClients(
+  refresh = false
+): Promise<{ clients: ClientRow[]; unmatched: UnmatchedEntry[] }> {
+  const resp = await request(refresh ? "/api/clients?refresh=1" : "/api/clients");
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({}));
+    throw new Error(body.message || "clients_fetch_failed");
+  }
+  return resp.json();
+}
+export async function saveClientComment(clientId: string, comment: string): Promise<void> {
+  await request(`/api/clients/${encodeURIComponent(clientId)}/comments`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ comment }),
+  });
+}
+export async function saveClientMapping(
+  rawName: string,
+  officialName?: string,
+  note?: string
+): Promise<void> {
+  const body: Record<string, string> = { raw_name: rawName };
+  if (officialName !== undefined) body.official_name = officialName;
+  if (note !== undefined) body.note = note;
+  await request("/api/clients/mapping", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
 }
 
 // <img> can't carry an Authorization header, so fetch the bytes with auth and hand back an

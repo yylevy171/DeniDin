@@ -4,3 +4,4 @@ playwright-report/
 test-results/
 blob-report/
 .last-run.json
+playwright-report-clients/

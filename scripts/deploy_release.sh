@@ -369,7 +369,11 @@ if [ "$REMOTE" -eq 1 ]; then
             done
             if [ "$CONTAINER_UP" -ne 1 ]; then
                 echo "🚨 DEPLOY FAILED at step R9 (${_cname} on ${REMOTE_HOST}): expected status 'running' within ${VERIFY_TIMEOUT}s, got '${CONTAINER_STATUS}'." >&2
+                # bugfix-066: Docker's own start error (e.g. a bind-mount failure) lives in
+                # State.Error, not in the logs of a container that never started.
+                echo "   Docker State.Error: $(remote_run "docker inspect --format '{{.State.Error}}' ${_cname}" 2>&1)" >&2
                 remote_run "docker logs ${_cname} --tail 20" >&2 2>&1 || true
+                echo "   WARNING: ${ENV} is left ENABLED with the health prober running - it retries the launch and gives up after repeated failures (see launch_failures.json / prober.log launch_error on ${REMOTE_HOST}). Fix the cause, then stop_env.sh + run_env.sh." >&2
                 exit 1
             fi
         done
@@ -414,22 +418,35 @@ source "$SCRIPT_DIR/lib/deploy_final_health_check.sh"
 
 # Cross-clone env lock + mandatory per-clone local-override file - see
 # deploy_release_single.sh's own comment for the full rationale.
-COMPOSE_ARGS=(--project-directory "$REPO_ROOT" -f "$COMPOSE_FILE")
 if [ -f "$SCRIPT_DIR/env_lock.sh" ]; then
     # shellcheck source=/dev/null
     source "$SCRIPT_DIR/env_lock.sh"
     env_lock_require_local_override "$ENV"
     LOCAL_OVERRIDE="$REPO_ROOT/docker/docker-compose.${ENV}.local.yml"
-    COMPOSE_ARGS+=(-f "$LOCAL_OVERRIDE")
+    COMPOSE_ARGS=(--project-directory "$REPO_ROOT" -f "$COMPOSE_FILE" -f "$LOCAL_OVERRIDE")
 fi
 
 echo "Note: scripts bundle present for both apps' v${VERSION} but not applied - local/dev deploys use this checkout's own ops scripts as-is (bugfix-043)."
+
+# 2026-09-28: stop_env.sh/run_env.sh below now hard-refuse to run for `dev` from any nested
+# teammate clone folder (env_lock_require_canonical_root; a no-op for `prod` - never owner-locked,
+# no multi-clone concept - and for a checkout outside this family, e.g. a test's scratch repo) -
+# this script's OWN code still runs from wherever it was invoked (its flags/logic never move), but
+# it must hand off to the RIGHT copy of stop_env.sh/run_env.sh: the canonical root clone's own, if
+# this checkout is the canonical root or one of its nested teammate clones (so the target script
+# sees itself running from the right place and doesn't refuse); otherwise (a scratch test repo,
+# entirely outside that family) this checkout's own copy, exactly as before - see
+# env_lock_deploy_target_root's own comment. This mirrors the remote/SSH prod path (which runs
+# `bash ~/${REMOTE_DEPLOY_DIR}/scripts/stop_env.sh` - the TARGET's own file, never the invoking
+# machine's) without breaking the real, non-mocked scratch-repo test suite that exercises this
+# exact local path end-to-end.
+TARGET_ROOT="$(env_lock_deploy_target_root)"
 
 # Step L1: stop the environment ONCE - disables the prober's schedule, archives its state, stops
 # BOTH apps. See header comment - this single stop (vs. deploy_release_single.sh's per-app stop)
 # is the entire point of this script.
 echo "== [L1] Stopping ${ENV} via stop_env.sh (local, once, for both apps) =="
-if ! "$SCRIPT_DIR/stop_env.sh" "$ENV"; then
+if ! "$TARGET_ROOT/scripts/stop_env.sh" "$ENV"; then
     echo "🚨 DEPLOY FAILED at step L1 (stop_env.sh ${ENV}, local): nothing further attempted." >&2
     exit 1
 fi
@@ -484,7 +501,7 @@ done
 # immediate probe, which itself calls run_all.sh (the "bootstrap" action) now that both apps'
 # images are freshly tagged.
 echo "== [L4] Starting ${ENV} via run_env.sh (local, once, for both apps) =="
-if ! "$SCRIPT_DIR/run_env.sh" "$ENV"; then
+if ! "$TARGET_ROOT/scripts/run_env.sh" "$ENV"; then
     echo "🚨 DEPLOY FAILED at step L4 (run_env.sh ${ENV}, local): the environment may be left STOPPED - investigate before retrying." >&2
     exit 1
 fi

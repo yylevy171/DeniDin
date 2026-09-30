@@ -1,0 +1,1 @@
+../../../denidin-app/scripts/run_unit_integration_tests.sh

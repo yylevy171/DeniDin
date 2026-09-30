@@ -272,10 +272,15 @@ class TestRenderFreeTextDocxFormatEssentials:
         """The exact recipe confirmed (2026-09-13, by diffing a real
         human-verified-working .docx) to actually render right-to-left in
         real Word: <w:rtl/> on the paragraph mark AND on the run. jc itself
-        may be "right" (the default), "center" (the title/"לבין" line), or
+        may be "right" (the default), "center" (the title/"לבין" line),
         "both" (justified body paragraphs, 2026-09-14 visual-fidelity fix,
-        matched against the real reference corpus) - all are RTL-safe
-        alignments, and NO OTHER value (e.g. "left") may ever appear.
+        matched against the real reference corpus), or "left" (bugfix-063,
+        UAT-1: the single upper date line ONLY, left-aligned per real
+        Israeli legal letterhead convention) - text itself stays real RTL
+        Hebrew (<w:rtl/> on the run/paragraph mark) regardless of jc, so
+        this test excludes the date line from the right/center/both check
+        below but still requires RTL runs/paragraph-mark on it like every
+        other paragraph.
 
         Paragraph-level <w:bidi/> is scoped exactly to jc="both" paragraphs,
         never any other alignment (2026-09-14, two related but opposite
@@ -291,15 +296,28 @@ class TestRenderFreeTextDocxFormatEssentials:
         docx_obj = DocxDocument(str(doc.temp_path))
         body_paragraphs = [p for p in docx_obj.paragraphs if p.text.strip()]
         assert body_paragraphs, "expected at least one non-empty body paragraph"
+        # bugfix-063 (UAT-1): only the FIRST "תאריך:" line (the upper/header
+        # one) is left-aligned - the footer also has a "תאריך:" line (the
+        # signing date), which stays right-aligned like the rest of S3.
+        upper_date_paragraph = next(
+            (p for p in body_paragraphs if p.text.strip().startswith("תאריך:")), None
+        )
+        assert upper_date_paragraph is not None, "expected an upper date line"
         for para in body_paragraphs:
             pPr = para._p.find(qn('w:pPr'))
             assert pPr is not None, f"paragraph has no pPr: {para.text!r}"
             jc = pPr.find(qn('w:jc'))
             jc_val = jc.get(qn('w:val')) if jc is not None else None
-            assert jc_val in ('right', 'center', 'both'), (
-                f"paragraph alignment is not right/center/both (RTL-safe): "
-                f"{jc_val!r} for {para.text!r}"
-            )
+            if para is upper_date_paragraph:
+                assert jc_val == 'left', (
+                    f"upper date line is not left-aligned (bugfix-063, UAT-1): "
+                    f"{jc_val!r} for {para.text!r}"
+                )
+            else:
+                assert jc_val in ('right', 'center', 'both'), (
+                    f"paragraph alignment is not right/center/both (RTL-safe): "
+                    f"{jc_val!r} for {para.text!r}"
+                )
             mark_rPr = pPr.find(qn('w:rPr'))
             assert mark_rPr is not None and mark_rPr.find(qn('w:rtl')) is not None, (
                 f"paragraph mark is not RTL: {para.text!r}"
@@ -490,3 +508,58 @@ class TestRenderFreeTextDocxFormatEssentials:
             f"'**...**' span around the amount did not produce a bold run: "
             f"{[(r.text, r.bold) for r in amount_para.runs]!r}"
         )
+
+    @pytest.mark.parametrize(
+        "variant_id", ["hourly_consultation", "multi_component_agreement", "alternative_tracks"]
+    )
+    def test_bugfix_063_party_definitions_are_bolded(self, engine, variant_id):
+        """bugfix-063 (UAT-2): the header's party-definition parentheticals
+        - "(להלן – הלקוח)" and "(להלן – עוה"ד)" - must bold specifically the
+        defined role word (הלקוח / עוה"ד), not the whole line."""
+        doc = engine.render_free_text(variant_id, self.CLIENT_NAME, self.SAMPLE_BODY)
+        docx_obj = DocxDocument(str(doc.temp_path))
+
+        client_para = next(
+            p for p in docx_obj.paragraphs if p.text.strip().startswith(f"בין {self.CLIENT_NAME}")
+        )
+        assert any(run.bold and "הלקוח" in run.text for run in client_para.runs), (
+            f"'הלקוח' is not bolded in the party definitions line: "
+            f"{[(r.text, r.bold) for r in client_para.runs]!r}"
+        )
+
+        firm_para = next(
+            p for p in docx_obj.paragraphs if p.text.strip().startswith(engine.FIRM_LAWYER_NAME)
+        )
+        assert any(run.bold and 'עוה"ד' in run.text for run in firm_para.runs), (
+            f"'עוה\"ד' is not bolded in the party definitions line: "
+            f"{[(r.text, r.bold) for r in firm_para.runs]!r}"
+        )
+
+    @pytest.mark.parametrize(
+        "variant_id", ["hourly_consultation", "multi_component_agreement", "alternative_tracks"]
+    )
+    def test_bugfix_063_date_precedes_title(self, engine, variant_id):
+        """bugfix-063 follow-up (2026-09-17, human correction): the upper
+        date line must come BEFORE the title, not after - as in a real
+        formal Israeli legal letterhead."""
+        doc = engine.render_free_text(variant_id, self.CLIENT_NAME, self.SAMPLE_BODY)
+        docx_obj = DocxDocument(str(doc.temp_path))
+        non_empty = [p for p in docx_obj.paragraphs if p.text.strip()]
+
+        date_index = next(
+            i for i, p in enumerate(non_empty) if p.text.strip().startswith("תאריך:")
+        )
+        title_index = next(
+            i for i, p in enumerate(non_empty) if p.text.strip() == engine._TITLE_TEXT
+        )
+        assert date_index < title_index, (
+            f"upper date line (index {date_index}) does not precede the title "
+            f"(index {title_index}): {[p.text for p in non_empty]!r}"
+        )
+        # the date must specifically be the FIRST non-empty paragraph in the
+        # whole document - not merely somewhere before the title.
+        assert non_empty[0].text.strip().startswith("תאריך:"), (
+            f"upper date line is not the first paragraph in the document: "
+            f"{non_empty[0].text!r}"
+        )
+

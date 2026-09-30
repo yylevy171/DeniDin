@@ -129,6 +129,24 @@ reports/merge_staging/
 reports/merge_prod.sh
 reports/prod_merge_bundle.tar.gz
 
+# Local customer data exports, WhatsApp source agreements, and mapping state files (never commit PII)
+reports/data_exports/
+reports/19.8.26 whatsapp export/
+reports/archive/
+reports/*.csv
+reports/*.html
+reports/*.md
+reports/docs/final_client_status.*
+!reports/docs/*.md
+reports/docs/final_client_status.md
+reports/new_morning_clients.json
+reports/mapping_tool/*.json
+reports/mapping_tool/*.csv
+reports/mapping_tool/*.html
+reports/mapping_tool/*.md
+!reports/mapping_tool/README.md
+!reports/mapping_tool/*.template.json
+
 .agents/
 
 # Feature 078: per-host backup config (real paths, no secrets, but per-host per

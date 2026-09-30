@@ -381,7 +381,7 @@ class TestLedgerEventCaptureE2E:
 
     # ------------------------------------------------------------------ drivers
     @staticmethod
-    def _send_image(http_server, filename, *, caption, chat_id, id_prefix):
+    def _send_image(http_server, filename, *, caption="", chat_id, id_prefix):
         """Send one real WhatsApp image through the real router handler and
         return the SYNTHETIC-turn reply (Feature 069 routes the recognised
         stash straight into the conversational pipeline)."""
@@ -447,7 +447,7 @@ class TestLedgerEventCaptureE2E:
             f"no LedgerEvent persisted for {chat_id!r} after the image + {turn} detour "
             f"turn(s). Transcript: {transcript!r}"
         )
-        return events
+        return events, transcript
 
     # ==================================================================
     # F3 - multi-component fee-agreement image, seeded exact-match client
@@ -599,7 +599,6 @@ class TestLedgerEventCaptureE2E:
 
             reply = self._send_image(
                 http_server, "Deposit_Eti.jpeg",
-                caption="הפקדה שנכנסה, תרשום ביומן",
                 chat_id=chat_id, id_prefix="LEDGER_E2E_IMAGE_BANK_FULL",
             )
             bank = ClarificationAnswerBank(
@@ -610,7 +609,7 @@ class TestLedgerEventCaptureE2E:
                 ],
                 fallback=f"כן, {BANK_IMAGE_PAYER}, תרשום ביומן",
             )
-            events = self._drive_detour_until_captured(
+            _, detour_transcript = self._drive_detour_until_captured(
                 denidin_app, chat_id, reply, bank, "LEDGER_E2E_F4", max_turns=4
             )
             events = self._assert_ledger_events_persisted(denidin_app, chat_id, expected_count=1)
@@ -724,6 +723,37 @@ class TestLedgerEventCaptureE2E:
                     f"B3/A2: the exchange omits the {element} even though the screenshot "
                     f"supplied it. Turns seen: {seen_texts!r}"
                 )
+
+            # bugfix-061 (C1b, bank deposits default to VAT-included): a בנק
+            # event's vat_status is unconditionally "כולל" - the model must
+            # never treat it as unresolved. Whenever the bot's OWN reply (over
+            # the whole exchange, not just the approval text) mentions VAT at
+            # all, that SPECIFIC mention must say VAT is included, never "not
+            # stated"/"unclear"/a question about it. A reply that never
+            # mentions VAT at all is fine too - only a mention that hedges is
+            # the bug. Checked per LINE, not per whole message: a real reply
+            # is a multi-field approval block (e.g. "מע״מ: כולל מע״מ" on one
+            # line, "אישור — כן/לא?" on another, unrelated, line) - scanning
+            # the whole message for a bare "?" anywhere would misfire on that
+            # unrelated trailing approval question.
+            vat_keywords = ('מע"מ', "מע״מ", "מעמ")
+            hedge_phrases = (
+                "לא כולל", "אינו כולל", "אינה כוללת", "לא ידוע", "לא צוין", "?",
+            )
+            all_bot_texts = [t["reply"] for t in detour_transcript] + seen_texts
+            for text in all_bot_texts:
+                if not text:
+                    continue
+                for line in text.splitlines():
+                    if not any(k in line for k in vat_keywords):
+                        continue
+                    hedges = [h for h in hedge_phrases if h in line]
+                    assert "כולל" in line and not hedges, (
+                        f"bugfix-061: a בנק (bank deposit) event's VAT is unconditionally "
+                        f"included - the bot must never mention VAT as unresolved/excluded/ "
+                        f"a question. Offending line: {line!r} (hedge phrases found: {hedges!r}); "
+                        f"full reply: {text!r}"
+                    )
 
             _, verify_ai = _send_turn(
                 chat_id,

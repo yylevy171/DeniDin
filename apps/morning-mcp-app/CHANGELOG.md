@@ -114,3 +114,15 @@ Feature 083: Fee agreement document generation over WhatsApp (RBAC-gated get/ren
 ## [0.7.5] - 2026-09-15
 
 Reconciliation release: combines Feature 083 (fee agreement document generation) with Feature 078 (prod daily backups) and the v0.7.4 fee-agreement-docs cut, which was mistakenly cut from a stale pre-078 branch base and is being superseded.
+
+## [0.7.6] - 2026-09-25
+
+Webapp: new Clients tab (Morning client status dashboard, operator comments, aliasing unmatched ledger names), in-memory caching with refresh-only reloads, correct WhatsApp conversation ordering, no refetch on tab switch (Feature 087). DeniDin: fee-agreement DOCX date/title order and bold party lines (bugfix-063).
+
+## [0.7.7] - 2026-09-26
+
+bugfix-066: config baked into the image is now used as shipped (compose files mount only config.<env>.json; no host copies of the constitution, ledger prompt or fee templates override the release); .dockerignore no longer bakes stray config/log/preview files; launch failures are reported with Docker's error; webapp /health adds Morning connectivity and ledger completeness; webapp index.html is served no-cache.
+
+## [0.7.8] - 2026-09-28
+
+Fixes: client search now matches geresh-containing names when the geresh is typed omitted; Israeli phone numbers are normalised before validation; queued WhatsApp messages are processed on startup instead of dropped; user-facing error messages are persisted in session history; and the constitution's VAT-included default for deposit screenshots/bank transfers no longer triggers a redundant VAT prompt. Also includes a chore fix: dev deploy/ops scripts now refuse to run from a nested teammate clone and always target the canonical DeniDin root, closing a gap that caused a dev deployment crash on 2026-09-27.

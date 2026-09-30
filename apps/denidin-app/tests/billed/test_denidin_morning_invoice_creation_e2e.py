@@ -61,7 +61,7 @@ from .denidin_mcp_e2e_helpers import (
     _HEBREW_NAME_SPELLING_VARIANTS,
     _SEED_PHONE,
     _calls_for,
-    _normalize_hebrew_geresh,
+    _strip_invisible_marks,
     _is_genuine_document_creation,
     _is_real_approval_prompt,
     _random_amount,
@@ -143,6 +143,15 @@ def test_godfather_creates_invoice_via_whatsapp(denidin_app):
         f"{ask_ai_response.mcp_calls if ask_ai_response else None!r}"
     )
 
+    # bugfix-061: a type-320 records money already received, so VAT is included by
+    # definition and the request above never states it - the bot must not ask about it.
+    vat_questions = (
+        "האם הסכום כולל", "האם המחיר כולל", "כולל מע\"מ או", "כולל מע״מ או",
+        "לפני מע\"מ", "לפני מע״מ", "עם מע\"מ או בלי",
+    )
+    asked = [q for q in vat_questions if q in (ask_response or "")]
+    assert not asked, f"bugfix-061: the bot asked a VAT question ({asked!r}): {ask_response!r}"
+
     create_calls = _calls_for(ai_response, "create_combo_document")
 
     assert response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
@@ -180,7 +189,17 @@ def test_godfather_creates_invoice_via_whatsapp_button_tap(denidin_app):
     against real OpenAI/Morning MCP traffic: the ASK turn must actually send
     real interactive buttons (not just a plain-text prompt), and the tap must
     resolve to the same real, single create_invoice execution the text path
-    produces."""
+    produces.
+
+    bugfix-061 (C2b): create_invoice is a type-305 document, whose amount is
+    ambiguous without a stated VAT treatment (unlike a type-320 combo
+    document, which is unconditionally VAT-included by definition, exercised
+    by test_godfather_creates_invoice_via_whatsapp above). This test's ASK
+    turn explicitly states the VAT treatment up front ("לא כולל מע\"מ") so
+    the bot has no reason to insert its own VAT-clarifying turn - keeping
+    this test's own flow a simple two-turn ASK -> TAP, the same shape this
+    test had before bugfix-061 introduced the VAT-question behavior for an
+    *unstated*-VAT type-305 request."""
     amount = _random_amount()
     description = _random_description()
     client_name = pick_existing_client()["name"]  # Feature 059 item 5: any existing client works
@@ -202,6 +221,12 @@ def test_godfather_creates_invoice_via_whatsapp_button_tap(denidin_app):
     # dual-written identically whether the prompt went out as plain text or
     # as real interactive buttons, so parsing it directly is sufficient proof
     # a genuine approval gate was reached.
+    #
+    # bugfix-061 note: this test's ASK turn explicitly states the VAT
+    # treatment up front ("לא כולל מע\"מ" in the request text above), so the
+    # mandatory VAT-question turn bugfix-061 introduced for an *unstated*
+    # VAT case never triggers here - the bot can and must go straight to a
+    # real approval prompt on this turn, same as before that bugfix.
     assert _is_real_approval_prompt(ask_response), (
         f"ASK turn's reply was not a real approval prompt: {ask_response!r}"
     )
@@ -596,7 +621,7 @@ def test_godfather_add_client_near_duplicate_name_is_asked_before_creating(denid
         f"exactly the silent-duplicate risk the courtesy check exists to "
         f"prevent: {pending!r}"
     )
-    assert _normalize_hebrew_geresh(seed_name) in (ask_response or ""), (
+    assert _strip_invisible_marks(seed_name) in (ask_response or ""), (
         f"Expected the reply to explicitly name the existing similar client "
         f"{seed_name!r} (per runtime_constitution.md's mandatory disclosure) "
         f"before offering to create a new one under {near_duplicate_name!r} - "

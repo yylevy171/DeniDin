@@ -283,18 +283,30 @@ class TestFeeAgreementGenerationFlow:
         )
 
         # RTL: every actual line of AI-authored body text must render right-to-left,
-        # with the correct alignment for its jc value - no "left".
-        for para in doc.paragraphs:
-            if not para.text.strip():
-                continue
+        # with the correct alignment for its jc value - "left" is allowed ONLY for
+        # the single upper date line (bugfix-063, UAT-1: left-aligned per real
+        # Israeli legal letterhead convention - a deliberate exception, not a
+        # regression); every other paragraph stays right/center/both.
+        non_empty_paragraphs = [p for p in doc.paragraphs if p.text.strip()]
+        upper_date_paragraph = next(
+            (p for p in non_empty_paragraphs if p.text.strip().startswith("תאריך:")), None
+        )
+        assert upper_date_paragraph is not None, "expected an upper date line"
+        for para in non_empty_paragraphs:
             pPr = para._p.find(qn('w:pPr'))
             assert pPr is not None, f"paragraph has no pPr (not RTL-safe): {para.text!r}"
             jc = pPr.find(qn('w:jc'))
             jc_val = jc.get(qn('w:val')) if jc is not None else None
-            assert jc_val in ('right', 'center', 'both'), (
-                f"paragraph alignment is not right/center/both (RTL-safe): "
-                f"{jc_val!r} for {para.text!r}"
-            )
+            if para is upper_date_paragraph:
+                assert jc_val == 'left', (
+                    f"upper date line is not left-aligned (bugfix-063, UAT-1): "
+                    f"{jc_val!r} for {para.text!r}"
+                )
+            else:
+                assert jc_val in ('right', 'center', 'both'), (
+                    f"paragraph alignment is not right/center/both (RTL-safe): "
+                    f"{jc_val!r} for {para.text!r}"
+                )
             mark_rPr = pPr.find(qn('w:rPr'))
             assert mark_rPr is not None and mark_rPr.find(qn('w:rtl')) is not None, (
                 f"paragraph mark is not RTL: {para.text!r}"
@@ -343,6 +355,23 @@ class TestFeeAgreementGenerationFlow:
         ]
         assert centered_texts == ["הסכם שכר טרחה"], (
             f"expected ONLY the title to be centered, got: {centered_texts!r}"
+        )
+
+        # bugfix-063 follow-up (2026-09-17, human correction): the upper date
+        # line must come BEFORE the title - as in a real formal Israeli legal
+        # letterhead - and must specifically be the first non-empty
+        # paragraph in the whole document, not merely somewhere before it.
+        assert non_empty_paragraphs[0].text.strip() == upper_date_paragraph.text.strip(), (
+            f"upper date line is not the first paragraph in the document: "
+            f"{non_empty_paragraphs[0].text!r}"
+        )
+        title_index = next(
+            i for i, p in enumerate(non_empty_paragraphs) if p.text.strip() == "הסכם שכר טרחה"
+        )
+        date_index = non_empty_paragraphs.index(upper_date_paragraph)
+        assert date_index < title_index, (
+            f"upper date line (index {date_index}) does not precede the title "
+            f"(index {title_index}): {[p.text for p in non_empty_paragraphs]!r}"
         )
 
         # Exactly three sections (S1 header, S2 content, S3 footer - see
@@ -401,11 +430,15 @@ class TestFeeAgreementGenerationFlow:
                 # about (date, signer) is given up front in this single
                 # message, per explicit human instruction - this case proves
                 # the one-shot no-approval flow when the user front-loads
-                # every detail themselves.
+                # every detail themselves. 2026-09-23 fix (real billed run
+                # showed the AI legitimately ask a clarifying question -
+                # "from the signing date or another date?" - over "לתשלום
+                # תוך 60 יום" alone): the 60-day payment window is now
+                # explicitly anchored to today, closing that ambiguity too.
                 "תכין הסכם שכר טרחה רגיל עבור מר אריאל בכר, בנושא בניית אתר "
                 "אינטרנט. שכר הטרחה 25,000 ש\"ח כולל מע\"מ, לתשלום תוך 60 "
-                "יום. התאריך: היום. החתימה מטעם הלקוח תהיה של מר אריאל בכר "
-                "עצמו.",
+                "יום ממועד היום. התאריך: היום. החתימה מטעם הלקוח תהיה של מר "
+                "אריאל בכר עצמו.",
                 [],
                 "multi_component_agreement",
                 "אריאל בכר",
@@ -523,7 +556,9 @@ class TestFeeAgreementGenerationFlow:
     # --- Stage 1b: multi-component supports ANY N>1 (data-model.md "Variable-length
     # component rows") - not a fixed cap ------------------------------------------
 
-    @pytest.mark.parametrize("n_components", [2, 4])
+    @pytest.mark.parametrize(
+        "n_components", [2, pytest.param(4, marks=pytest.mark.sanity)]
+    )
     def test_multi_component_arbitrary_n(self, denidin_app, config, n_components):
         """Per explicit human correction (2026-09-12): the multi-component variant
         must handle ANY N>1 real components, not a fixed maximum - all composed by

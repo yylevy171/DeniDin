@@ -763,6 +763,20 @@ class SessionManager:
             running += cost
         return list(reversed(kept_reversed))
 
+    def has_whatsapp_id_message(self, whatsapp_chat: str, whatsapp_id_message: str) -> bool:
+        """Whether a live (non-archived) message of the chat already carries this real Green API
+        `idMessage` - lets an error path avoid storing a user message a second time when the turn
+        already persisted it before failing (bugfix-058). Never raises; False when unknown."""
+        try:
+            session = self.get_session(whatsapp_chat)
+            return any(
+                mdata.get("whatsapp_id_message") == whatsapp_id_message
+                for _mid, mdata in self._iter_persisted_messages(session, live_only=True)
+            )
+        except Exception as e:  # pylint: disable=broad-except
+            logger.error("has_whatsapp_id_message failed for %s: %s", whatsapp_chat, e)
+            return False
+
     def get_messages_for_local_date(self, session: Session, date) -> List[Dict]:
         """Every message of `session` whose Israel-local calendar date == `date`
         (live + archived), oldest-first, same item shape as get_rolling_window.

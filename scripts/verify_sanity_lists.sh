@@ -24,9 +24,15 @@ check_app() {
   fi
 
   # What pytest thinks is @pytest.mark.sanity (authoritative for -m sanity).
+  # Node ids are compared verbatim, including any parametrize "[...]" suffix
+  # - run_sanity.sh must carry that suffix too when only some parametrized
+  # cases of a test are marked sanity, since run_single_test.sh needs the
+  # exact id to select just that case (stripping it here would make an
+  # unambiguous single-case mark look like drift against a correctly
+  # bracketed run_sanity.sh entry).
   local collected
   collected="$(cd "$app_dir" && "$py" -m pytest -m sanity --collect-only -q 2>/dev/null \
-    | grep -E '^tests/.*::' | sed 's/\[[0-9]*\]$//' | sort -u)"
+    | grep -E '^tests/.*::' | sort -u)"
 
   # What run_sanity.sh lists for this app. Array entries are "<app>|<nodeid>"
   # where <app> is `mm` or `den`; strip the prefix, keep only this app's.

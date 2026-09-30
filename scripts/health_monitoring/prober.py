@@ -69,7 +69,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 from verify import PROBE_TIMEOUT_SECONDS, fetch_health_body, is_healthy_body, probe_health  # noqa: F401
 
@@ -162,7 +162,10 @@ def decide_action(last_up_time: Optional[float], now: float) -> str:
     return "none"
 
 
-def run_soft_restart(env: str, scripts_dir: Path) -> None:
+_LAUNCH_ERROR_TAIL_CHARS = 3000
+
+
+def run_soft_restart(env: str, scripts_dir: Path) -> Tuple[int, str]:
     """The proper-channels restart: the same sanctioned scripts a human
     would run by hand (env_lock acquire/release, active_env.json
     bookkeeping all respected).
@@ -184,7 +187,18 @@ def run_soft_restart(env: str, scripts_dir: Path) -> None:
     expires), so this call - and therefore the scheduled task instance -
     now genuinely spans the whole boot-or-fail window."""
     subprocess.run([str(scripts_dir / "scripts" / "stop_all.sh"), env, "-force"], check=False)
-    subprocess.run([str(scripts_dir / "scripts" / "run_all_and_verify_healthy.sh"), env], check=False)
+    # bugfix-066: capture the launch script's output (previously discarded) so a launch failure -
+    # run_all_and_verify_healthy.sh exits non-zero, printing Docker's own start error, the moment
+    # `compose up` cannot start a container - is recognised, logged and counted instead of being
+    # silently retried forever. Echoed through so the scheduler's own stdout log still has it.
+    result = subprocess.run(
+        [str(scripts_dir / "scripts" / "run_all_and_verify_healthy.sh"), env],
+        check=False, capture_output=True, text=True,
+    )
+    output = (result.stdout or "") + (result.stderr or "")
+    if output:
+        print(output, file=sys.stderr)
+    return result.returncode, output[-_LAUNCH_ERROR_TAIL_CHARS:]
 
 
 def run_hard_restart(
@@ -223,6 +237,7 @@ def _write_log_entry(
     webapp_checks: Optional[dict] = None,
     webapp_frontend_ok: Optional[bool] = None,
     webapp_frontend_checks: Optional[dict] = None,
+    launch_error: Optional[str] = None,
 ) -> None:
     """denidin_checks/morning_checks are the raw parsed /health bodies
     (2026-09-07 fix, bugfix-043) - previously only the flat success/fail
@@ -250,6 +265,9 @@ def _write_log_entry(
     if webapp_frontend_ok is not None:
         entry["webapp_frontend_health"] = "success" if webapp_frontend_ok else "fail"
         entry["webapp_frontend_checks"] = webapp_frontend_checks
+    # bugfix-066: only present when a launch attempt failed - carries the launch script's own output, incl. Docker's start error.
+    if launch_error is not None:
+        entry["launch_error"] = launch_error
     with log_file.open("a", encoding="utf-8") as f:
         f.write(json.dumps(entry) + "\n")
 
@@ -310,13 +328,17 @@ def run_once(
 
     last_up_time = read_last_up_time(state_file)
 
+    launch_error: Optional[str] = None
     if all_ok:
         write_last_up_time(state_file, now)
         action = "none"
     else:
         action = decide_action(last_up_time, now)
         if action in ("soft", "bootstrap") and not dry_run:
-            run_soft_restart(env, scripts_dir)
+            exit_code, output = run_soft_restart(env, scripts_dir)
+            if exit_code != 0:
+                # bugfix-066: surface the launch script's own output (incl. Docker's start error)
+                launch_error = output or f"launch exited {exit_code} with no output"
         elif action == "hard" and not dry_run:
             run_hard_restart(
                 denidin_container, morning_container, webapp_container, webapp_frontend_container
@@ -326,6 +348,7 @@ def run_once(
         log_file, now, denidin_ok, morning_ok, denidin_body, morning_body, last_up_time, action, dry_run,
         webapp_ok=webapp_ok, webapp_checks=webapp_body,
         webapp_frontend_ok=webapp_frontend_ok, webapp_frontend_checks=webapp_frontend_body,
+        launch_error=launch_error,
     )
     return action
 

@@ -11,9 +11,13 @@ pytestmark = pytest.mark.integration
 
 def test_health_is_unauthenticated(client):
     resp = client.get("/health")
-    assert resp.status_code == 200
     body = resp.json()
-    assert body["status"] == "ok"
+    # The fixture has no real Morning credentials, so morning_connectivity (part of overall
+    # health since bugfix-066) reports fail and status 503; everything else must be healthy.
+    # What this test pins is that /health is reachable WITHOUT a login (never 401).
+    assert resp.status_code in (200, 503)
+    assert body["morning_connectivity"] == "fail"
+    assert {k for k, v in body.items() if v == "fail"} == {"morning_connectivity", "status"}
     assert body["environment"] == "test"
     assert body["version"]  # from apps/webapp/VERSION
 

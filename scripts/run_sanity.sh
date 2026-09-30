@@ -104,6 +104,7 @@ BILLED=(
   "den|tests/billed/test_ledger_query_billed.py::TestLedgerQueryBilled::test_or_across_two_identities_single_turn"
   "den|tests/billed/test_ledger_query_billed.py::TestLedgerQueryBilled::test_broad_threshold_who_owes_above_amount"
   "den|tests/billed/test_ledger_query_billed.py::TestLedgerQueryBilled::test_typo_variant_name_resolved_or_clarified_never_silently_dropped"
+  "den|tests/billed/test_fee_agreement_generation_flow.py::TestFeeAgreementGenerationFlow::test_multi_component_arbitrary_n[4]"
   "den|tests/billed/test_reminder_lifecycle_billed.py::TestReminderLifecycleBilled::test_godfather_creates_one_time_reminder_button_approval"
   "den|tests/billed/test_reminder_lifecycle_billed.py::TestReminderLifecycleBilled::test_godfather_creates_recurring_reminder"
   "den|tests/billed/test_reminder_lifecycle_billed.py::TestReminderLifecycleBilled::test_modify_single_occurrence_of_recurring_reminder"

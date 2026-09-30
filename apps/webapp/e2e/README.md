@@ -81,3 +81,15 @@ calendar day and intend to commit — it's the same deliberate step §9.5 alread
 The suite relies on `testID` / `data-testid`, `data-theme` (on `<html>`), and `aria-checked`
 / `aria-disabled` / `aria-expanded` attributes added purely for testability. `?api=` routing in
 `api.ts` is localhost-gated. None of this changes production behavior.
+
+## Feature 087 — Clients tab suite (separate config)
+
+```bash
+./node_modules/.bin/playwright test -c playwright.clients.config.ts
+```
+
+Real stack, no mocking: `clients_serve.sh` seeds `.fixture/clients` (ledger events built around the
+first real client in the Morning **sandbox**; read-only search only) and starts a backend on :8132;
+Vite serves the frontend on :4174. Needs this clone's gitignored `backend/config/config.dev.json` with
+sandbox credentials. Tests run serially (UAT-2/3 write comments/mappings) and cover UAT-1/2/3 plus
+"tab switches never refetch; only the refresh button does". Independent of the Feature 068 suite above.

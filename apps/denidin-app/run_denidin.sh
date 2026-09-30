@@ -27,6 +27,14 @@ SERVICE="denidin-app-$ENV"
 # - see scripts/env_lock.sh.
 source "$REPO_ROOT/scripts/env_lock.sh"
 
+# 2026-09-28: --project-directory below is a single, machine-global runtime target with no
+# per-clone namespacing (config.<env>.json/active_env.json/mcp-status-<env>, none of which
+# docker-compose.<env>.local.yml's override covers) - refuse outright unless this really is the
+# canonical root clone's own checkout (Darwin only; a no-op on prod's Linux/WSL box, which has no
+# multi-clone concept). See env_lock.sh's env_lock_require_canonical_root for the full
+# rationale/incident.
+env_lock_require_canonical_root "$ENV"
+
 # MANDATORY per-clone override (plain relative paths, no env vars/symlinks -
 # see CLAUDE.md's "Multi-clone lock" section) for dev/prod data+log volume
 # paths, so it doesn't matter which clone last started dev/prod. Gitignored,
@@ -55,5 +63,9 @@ env_lock_acquire "$ENV"
 # serving stale code (real incident, 2026-08-12: a stop/run cycle here alone
 # was mistaken for a rebuild - see CLAUDE.md's "Merging a code fix to master
 # does not redeploy it" for the general rule this is one instance of).
+# bugfix-066: refuse to start if bind-mounted config is missing (Docker would silently create it
+# as an empty root-owned directory), and clear never-started containers so a fixed mount takes.
+source "$REPO_ROOT/scripts/lib/prepare_compose_service.sh"
+prepare_compose_service "$SERVICE" "${COMPOSE_ARGS[@]}" || exit 1
 docker compose "${COMPOSE_ARGS[@]}" up -d "$SERVICE"
 docker compose "${COMPOSE_ARGS[@]}" ps "$SERVICE"

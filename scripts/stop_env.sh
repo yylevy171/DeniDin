@@ -33,6 +33,15 @@ if [ "$ENV" != "dev" ] && [ "$ENV" != "prod" ]; then
     exit 1
 fi
 
+# 2026-09-28: this script's --project-directory (via stop_all.sh) and the health-monitoring
+# LaunchAgent it disables are both single, machine-global resources with no per-clone
+# namespacing - refuse outright unless this really is the canonical root clone's own checkout
+# (Darwin only; a no-op on prod's Linux/WSL box). See env_lock.sh's
+# env_lock_require_canonical_root for the full rationale/incident.
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/env_lock.sh"
+env_lock_require_canonical_root "$ENV"
+
 # shellcheck source=/dev/null
 source "$SCRIPT_DIR/health_monitoring/prober_paths.sh"
 

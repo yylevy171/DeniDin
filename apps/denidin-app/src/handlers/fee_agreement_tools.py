@@ -187,7 +187,10 @@ VERIFY_FEE_AGREEMENT_DOCUMENT_TOOL: Dict[str, Any] = {
         "check - LibreOffice is unavailable in the runtime container, so any "
         "such check would be permanently unable to run there; one-page "
         "discipline is achieved by writing concisely, not by a code-level "
-        "measurement.)"
+        "measurement.) The fixed header (code-injected, never yours to write) "
+        "must show the date BEFORE the title (\"הסכם שכר טרחה\") - as in a "
+        "real formal Israeli legal letterhead - never after; flag it if the "
+        "extracted text ever shows the title before the date."
     ),
     "parameters": {
         "type": "object",

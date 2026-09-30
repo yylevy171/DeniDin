@@ -29,7 +29,10 @@ services:
       - "8201:8100"
     volumes:
       - ./apps/denidin-app/config/config.prod.json:/app/config/config.json:ro
-      - ./apps/denidin-app/config/runtime_constitution.md:/app/config/runtime_constitution.md:ro
+      # Everything else under /app/config (runtime_constitution.md, ledger_recognition_prompt.md,
+      # fee_agreement_templates/) is BAKED INTO THE IMAGE and must be used as shipped - never
+      # bind-mounted from this box's folder over it (bugfix-066: a mounted, never-refreshed copy
+      # silently overrode the image's constitution for weeks). Only per-env secrets are mounted.
       - ./apps/denidin-app/data:/app/data
       - ./apps/denidin-app/logs/prod:/app/logs
       - ./shared/mcp-status-prod:/app/mcp-status
@@ -64,10 +67,13 @@ services:
         max-size: "50m"
         max-file: "5"
 
-  # Feature 068 — read-only Ledger Web UI. See docker-compose.dev.yml for the rationale.
-  # denidin-data here is prod data (./apps/denidin-app/data), mounted READ-ONLY — on a coderN
+  # Feature 068 — Ledger Web UI. See docker-compose.dev.yml for the rationale. denidin-data
+  # here is prod data (./apps/denidin-app/data), mounted READ-ONLY forever — on a coderN
   # clone that path is remapped to the root clone / real prod mount via
-  # docker-compose.prod.local.yml, same as the other apps.
+  # docker-compose.prod.local.yml, same as the other apps. Feature 087's webapp_data
+  # volume is this app's OWN writable state (comments/mappings/notes, seeded from Rapaport's
+  # live analyst files — see webapp_data/README.md), a single folder (not per-env, since
+  # Rapaport maintains one dataset) and completely separate mount from denidin-data.
   webapp-backend-prod:
     build:
       context: .
@@ -75,9 +81,12 @@ services:
     ports:
       - "8101:8100"
     volumes:
-      - ./apps/webapp/backend/config/config.prod.container.json:/app/apps/webapp/backend/config/config.json:ro
+      # 2026-09-24: mounts the SAME config.prod.json used for a real prod deploy — no more
+      # separate ".container.json" file (see docker-compose.dev.yml for the full rationale).
+      - ./apps/webapp/backend/config/config.prod.json:/app/apps/webapp/backend/config/config.json:ro
       - ./apps/webapp/backend/auth/password.hash:/app/apps/webapp/backend/auth/password.hash:ro
-      - ./apps/denidin-app/data:/app/denidin-data:ro
+      - ./apps/denidin-app/data:/app/apps/denidin-app/data:ro
+      - ./apps/webapp/webapp_data:/app/apps/webapp/webapp_data
       - ./apps/webapp/logs/prod:/app/apps/webapp/backend/logs
     restart: "no"
 

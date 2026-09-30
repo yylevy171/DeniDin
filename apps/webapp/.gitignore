@@ -1,0 +1,9 @@
+# Feature 087: webapp-backend's own writable data root (comments/mappings/notes) — a
+# single shared folder (no per-env subfolder; Rapaport maintains one dataset, not separate
+# dev/prod copies), seeded from Rapaport's live analyst files, real client data. Never
+# committed — same rationale as denidin-app/dev_data and denidin-app/data.
+webapp_data/*
+!webapp_data/README.md
+# Ad hoc, per-clone scratch copy for local prod-data preview sessions (see
+# config.prod-local-preview.json) - isolates preview edits from the real folder above.
+webapp_data_preview/
