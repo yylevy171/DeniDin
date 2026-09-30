@@ -10,3 +10,6 @@ about to wait on the user (a choice, a missing detail, an approval), in the midd
 of a flow as well. Say which flow you are in and which step, and if you are inside a
 flow that was loaded by another flow, say so, so that you know where to return to.
 Also note what you are waiting for and what you will do with each possible answer.
+
+Record an action as done only after its result is back and confirms it. In the same
+response as the call that performs it, the action is still in progress, not completed.
