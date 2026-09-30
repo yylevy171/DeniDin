@@ -385,24 +385,64 @@ def render_event(index: int, ts: str, kind_seen: str, boundary: str, direction: 
         if isinstance(source, dict):
             mcp_calls = _extract_mcp_calls(source)
 
-    audit_body = _render_openai_or_whatsapp_body(boundary, direction, audit_rest) if audit_rest is not None else None
-    debug_body = (_render_openai_or_whatsapp_body(boundary, direction, debug_payload_text)
-                  if debug_payload_text is not None else None)
+    if not mcp_calls:
+        audit_body = _render_openai_or_whatsapp_body(boundary, direction, audit_rest) if audit_rest is not None else None
+        debug_body = (_render_openai_or_whatsapp_body(boundary, direction, debug_payload_text)
+                      if debug_payload_text is not None else None)
+        blocks.append(_make_block(index, label, audit_body, debug_body))
+        return blocks, index + 1
 
-    blocks.append(_make_block(index, label, audit_body, debug_body))
-    next_index = index + 1
+    # 2026-09-30: hosted MCP calls execute server-side INSIDE this one
+    # response, and their position in `output` is real ordering - items
+    # listed after an mcp_call were produced after its result came back.
+    # Rendering every MCP turn after the whole response made later
+    # function_calls look like they preceded the MCP result (a false
+    # "premature success" finding). So the response is split into
+    # segments at each mcp_call, and the turns are emitted in output order:
+    # [items before] -> MCP call -> MCP result -> [items after] -> ...
+    def _segments(data):
+        segs, cur = [], []
+        for item in (data.get("output") or []) if isinstance(data, dict) else []:
+            if item.get("type") == "mcp_call":
+                segs.append(cur)
+                segs.append(item)
+                cur = []
+            else:
+                cur.append(item)
+        segs.append(cur)
+        return segs
 
-    for item in mcp_calls:
-        name = item.get("name")
-        call_body, result_body = render_mcp_call_sections(item)
-        # Same content serves as both Audit and Debug here - an mcp_call's
-        # arguments/output are already fully verbatim in the response dump
-        # this was extracted from; there is no separate concise/full pair
-        # for it the way there is for a top-level openai/whatsapp event.
-        blocks.append(_make_block(next_index, f"MODEL → MORNING MCP — {name}", None, call_body))
-        next_index += 1
-        blocks.append(_make_block(next_index, f"MORNING MCP → MODEL — {name}", None, result_body))
-        next_index += 1
+    debug_segs = _segments(debug_data)
+    audit_segs = _segments(audit_data) if isinstance(audit_data, dict) else None
+    if audit_segs is not None and len(audit_segs) != len(debug_segs):
+        audit_segs = None
+    n_parts = sum(1 for s in debug_segs if isinstance(s, list))
+    part = 0
+    next_index = index
+    for pos, seg in enumerate(debug_segs):
+        if isinstance(seg, list):
+            part += 1
+            if not seg and part not in (1, n_parts):
+                continue  # two adjacent mcp_calls - nothing between them
+            debug_body = render_openai_debug_in({**debug_data, "output": seg})
+            audit_body = (render_openai_debug_in({**audit_data, "output": audit_segs[pos]})
+                          if audit_segs is not None else None)
+            if not seg:
+                debug_body += "\n- (no output items in this part)"
+            blocks.append(_make_block(next_index, f"{label} (response part {part}/{n_parts})",
+                                      audit_body, debug_body))
+            next_index += 1
+        else:
+            name = seg.get("name")
+            call_body, result_body = render_mcp_call_sections(seg)
+            # Same content serves as both Audit and Debug here - an mcp_call's
+            # arguments/output are already fully verbatim in the response dump
+            # this was extracted from; there is no separate concise/full pair
+            # for it the way there is for a top-level openai/whatsapp event.
+            blocks.append(_make_block(next_index, f"MODEL → MORNING MCP — {name}", None, call_body))
+            next_index += 1
+            blocks.append(_make_block(next_index, f"MORNING MCP → MODEL — {name}", None, result_body))
+            next_index += 1
 
     return blocks, next_index
 

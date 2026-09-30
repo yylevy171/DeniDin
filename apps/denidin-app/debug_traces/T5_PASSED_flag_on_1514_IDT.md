@@ -3384,7 +3384,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>23. [2026-09-30 15:14:35] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>23. [2026-09-30 15:14:35] MODEL → APP — context=_run_resolution_loop (follow-up) (response part 1/2)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -3392,13 +3392,6 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 - response.id: `resp_0b6a5ad34650c1a3006abcfd23cbc887d1aec069b443e3280b`
 - status: `completed`
 - usage: `{"input_tokens": 11799, "input_tokens_details": {"cache_write_tokens": 72, "cached_tokens": 9391}, "output_tokens": 351, "output_tokens_details": {"reasoning_tokens": 273}, "total_tokens": 12150}`
-- reasoning item (content not user-visible)
-- function_call: `send_progress_update` call_id=`call_qSVSZRP6UMUcrCQ9iKuNOMv5`
-```json
-{
-  "text": "החיפוש הושלם, ואני מסכם את שש החשבוניות שנמצאו."
-}
-```
 
 </details>
 
@@ -3408,13 +3401,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 - response.id: `resp_0b6a5ad34650c1a3006abcfd23cbc887d1aec069b443e3280b`
 - status: `completed`
 - usage: `{"input_tokens": 11799, "input_tokens_details": {"cache_write_tokens": 72, "cached_tokens": 9391}, "output_tokens": 351, "output_tokens_details": {"reasoning_tokens": 273}, "total_tokens": 12150}`
-- reasoning item (content not user-visible)
-- function_call: `send_progress_update` call_id=`call_qSVSZRP6UMUcrCQ9iKuNOMv5`
-```json
-{
-  "text": "החיפוש הושלם, ואני מסכם את שש החשבוניות שנמצאו."
-}
-```
+- (no output items in this part)
 
 </details>
 
@@ -3684,7 +3671,44 @@ output:
 </details>
 
 <details>
-<summary>26. [2026-09-30 15:14:35] APP → USER — context=progress_update</summary>
+<summary>26. [2026-09-30 15:14:35] MODEL → APP — context=_run_resolution_loop (follow-up) (response part 2/2)</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+- response.id: `resp_0b6a5ad34650c1a3006abcfd23cbc887d1aec069b443e3280b`
+- status: `completed`
+- usage: `{"input_tokens": 11799, "input_tokens_details": {"cache_write_tokens": 72, "cached_tokens": 9391}, "output_tokens": 351, "output_tokens_details": {"reasoning_tokens": 273}, "total_tokens": 12150}`
+- reasoning item (content not user-visible)
+- function_call: `send_progress_update` call_id=`call_qSVSZRP6UMUcrCQ9iKuNOMv5`
+```json
+{
+  "text": "החיפוש הושלם, ואני מסכם את שש החשבוניות שנמצאו."
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+- response.id: `resp_0b6a5ad34650c1a3006abcfd23cbc887d1aec069b443e3280b`
+- status: `completed`
+- usage: `{"input_tokens": 11799, "input_tokens_details": {"cache_write_tokens": 72, "cached_tokens": 9391}, "output_tokens": 351, "output_tokens_details": {"reasoning_tokens": 273}, "total_tokens": 12150}`
+- reasoning item (content not user-visible)
+- function_call: `send_progress_update` call_id=`call_qSVSZRP6UMUcrCQ9iKuNOMv5`
+```json
+{
+  "text": "החיפוש הושלם, ואני מסכם את שש החשבוניות שנמצאו."
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>27. [2026-09-30 15:14:35] APP → USER — context=progress_update</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -3713,7 +3737,7 @@ output:
 </details>
 
 <details>
-<summary>27. [2026-09-30 15:14:35] USER ← APP (send result) — context=progress_update</summary>
+<summary>28. [2026-09-30 15:14:35] USER ← APP (send result) — context=progress_update</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -3741,7 +3765,7 @@ output:
 </details>
 
 <details>
-<summary>28. [2026-09-30 15:14:35] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>29. [2026-09-30 15:14:35] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -4175,7 +4199,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>29. [2026-09-30 15:14:38] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>30. [2026-09-30 15:14:38] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -4236,7 +4260,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>30. [2026-09-30 15:14:38] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>31. [2026-09-30 15:14:38] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -4584,7 +4608,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>31. [2026-09-30 15:14:42] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>32. [2026-09-30 15:14:42] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -4621,7 +4645,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>32. [2026-09-30 15:14:42] APP → USER — context=text</summary>
+<summary>33. [2026-09-30 15:14:42] APP → USER — context=text</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -4650,7 +4674,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>33. [2026-09-30 15:14:42] APP → MODEL — context=recognize_ledger_event</summary>
+<summary>34. [2026-09-30 15:14:42] APP → MODEL — context=recognize_ledger_event</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -4936,7 +4960,7 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 </details>
 
 <details>
-<summary>34. [2026-09-30 15:14:45] MODEL → APP — context=recognize_ledger_event</summary>
+<summary>35. [2026-09-30 15:14:45] MODEL → APP — context=recognize_ledger_event</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
