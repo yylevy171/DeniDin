@@ -13,8 +13,8 @@ import pytest
 
 from src.backbone.capability_tags import ALWAYS_PRESENT_CAPABILITIES, CapabilityTag
 from src.backbone.flow_tags import FLOW_INFO, FlowTag, flow_catalog_text
-from src.backbone.orchestration_tools import ORCHESTRATION_TOOLS
-from src.backbone.orchestrator import BackboneOrchestrator
+from src.backbone.resolution_tools import RESOLUTION_TOOLS
+from src.backbone.backbone import Backbone
 from src.managers.session_manager import SessionManager
 from src.models.config import AppConfiguration
 from src.models.message import AIRequest
@@ -52,11 +52,11 @@ def _request():
 
 
 def _orch(env, client=None):
-    return BackboneOrchestrator(client or MagicMock(), env.config, session_manager=env.sessions)
+    return Backbone(client or MagicMock(), env.config, session_manager=env.sessions)
 
 
 def test_flow_tools_are_offered_and_plural():
-    by_name = {t["name"]: t for t in ORCHESTRATION_TOOLS}
+    by_name = {t["name"]: t for t in RESOLUTION_TOOLS}
     assert {"load_flows", "unload_flows", "load_capabilities", "unload_capabilities"} <= set(by_name)
     assert "load_capability" not in by_name and "unload_capability" not in by_name
     assert by_name["load_flows"]["parameters"]["properties"]["flows"]["type"] == "array"
@@ -75,10 +75,10 @@ def test_every_flow_has_a_multi_sentence_description_and_a_prompt_file():
 
 def test_load_several_flows_and_capabilities_at_once_and_persist(env):
     orch = _orch(env)
-    result = orch._dispatch_orchestration_tool(
+    result = orch._dispatch_resolution_tool(
         "load_flows", {"flows": ["flow_add_client", "flow_issue_invoice_for_payment_due", "flow_add_client"]}, "c")
     assert "flow_add_client, flow_issue_invoice_for_payment_due" in result
-    orch._dispatch_orchestration_tool("load_capabilities", {"capabilities": ["cap_client_read", "cap_client_write"]}, "c")
+    orch._dispatch_resolution_tool("load_capabilities", {"capabilities": ["cap_client_read", "cap_client_write"]}, "c")
     session = env.sessions.get_session("c")
     assert session.active_flows == ["flow_add_client", "flow_issue_invoice_for_payment_due"]
     assert session.active_capabilities == ["cap_client_read", "cap_client_write"]
@@ -86,27 +86,27 @@ def test_load_several_flows_and_capabilities_at_once_and_persist(env):
 
 def test_unknown_names_are_reported_not_silently_dropped(env):
     orch = _orch(env)
-    result = orch._dispatch_orchestration_tool("load_flows", {"flows": ["bogus", "flow_add_client"]}, "c")
+    result = orch._dispatch_resolution_tool("load_flows", {"flows": ["bogus", "flow_add_client"]}, "c")
     assert "unknown flow(s) ignored: bogus" in result
     assert orch._get_active_flows("c") == [FlowTag.ADD_CLIENT]
 
 
 def test_unload_flows_and_capabilities_only_touch_their_own_set(env):
     orch = _orch(env)
-    orch._dispatch_orchestration_tool("load_flows", {"flows": ["flow_add_client", "flow_modify_client"]}, "c")
-    orch._dispatch_orchestration_tool("load_capabilities", {"capabilities": ["cap_client_read"]}, "c")
-    orch._dispatch_orchestration_tool("unload_flows", {"flows": ["flow_add_client"]}, "c")
+    orch._dispatch_resolution_tool("load_flows", {"flows": ["flow_add_client", "flow_modify_client"]}, "c")
+    orch._dispatch_resolution_tool("load_capabilities", {"capabilities": ["cap_client_read"]}, "c")
+    orch._dispatch_resolution_tool("unload_flows", {"flows": ["flow_add_client"]}, "c")
     assert orch._get_active_flows("c") == [FlowTag.MODIFY_CLIENT]
     assert orch._get_active_tags("c") == [CapabilityTag.CLIENT_READ]
-    orch._dispatch_orchestration_tool("unload_capabilities", {"capabilities": ["cap_client_read"]}, "c")
+    orch._dispatch_resolution_tool("unload_capabilities", {"capabilities": ["cap_client_read"]}, "c")
     assert orch._get_active_flows("c") == [FlowTag.MODIFY_CLIENT] and orch._get_active_tags("c") == []
 
 
 def test_reset_to_backbone_clears_both_sets(env):
     orch = _orch(env)
-    orch._dispatch_orchestration_tool("load_flows", {"flows": ["flow_user_question"]}, "c")
-    orch._dispatch_orchestration_tool("load_capabilities", {"capabilities": ["cap_ledger_query"]}, "c")
-    orch._dispatch_orchestration_tool("reset_to_backbone", {}, "c")
+    orch._dispatch_resolution_tool("load_flows", {"flows": ["flow_user_question"]}, "c")
+    orch._dispatch_resolution_tool("load_capabilities", {"capabilities": ["cap_ledger_query"]}, "c")
+    orch._dispatch_resolution_tool("reset_to_backbone", {}, "c")
     session = env.sessions.get_session("c")
     assert session.active_flows == [] and session.active_capabilities == []
 
@@ -148,12 +148,12 @@ def test_idle_sweep_clears_flows_too(env):
 def test_loading_actions_are_audit_and_debug_logged_with_reasoning(env, caplog):
     caplog.set_level(logging.DEBUG)
     orch = _orch(env)
-    orch._dispatch_orchestration_tool(
+    orch._dispatch_resolution_tool(
         "record_planning_status",
         {"where_i_was": "start", "this_turns_purpose": "invoice for X", "expectation": "resolve X"}, "c")
-    orch._dispatch_orchestration_tool("load_flows", {"flows": ["flow_issue_invoice_for_payment_due"]}, "c")
-    orch._dispatch_orchestration_tool("load_capabilities", {"capabilities": ["cap_client_read"]}, "c")
-    orch._dispatch_orchestration_tool("reset_to_backbone", {}, "c")
+    orch._dispatch_resolution_tool("load_flows", {"flows": ["flow_issue_invoice_for_payment_due"]}, "c")
+    orch._dispatch_resolution_tool("load_capabilities", {"capabilities": ["cap_client_read"]}, "c")
+    orch._dispatch_resolution_tool("reset_to_backbone", {}, "c")
     info = [r.getMessage() for r in caplog.records if r.levelno == logging.INFO and "[FLOW-AUDIT]" in r.getMessage()]
     debug = [r.getMessage() for r in caplog.records if r.levelno == logging.DEBUG and "[FLOW-DEBUG]" in r.getMessage()]
     assert len(info) == 3 and len(debug) == 3

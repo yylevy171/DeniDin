@@ -1,6 +1,6 @@
 """
 OpenAI-call/error-handling/persistence primitives shared by the legacy AIHandler
-and the Feature 063 backbone orchestrator (2026-09-30 consolidation request):
+and the Feature 063 backbone (2026-09-30 consolidation request):
 ONE place that calls OpenAI with an explicit retry for the SDK's own retry gap,
 ONE fallback-response shape, and ONE "record what the user sent/was told" write
 for a turn that never reached a normal reply - moved out of handlers/ai_handler.py
@@ -62,7 +62,7 @@ def call_model_with_retry(call_fn: Callable[[], Any], *, context: str,
 
 def build_fallback_response(request_id: str, message: str) -> AIResponse:
     """The one AIResponse shape both the legacy AIHandler and the backbone
-    orchestrator return when their own top-level try/except catches something
+    backbone return when their own top-level try/except catches something
     unexpected - identical in both before this consolidation, so there is now
     exactly one implementation."""
     return AIResponse(
@@ -89,7 +89,7 @@ def telemetry_span(telemetry_manager: Optional[Any], request_id: str, effective_
     """2026-09-30 consolidation: the ONE turn-level telemetry lifecycle (Feature 080,
     REQ-080-04) - previously copy-pasted, byte-for-byte identically in shape, into both
     AIHandler.get_response (a module-level contextvar) and
-    BackboneOrchestrator.turn_with_rounds (an instance attribute). Yields the constructed
+    Backbone.turn_with_rounds (an instance attribute). Yields the constructed
     TelemetryBuilder for the caller to install into whichever turn-scoped mechanism it
     uses (this function is agnostic to that), and records the finished RequestTelemetry
     row on the way out - success OR exception alike. Yields None and is a complete no-op

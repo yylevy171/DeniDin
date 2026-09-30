@@ -1,7 +1,7 @@
 """
-MediaHandler - Orchestrates complete media processing workflow.
+MediaHandler - Drives complete media processing workflow.
 
-Phase 5: Media Handler Orchestration
+Phase 5: Media Handler Coordination
 Coordinates: Download → Validate → Extract → Format summary → Return response
 
 Since extractors (Phase 4) already return document_analysis, MediaHandler
@@ -27,7 +27,7 @@ logger = get_logger(__name__)
 
 class MediaHandler:
     """
-    Orchestrates complete media processing workflow.
+    Drives complete media processing workflow.
     
     Workflow:
     1. Validate file size
@@ -290,7 +290,7 @@ class MediaHandler:
                 # synthetic conversational turn instead of sending `summary`.
                 "ledger_stash": ledger_stash,
                 "ledger_stash_source_type": ledger_stash_source_type,
-                # Feature 063 (2026-09-14): the Backbone orchestrator's own reply
+                # Feature 063 (2026-09-14): the Backbone's own reply
                 # comes from its own reasoning (Intent -> Planning -> capability
                 # steps) over this SAME extraction, rather than the plain `summary`
                 # above - so the raw extraction is exposed here too, not just the

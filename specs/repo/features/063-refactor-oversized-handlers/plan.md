@@ -17,13 +17,13 @@
 ## Summary
 
 Build a **new, fully parallel** implementation of DeniDin's turn-handling: a thin **Backbone
-orchestrator kernel** (static behavioral constants only — persona, boundaries, always-on UX) that
+backbone kernel** (static behavioral constants only — persona, boundaries, always-on UX) that
 drives ONE tool-driven loop (`load_flows`/`load_capabilities` + unload counterparts/`reset_to_backbone`, persisted
 per chat — `contracts/capability-resolution-loop.md`) over 10 **domain capabilities** (Invoicing
 Write/Read, Client Write/Read, Ledger Events Capture/Query, Reminders Write/Read, Docx Write, and
 **Media Analysis** — image/PDF/DOCX extraction, folded into this same capability model instead of
 living outside it). Loading a capability attaches its prompt AND its real tools. Every message — text or media — enters through
-this one orchestrator; there is no separate deterministic media pre-route. Every round of the loop is one OpenAI call carrying Backbone + the prompt and tools of every
+this one backbone; there is no separate deterministic media pre-route. Every round of the loop is one OpenAI call carrying Backbone + the prompt and tools of every
 currently-loaded capability, rebuilt from the persisted set each call.
 
 This is selected at startup via `config.feature_flags.enable_capability_backbone` (default
@@ -35,7 +35,7 @@ completely untouched `runtime_constitution.md`, `config/ledger_recognition_promp
 `prompts/*.txt` (REQ-063-07) — `ai_handler.py` and the extractor classes are never modified by
 this feature. The two domains with real local storage (Ledger Events, Reminders) and Media
 Analysis's extraction code all stay exactly where they are, imported unmodified by the new
-orchestrator's capability handlers — everything else in the new path is independent, new code
+backbone's capability handlers — everything else in the new path is independent, new code
 under a new `config/prompts/` folder. No new persisted data shape, no new user-facing behavior, no
 new acceptance scenarios (human-approved decision, 2026-09-14) — the pre-existing
 `billed`/`expensive` test suite, run against both implementations, is the acceptance gate.
@@ -50,7 +50,7 @@ persistence and `handlers/extractors/*.py`'s extraction logic stay exactly where
 imported unmodified by both implementations; no data reshaping.
 **Testing**: `pytest` — existing `unit`/`integration`/`billed`/`expensive`/`sanity` tiers,
 unchanged tooling (`scripts/run_single_test.sh` etc.). `ai_handler.py`'s existing unit tests are
-untouched (the file itself doesn't change); the new orchestrator gets its own new, standalone unit
+untouched (the file itself doesn't change); the new backbone gets its own new, standalone unit
 tests. `billed`/`expensive`/`sanity` suites run unmodified, against both implementations.
 **Target Platform**: Docker containers, `dev`/`prod`, unchanged (019-env-separation).
 **Project Type**: Single backend application (`apps/denidin-app`), no new project/service.
@@ -65,7 +65,7 @@ cached prefix per call; REQ-063-07 — `ai_handler.py`, `runtime_constitution.md
 byte-for-byte untouched while the flag exists; zero observable behavior change with the flag on
 (REQ-063-05); the model, not code, chooses flows and capabilities (`load_flows`/`load_capabilities`), so there is no
 planning-failure fallback to maintain.
-**Scale/Scope**: 1 new `src/backbone/` package (orchestrator + orchestration/backbone tools) + domain
+**Scale/Scope**: 1 new `src/backbone/` package (backbone + resolution/backbone tools) + domain
 capability packages under `src/capabilities/` (10 domain capability prompt files,
 consolidating what's currently split across `runtime_constitution.md`,
 `ledger_recognition_prompt.md`, and 2 standalone `.txt` files) built alongside (not replacing) the
@@ -85,7 +85,7 @@ section, post-design).*
 | No monkey-patching (CONSTITUTION §XVII) | ✅ Pass | Capability/plan loading is plain conditional dispatch + dependency injection (config-driven file paths), no runtime method replacement. |
 | `pathlib.Path`, not string concatenation | ✅ Pass | New `_load_capability_prompt` follows `_load_constitution`'s existing `Path(base_dir) / ...` pattern. |
 | Integration tests as real entry points, zero internal mocking (CONSTITUTION §I/§V) | ✅ Pass | No new integration tests planned beyond what `speckit.tasks` derives per-capability; existing integration suite untouched. |
-| Retry policy (retry once on 5xx/timeout, never 4xx) | ✅ Pass | Every orchestration-loop round reuses `_timed_llm_call`'s existing retry policy, reimplemented in the new module (research.md R2), no new policy. |
+| Retry policy (retry once on 5xx/timeout, never 4xx) | ✅ Pass | Every resolution-loop round reuses `_timed_llm_call`'s existing retry policy, reimplemented in the new module (research.md R2), no new policy. |
 | Version/release decisions human-only | ✅ N/A at plan stage | No release cut as part of this plan; flag-default-flip and eventual legacy-path deletion are explicitly out of scope, deferred to a later human decision. |
 
 No violations requiring Complexity Tracking justification.
@@ -103,7 +103,7 @@ specs/repo/features/063-refactor-oversized-handlers/
 ├── data-model.md                    # Phase 1 output
 ├── quickstart.md                    # Phase 1 output
 ├── contracts/
-│   ├── orchestration-loop.md         # supersedes the retired pre-classifier.md
+│   ├── intent-planning-loop.md         # supersedes the retired pre-classifier.md
 │   └── prompt-assembly.md            # renamed from constitution-assembly.md
 └── tasks.md                         # Phase 2 output (speckit.tasks — not created here)
 ```
@@ -115,7 +115,7 @@ apps/denidin-app/
 ├── config/
 │   ├── runtime_constitution.md                   # UNTOUCHED — still used verbatim by legacy AIHandler (flag off)
 │   ├── ledger_recognition_prompt.md               # UNTOUCHED — still used verbatim by legacy AIHandler
-│   └── prompts/                                   # NEW — used only by the new orchestrator (flag on)
+│   └── prompts/                                   # NEW — used only by the new backbone (flag on)
 │       ├── backbone.md
 │       └── capabilities/
 │           ├── cap_invoicing_write.md
@@ -132,11 +132,11 @@ apps/denidin-app/
 │   ├── handlers/
 │   │   ├── ai_handler.py                         # UNTOUCHED — legacy path, byte-for-byte (REQ-063-07)
 │   │   └── extractors/                            # UNTOUCHED — image/pdf/docx_extractor.py, byte-for-byte
-│   ├── backbone/                                  # NEW package — the orchestrator kernel (flag on)
-│   │   ├── orchestrator.py                        # new get_response/resolve_button_tap equivalent — the
-│   │   │                                            #   plan-execution loop (contracts/orchestration-loop.md)
+│   ├── backbone/                                  # NEW package — the backbone kernel (flag on)
+│   │   ├── backbone.py                        # new get_response/resolve_button_tap equivalent — the
+│   │   │                                            #   plan-execution loop (contracts/intent-planning-loop.md)
 │   │   ├── capability_tags.py                      # the 10-value CapabilityTag enum (data-model.md)
-│   │   ├── orchestration_tools.py                  # load/unload/reset/record_planning_status/approval/send_to_user
+│   │   ├── resolution_tools.py                  # load/unload/reset/record_planning_status/approval/send_to_user
 │   │   └── backbone_tools.py                       # send_progress_update / react_to_message
 │   ├── capabilities/                              # NEW package — 4 domain subpackages (write/read stays a
 │   │   │                                            #   prompt/tool distinction, not a Python file split)
@@ -153,21 +153,21 @@ apps/denidin-app/
 │   │   │                                            #   capabilities/ledger_events/handler.py (new import, new file)
 │   │   ├── reminder_manager.py                     # same sharing pattern
 │   │   └── session_manager.py                      # Backbone-layer infra, used unmodified by both implementations
-│   └── denidin.py (repo root of the app)          # initialize_app: constructs AIHandler XOR the new orchestrator;
+│   └── denidin.py (repo root of the app)          # initialize_app: constructs AIHandler XOR the new backbone;
 │                                                     #   when flag on, ALSO routes media dispatch into the new
-│                                                     #   orchestrator instead of WhatsAppHandler.handle_media_message
+│                                                     #   backbone instead of WhatsAppHandler.handle_media_message
 │                                                     #   directly (R2a) — flag-off dispatch is fully unchanged
 └── tests/
     ├── unit/
     │   ├── test_ai_handler_*.py                    # UNTOUCHED — ai_handler.py didn't change
-    │   └── test_backbone_*.py, test_capabilities_*  # NEW — standalone unit tests for the new orchestrator/capabilities
+    │   └── test_backbone_*.py, test_capabilities_*  # NEW — standalone unit tests for the new backbone/capabilities
     ├── billed/  , tests/expensive/                # UNCHANGED — the actual regression gate (REQ-063-05), run
                                                       #   against both implementations
 ```
 
 **Structure Decision**: Single-project structure (Option 1 from the template), scoped entirely to
-`apps/denidin-app` — no new app, no frontend/backend split. `src/backbone/` (orchestrator +
-orchestration tools) and `src/capabilities/` (domain subpackages + `toolsets.py`) are new top-level packages,
+`apps/denidin-app` — no new app, no frontend/backend split. `src/backbone/` (backbone +
+resolution tools) and `src/capabilities/` (domain subpackages + `toolsets.py`) are new top-level packages,
 fully additive alongside the existing (untouched) `src/handlers/ai_handler.py` and
 `src/handlers/extractors/`. Write/read stays a prompt/tool-attachment distinction (R3) rather than
 a Python package split, per research.md R5's rationale. The domains with real local

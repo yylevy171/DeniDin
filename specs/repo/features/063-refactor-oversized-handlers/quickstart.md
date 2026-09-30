@@ -23,7 +23,7 @@
   `query_ledger_events` (instructions and tools are rebuilt from the persisted set every call).
 - Send an image containing a fee-agreement note → the model loads `cap_media_analysis` and calls
   `analyze_media` (the same unmodified `ImageExtractor`); ledger capture happens in denidin.py's
-  shared post-turn recognition (REQ-063-04a — media enters through this same orchestrator, not a
+  shared post-turn recognition (REQ-063-04a — media enters through this same backbone, not a
   separate deterministic pre-route).
 - Send a follow-up message in the same chat → the previously loaded capabilities are still listed
   (persisted `Session.active_capabilities`) until unloaded, reset, or the idle sweep clears them.
@@ -52,6 +52,6 @@ code's own new unit tests run alongside) + `./scripts/run_sanity.sh` (billed san
 `billed`/`expensive` tests are added for this refactor) — run with the flag **off** first (must
 match today's production baseline exactly — this is closer to a formality than a real test, since
 the code path is untouched, but confirms the flag's default doesn't accidentally select the new
-orchestrator), then with the flag **on** in `dev` (must also pass 100%, proving the new,
+backbone), then with the flag **on** in `dev` (must also pass 100%, proving the new,
 independently-built path — including its media-message entry point — is behaviorally equivalent to
 the legacy one it parallels).

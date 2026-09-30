@@ -1,10 +1,10 @@
 """
 Integration tests (Feature 063, "resolution" redesign - NOT billed): the
 flag-on capability-loading loop end to end with REAL internal components
-(BackboneOrchestrator, SessionManager, ReminderManager, LedgerEventManager,
+(Backbone, SessionManager, ReminderManager, LedgerEventManager,
 the real idle-reset scheduler) and only the OpenAI SDK boundary mocked
 (CONSTITUTION §I/§V). Also proves the FEATURE FLAG boundary: flag off means
-no orchestrator and no reset scheduler; the legacy ai_handler.py never even
+no backbone and no reset scheduler; the legacy ai_handler.py never even
 mentions the new tools.
 """
 import json
@@ -19,7 +19,7 @@ from apscheduler.triggers.interval import IntervalTrigger  # type: ignore[import
 
 import denidin as denidin_module
 from src.backbone.capability_tags import CapabilityTag
-from src.backbone.orchestrator import BackboneOrchestrator
+from src.backbone.backbone import Backbone
 from src.managers.ledger_event_manager import LedgerEventManager
 from src.managers.reminder_manager import ReminderManager
 from src.managers.session_manager import SessionManager
@@ -73,7 +73,7 @@ def env(tmp_path):
     client = MagicMock()
 
     def make(**extra):
-        return BackboneOrchestrator(
+        return Backbone(
             client, config, reminder_manager=reminders, ledger_event_manager=ledger,
             session_manager=sessions, morning_mcp_locator=locator, **extra,
         )
@@ -185,7 +185,7 @@ def test_denidin_records_the_sent_buttons_message_id_for_the_backbone(env, monke
     orch = env.make()
     sender = MagicMock()
     sender.send_response.return_value = "SENT-ID"
-    fake_app = SimpleNamespace(whatsapp_handler=sender, ai_handler=MagicMock(), backbone_orchestrator=orch)
+    fake_app = SimpleNamespace(whatsapp_handler=sender, ai_handler=MagicMock(), backbone=orch)
     monkeypatch.setattr(denidin_module, "denidin_app", fake_app)
     denidin_module._send_ai_response_and_attach(MagicMock(), "chat1", MagicMock())  # pylint: disable=protected-access
     assert env.sessions.get_session("chat1").approval_message_id == "SENT-ID"
@@ -196,7 +196,7 @@ def test_denidin_records_nothing_when_no_buttons_were_sent(env, monkeypatch):
     sender = MagicMock()
     sender.send_response.return_value = None  # plain-text send
     monkeypatch.setattr(denidin_module, "denidin_app", SimpleNamespace(
-        whatsapp_handler=sender, ai_handler=MagicMock(), backbone_orchestrator=orch))
+        whatsapp_handler=sender, ai_handler=MagicMock(), backbone=orch))
     denidin_module._send_ai_response_and_attach(MagicMock(), "chat1", MagicMock())  # pylint: disable=protected-access
     assert env.sessions.get_session("chat1").approval_message_id is None
 
@@ -262,7 +262,7 @@ def test_loaded_set_survives_restart_then_idle_reset_clears_it_for_the_next_turn
     assert sweep_idle_capabilities(restarted, 60, now=now_local() + timedelta(minutes=61)) == 1
 
     env.client.responses.create.side_effect = [_fc("send_to_user", {"text": "שלום"}, rid="r3")]
-    BackboneOrchestrator(env.client, env.config, session_manager=restarted).turn_with_rounds(
+    Backbone(env.client, env.config, session_manager=restarted).turn_with_rounds(
         _request("היי"), chat_id="chat1", user_role="godfather")
     kw = _sent_kwargs(env)[-1]
     assert "(none - plain backbone)" in kw["instructions"] and "create_reminder" not in _tool_names(kw)
@@ -307,13 +307,13 @@ def _app_config(tmp_path, flag, reset_minutes):
 
 def test_flag_off_never_starts_reset_scheduler_even_with_minutes_configured(tmp_path):
     app = denidin_module.initialize_app(_app_config(tmp_path, False, 30))
-    assert app.backbone_orchestrator is None
+    assert app.backbone is None
     assert denidin_module.start_capability_reset_if_enabled(app) is None
 
 
 def test_flag_on_with_zero_minutes_starts_nothing(tmp_path):
     app = denidin_module.initialize_app(_app_config(tmp_path, True, 0))
-    assert app.backbone_orchestrator is not None
+    assert app.backbone is not None
     assert denidin_module.start_capability_reset_if_enabled(app) is None
 
 

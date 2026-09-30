@@ -33,33 +33,33 @@ from src.tool_actions.reminder_actions import (
 logger = logging.getLogger(__name__)
 
 
-def dispatch_direct_tool_call(orchestrator, tool_name: str, args: Dict[str, Any],
+def dispatch_direct_tool_call(backbone, tool_name: str, args: Dict[str, Any],
                                turn_context: Dict[str, Any]) -> str:
     """Executes one list_reminders/create_reminder/modify_reminder/
-    delete_reminder call made directly on the SAME ongoing orchestration-loop
-    chain (Feature 063 - see orchestrator.py's `_run_orchestration_loop`
+    delete_reminder call made directly on the SAME ongoing resolution-loop
+    chain (Feature 063 - see backbone.py's `_run_resolution_loop`
     docstring) - no separate, disconnected AI call, no note to re-derive
     anything from. `turn_context` carries chat_id/user_phone/role."""
     if tool_name == LIST_REMINDERS_TOOL["name"]:
-        if orchestrator.reminder_manager is None:
+        if backbone.reminder_manager is None:
             return "⚠️ שירות התזכורות אינו זמין כרגע."
-        return json.dumps({"reminders": build_list_reminders_summary(orchestrator.reminder_manager)},
+        return json.dumps({"reminders": build_list_reminders_summary(backbone.reminder_manager)},
                           ensure_ascii=False)
 
     chat_id = turn_context.get("chat_id")
     role = turn_context.get("role")
     created_by_phone, literal_role = resolve_literal_sender(
         turn_context.get("sender_phone") or turn_context.get("user_phone") or chat_id, role,
-        getattr(orchestrator, "user_manager", None),
+        getattr(backbone, "user_manager", None),
     )
     created_by_role = str(literal_role) if literal_role is not None else ""
 
     if tool_name == CREATE_REMINDER_TOOL["name"]:
-        return _execute(orchestrator, tool_name, args, chat_id, created_by_phone, created_by_role)
-    return _execute_modify_or_delete(orchestrator, tool_name, args, chat_id, created_by_phone, created_by_role)
+        return _execute(backbone, tool_name, args, chat_id, created_by_phone, created_by_role)
+    return _execute_modify_or_delete(backbone, tool_name, args, chat_id, created_by_phone, created_by_role)
 
 
-def _execute_modify_or_delete(orchestrator, tool_name: str, args: Dict[str, Any], chat_id: str,  # pylint: disable=too-many-positional-arguments
+def _execute_modify_or_delete(backbone, tool_name: str, args: Dict[str, Any], chat_id: str,  # pylint: disable=too-many-positional-arguments
                                created_by_phone: str, created_by_role: str) -> str:
     """The modify/delete branch of write() above - validates then executes
     immediately, same TOCTOU-safety the old proposal-time validation had
@@ -75,7 +75,7 @@ def _execute_modify_or_delete(orchestrator, tool_name: str, args: Dict[str, Any]
         logger.debug("[RAWLOG] reminders.write._execute_modify_or_delete <<< RESULT: %r", result_text)
         return result_text
 
-    current = orchestrator.reminder_manager.get_reminder(str(reminder_id))
+    current = backbone.reminder_manager.get_reminder(str(reminder_id))
     if current is None:
         result_text = "⚠️ לא נמצאה תזכורת כזו."
         logger.debug("[RAWLOG] reminders.write._execute_modify_or_delete <<< RESULT: %r", result_text)
@@ -91,7 +91,7 @@ def _execute_modify_or_delete(orchestrator, tool_name: str, args: Dict[str, Any]
 
     try:
         if scope == "single_occurrence":
-            orchestrator.reminder_manager.resolve_occurrence_datetime(
+            backbone.reminder_manager.resolve_occurrence_datetime(
                 str(reminder_id), current, str(args.get("occurrence_date_hint")),
             )
     except (InvalidRecurrenceError, OccurrenceNotFoundError, ReminderNotFoundError) as exc:
@@ -104,10 +104,10 @@ def _execute_modify_or_delete(orchestrator, tool_name: str, args: Dict[str, Any]
                      result_text)
         return result_text
 
-    return _execute(orchestrator, tool_name, args, chat_id, created_by_phone, created_by_role)
+    return _execute(backbone, tool_name, args, chat_id, created_by_phone, created_by_role)
 
 
-def _execute(orchestrator, tool_name: str, arguments: Dict[str, Any], chat_id: str,  # pylint: disable=too-many-positional-arguments
+def _execute(backbone, tool_name: str, arguments: Dict[str, Any], chat_id: str,  # pylint: disable=too-many-positional-arguments
              created_by_phone: str, created_by_role: str) -> str:
     """Executes one of the three reminders-write tools immediately against the
     real ReminderManager - the direct-execute equivalent of the old
@@ -137,7 +137,7 @@ def _execute(orchestrator, tool_name: str, arguments: Dict[str, Any], chat_id: s
     try:
         if tool_name in (CREATE_REMINDER_TOOL["name"], MODIFY_REMINDER_TOOL["name"], DELETE_REMINDER_TOOL["name"]):
             result = execute_reminder_action(
-                orchestrator.reminder_manager, tool_name, arguments,
+                backbone.reminder_manager, tool_name, arguments,
                 created_by_phone=created_by_phone, created_by_role=created_by_role,
                 delivery_chat_id=chat_id,
             )

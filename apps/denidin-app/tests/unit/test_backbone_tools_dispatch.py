@@ -1,4 +1,4 @@
-"""Unit tests: the orchestration loop attaches BACKBONE_TOOLS every round and
+"""Unit tests: the resolution loop attaches BACKBONE_TOOLS every round and
 resolves send_progress_update/react_to_message calls, submitting an output for
 every function_call (bugfix-042's failure mode)."""
 import json
@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.backbone.orchestrator import BackboneOrchestrator
+from src.backbone.backbone import Backbone
 from tests.backbone_test_support import make_session_manager
 from src.models.config import AppConfiguration
 from src.models.message import AIRequest
@@ -21,12 +21,12 @@ def prompts_root(tmp_path):
     return base
 
 
-def _orchestrator(prompts_root, client):
+def _backbone(prompts_root, client):
     config = AppConfiguration(
         green_api_instance_id="x", green_api_token="y", ai_api_key="z",
         backbone_config={"base_dir": str(prompts_root)},
     )
-    return BackboneOrchestrator(client, config, session_manager=make_session_manager())
+    return Backbone(client, config, session_manager=make_session_manager())
 
 
 def _request():
@@ -55,15 +55,15 @@ def _resp(items, rid, text=""):
     return r
 
 
-def _run(orchestrator, progress_callback=None):
-    return orchestrator.turn_with_rounds(_request(), chat_id="chat1", user_role="godfather",
+def _run(backbone, progress_callback=None):
+    return backbone.turn_with_rounds(_request(), chat_id="chat1", user_role="godfather",
                                      progress_callback=progress_callback)
 
 
 def test_backbone_tools_attached_every_round(prompts_root):
     client = MagicMock()
     client.responses.create.return_value = _resp([], "r1", "תשובה.")
-    _run(_orchestrator(prompts_root, client))
+    _run(_backbone(prompts_root, client))
     kwargs = client.responses.create.call_args.kwargs
     names = {t["name"] for t in kwargs["tools"] if t.get("type") == "function"}
     assert {"send_progress_update", "react_to_message", "send_to_user"} <= names
@@ -75,11 +75,11 @@ def test_reaction_dispatched_and_output_submitted(prompts_root):
         _resp([_function_call_item("react_to_message", "call_1", {"emoji": "👍", "message_id": None})], "resp_1"),
         _resp([_function_call_item("send_to_user", "call_2", {"text": "בוצע."})], "resp_2"),
     ]
-    orchestrator = _orchestrator(prompts_root, client)
-    orchestrator.green_api_bot = MagicMock()
+    backbone = _backbone(prompts_root, client)
+    backbone.green_api_bot = MagicMock()
     with patch("src.tool_actions.messaging_actions.send_reaction", return_value=True) as mock_send:
-        response = _run(orchestrator)
-    mock_send.assert_called_once_with(orchestrator.green_api_bot, "chat1", "msg1", "👍")
+        response = _run(backbone)
+    mock_send.assert_called_once_with(backbone.green_api_bot, "chat1", "msg1", "👍")
     assert response.response_text == "בוצע."
     follow = client.responses.create.call_args_list[1].kwargs
     assert follow["previous_response_id"] == "resp_1"
@@ -94,7 +94,7 @@ def test_progress_update_uses_active_callback(prompts_root):
         _resp([_function_call_item("send_to_user", "call_2", {"text": "תשובה סופית."})], "resp_2"),
     ]
     cb = MagicMock()
-    response = _run(_orchestrator(prompts_root, client), progress_callback=cb)
+    response = _run(_backbone(prompts_root, client), progress_callback=cb)
     cb.assert_called_once_with("רגע...")
     assert response.response_text == "תשובה סופית."
 
@@ -102,7 +102,7 @@ def test_progress_update_uses_active_callback(prompts_root):
 def test_no_tool_calls_returns_plain_text_single_call(prompts_root):
     client = MagicMock()
     client.responses.create.return_value = _resp([], "r1", "תשובה.")
-    response = _run(_orchestrator(prompts_root, client))
+    response = _run(_backbone(prompts_root, client))
     assert client.responses.create.call_count == 1
     assert response.response_text == "תשובה."
 
@@ -114,8 +114,8 @@ def test_follow_up_failure_falls_back_to_first_round_text(prompts_root):
               "resp_1", "טקסט מקורי."),
         RuntimeError("network error"),
     ]
-    orchestrator = _orchestrator(prompts_root, client)
-    orchestrator.green_api_bot = MagicMock()
+    backbone = _backbone(prompts_root, client)
+    backbone.green_api_bot = MagicMock()
     with patch("src.tool_actions.messaging_actions.send_reaction", return_value=True):
-        response = _run(orchestrator)
+        response = _run(backbone)
     assert response.response_text == "טקסט מקורי."

@@ -9,7 +9,7 @@ attaches both the capability's prompt AND its real domain tools (e.g.
 `create_reminder`) to the SAME ongoing chain, so the model calls the real
 tool directly, starting the very next round. Mocked OpenAI client (the SDK
 boundary itself, per CONSTITUTION §I/§V - internal code paths are all real:
-real BackboneOrchestrator, real ReminderManager), no `billed` cost.
+real Backbone, real ReminderManager), no `billed` cost.
 """
 import json
 from pathlib import Path
@@ -17,7 +17,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.backbone.orchestrator import BackboneOrchestrator
+from src.backbone.backbone import Backbone
 from tests.backbone_test_support import make_session_manager
 from src.managers.reminder_manager import ReminderManager
 from src.models.config import AppConfiguration
@@ -47,7 +47,7 @@ def test_flag_on_turn_creates_reminder_directly_and_response_shape_matches_legac
 
     ai_client = MagicMock()
     ai_client.responses.create.side_effect = [
-        # Round 1 of the top-level orchestration loop: the model loads
+        # Round 1 of the top-level resolution loop: the model loads
         # cap_reminders_write - its prompt AND its create_reminder/modify/delete
         # tools are attached to the very next round in one step.
         _fake_function_call_response(
@@ -56,7 +56,7 @@ def test_flag_on_turn_creates_reminder_directly_and_response_shape_matches_legac
         ),
         # Round 2 (follow-up, chained via previous_response_id): the model
         # calls the now-attached create_reminder tool directly - no separate
-        # "use" step, dispatched immediately by the orchestration loop.
+        # "use" step, dispatched immediately by the resolution loop.
         _fake_function_call_response(
             "create_reminder",
             {"message_text": "לשלם לספק", "schedule_type": "one_time", "one_time_due_at": "2099-01-01T09:00:00", "recurrence": None},
@@ -70,7 +70,7 @@ def test_flag_on_turn_creates_reminder_directly_and_response_shape_matches_legac
     ]
 
     reminder_manager = ReminderManager(storage_dir=str(tmp_path / "data" / "reminders"))
-    orchestrator = BackboneOrchestrator(
+    backbone = Backbone(
         ai_client, config,
         reminder_manager=reminder_manager, session_manager=make_session_manager(),
     )
@@ -80,7 +80,7 @@ def test_flag_on_turn_creates_reminder_directly_and_response_shape_matches_legac
         model="gpt-5.6-luna", chat_id="chat1", message_id="msg1",
     )
 
-    response = orchestrator.turn_with_rounds(request, chat_id="chat1", user_role="godfather")
+    response = backbone.turn_with_rounds(request, chat_id="chat1", user_role="godfather")
 
     # Same AIResponse shape denidin.py's existing callers already expect.
     assert isinstance(response, AIResponse)

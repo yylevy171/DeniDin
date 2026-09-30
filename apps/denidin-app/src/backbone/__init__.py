@@ -1,7 +1,7 @@
 """
 The Dynamic Capability Backbone (Feature 063).
 
-New, standalone orchestrator module (one tool-driven loop: load_capabilities /
+New, standalone backbone module (one tool-driven loop: load_capabilities /
 unload_capabilities / load_flows / unload_flows / reset_to_backbone attach a capability's prompt AND real tools,
 persisted per chat - see contracts/capability-resolution-loop.md) — selected at startup by
 `denidin.py::initialize_app` only when `config.feature_flags['enable_capability_backbone']`

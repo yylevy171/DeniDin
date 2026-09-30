@@ -57,7 +57,7 @@ race and needs the same look, not just `SessionManager`:
    overlap), but the same unguarded-shared-connection shape, so a slow catch-up sweep overlapping
    the cron boundary is not provably impossible.
 3. **`src/managers/telemetry_manager.py`** (`self._conn`) — used from `ai_handler.py`/
-   `src/backbone/orchestrator.py`, both driven by the request thread. No background scheduler was
+   `src/backbone/backbone.py`, both driven by the request thread. No background scheduler was
    found touching it, so it's likely single-threaded in practice — lowest priority of the three,
    but not yet confirmed either way.
 

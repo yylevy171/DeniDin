@@ -1,5 +1,5 @@
 """
-FlowTag - the canonical, closed set of flows the Backbone orchestrator can load
+FlowTag - the canonical, closed set of flows the Backbone can load
 (Feature 063 "flows" level, sitting between the backbone and the capabilities).
 
 A flow is a BLUEPRINT for a recurring kind of request: which capabilities to

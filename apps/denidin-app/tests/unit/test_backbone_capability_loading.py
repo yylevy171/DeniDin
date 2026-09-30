@@ -11,7 +11,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from src.backbone.capability_tags import CapabilityTag
-from src.backbone.orchestrator import BackboneOrchestrator
+from src.backbone.backbone import Backbone
 from src.managers.reminder_manager import ReminderManager
 from src.managers.session_manager import SessionManager
 from src.models.config import AppConfiguration
@@ -47,7 +47,7 @@ def _request(text="שלום"):
 
 
 def _orch(env, client):
-    return BackboneOrchestrator(
+    return Backbone(
         client, env.config, reminder_manager=env.reminders, session_manager=env.sessions,
     )
 
@@ -99,7 +99,7 @@ def test_state_survives_a_process_restart(env, tmp_path):
     restarted = SessionManager(storage_dir=str(tmp_path / "sessions"))
     client = MagicMock()
     client.responses.create.return_value = _call("send_to_user", {"text": "ok"})
-    BackboneOrchestrator(client, env.config, session_manager=restarted).turn_with_rounds(
+    Backbone(client, env.config, session_manager=restarted).turn_with_rounds(
         _request(), chat_id="chat1", user_role="godfather")
     first = client.responses.create.call_args_list[0].kwargs
     assert "PROMPT[cap_ledger_query]" in first["instructions"] and "query_ledger_events" in _tool_names(first)
@@ -127,11 +127,11 @@ def test_capabilities_accumulate_then_unload_one_then_reset_all(env):
 
 def test_load_is_idempotent_and_rejects_unknown_tags(env):
     orch = _orch(env, MagicMock())
-    assert "loaded" in orch._dispatch_orchestration_tool("load_capabilities", {"capabilities": ["cap_reminders_read"]}, "c")
-    orch._dispatch_orchestration_tool("load_capabilities", {"capabilities": ["cap_reminders_read"]}, "c")
+    assert "loaded" in orch._dispatch_resolution_tool("load_capabilities", {"capabilities": ["cap_reminders_read"]}, "c")
+    orch._dispatch_resolution_tool("load_capabilities", {"capabilities": ["cap_reminders_read"]}, "c")
     assert orch._get_active_tags("c") == [CapabilityTag.REMINDERS_READ]
-    assert orch._dispatch_orchestration_tool("load_capabilities", {"capabilities": ["bogus"]}, "c")
-    assert orch._dispatch_orchestration_tool("unload_capabilities", {"capabilities": ["cap_ledger_query"]}, "c").startswith("unloaded")
+    assert orch._dispatch_resolution_tool("load_capabilities", {"capabilities": ["bogus"]}, "c")
+    assert orch._dispatch_resolution_tool("unload_capabilities", {"capabilities": ["cap_ledger_query"]}, "c").startswith("unloaded")
     assert orch._get_active_tags("c") == [CapabilityTag.REMINDERS_READ]
 
 

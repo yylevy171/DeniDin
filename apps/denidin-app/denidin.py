@@ -183,17 +183,17 @@ class DeniDin:
                  group_membership_resolver=None, reminder_scheduler=None,
                  accounting_reconciliation_scheduler=None, daily_roll_scheduler=None,
                  capability_reset_scheduler=None,
-                 backbone_orchestrator=None):
+                 backbone=None):
         self.ai_handler = ai_handler
         self.config = config
         self.whatsapp_handler = whatsapp_handler
         self.cleanup_thread = cleanup_thread
-        # Feature 063: the new BackboneOrchestrator, constructed by initialize_app
+        # Feature 063: the new Backbone, constructed by initialize_app
         # ONLY when config.feature_flags['enable_capability_backbone'] is true.
         # None (the default) when the flag is off - ai_handler remains the sole
         # implementation in that case, byte-for-byte as before this feature
         # existed (REQ-063-07).
-        self.backbone_orchestrator = backbone_orchestrator
+        self.backbone = backbone
         # Add references for background thread access
         self.session_manager = ai_handler.session_manager if ai_handler.memory_enabled else None
         self.memory_manager = ai_handler.memory_manager if ai_handler.memory_enabled else None
@@ -395,10 +395,10 @@ def _handle_not_initialized_error(notification: Notification, message_type: str)
 
 def start_capability_reset_if_enabled(denidin: "DeniDin"):
     """Feature 063: starts the idle capability-reset scheduler, or returns None.
-    Only ever started when the backbone flag is on (`backbone_orchestrator` is
+    Only ever started when the backbone flag is on (`backbone` is
     constructed only then - the legacy path never loads capabilities) AND
     `capabilities_reset_minutes` > 0 (0 = inactive, the default)."""
-    if denidin.backbone_orchestrator is None:
+    if denidin.backbone is None:
         return None
     return start_capability_reset_scheduler(
         denidin, getattr(denidin.config, "capabilities_reset_minutes", 0)
@@ -490,15 +490,15 @@ def initialize_app(config_dict: dict, green_api: Optional[Any] = None) -> DeniDi
     # Feature 063 (Dynamic Capability Backbone): one-time selection, at startup, of
     # which implementation handles this process's turns - ai_handler (constructed
     # above, unconditionally, so the flag-off path is byte-for-byte identical to
-    # before this feature existed) or the new BackboneOrchestrator. Reuses
+    # before this feature existed) or the new Backbone. Reuses
     # ai_handler's own manager instances (reminder_manager/ledger_event_manager/
     # morning_mcp_locator) rather than
     # constructing duplicates - REQ-063-03: those managers stay exactly where they
     # are, shared, unmodified, by both implementations.
-    backbone_orchestrator = None
+    backbone = None
     if (config.feature_flags or {}).get('enable_capability_backbone', False):
-        from src.backbone.orchestrator import BackboneOrchestrator
-        backbone_orchestrator = BackboneOrchestrator(
+        from src.backbone.backbone import Backbone
+        backbone = Backbone(
             ai_client, config,
             reminder_manager=ai_handler.reminder_manager,
             ledger_event_manager=ai_handler.ledger_event_manager,
@@ -507,8 +507,8 @@ def initialize_app(config_dict: dict, green_api: Optional[Any] = None) -> DeniDi
             # 2026-09-15 (closing a real gap): session persistence and
             # long-term memory recall both need these same shared instances
             # (REQ-063-03) - memory_manager/user_manager for
-            # BackboneOrchestrator._recall_memory, own_whatsapp_number
-            # (already resolved above) for BackboneOrchestrator._persist_turn's
+            # Backbone._recall_memory, own_whatsapp_number
+            # (already resolved above) for Backbone._persist_turn's
             # assistant-message sender JID.
             memory_manager=ai_handler.memory_manager,
             user_manager=ai_handler.user_manager,
@@ -529,7 +529,7 @@ def initialize_app(config_dict: dict, green_api: Optional[Any] = None) -> DeniDi
     denidin = DeniDin(
         ai_handler, config, whatsapp_handler, cleanup_thread=None,
         group_membership_resolver=group_membership_resolver,
-        backbone_orchestrator=backbone_orchestrator,
+        backbone=backbone,
     )
     
     # Initialize MediaHandler with DeniDin context and attach to WhatsAppHandler
@@ -614,8 +614,8 @@ def _send_ai_response_and_attach(notification: Notification, chat_id: str, ai_re
         denidin_app.ai_handler.pending_local_tool_approval_manager.attach_sent_message_id(
             chat_id, sent_id_message
         )
-        if denidin_app.backbone_orchestrator is not None:
-            denidin_app.backbone_orchestrator.record_approval_message_id(chat_id, sent_id_message)
+        if denidin_app.backbone is not None:
+            denidin_app.backbone.record_approval_message_id(chat_id, sent_id_message)
 
 
 def _run_post_turn_ledger_recognition(
@@ -774,20 +774,20 @@ def _process_conversational_message(notification: Notification) -> None:
 
         progress_callback = _progress_callback_with_typing_refresh
         # Feature 063 (Dynamic Capability Backbone): when the flag is on, text turns
-        # enter through the SAME BackboneOrchestrator media turns already use (see
-        # _process_media_message above) - not just button taps. The orchestrator has
+        # enter through the SAME Backbone media turns already use (see
+        # _process_media_message above) - not just button taps. The backbone has
         # no UserManager of its own (REQ-063-03: managers stay exactly where they are,
         # shared, unmodified), so the role RBAC gates on is resolved here, once, off
         # ai_handler's own UserManager - the same lookup _get_response_impl performs
         # internally for the flag-off path - and passed in as an already-resolved
         # Role value (Role subclasses str, so it round-trips through
-        # BackboneOrchestrator._resolve_role's .upper() unchanged). Flag-off path
+        # Backbone._resolve_role's .upper() unchanged). Flag-off path
         # below is fully unchanged - byte-for-byte the same call as before this
         # feature existed.
         effective_user_phone = group_user_phone or message.sender_id
-        if denidin_app.backbone_orchestrator is not None:
+        if denidin_app.backbone is not None:
             resolved_user = denidin_app.ai_handler.user_manager.get_user(effective_user_phone)
-            ai_response = denidin_app.backbone_orchestrator.turn_with_rounds(
+            ai_response = denidin_app.backbone.turn_with_rounds(
                 ai_request,
                 chat_id=message.chat_id,
                 user_role=resolved_user.role if resolved_user else 'client',
@@ -801,11 +801,11 @@ def _process_conversational_message(notification: Notification) -> None:
             # 2026-09-15 (closing a real gap): AIHandler.get_response already sets
             # its own `last_response` at the end of every turn (used throughout the
             # billed/expensive E2E test suite's _send_turn helper to inspect
-            # mcp_calls) - BackboneOrchestrator has no equivalent of its own, so a
+            # mcp_calls) - Backbone has no equivalent of its own, so a
             # flag-on turn left `ai_handler.last_response` stale (or None) forever.
             # ai_handler is always constructed regardless of the flag, so this is
             # the one place both paths' AIResponse converge - set it here rather
-            # than inside the orchestrator itself, keeping this test-observability
+            # than inside the backbone itself, keeping this test-observability
             # detail out of the new module entirely (REQ-063-07).
             denidin_app.ai_handler.last_response = ai_response
         else:
@@ -927,13 +927,13 @@ def _process_media_message_via_backbone(notification: Notification, message, kee
     shortcut this used to take): the flag-on media path, split out of
     `_process_media_message` so that function's own complexity stays bounded.
 
-    Threads RAW, not-yet-extracted media into the Backbone orchestrator - no
+    Threads RAW, not-yet-extracted media into the Backbone - no
     eager extraction before the model decides it needs cap_media_analysis. This does ONLY a
     download + format/size validation up front (reusing the unmodified,
     standalone low-level MediaFileManager methods, REQ-063-03 - never the
     monolithic MediaHandler.process_media_message, which also extracts/
     persists/ledger-detects in the same call and is left completely untouched
-    for the flag-off legacy path). The orchestrator gets the raw `Media`
+    for the flag-off legacy path). The backbone gets the raw `Media`
     object; the model is told only "media attached, not yet extracted", and itself
     CHOOSES whether to `load_capabilities(["cap_media_analysis"])` and call its
     `analyze_media` tool (src/capabilities/media_analysis/handler.py makes the
@@ -983,7 +983,7 @@ def _process_media_message_via_backbone(notification: Notification, message, kee
         timestamp=message.timestamp,
         original_message=message,
     )
-    response = denidin_app.backbone_orchestrator.turn_with_rounds(
+    response = denidin_app.backbone.turn_with_rounds(
         request, chat_id=message.chat_id, is_media=True, media=media, media_type=media_type,
         sender=message.sender_display_name, user_phone=message.sender_id,
         sender_phone=message.sender_id, is_group=message.is_group, chat_name=message.chat_name,
@@ -991,7 +991,7 @@ def _process_media_message_via_backbone(notification: Notification, message, kee
     # 2026-09-15 (closing a real gap - same fix as the text-turn call site
     # above): keeps ai_handler.last_response current for a flag-on media turn
     # too, since it's always the same shared ai_handler instance regardless of
-    # which orchestrator actually served the turn.
+    # which backbone actually served the turn.
     denidin_app.ai_handler.last_response = response
     if response.should_reply:
         notification.answer(response.response_text)
@@ -1004,7 +1004,7 @@ def _process_media_message_via_backbone(notification: Notification, message, kee
     # recognition hook _process_conversational_message already runs, so a
     # fee-agreement/bank-deposit photo captures correctly under flag-on too.
     # Only possible now that the turn above is actually persisted to the
-    # session (BackboneOrchestrator._persist_turn) - recognize_ledger_event
+    # session (Backbone._persist_turn) - recognize_ledger_event
     # reads its context from the session, not from this function's own locals.
     _run_post_turn_ledger_recognition(
         chat_id=message.chat_id, sender_phone=message.sender_id,
@@ -1045,10 +1045,10 @@ def _process_media_message(notification: Notification) -> None:
 
     # Feature 063 (REQ-063-04a, real design 2026-09-15 - corrects the 2026-09-14
     # shortcut this used to take): when the flag is on, media messages enter
-    # through the SAME Backbone orchestrator as text turns, RAW - no eager
+    # through the SAME Backbone as text turns, RAW - no eager
     # extraction before the model even decides it needs cap_media_analysis. See
     # _process_media_message_via_backbone's own docstring for the full design.
-    if denidin_app.backbone_orchestrator is not None:
+    if denidin_app.backbone is not None:
         _process_media_message_via_backbone(notification, message, keepalive_job_id)
         return
 
@@ -1354,13 +1354,13 @@ def handle_button_tap(notification: Notification) -> None:
     try:
         # Feature 063 (2026-09-16 redesign): a button tap is tried first
         # against cap_invoicing_write's own pending MCP approval (a real OpenAI
-        # protocol necessity - see BackboneOrchestrator.resolve_button_tap's
+        # protocol necessity - see Backbone.resolve_button_tap's
         # own docstring); anything else is routed through the normal
         # get_response() loop as an ordinary "כן"/"לא" conversational turn,
         # same as a typed reply - no more separate pending-approval state for
         # cap_reminders_write or the new approval_with_yes_no_buttons tool.
         ai_response = None
-        if denidin_app.backbone_orchestrator is not None:
+        if denidin_app.backbone is not None:
             # 2026-09-15 (closing a real gap found via T7/T10): cap_invoicing_write's
             # own resolve_button_tap needs a real AIRequest to make its
             # approval-resolution follow-up call (model, max_tokens) - passing
@@ -1378,7 +1378,7 @@ def handle_button_tap(notification: Notification) -> None:
                 original_message=message,
             )
             resolved_user = denidin_app.ai_handler.user_manager.get_user(message.sender_id)
-            ai_response = denidin_app.backbone_orchestrator.resolve_button_tap(
+            ai_response = denidin_app.backbone.resolve_button_tap(
                 chat_id=message.chat_id, stanza_id=stanza_id,
                 request=synthetic_request,
                 user_role=resolved_user.role if resolved_user else 'client',
@@ -1424,9 +1424,9 @@ def handle_button_tap(notification: Notification) -> None:
         denidin_app.ai_handler.pending_local_tool_approval_manager.attach_sent_message_id(
             message.chat_id, sent_id_message
         )
-        if denidin_app.backbone_orchestrator is not None:
+        if denidin_app.backbone is not None:
             # Under the Backbone a tap's resolution CAN chain a fresh approval.
-            denidin_app.backbone_orchestrator.record_approval_message_id(message.chat_id, sent_id_message)
+            denidin_app.backbone.record_approval_message_id(message.chat_id, sent_id_message)
     logger.info(f"[047] Button tap resolved and response sent for chat={message.chat_id!r}")
 
     # Feature 069: a button tap that resolved an approval (e.g. an add_client or a
@@ -1692,12 +1692,12 @@ if __name__ == "__main__":
     # send_reaction on, same post-construction-attribute idiom as green_api_bot above -
     # AIHandler is constructed inside initialize_app(), before live_bot exists.
     denidin_app.ai_handler.green_api_bot = live_bot
-    # Feature 063 (Dynamic Capability Backbone): same reasoning - the orchestrator's
+    # Feature 063 (Dynamic Capability Backbone): same reasoning - the backbone's
     # own react_to_message dispatch (src/backbone/backbone_tools.py) needs the same
-    # live bot, unavailable at BackboneOrchestrator construction time inside
+    # live bot, unavailable at Backbone construction time inside
     # initialize_app() either.
-    if denidin_app.backbone_orchestrator is not None:
-        denidin_app.backbone_orchestrator.green_api_bot = live_bot
+    if denidin_app.backbone is not None:
+        denidin_app.backbone.green_api_bot = live_bot
 
     # Feature 083: send_fee_agreement_document needs the real, live bot object
     # (`.api.sending.sendFileByUpload`) - same "only exists once we're the

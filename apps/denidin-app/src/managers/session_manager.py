@@ -149,8 +149,8 @@ class Session:
     # same reasoning as every other plain-string persisted field on this class).
     # Grows via load_capabilities, shrinks via unload_capabilities/reset_to_backbone,
     # and is cleared by the capabilities_reset_minutes idle sweep - see
-    # BackboneOrchestrator's own docstring for the full contract. Deliberately a
-    # Session field, not a BackboneOrchestrator instance attribute: it must
+    # Backbone's own docstring for the full contract. Deliberately a
+    # Session field, not a Backbone instance attribute: it must
     # survive across separate get_response() calls for the same chat (a button
     # tap is a new webhook, not a new conversation), and persisting it here reuses
     # the exact save path every other message write already goes through - no new

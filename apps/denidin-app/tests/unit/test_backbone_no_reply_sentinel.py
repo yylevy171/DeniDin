@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.backbone.orchestrator import BackboneOrchestrator
+from src.backbone.backbone import Backbone
 from tests.backbone_test_support import make_session_manager
 from src.models.config import AppConfiguration
 from src.models.message import AIRequest, NO_REPLY_SENTINEL
@@ -21,12 +21,12 @@ def prompts_root(tmp_path):
     return base
 
 
-def _orchestrator(prompts_root, client=None):
+def _backbone(prompts_root, client=None):
     config = AppConfiguration(
         green_api_instance_id="x", green_api_token="y", ai_api_key="z",
         backbone_config={"base_dir": str(prompts_root)},
     )
-    return BackboneOrchestrator(client or MagicMock(), config, session_manager=make_session_manager())
+    return Backbone(client or MagicMock(), config, session_manager=make_session_manager())
 
 
 def _request():
@@ -47,9 +47,9 @@ def _send_to_user_response(text: str):
 def test_no_reply_sentinel_suppresses_reply(prompts_root):
     client = MagicMock()
     client.responses.create.return_value = _send_to_user_response(NO_REPLY_SENTINEL)
-    orchestrator = _orchestrator(prompts_root, client)
+    backbone = _backbone(prompts_root, client)
 
-    response = orchestrator.turn_with_rounds(_request(), user_role="client")
+    response = backbone.turn_with_rounds(_request(), user_role="client")
 
     assert response.should_reply is False
     assert response.response_text == NO_REPLY_SENTINEL
@@ -58,9 +58,9 @@ def test_no_reply_sentinel_suppresses_reply(prompts_root):
 def test_ordinary_reply_is_sent(prompts_root):
     client = MagicMock()
     client.responses.create.return_value = _send_to_user_response("בוקר טוב!")
-    orchestrator = _orchestrator(prompts_root, client)
+    backbone = _backbone(prompts_root, client)
 
-    response = orchestrator.turn_with_rounds(_request(), user_role="client")
+    response = backbone.turn_with_rounds(_request(), user_role="client")
 
     assert response.should_reply is True
     assert response.response_text == "בוקר טוב!"

@@ -28,7 +28,7 @@ now deleted - `rawlog.py`/`whatsapp_audit_log.py` no longer exist.)
 
 `boundary` is `'openai'` or `'whatsapp'`. `direction` is `'out'` (app -> the
 other side) or `'in'` (the other side -> app). `context` is a short label
-for the specific call site (e.g. `'_run_orchestration_loop (first round)'`,
+for the specific call site (e.g. `'_run_resolution_loop (first round)'`,
 `'text'`, `'reaction'`, `'webhook'`) - free text, not an enum.
 
 `payload` shape by boundary:

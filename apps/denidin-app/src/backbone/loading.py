@@ -1,7 +1,7 @@
 """Pure helpers for the load_flows/unload_flows/load_capabilities/
 unload_capabilities tools: parsing the model's requested names against a closed
 enum, applying load/unload to a current list, and describing the result back to
-the model. No state and no I/O - the orchestrator owns persistence."""
+the model. No state and no I/O - the backbone owns persistence."""
 from enum import Enum
 from typing import List, Sequence, Tuple, Type
 

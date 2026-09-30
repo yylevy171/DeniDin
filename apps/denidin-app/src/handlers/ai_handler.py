@@ -1932,9 +1932,9 @@ class AIHandler:
         row on the way out - success OR exception alike, complete no-op when
         self.telemetry_manager is None) is now the ONE shared
         model_call_actions.telemetry_span implementation, also used by
-        BackboneOrchestrator.turn_with_rounds - the two were byte-for-byte identical in shape
+        Backbone.turn_with_rounds - the two were byte-for-byte identical in shape
         before this change, just stored the active builder differently (this class's
-        module-level contextvar vs. the orchestrator's instance attribute), which
+        module-level contextvar vs. the backbone's instance attribute), which
         telemetry_span is agnostic to.
 
         progress_callback (REQ-080-02): the caller's real "send this text to the user right
@@ -2479,7 +2479,7 @@ class AIHandler:
         # _active_interim_messages/_persist_interim_messages) so it survives even
         # if the turn later fails before the assistant's real final reply is
         # persisted - the shared send_progress_update_message() helper (used by
-        # both this legacy path and the backbone orchestrator) intentionally
+        # both this legacy path and the backbone) intentionally
         # doesn't do this itself, since bugfix-058's persistence mechanism is
         # ai_handler-specific for now (see fix #3/#4 discussion for closing that
         # gap in the backbone path too).
@@ -3212,7 +3212,7 @@ class AIHandler:
         client genuinely got added, the model even said so in its own reply,
         but the turn's mcp_calls came back empty because a react_to_message
         follow-up round ran afterward and became `current_response`. Fixed
-        the same way orchestration handles everything else here: accumulate
+        the same way the backbone handles everything else here: accumulate
         as you go, across every round, not just the last one.
         """
         current_response = response
@@ -4661,7 +4661,7 @@ class AIHandler:
         catch-all error reply - so what the user sent and what they were told is still in the
         session. 2026-09-30 consolidation: thin wrapper delegating to
         model_call_actions.record_exchange, the one shared implementation also used by
-        BackboneOrchestrator (e.g. on an OpenAI-call exception)."""
+        Backbone (e.g. on an OpenAI-call exception)."""
         from src.tool_actions.model_call_actions import record_exchange as _shared_record_exchange
         _shared_record_exchange(
             self.session_manager, memory_enabled=self.memory_enabled,
@@ -4690,7 +4690,7 @@ class AIHandler:
 
     def _create_fallback_response(self, request_id: str, message: str) -> AIResponse:
         """2026-09-30 consolidation: delegates to model_call_actions.build_fallback_response,
-        the one shared implementation also used by BackboneOrchestrator._create_fallback_response
+        the one shared implementation also used by Backbone._create_fallback_response
         - the two were byte-identical AIResponse shapes before this change."""
         from src.tool_actions.model_call_actions import build_fallback_response
         return build_fallback_response(request_id, message)

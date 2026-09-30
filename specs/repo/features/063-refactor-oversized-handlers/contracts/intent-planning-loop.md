@@ -1,13 +1,13 @@
 > **SUPERSEDED 2026-09-24 by [`capability-resolution-loop.md`](capability-resolution-loop.md).** Historical record only.
 
-> **Superseded 2026-09-16 by [`tool-driven-orchestration.md`](tool-driven-orchestration.md).**
+> **Superseded 2026-09-16 by [`tool-driven-loop.md`](tool-driven-loop.md).**
 > Kept in place as historical record of the reasoning that led there (including a
 > reverted, unapproved JSON-schema merge attempt) — not the current design. Read
-> `tool-driven-orchestration.md` first.
+> `tool-driven-loop.md` first.
 
-# Contract: Backbone Orchestration Loop (supersedes the retired `pre-classifier.md`)
+# Contract: Backbone Resolution Loop (supersedes the retired `pre-classifier.md`)
 
-**Component**: `src/backbone/orchestrator.py`'s `get_response()` (the new module's equivalent
+**Component**: `src/backbone/backbone.py`'s `get_response()` (the new module's equivalent
 entry point to `ai_handler.py::AIHandler.get_response`) + `src/backbone/intent_identification.py`
 + `src/backbone/planning.py`.
 
@@ -41,7 +41,7 @@ entry point to `ai_handler.py::AIHandler.get_response`) + `src/backbone/intent_i
    - If the step is a write-capability (`*_write`, `ledger_capture`): existing approval-gate
      machinery applies unchanged in spirit — a pending approval is created via the same
      `PendingApprovalManager`/`PendingLocalToolApproval` pattern, just invoked from the new
-     orchestrator's code instead of `ai_handler.py`'s.
+     backbone's code instead of `ai_handler.py`'s.
    - A step's own failure (tool error, malformed output) does not abort the whole plan — logged,
      and the loop continues to the next step with an error note in the accumulated context (so a
      later step, or the final reply, can acknowledge the failure) unless the failure is itself

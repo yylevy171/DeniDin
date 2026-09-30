@@ -13,7 +13,7 @@ from src.constants.error_messages import BACKBONE_CAPABILITY_NOT_CONFIGURED
 logger = logging.getLogger(__name__)
 
 
-def dispatch_direct_tool_call(orchestrator, tool_name: str, args: Dict[str, Any],
+def dispatch_direct_tool_call(backbone, tool_name: str, args: Dict[str, Any],
                                turn_context: Dict[str, Any]) -> str:
     """Executes one `query_ledger_events` call directly on the ongoing chain
     - deterministic, no separate AI call, the same `query_events(**arguments)`
@@ -23,7 +23,7 @@ def dispatch_direct_tool_call(orchestrator, tool_name: str, args: Dict[str, Any]
     del turn_context
     if tool_name != "query_ledger_events":
         return f"error: unknown ledger tool {tool_name!r}"
-    if orchestrator.ledger_event_manager is None:
+    if backbone.ledger_event_manager is None:
         return BACKBONE_CAPABILITY_NOT_CONFIGURED
-    result = orchestrator.ledger_event_manager.query_events(**args)
+    result = backbone.ledger_event_manager.query_events(**args)
     return json.dumps(result, ensure_ascii=False)

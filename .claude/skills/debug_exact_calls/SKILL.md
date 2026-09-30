@@ -30,9 +30,9 @@ six boundaries during one turn or test run, in chronological order, verbatim:
    field.
 
 This governs **both** message pipelines in `apps/denidin-app` — the legacy
-`ai_handler.py` path and the flag-gated `src/backbone/orchestrator.py` path
+`ai_handler.py` path and the flag-gated `src/backbone/backbone.py` path
 (Feature 063) — both call the exact same two logging functions, just under
-different `context` labels (e.g. `_run_orchestration_loop (initial call)` vs
+different `context` labels (e.g. `_run_resolution_loop (initial call)` vs
 `call_capability_step[...]` vs `_call_openai_api (initial call)`). Nothing
 here is backbone-specific.
 
@@ -42,7 +42,7 @@ here is backbone-specific.
 codebase — `audit_wire(boundary, direction, context, payload)` (INFO,
 concise, prod-safe) and `debug_wire(boundary, direction, context, payload)`
 (DEBUG, full byte/JSON-verbatim) — and every wire-crossing call site across
-the app (`ai_handler.py`, `orchestrator.py`,
+the app (`ai_handler.py`, `backbone.py`,
 `accounting_reconciliation_service.py`, `image_extractor.py`, `denidin.py`,
 `whatsapp_handler.py`, `green_api_bot.py`) calls them **directly**. There is
 no third function, no per-module alias, no per-boundary wrapper anywhere

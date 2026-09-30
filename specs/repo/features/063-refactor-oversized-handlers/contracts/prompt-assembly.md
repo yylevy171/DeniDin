@@ -1,10 +1,10 @@
 # Contract: Backbone + Per-Step Capability Prompt Assembly
 
-**Component**: New module (`src/backbone/orchestrator.py`, R1/R5) — `_load_backbone()` +
+**Component**: New module (`src/backbone/backbone.py`, R1/R5) — `_load_backbone()` +
 `_load_capability_prompt(tag)` + `_build_instructions(active_tag, accumulated_context,
 today_timestamp)`. This is **new code**, structurally mirroring `ai_handler.py`'s existing
 `_load_constitution`/`_build_instructions` mtime-cache pattern for consistency, but implemented in
-the new orchestrator module. `ai_handler.py`'s own `_load_constitution`/`_build_instructions` are
+the new backbone module. `ai_handler.py`'s own `_load_constitution`/`_build_instructions` are
 not touched, not extended, not parameterized — they keep loading `config/runtime_constitution.md`
 exactly as today (REQ-063-07).
 
@@ -22,7 +22,7 @@ exactly as today (REQ-063-07).
 
 ## `_build_instructions(active_tag, accumulated_context, today_timestamp)` (new, per-call, not per-turn)
 Mirrors `ai_handler.py::_build_instructions`'s existing fixed assembly order/shape, reimplemented
-for the orchestration loop's per-step calls (`contracts/orchestration-loop.md`):
+for the resolution loop's per-step calls (`contracts/intent-planning-loop.md`):
 
 ```
 instructions = backbone_content
@@ -45,5 +45,5 @@ matched-capability-set as the original design would have given.
 `ai_handler.py::_build_instructions` runs exactly as it does today —
 `instructions = runtime_constitution.md content + memory_context + "---" + today_date` — because
 it is the same, unmodified code and unmodified file; this new module's `_build_instructions` is
-never invoked at all when the flag is off (`denidin.py` never constructs the new orchestrator in
+never invoked at all when the flag is off (`denidin.py` never constructs the new backbone in
 that case, per REQ-063-07/R1).

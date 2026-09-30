@@ -1,6 +1,6 @@
 """Unit tests for recurring reminder CREATION (updated 2026-09-24 for the
 "resolution" redesign: `dispatch_direct_tool_call` executes one real
-create_reminder call made directly on the ongoing orchestration-loop chain,
+create_reminder call made directly on the ongoing resolution-loop chain,
 no pending-approval state): create_reminder's schedule_type=recurring
 branch, threading a full recurrence object through to
 ReminderManager.create_reminder unmodified."""
@@ -16,8 +16,8 @@ _RECURRENCE = {
 
 
 def test_dispatch_executes_recurring_reminder_creation_immediately():
-    orchestrator = MagicMock()
-    orchestrator.reminder_manager.create_reminder.return_value = {
+    backbone = MagicMock()
+    backbone.reminder_manager.create_reminder.return_value = {
         "reminder_id": "rec-1", "due_at": "2026-10-05T09:00:00+03:00",
     }
     args = {
@@ -25,12 +25,12 @@ def test_dispatch_executes_recurring_reminder_creation_immediately():
         "one_time_due_at": None, "recurrence": _RECURRENCE,
     }
 
-    result = dispatch_direct_tool_call(orchestrator, "create_reminder", args, {
+    result = dispatch_direct_tool_call(backbone, "create_reminder", args, {
         "chat_id": "chat1", "role": "GODFATHER", "user_phone": "+972500000000",
     })
 
-    orchestrator.reminder_manager.create_reminder.assert_called_once()
-    call_kwargs = orchestrator.reminder_manager.create_reminder.call_args.kwargs
+    backbone.reminder_manager.create_reminder.assert_called_once()
+    call_kwargs = backbone.reminder_manager.create_reminder.call_args.kwargs
     assert call_kwargs["schedule_type"] == "recurring"
     assert call_kwargs["recurrence"] == _RECURRENCE
     assert call_kwargs["one_time_due_at"] is None

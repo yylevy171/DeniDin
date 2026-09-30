@@ -10,7 +10,7 @@ as long as it stays in the chat's persisted `Session.active_capabilities`.
 Two tool shapes exist, both attached identically:
 
 - **Local function tools** (reminders, ledger query, media analysis, docx):
-  the model emits a `function_call`, the orchestrator dispatches it to that
+  the model emits a `function_call`, the backbone dispatches it to that
   capability's own `dispatch_direct_tool_call` and feeds back the result.
 - **Morning MCP tools** (invoicing read/write, client read/write): all four
   capabilities share ONE remote Morning MCP server entry, restricted via
@@ -58,7 +58,7 @@ MORNING_MCP_TOOL_NAMES: Dict[CapabilityTag, tuple] = {
 }
 
 
-def build_morning_mcp_tool(orchestrator, tags: List[CapabilityTag],
+def build_morning_mcp_tool(backbone, tags: List[CapabilityTag],
                             turn_context: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
     """The single Morning MCP `tools` entry for every loaded Morning-backed
     capability in `tags`, or None when none is loaded / the server is
@@ -71,12 +71,12 @@ def build_morning_mcp_tool(orchestrator, tags: List[CapabilityTag],
                 names.append(name)
     if not names:
         return None
-    locator = getattr(orchestrator, "morning_mcp_locator", None)
+    locator = getattr(backbone, "morning_mcp_locator", None)
     if locator is None:
         return None
     turn_context = turn_context or {}
     connection = resolve_morning_mcp_connection(
-        locator, orchestrator.config, turn_context.get("request_id"), turn_context.get("role"),
+        locator, backbone.config, turn_context.get("request_id"), turn_context.get("role"),
     )
     if connection is None:
         return None
@@ -95,7 +95,7 @@ def _local_tools_by_tag() -> Dict[CapabilityTag, Any]:
     """tag -> that capability's local tools (imported lazily by name from each
     capability's own package, so src/backbone never hard-depends on them)."""
     # pylint: disable=import-outside-toplevel
-    from src.backbone.orchestration_tools import APPROVAL_WITH_YES_NO_BUTTONS_TOOL
+    from src.backbone.resolution_tools import APPROVAL_WITH_YES_NO_BUTTONS_TOOL
     from src.capabilities.ledger_events.tools import QUERY_LEDGER_EVENTS_TOOL
     from src.capabilities.media_analysis.tools import ANALYZE_MEDIA_TOOL
     from src.capabilities.reminders.tools import (
@@ -110,47 +110,47 @@ def _local_tools_by_tag() -> Dict[CapabilityTag, Any]:
     }
 
 
-def local_tools_for(orchestrator, tag: CapabilityTag, turn_context: Dict[str, Any]) -> List[Dict[str, Any]]:
+def local_tools_for(backbone, tag: CapabilityTag, turn_context: Dict[str, Any]) -> List[Dict[str, Any]]:
     """The local function tools capability `tag` attaches (possibly none)."""
     if tag == CapabilityTag.DOCX_WRITE:
         from src.capabilities.docx.handler import build_tools  # pylint: disable=import-outside-toplevel
-        return build_tools(orchestrator, turn_context)
+        return build_tools(backbone, turn_context)
     return list(_local_tools_by_tag().get(tag, []))
 
 
-def build_capability_tools(orchestrator, tags: List[CapabilityTag],
+def build_capability_tools(backbone, tags: List[CapabilityTag],
                             turn_context: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Every domain tool for every loaded capability in `tags`, de-duplicated
     by tool name, rebuilt fresh every round from the persisted set."""
     tools: List[Dict[str, Any]] = []
     seen = set()
     for tag in tags:
-        for tool in local_tools_for(orchestrator, tag, turn_context):
+        for tool in local_tools_for(backbone, tag, turn_context):
             if tool["name"] not in seen:
                 seen.add(tool["name"])
                 tools.append(tool)
-    mcp_tool = build_morning_mcp_tool(orchestrator, tags, turn_context)
+    mcp_tool = build_morning_mcp_tool(backbone, tags, turn_context)
     if mcp_tool is not None:
         tools.append(mcp_tool)
     return tools
 
 
-def local_tool_owners(orchestrator, tags: List[CapabilityTag],
+def local_tool_owners(backbone, tags: List[CapabilityTag],
                        turn_context: Dict[str, Any]) -> Dict[str, CapabilityTag]:
     """tool name -> owning tag, for every LOCAL function tool currently
     attached that this module dispatches (MCP tools are executed by OpenAI;
-    the approval tool is executed by the orchestrator itself, since it ends
+    the approval tool is executed by the backbone itself, since it ends
     the turn)."""
     owners: Dict[str, CapabilityTag] = {}
     for tag in tags:
         if tag == CapabilityTag.APPROVAL_WITH_BUTTONS:
             continue
-        for tool in local_tools_for(orchestrator, tag, turn_context):
+        for tool in local_tools_for(backbone, tag, turn_context):
             owners.setdefault(tool["name"], tag)
     return owners
 
 
-def dispatch_local_tool(orchestrator, tag: CapabilityTag, tool_name: str,
+def dispatch_local_tool(backbone, tag: CapabilityTag, tool_name: str,
                          args: Dict[str, Any], turn_context: Dict[str, Any]) -> str:
     """Executes one local domain tool call on behalf of capability `tag`."""
     # pylint: disable=import-outside-toplevel
@@ -164,7 +164,7 @@ def dispatch_local_tool(orchestrator, tag: CapabilityTag, tool_name: str,
         from src.capabilities.docx.handler import dispatch_direct_tool_call
     else:
         return f"error: capability {tag.value} has no local tool {tool_name!r}"
-    return dispatch_direct_tool_call(orchestrator, tool_name, args, turn_context)
+    return dispatch_direct_tool_call(backbone, tool_name, args, turn_context)
 
 
 def extract_local_calls(response, owners: Dict[str, CapabilityTag]) -> List[tuple]:

@@ -1,7 +1,7 @@
 """
 Integration test (T023): denidin.py::initialize_app constructs the legacy
 AIHandler when feature_flags.enable_capability_backbone is off (byte-identical to
-today) and the new BackboneOrchestrator when it's on.
+today) and the new Backbone when it's on.
 
 No real Green API/OpenAI network calls happen during initialize_app itself (the
 OpenAI client and Morning MCP locator are both lazy - they only reach the network
@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 import denidin as denidin_module
-from src.backbone.orchestrator import BackboneOrchestrator
+from src.backbone.backbone import Backbone
 from src.handlers.ai_handler import AIHandler
 
 
@@ -43,22 +43,22 @@ def test_flag_off_constructs_legacy_ai_handler_only(tmp_path):
     denidin = denidin_module.initialize_app(_config_dict(tmp_path, enable_backbone=False))
     try:
         assert isinstance(denidin.ai_handler, AIHandler)
-        assert denidin.backbone_orchestrator is None
+        assert denidin.backbone is None
     finally:
         denidin.shutdown() if hasattr(denidin, "shutdown") else None
 
 
 @pytest.mark.integration
-def test_flag_on_constructs_backbone_orchestrator_alongside_legacy_handler(tmp_path):
+def test_flag_on_constructs_backbone_alongside_legacy_handler(tmp_path):
     denidin = denidin_module.initialize_app(_config_dict(tmp_path, enable_backbone=True))
     try:
         # REQ-063-07: ai_handler is STILL constructed, unmodified, even when the
         # flag is on - only which one denidin.py's dispatch layer prefers changes.
         assert isinstance(denidin.ai_handler, AIHandler)
-        assert isinstance(denidin.backbone_orchestrator, BackboneOrchestrator)
-        # The new orchestrator reuses ai_handler's own manager instances
+        assert isinstance(denidin.backbone, Backbone)
+        # The new backbone reuses ai_handler's own manager instances
         # (REQ-063-03), never constructs duplicates.
-        assert denidin.backbone_orchestrator.reminder_manager is denidin.ai_handler.reminder_manager
-        assert denidin.backbone_orchestrator.ledger_event_manager is denidin.ai_handler.ledger_event_manager
+        assert denidin.backbone.reminder_manager is denidin.ai_handler.reminder_manager
+        assert denidin.backbone.ledger_event_manager is denidin.ai_handler.ledger_event_manager
     finally:
         denidin.shutdown() if hasattr(denidin, "shutdown") else None

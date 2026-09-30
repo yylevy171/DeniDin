@@ -5,14 +5,14 @@
 **Created**: 2026-09-30
 **Status**: Backlog - not yet clarified/planned
 **Category**: Architecture
-**Domain**: Backbone orchestrator (Feature 063)
+**Domain**: Backbone (Feature 063)
 
 ---
 
 ## Executive Summary
 
 Raised during the Feature 063 consolidation/naming session (2026-09-30): the
-backbone orchestrator's model of "one incoming WhatsApp message = one turn,
+backbone's model of "one incoming WhatsApp message = one turn,
 made up of one or more OpenAI call rounds" was questioned as possibly the
 wrong mental model going forward, or as terminology worth re-examining/
 retiring. Parked for later dedicated discussion rather than decided inline
@@ -33,7 +33,7 @@ entirely) was never clarified.
   `resolve_button_tap`'s "any new turn clears the stale-tap guard" rule
   keys off of? These all currently depend on "turn" as a real boundary.
 - Does this affect `AIHandler`'s legacy path too, or is it scoped only to
-  the backbone orchestrator's round-based loop?
+  the backbone's round-based loop?
 
 ## Status
 

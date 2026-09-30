@@ -1,7 +1,7 @@
 """
 Unit tests for MediaHandler (Phase 5).
 
-MediaHandler orchestrates the complete media processing workflow:
+MediaHandler drives the complete media processing workflow:
 - Download → Validate → Extract → Format summary → Return response
 
 Since extractors already return document_analysis from Phase 4,

@@ -1,4 +1,4 @@
-# Contract: Capability Resolution Loop (supersedes tool-driven-orchestration.md's use_capability/note)
+# Contract: Capability Resolution Loop (supersedes tool-driven-loop.md's use_capability/note)
 
 Status: implemented 2026-09-24; flows level added 2026-09-25.
 
@@ -22,7 +22,7 @@ Status: implemented 2026-09-24; flows level added 2026-09-25.
 - `services/capability_reset_service.py`: own BackgroundScheduler, 1-minute IntervalTrigger; clears both sets of any session idle longer than the threshold. No user notice.
 
 ## Toolsets (`capabilities/toolsets.py`)
-- Local function tools (reminders, ledger query, media analysis, docx): dispatched by the orchestrator via each capability's `dispatch_direct_tool_call`.
+- Local function tools (reminders, ledger query, media analysis, docx): dispatched by the backbone via each capability's `dispatch_direct_tool_call`.
 - Morning MCP tools (invoicing/client read+write): one shared MCP entry, `allowed_tools` = union of loaded tags, `require_approval: "never"`, executed by OpenAI. Write approval is the plain `approval_with_yes_no_buttons` tool, never an MCP handshake.
 - Ledger capture is not a capability: it is `denidin.py`'s shared post-turn recognition.
 - Tool-name collisions across capabilities are out of scope.
@@ -39,4 +39,4 @@ Status: implemented 2026-09-24; flows level added 2026-09-25.
 - Which actions require approval, and which details the approval text must state, live in each write capability's prompt (cap_invoicing_write, cap_client_write, cap_reminders_write); the generic rules (real data only, missing detail = ask first, closing question `אישור — כן/לא?`, once, affirmative only) live in `backbone.md`. Code no longer builds the approval block.
 - Write capabilities carry only write tools. Read capabilities are loaded by the model itself when it needs a lookup (backbone.md says so once, generically).
 - Feature 047's stale-tap guard is preserved: `Session.approval_message_id` holds the idMessage of the outstanding approval-buttons message (recorded by denidin.py right after the send). `resolve_button_tap` treats a tap as live only if `stanzaId` equals it; a live tap is consumed and resolved as an ordinary "כן"/"לא" turn; anything else returns None (nothing sent). Any new turn clears it.
-- `session_manager` is a required orchestrator dependency (no in-memory fallback).
+- `session_manager` is a required backbone dependency (no in-memory fallback).

@@ -3,7 +3,7 @@ Backbone-level cross-cutting local tools (Feature 063 remaining Deferred item) -
 `send_progress_update` (Feature 080) and `react_to_message` (Feature 084).
 Unlike every domain capability's own tools, these apply uniformly regardless of
 which capabilities are loaded (backbone.md's own "Proactive Progress Updates"/
-"Reaction Management" sections), so BackboneOrchestrator._run_orchestration_loop
+"Reaction Management" sections), so Backbone._run_resolution_loop
 attaches them to every Responses API call it makes.
 
 The schemas live in `src/tool_actions/tool_schemas.py` - one definition shared with

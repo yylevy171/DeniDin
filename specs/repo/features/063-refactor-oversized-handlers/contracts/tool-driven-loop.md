@@ -1,22 +1,22 @@
 > **SUPERSEDED 2026-09-24 by [`capability-resolution-loop.md`](capability-resolution-loop.md).** Historical record only.
 
-# Contract: Tool-Driven Orchestration Loop (supersedes `orchestration-loop.md`)
+# Contract: Tool-Driven Resolution Loop (supersedes `intent-planning-loop.md`)
 
 **Status**: superseded (was approved design, 2026-09-16). Supersedes
-`orchestration-loop.md`'s two-call Intent Identification → Planning → `_execute_plan`
+`intent-planning-loop.md`'s two-call Intent Identification → Planning → `_execute_plan`
 step-list design in full — that contract's own JSON `Plan`/`fail_open_plan` shape is
-retired by this one, not layered alongside it. `orchestration-loop.md` is kept in
+retired by this one, not layered alongside it. `intent-planning-loop.md` is kept in
 place as historical record (the reasoning that led here, including the reverted
 JSON-schema merge attempt this design deliberately avoids repeating) rather than
 deleted.
 
-**Component**: `src/backbone/orchestrator.py`'s `get_response()`.
+**Component**: `src/backbone/backbone.py`'s `get_response()`.
 
 ## Why this shape
 
 Two prior designs were considered and rejected before this one, in order:
 
-1. **Two separate calls** (`identify_intent` + `build_plan`, `orchestration-loop.md`'s
+1. **Two separate calls** (`identify_intent` + `build_plan`, `intent-planning-loop.md`'s
    design): the user's objection — these are genuinely one concern ("you can't plan
    without understanding intent, and can't form intent without understanding the
    plan"), not two.
@@ -58,7 +58,7 @@ cross-cutting `BACKBONE_TOOLS` (`send_progress_update`, `react_to_message`, unch
    round of the SAME conversation — never a separate, disconnected AI call that has
    to re-derive structured fields from `note` in isolation with no memory of how it
    was composed. `note` is relayed back only as the activation acknowledgment's own
-   text, never re-parsed by code. `_dynamic_capability_tools` in `orchestrator.py`
+   text, never re-parsed by code. `_dynamic_capability_tools` in `backbone.py`
    is the allowlist of tags migrated to this mechanism (`cap_reminders_write` as of
    2026-09-23 — see "Dynamic tool-attachment" below for the full contract and why
    this superseded the original per-capability-`call_capability_step` design). For
@@ -130,7 +130,7 @@ user: **"use_capability... was meant as such - use the capability you just
 loaded... Never another AI call - that's just unnecessary overhead."**
 
 **Corrected contract**: for a capability tag `_dynamic_capability_tools` (in
-`orchestrator.py`) allowlists, `use_capability` attaches that capability's real
+`backbone.py`) allowlists, `use_capability` attaches that capability's real
 domain tools directly to `tools` for the loop's own already-existing chained
 follow-up round (the same one that resolves this round's other tool calls,
 `previous_response_id`-linked to the response that made the `use_capability`
@@ -184,7 +184,7 @@ rather than code deciding whether to bother persisting).
   is retained but relocated, since something still must compute which capabilities a
   role may reach for; exact new location TBD at implementation time, not a design
   question)
-- `_execute_plan`'s step-list loop in `orchestrator.py`
+- `_execute_plan`'s step-list loop in `backbone.py`
 
 ## Approval as a plain capability (no more pending-approval state)
 
@@ -258,7 +258,7 @@ class Capability(ABC):
         return read_capability_prompt_file(self.tag)
 
     @abstractmethod
-    def handle(self, orchestrator, request: AIRequest, note: str,
+    def handle(self, backbone, request: AIRequest, note: str,
                turn_context: Dict[str, Any]) -> str:
         """Entry point for use_capability(tag, note) - returns the text fed back
         to the model as that tool call's output."""
@@ -312,7 +312,7 @@ itself decides or judges anything.** Concretely, per capability:
   (`cap_docx_write`'s verify). **Never**: deciding if content is good enough, choosing
   between options on the AI's behalf, or phrasing anything the AI didn't write itself.
 - The one narrow exception is **`cap_media_analysis`**, whose `handle()` makes a real,
-  additional AI call (vision extraction) — unavoidable, since the orchestrator's own
+  additional AI call (vision extraction) — unavoidable, since the backbone's own
   conversation never sees raw image/PDF/DOCX bytes (see "Why media analysis is a
   separate AI call" reasoning, captured in this feature's discussion history). Even
   there, code never judges the extraction's *content* — it returns whatever came back,
@@ -323,7 +323,7 @@ done: if `handle()` contains a decision an AI could have made via a tool call an
 prompt instead, that's a design smell, not an acceptable shortcut for "less code to
 write right now."
 
-## Non-goals (unchanged from `orchestration-loop.md`)
+## Non-goals (unchanged from `intent-planning-loop.md`)
 - Does not change `WhatsAppHandler.send_response`, `PendingApprovalManager`,
   `SessionManager`, or any other shared infrastructure.
 - The accounting-reconciliation sweep's standalone OpenAI call is out of scope.

@@ -1,5 +1,5 @@
 """Shared helper for Backbone tests: a real SessionManager on a throwaway
-directory (the orchestrator requires one - the app can't run without it)."""
+directory (the backbone requires one - the app can't run without it)."""
 import tempfile
 
 from src.managers.session_manager import SessionManager

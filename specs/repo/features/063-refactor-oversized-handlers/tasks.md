@@ -2,7 +2,7 @@
 
 > **Note 2026-09-24**: the task history below records the design as it evolved (two-call Intent Identification/Planning → `use_capability`/`note` → the current "resolution" loop). Only `contracts/capability-resolution-loop.md` describes the CURRENT design; older entries are historical and intentionally left as written.
 
-**Input**: `plan.md`, `spec.md`, `research.md`, `data-model.md`, `contracts/orchestration-loop.md`,
+**Input**: `plan.md`, `spec.md`, `research.md`, `data-model.md`, `contracts/intent-planning-loop.md`,
 `contracts/prompt-assembly.md`, `quickstart.md`, `user-stories.md`
 **Tests**: per `user-stories.md`'s §VI.a decision, no new `billed`/`expensive` tests are added —
 unit/integration tests only, new/standalone (not rewrites of `ai_handler.py`'s existing ones, per
@@ -10,7 +10,7 @@ REQ-063-05/the 2026-09-14 clarification). `ai_handler.py` and every other legacy
 REQ-063-07 are read-only references for this task list — never edited by any task below.
 
 **Scope note**: this feature's own taxonomy (`spec.md`) reimplements the *behavior* of a
-~4,859-line handler. This task list delivers the orchestrator mechanism end-to-end for real
+~4,859-line handler. This task list delivers the backbone mechanism end-to-end for real
 (Setup, Foundational, US2) plus a working vertical slice of every domain capability's read/query
 path and one full write-approval path (Reminders — Write, used as the template the remaining
 write-capabilities' approval-flow parity follows), rather than rushing all 7 domains' full
@@ -33,7 +33,7 @@ separately-approved tasks — tracked at the end of this file, not silently drop
 
 ## Phase 2: Foundational (blocking prerequisites)
 
-**Purpose**: the orchestrator kernel + prompt-loading/caching mechanism every user story depends on.
+**Purpose**: the backbone kernel + prompt-loading/caching mechanism every user story depends on.
 
 - [X] T010 [P] Author `apps/denidin-app/config/prompts/backbone.md` (static behavioral constants
       only, per `spec.md`'s Capability Plugin Taxonomy: Core Identity, Behavioral Guidelines, User
@@ -44,7 +44,7 @@ separately-approved tasks — tracked at the end of this file, not silently drop
 - [X] T012 [P] Author `apps/denidin-app/config/prompts/capabilities/planning.md`.
 - [X] T013 Create `apps/denidin-app/src/backbone/__init__.py`.
 - [X] T014 Implement `_load_backbone()`/`_load_capability_prompt(tag)`/`_build_instructions(...)`
-      in `apps/denidin-app/src/backbone/orchestrator.py` per `contracts/prompt-assembly.md`
+      in `apps/denidin-app/src/backbone/backbone.py` per `contracts/prompt-assembly.md`
       (independent mtime caches, missing-file → WARNING + empty string).
 - [X] T015 [P] Implement `CapabilityTag` (the 9-value enum from `data-model.md`) in
       `apps/denidin-app/src/backbone/capability_tags.py`.
@@ -58,17 +58,17 @@ separately-approved tasks — tracked at the end of this file, not silently drop
       `apps/denidin-app/src/backbone/planning.py` — one OpenAI call, Backbone + `planning` prompt +
       Intent Identification's output + `available_capabilities_for_planning`, parses/validates
       into a `Plan`.
-- [X] T019 Implement `BackboneOrchestrator` in `apps/denidin-app/src/backbone/orchestrator.py`:
+- [X] T019 Implement `Backbone` in `apps/denidin-app/src/backbone/backbone.py`:
       `get_response()` entry point running Intent Identification → Planning → empty-plan final
-      reply (per `contracts/orchestration-loop.md` steps 1/2/4 — the execution loop over a
+      reply (per `contracts/intent-planning-loop.md` steps 1/2/4 — the execution loop over a
       non-empty plan is T020-T026 below, added per-capability).
-- [X] T020 [P] Unit tests for prompt loading/caching (`test_orchestrator_prompt_loading.py`).
+- [X] T020 [P] Unit tests for prompt loading/caching (`test_backbone_prompt_loading.py`).
 - [X] T021 [P] Unit tests for `CapabilityTag`/`Plan` validation + RBAC filtering + fail-open
       (`test_planning.py`).
 - [X] T022 [P] Unit tests for `_build_instructions` assembly order (Backbone + one capability +
-      accumulated context + date) (`test_orchestrator_instructions.py`).
+      accumulated context + date) (`test_backbone_instructions.py`).
 - [X] T023 Integration test: `denidin.py::initialize_app` constructs the legacy `AIHandler` when
-      the flag is off (byte-identical to today) and the new `BackboneOrchestrator` when on
+      the flag is off (byte-identical to today) and the new `Backbone` when on
       (`test_initialize_app_backbone_flag.py`).
 
 ## Phase 3: User Story 2 — Proof of Dynamic Prompt Loading (Priority: P1)
@@ -76,17 +76,17 @@ separately-approved tasks — tracked at the end of this file, not silently drop
 **Goal**: a small-talk turn is Backbone + Intent Identification + Planning only — zero domain
 capability content loaded (UAT 2).
 
-- [X] T030 [US2] Wire `BackboneOrchestrator.get_response()`'s empty-plan path (Intent
+- [X] T030 [US2] Wire `Backbone.get_response()`'s empty-plan path (Intent
       Identification's output alone composes the final reply, `[[NO_REPLY]]` sentinel handled
-      identically to `AIHandler._finalize_response`'s check) — `src/backbone/orchestrator.py`.
+      identically to `AIHandler._finalize_response`'s check) — `src/backbone/backbone.py`.
 - [X] T031 [US2] Instrumentation: log each step's `instructions` byte-length + `cached_tokens` from
       the API response, per `research.md` R6/`quickstart.md`'s verification section —
-      `src/backbone/orchestrator.py`.
+      `src/backbone/backbone.py`.
 - [X] T032 [US2] Unit test: an empty `Plan` produces a final reply built only from Intent
       Identification's output, with zero domain-capability prompt content ever loaded
-      (`test_orchestrator_empty_plan.py`).
+      (`test_backbone_empty_plan.py`).
 - [X] T033 [US2] Unit test: `[[NO_REPLY]]` sentinel on the final step suppresses the reply exactly
-      as `AIHandler`'s does (`test_orchestrator_no_reply_sentinel.py`).
+      as `AIHandler`'s does (`test_backbone_no_reply_sentinel.py`).
 
 **Checkpoint**: a small-talk turn end-to-end (flag on) never touches any `config/prompts/capabilities/*.md`
 file other than `intent_identification.md`/`planning.md`.
@@ -97,7 +97,7 @@ file other than `intent_identification.md`/`planning.md`.
 prompt/tools swapped in one at a time, later steps seeing earlier steps' accumulated context.
 
 - [X] T040 [US3] Implement the execution loop (`_execute_plan()`) in
-      `src/backbone/orchestrator.py` per `contracts/orchestration-loop.md` step 3: per-step
+      `src/backbone/backbone.py` per `contracts/intent-planning-loop.md` step 3: per-step
       instructions assembly, accumulated-context threading, non-fatal per-step-failure handling.
 - [X] T041 [P] [US3] Create `apps/denidin-app/src/capabilities/__init__.py`.
 - [X] T042 [P] [US3] Author `config/prompts/capabilities/cap_reminders_read.md` +
@@ -114,16 +114,16 @@ prompt/tools swapped in one at a time, later steps seeing earlier steps' accumul
       `handlers/extractors/{image,pdf,docx}_extractor.py` unmodified, MIME-dispatched exactly as
       `MediaHandler` does today.
 - [X] T046 [US3] Wire `denidin.py::initialize_app`'s media-message dispatch: flag on routes into
-      `BackboneOrchestrator` instead of `WhatsAppHandler.handle_media_message()` directly, flag off
+      `Backbone` instead of `WhatsAppHandler.handle_media_message()` directly, flag off
       unchanged (REQ-063-04a).
 - [X] T047 [P] [US3] Unit tests for each T042-T045 handler (read/query/extract paths only —
       `test_capability_reminders_read.py`, `test_capability_ledger_query.py`,
       `test_capability_invoicing_read.py`, `test_capability_media_analysis.py`).
 - [X] T048 [US3] Unit test: a 2-step `Plan` (`cap_media_analysis` → `ledger_capture` note-only stub)
       threads `cap_media_analysis`'s output into the second step's accumulated context
-      (`test_orchestrator_multi_step_context.py`).
+      (`test_backbone_multi_step_context.py`).
 - [X] T049 [US3] Integration test: flag-on media dispatch (`denidin.py`) reaches
-      `BackboneOrchestrator` instead of `WhatsAppHandler.handle_media_message()`; flag-off dispatch
+      `Backbone` instead of `WhatsAppHandler.handle_media_message()`; flag-off dispatch
       is provably unchanged (`test_media_dispatch_backbone_flag.py`).
 
 **Checkpoint**: read/query-side multi-capability routing works end-to-end under unit+integration
@@ -131,7 +131,7 @@ coverage; write-side (approval-gated) capabilities are Phase 5.
 
 ## Phase 5: User Story 1 — Zero Behavioral Regression, write-side template (Priority: P1)
 
-**Goal**: prove the approval-gated write path works under the new orchestrator, using Reminders —
+**Goal**: prove the approval-gated write path works under the new backbone, using Reminders —
 Write as the first fully-ported template; the same shape then applies to the remaining write
 capabilities as separately-scoped follow-up work (see "Deferred" below) rather than four more
 copies rushed in this pass.
@@ -141,8 +141,8 @@ copies rushed in this pass.
       `PendingLocalToolApproval` via the existing, unmodified
       `pending_local_tool_approval_manager.py`, mirroring `AIHandler._handle_reminder_creation_proposal`'s
       shape but as new code in the new module (REQ-063-07: zero changes to the original).
-- [X] T052 [US1] Wire `BackboneOrchestrator.resolve_button_tap()`/pending-approval-resolution entry
-      point (per `contracts/orchestration-loop.md`'s Non-goals: skips Intent Identification/Planning,
+- [X] T052 [US1] Wire `Backbone.resolve_button_tap()`/pending-approval-resolution entry
+      point (per `contracts/intent-planning-loop.md`'s Non-goals: skips Intent Identification/Planning,
       resumes the specific pending step directly).
 - [X] T053 [P] [US1] Unit tests: `test_capability_reminders_write.py` (propose → pending →
       approve/decline, mirroring `AIHandler`'s existing reminder-approval unit test shapes but as
@@ -168,7 +168,7 @@ copies rushed in this pass.
       introduced). Also fixed one real pre-existing-suite regression this feature's own change
       caused: `test_config.py`'s config-dict-sync check (added `backbone_config` to `denidin.py`'s
       `__main__` config_dict literal) and one existing unit test's `Mock()` fixture (explicit
-      `backbone_orchestrator = None`, since a bare `Mock()` auto-vivifies a truthy attribute —
+      `backbone = None`, since a bare `Mock()` auto-vivifies a truthy attribute —
       permitted under the 2026-09-14 clarification allowing unit test updates for new module
       boundaries).
 - [ ] T063 **STOP — human checkpoint.** Report readiness for the `billed`/`expensive` acceptance
@@ -201,7 +201,7 @@ Kept as a record of what was closed, not as open work:
   same call as one-time creation. Done.
 - **Backbone-level Proactive Progress Updates + Reaction Management execution wiring** —
   `src/backbone/backbone_tools.py`'s `dispatch_send_progress_update`/`dispatch_react_to_message`,
-  dispatched from `BackboneOrchestrator._resolve_backbone_tool_calls` after every capability-step
+  dispatched from `Backbone._resolve_backbone_tool_calls` after every capability-step
   call. Done.
 - **Accounting-reconciliation capture equivalent** — turned out not to be a real gap on closer
   inspection: `_handle_accounting_reconciliation_capture` is called ONLY by
@@ -210,23 +210,23 @@ Kept as a record of what was closed, not as open work:
   `denidin.py::initialize_app` constructs `AIHandler` unconditionally regardless of the flag
   (the reconciliation service, reminder delivery, and daily-summary-roll schedulers all always
   run against that same shared `ai_handler` instance), so this was never actually routed through
-  either `AIHandler.get_response` or `BackboneOrchestrator.get_response` in the first place.
+  either `AIHandler.get_response` or `Backbone.get_response` in the first place.
   Nothing to build here.
 - **Raw media bytes threading** — `denidin.py`'s flag-on media dispatch (split into
   `_process_media_message_via_backbone`) downloads/validates real media via the unmodified
   low-level `MediaFileManager` methods and threads the raw `Media` object into
-  `BackboneOrchestrator.get_response(media=..., media_type=...)`; Planning decides whether the
+  `Backbone.get_response(media=..., media_type=...)`; Planning decides whether the
   turn's plan even includes a `cap_media_analysis` step at all — REQ-063-04a's real design (corrects
   the earlier 2026-09-14 eager-extraction shortcut, per explicit human correction: media enters
-  the orchestrator raw, like any other message, and the orchestrator chooses whether/when to
+  the backbone raw, like any other message, and the backbone chooses whether/when to
   extract). Done.
 
 Additionally closed by the 2026-09-15 re-audit, not originally listed above (found via
 cross-referencing every spec artifact against the actual code, not just this task list):
-- **Session persistence** for flag-on turns (`BackboneOrchestrator._persist_turn`, wired into
+- **Session persistence** for flag-on turns (`Backbone._persist_turn`, wired into
   `_finalize_response` and into the pending-approval bypass paths in both reminders/invoicing
   handlers).
-- **Long-term memory recall** for flag-on turns (`BackboneOrchestrator._recall_memory`, mirroring
+- **Long-term memory recall** for flag-on turns (`Backbone._recall_memory`, mirroring
   `AIHandler`'s own RBAC-filtered `recall_with_rbac_filter`/`recall` call).
 - **mcp_calls tracking** through the turn (`call_capability_step` accumulates real Morning MCP
   tool calls into `AIResponse.mcp_calls` and the persisted assistant message), closing a gap where
@@ -238,12 +238,12 @@ cross-referencing every spec artifact against the actual code, not just this tas
 ## Next Up (approved design, not yet implemented) — opened 2026-09-16
 
 The two-call Intent Identification → Planning design (this file's closed items above,
-`contracts/orchestration-loop.md`) is retired — see `spec.md`'s 2026-09-16 clarification session.
+`contracts/intent-planning-loop.md`) is retired — see `spec.md`'s 2026-09-16 clarification session.
 Two approved-but-unbuilt designs, not yet broken into tasks:
 
-- **Tool-driven orchestration loop** — `contracts/tool-driven-orchestration.md`. Deletes
+- **Tool-driven resolution loop** — `contracts/tool-driven-loop.md`. Deletes
   `intent_identification.py`/`planning.py`/`fail_open_plan`/`_execute_plan`'s step-list; replaces
-  with one merged orchestrator call driven by four real function-calling tools
+  with one merged backbone call driven by four real function-calling tools
   (`load_capability`, `use_capability`, `record_planning_status`, `send_to_user`) on a
   generalized version of the existing chained (`previous_response_id`) tool-dispatch loop.
 - **`cap_docx_write` capability** — `contracts/docx-write-capability.md`. Wraps Feature 083's
@@ -264,12 +264,12 @@ fully disconnected chances to compute the same relative date (once composing `no
 independently re-deriving the ISO value from it). Explicit user correction: `use_capability`
 was always meant to mean "the capability you just loaded is now live — its tools are attached
 to THIS call" — never a second, disconnected AI call; see `contracts/tool-driven-
-orchestration.md`'s new "Dynamic tool-attachment" section for the full corrected contract.
+resolution.md`'s new "Dynamic tool-attachment" section for the full corrected contract.
 
-- [X] T070 Update `contracts/tool-driven-orchestration.md`: corrected `use_capability`'s own
+- [X] T070 Update `contracts/tool-driven-loop.md`: corrected `use_capability`'s own
       description + new "Dynamic tool-attachment" section documenting the fix, the original
       flaw, and which capabilities are/aren't migrated. Done.
-- [X] T071 `orchestrator.py`: `_dynamic_capability_tools` (allowlist — `cap_reminders_write` only
+- [X] T071 `backbone.py`: `_dynamic_capability_tools` (allowlist — `cap_reminders_write` only
       so far), `_maybe_activate_dynamic_capability` (attaches domain tools to the SAME chained
       follow-up instead of spawning a new call), `_extract_dynamic_capability_calls` /
       `_dispatch_dynamic_capability_call` (recognizes and executes the domain tool call once it
@@ -279,7 +279,7 @@ orchestration.md`'s new "Dynamic tool-attachment" section for the full corrected
       `(call_id, tool_name, args)` shape as `backbone_tools.extract_backbone_tool_calls`).
       `src/capabilities/reminders/handler.py`: `dispatch_direct_tool_call` (direct-execute entry
       point against `ReminderManager`, no `call_capability_step` involved). Done.
-- [X] T073 Unit suite green (`tests/unit -k "orchestrator or reminders"`, 111/111 passed; full
+- [X] T073 Unit suite green (`tests/unit -k "backbone or reminders"`, 111/111 passed; full
       `tests/unit` run to confirm no unrelated regression). `reminders/handler.py`'s existing
       `write()`/`read()` (the old `call_capability_step`-based path) are left in place, unused by
       this new path for `cap_reminders_write` specifically but still directly unit-testable and still

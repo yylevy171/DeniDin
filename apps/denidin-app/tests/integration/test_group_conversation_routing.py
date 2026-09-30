@@ -13,7 +13,7 @@ WhatsAppHandler/MediaHandler/SessionManager - only the two genuine external
 boundaries are stood in for: the Green API file download (media_file_manager)
 and the OpenAI vision call (image_extractor.analyze_media), the same two points
 tests/unit/test_media_handler.py already treats as the seam - no internal
-component (SessionManager, WhatsAppHandler, MediaHandler orchestration) is
+component (SessionManager, WhatsAppHandler, MediaHandler coordination) is
 mocked.
 """
 
@@ -72,7 +72,7 @@ class TestMediaPathBypassesGroupEtiquette:
     def _stub_external_boundaries(self, denidin_app, raw_response: str, monkeypatch):
         """Stand in for the two real external calls a successful media turn makes
         (Green API file download, OpenAI vision analysis) - everything else
-        (SessionManager, WhatsAppHandler, MediaHandler orchestration) stays real.
+        (SessionManager, WhatsAppHandler, MediaHandler coordination) stays real.
 
         Uses pytest's `monkeypatch` (auto-reverted at the end of each test) rather than
         a raw attribute assignment - `denidin_app`/`media_handler` are process-global

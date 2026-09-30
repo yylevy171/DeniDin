@@ -1,9 +1,9 @@
 """
-The tools that drive the Backbone's "resolution" orchestration loop (Feature
+The tools that drive the Backbone's resolution loop (Feature
 063 — see
 specs/repo/features/063-refactor-oversized-handlers/contracts/capability-resolution-loop.md).
 
-Every turn's single merged orchestrator call has these attached alongside
+Every turn's single merged backbone call has these attached alongside
 BACKBONE_TOOLS (send_progress_update/react_to_message, unchanged) - together
 with record_planning_status/send_to_user they are the tools of the
 always-present capabilities (ALWAYS_PRESENT_CAPABILITIES); the approval tool
@@ -182,7 +182,7 @@ APPROVAL_WITH_YES_NO_BUTTONS_TOOL: Dict[str, Any] = {
     },
 }
 
-ORCHESTRATION_TOOLS: List[Dict[str, Any]] = [
+RESOLUTION_TOOLS: List[Dict[str, Any]] = [
     LOAD_FLOWS_TOOL,
     UNLOAD_FLOWS_TOOL,
     LOAD_CAPABILITIES_TOOL,
@@ -193,16 +193,16 @@ ORCHESTRATION_TOOLS: List[Dict[str, Any]] = [
 ]
 
 # Attached only while cap_approval_with_buttons is loaded (toolsets.py); still
-# executed by the orchestrator itself, since it ends the turn.
+# executed by the backbone itself, since it ends the turn.
 
-_ORCHESTRATION_TOOL_NAMES = {
+_RESOLUTION_TOOL_NAMES = {
     "load_flows", "unload_flows", "load_capabilities", "unload_capabilities", "reset_to_backbone",
     "record_planning_status", "send_to_user", "approval_with_yes_no_buttons",
 }
 
 
-def extract_orchestration_tool_calls(response: Any) -> List[Tuple[str, str, Dict[str, Any]]]:
-    """Scans `response.output` for function_call items among the orchestration
+def extract_resolution_tool_calls(response: Any) -> List[Tuple[str, str, Dict[str, Any]]]:
+    """Scans `response.output` for function_call items among the resolution
     tools above. Returns a list of (call_id, tool_name, args) in
     output order. Never raises - a malformed call's arguments are skipped
     (logged), not fatal to the round."""
@@ -215,7 +215,7 @@ def extract_orchestration_tool_calls(response: Any) -> List[Tuple[str, str, Dict
         if getattr(item, "type", None) != "function_call":
             continue
         name = getattr(item, "name", None)
-        if name not in _ORCHESTRATION_TOOL_NAMES:
+        if name not in _RESOLUTION_TOOL_NAMES:
             continue
         try:
             args = json.loads(item.arguments)

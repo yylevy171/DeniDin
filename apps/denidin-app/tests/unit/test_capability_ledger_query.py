@@ -8,15 +8,15 @@ from src.constants.error_messages import BACKBONE_CAPABILITY_NOT_CONFIGURED
 
 
 def test_query_searches_and_returns_raw_events_as_json():
-    orchestrator = MagicMock()
-    orchestrator.ledger_event_manager.query_events.return_value = {
+    backbone = MagicMock()
+    backbone.ledger_event_manager.query_events.return_value = {
         "matches": [{"client_name": "יוסי", "amount": 500}], "count": 1,
     }
     args = {"criteria": [{"text": "יוסי", "hint": "identity"}]}
 
-    result = dispatch_direct_tool_call(orchestrator, "query_ledger_events", args, {})
+    result = dispatch_direct_tool_call(backbone, "query_ledger_events", args, {})
 
-    orchestrator.ledger_event_manager.query_events.assert_called_once_with(
+    backbone.ledger_event_manager.query_events.assert_called_once_with(
         criteria=[{"text": "יוסי", "hint": "identity"}]
     )
     assert json.loads(result)["count"] == 1
@@ -24,10 +24,10 @@ def test_query_searches_and_returns_raw_events_as_json():
 
 
 def test_query_without_manager_configured():
-    orchestrator = MagicMock()
-    orchestrator.ledger_event_manager = None
+    backbone = MagicMock()
+    backbone.ledger_event_manager = None
     result = dispatch_direct_tool_call(
-        orchestrator, "query_ledger_events", {"criteria": [{"text": "x", "hint": None}]}, {},
+        backbone, "query_ledger_events", {"criteria": [{"text": "x", "hint": None}]}, {},
     )
     assert result == BACKBONE_CAPABILITY_NOT_CONFIGURED
 

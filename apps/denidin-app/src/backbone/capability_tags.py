@@ -1,9 +1,9 @@
 """
-CapabilityTag — the canonical, closed set of capabilities the Backbone orchestrator
+CapabilityTag — the canonical, closed set of capabilities the Backbone
 can invoke, per data-model.md's CapabilityTag table (063).
 
 Every tag is a domain capability the model can `load_capabilities` (there are no
-meta tags: the orchestrator is one tool-driven loop, see
+meta tags: the backbone is one tool-driven loop, see
 contracts/capability-resolution-loop.md).
 """
 from dataclasses import dataclass

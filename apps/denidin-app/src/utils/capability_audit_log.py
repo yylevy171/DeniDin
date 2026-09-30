@@ -2,7 +2,7 @@
 Capability Audit Log (Feature 063, added 2026-09-16).
 
 INFO-level, structured record of every domain tool dispatch the Backbone
-orchestrator actually makes - what capability, with what note, and what
+backbone actually makes - what capability, with what note, and what
 actually happened (success/failure + the real detail text). Added after a
 real incident: a `create_reminder` execution failure (CAPABILITIES_SANITY.md
 T3/T4, 2026-09-16) was invisible anywhere except a bare python ERROR log line
@@ -15,8 +15,8 @@ Complements `wire_log.py` (wire-level: what literally crossed the
 WhatsApp boundary) with the layer in between - one capability dispatch, its
 outcome, and why - so "why did this fail" is always answerable from logs
 alone, without re-running anything. Call `log_capability_action` at exactly
-one place, `BackboneOrchestrator._dispatch_orchestration_tool`'s
-orchestration loop's local-tool dispatch - every domain capability, not just reminders,
+one place, `Backbone._dispatch_resolution_tool`'s
+resolution loop's local-tool dispatch - every domain capability, not just reminders,
 routes through there, so this file needs no per-capability wiring.
 """
 from typing import List, Optional

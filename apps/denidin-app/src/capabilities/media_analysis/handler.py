@@ -7,7 +7,7 @@ Reuses the existing, unmodified `src/handlers/extractors/{image,pdf,docx}_extrac
 classes (REQ-063-03: "imported, not duplicated") via a small duck-typing shim, since
 those classes are written against `AIHandler`'s interface
 (`denidin_context.ai_handler.client` / `._load_constitution()` /
-`.capture_ledger_events_from_text()`), not against the new orchestrator directly.
+`.capture_ledger_events_from_text()`), not against the new backbone directly.
 
 Scope note (a real `analyze_media` tool, see dispatch_direct_tool_call): the
 extractors' own inline ledger-capture side effect
@@ -31,15 +31,15 @@ logger = logging.getLogger(__name__)
 class _ExtractorAIHandlerShim:
     """Duck-types the subset of AIHandler's interface handlers/extractors/*.py
     actually call, so the unmodified extractor classes can run against the new
-    orchestrator instead of the legacy AIHandler."""
+    backbone instead of the legacy AIHandler."""
 
-    def __init__(self, orchestrator):
-        self._orchestrator = orchestrator
-        self.client = orchestrator.client
+    def __init__(self, backbone):
+        self._backbone = backbone
+        self.client = backbone.client
 
     def _load_constitution(self) -> str:
-        return str(self._orchestrator.load_backbone()) + "\n\n" + str(
-            self._orchestrator.load_capability_prompt(CapabilityTag.MEDIA_ANALYSIS)
+        return str(self._backbone.load_backbone()) + "\n\n" + str(
+            self._backbone.load_capability_prompt(CapabilityTag.MEDIA_ANALYSIS)
         )
 
     def capture_ledger_events_from_text(self, text: str, today_timestamp: Optional[int] = None):
@@ -53,9 +53,9 @@ class _ExtractorAIHandlerShim:
 
 
 class _ExtractorContextShim:
-    def __init__(self, orchestrator):
-        self.config = orchestrator.config
-        self.ai_handler = _ExtractorAIHandlerShim(orchestrator)
+    def __init__(self, backbone):
+        self.config = backbone.config
+        self.ai_handler = _ExtractorAIHandlerShim(backbone)
 
 
 def _build_extractor(media_type: str, context_shim: "_ExtractorContextShim"):
@@ -72,13 +72,13 @@ def _build_extractor(media_type: str, context_shim: "_ExtractorContextShim"):
     raise ValueError(f"Unsupported media_type for extraction: {media_type!r}")
 
 
-def dispatch_direct_tool_call(orchestrator, tool_name: str, args: Dict[str, Any],
+def dispatch_direct_tool_call(backbone, tool_name: str, args: Dict[str, Any],
                                turn_context: Dict[str, Any]) -> str:
     """Executes one `analyze_media` call directly on the ongoing chain
     (2026-09-24 "resolution" redesign - no separate "use" step, no note).
 
     media/media_type (REQ-063-04a): denidin.py's flag-on media dispatch hands
-    the orchestrator RAW, not-yet-extracted media; the real vision/PDF/DOCX
+    the backbone RAW, not-yet-extracted media; the real vision/PDF/DOCX
     extraction only happens here, when the model calls the tool, via the
     unmodified extractor classes (same MIME dispatch `MediaHandler` uses).
     media_extraction: an ALREADY-computed result (test fixture / future
@@ -95,7 +95,7 @@ def dispatch_direct_tool_call(orchestrator, tool_name: str, args: Dict[str, Any]
     if media is None or media_type is None:
         return BACKBONE_NO_MEDIA_ATTACHED
 
-    extractor = _build_extractor(media_type, _ExtractorContextShim(orchestrator))
+    extractor = _build_extractor(media_type, _ExtractorContextShim(backbone))
     result = extractor.analyze_media(media, caption=turn_context.get("caption", ""),
                                       today_timestamp=turn_context.get("timestamp"))
     extracted_text = result.get("extracted_text", "")

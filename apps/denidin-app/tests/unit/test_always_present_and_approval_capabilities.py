@@ -11,8 +11,8 @@ import pytest
 
 from src.backbone.capability_tags import ALWAYS_PRESENT_CAPABILITIES, CapabilityTag
 from src.backbone.flow_tags import FlowTag
-from src.backbone.orchestration_tools import ORCHESTRATION_TOOLS
-from src.backbone.orchestrator import BackboneOrchestrator
+from src.backbone.resolution_tools import RESOLUTION_TOOLS
+from src.backbone.backbone import Backbone
 from src.capabilities.toolsets import (
     MORNING_MCP_TOOL_NAMES, build_capability_tools, local_tool_owners,
 )
@@ -28,7 +28,7 @@ def orch(tmp_path):
         green_api_instance_id="x", green_api_token="y", ai_api_key="z",
         backbone_config={"base_dir": str(PROMPTS.parent)},
     )
-    return BackboneOrchestrator(MagicMock(), config,
+    return Backbone(MagicMock(), config,
                                 session_manager=SessionManager(storage_dir=str(tmp_path / "s")))
 
 
@@ -72,11 +72,11 @@ def test_loaded_flows_and_capabilities_render_in_canonical_order_not_load_order(
 
 
 def test_approval_tool_is_attached_only_while_cap_approval_with_buttons_is_loaded(orch):
-    assert "approval_with_yes_no_buttons" not in {t["name"] for t in ORCHESTRATION_TOOLS}
+    assert "approval_with_yes_no_buttons" not in {t["name"] for t in RESOLUTION_TOOLS}
     names = lambda tags: {t["name"] for t in build_capability_tools(orch, tags, {})}  # noqa: E731
     assert "approval_with_yes_no_buttons" not in names([CapabilityTag.CLIENT_WRITE])
     assert "approval_with_yes_no_buttons" in names([CapabilityTag.APPROVAL_WITH_BUTTONS])
-    # The orchestrator executes it itself (it ends the turn) - never a domain-dispatched tool.
+    # The backbone executes it itself (it ends the turn) - never a domain-dispatched tool.
     assert local_tool_owners(orch, [CapabilityTag.APPROVAL_WITH_BUTTONS], {}) == {}
 
 

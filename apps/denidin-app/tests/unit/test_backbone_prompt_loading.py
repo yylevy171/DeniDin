@@ -1,4 +1,4 @@
-"""Unit tests for BackboneOrchestrator's prompt loading/caching (T020,
+"""Unit tests for Backbone's prompt loading/caching (T020,
 contracts/prompt-assembly.md). No real OpenAI calls."""
 import tempfile
 from pathlib import Path
@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from src.backbone.capability_tags import CapabilityTag
-from src.backbone.orchestrator import BackboneOrchestrator
+from src.backbone.backbone import Backbone
 from tests.backbone_test_support import make_session_manager
 from src.models.config import AppConfiguration
 
@@ -31,13 +31,13 @@ def _make_config(base_dir: Path) -> AppConfiguration:
 
 
 def test_load_backbone_reads_file(prompts_root):
-    orchestrator = BackboneOrchestrator(MagicMock(), _make_config(prompts_root), session_manager=make_session_manager())
-    assert orchestrator.load_backbone() == "BACKBONE CONTENT"
+    backbone = Backbone(MagicMock(), _make_config(prompts_root), session_manager=make_session_manager())
+    assert backbone.load_backbone() == "BACKBONE CONTENT"
 
 
 def test_load_backbone_caches_until_mtime_changes(prompts_root):
-    orchestrator = BackboneOrchestrator(MagicMock(), _make_config(prompts_root), session_manager=make_session_manager())
-    assert orchestrator.load_backbone() == "BACKBONE CONTENT"
+    backbone = Backbone(MagicMock(), _make_config(prompts_root), session_manager=make_session_manager())
+    assert backbone.load_backbone() == "BACKBONE CONTENT"
 
     backbone_path = prompts_root / "prompts" / "backbone.md"
     backbone_path.write_text("UPDATED CONTENT", encoding="utf-8")
@@ -46,18 +46,18 @@ def test_load_backbone_caches_until_mtime_changes(prompts_root):
     import os
     os.utime(backbone_path, (backbone_path.stat().st_mtime + 5, backbone_path.stat().st_mtime + 5))
 
-    assert orchestrator.load_backbone() == "UPDATED CONTENT"
+    assert backbone.load_backbone() == "UPDATED CONTENT"
 
 
 def test_load_capability_prompt_reads_file(prompts_root):
-    orchestrator = BackboneOrchestrator(MagicMock(), _make_config(prompts_root), session_manager=make_session_manager())
-    content = orchestrator.load_capability_prompt(CapabilityTag.REMINDERS_READ)
+    backbone = Backbone(MagicMock(), _make_config(prompts_root), session_manager=make_session_manager())
+    content = backbone.load_capability_prompt(CapabilityTag.REMINDERS_READ)
     assert content == "REMINDERS_READ CONTENT"
 
 
 def test_load_capability_prompt_missing_file_returns_empty_and_warns(prompts_root, caplog):
-    orchestrator = BackboneOrchestrator(MagicMock(), _make_config(prompts_root), session_manager=make_session_manager())
-    content = orchestrator.load_capability_prompt(CapabilityTag.LEDGER_QUERY)
+    backbone = Backbone(MagicMock(), _make_config(prompts_root), session_manager=make_session_manager())
+    content = backbone.load_capability_prompt(CapabilityTag.LEDGER_QUERY)
     assert content == ""
 
 
@@ -65,6 +65,6 @@ def test_load_capability_prompt_independent_cache_per_tag(prompts_root):
     (prompts_root / "prompts" / "capabilities" / "cap_ledger_query.md").write_text(
         "LEDGER_QUERY CONTENT", encoding="utf-8"
     )
-    orchestrator = BackboneOrchestrator(MagicMock(), _make_config(prompts_root), session_manager=make_session_manager())
-    assert orchestrator.load_capability_prompt(CapabilityTag.REMINDERS_READ) == "REMINDERS_READ CONTENT"
-    assert orchestrator.load_capability_prompt(CapabilityTag.LEDGER_QUERY) == "LEDGER_QUERY CONTENT"
+    backbone = Backbone(MagicMock(), _make_config(prompts_root), session_manager=make_session_manager())
+    assert backbone.load_capability_prompt(CapabilityTag.REMINDERS_READ) == "REMINDERS_READ CONTENT"
+    assert backbone.load_capability_prompt(CapabilityTag.LEDGER_QUERY) == "LEDGER_QUERY CONTENT"

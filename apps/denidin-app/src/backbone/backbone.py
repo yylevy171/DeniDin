@@ -1,6 +1,6 @@
 """
-BackboneOrchestrator (Feature 063) — the new, standalone module implementing the
-Backbone-as-tool-orchestrator-kernel architecture. Selected once at startup by
+Backbone (Feature 063) — the new, standalone module implementing the
+Backbone-as-tool-backbone-kernel architecture. Selected once at startup by
 `denidin.py::initialize_app` only when `config.feature_flags['enable_capability_backbone']`
 is true; `src/handlers/ai_handler.py` is never imported by, and never imports, this
 module (REQ-063-07).
@@ -23,7 +23,7 @@ from src.backbone.capability_tags import ALWAYS_PRESENT_CAPABILITIES, Capability
 from src.backbone.flow_tags import FlowTag, flow_catalog_text
 from src.backbone.loading import apply_loading, describe_loading, parse_requested
 from src.backbone.prompt_cache import MtimePromptCache
-from src.backbone.orchestration_tools import ORCHESTRATION_TOOLS, extract_orchestration_tool_calls
+from src.backbone.resolution_tools import RESOLUTION_TOOLS, extract_resolution_tool_calls
 from src.capabilities.toolsets import (
     build_capability_tools,
     dispatch_local_tool,
@@ -84,8 +84,8 @@ _DEFAULT_BACKBONE_CONFIG = {
 }
 
 
-class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
-    """The new orchestrator kernel. Same call SHAPE as the entry points
+class Backbone:  # pylint: disable=too-many-instance-attributes
+    """The new backbone kernel. Same call SHAPE as the entry points
     `denidin.py`'s routing layer already calls against `AIHandler`
     (`turn_with_rounds` ~ `AIHandler.get_response`, `resolve_button_tap`) -
     denidin.py dispatches explicitly by name (REQ-063-07), not via a
@@ -124,7 +124,7 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         # memory_manager/user_manager/own_whatsapp_number (2026-09-15, closing a
         # real gap found by full re-audit against spec.md/plan.md: session
         # persistence AND long-term memory recall were never wired into this
-        # orchestrator at all - every flag-on turn's rolling window and recalled
+        # backbone at all - every flag-on turn's rolling window and recalled
         # memories were silently empty, forever, regardless of prior turns. All
         # three are the SAME shared instances AIHandler already owns (REQ-063-03) -
         # memory_manager for ChromaDB daily_summary recall, user_manager only for
@@ -136,13 +136,13 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         self.own_whatsapp_number = own_whatsapp_number
         # telemetry_manager (2026-09-15, closing a real gap: Feature 080's
         # per-request latency/token telemetry was never wired into this
-        # orchestrator at all - every flag-on turn wrote zero RequestTelemetry
+        # backbone at all - every flag-on turn wrote zero RequestTelemetry
         # rows, silently, forever). The SAME shared TelemetryManager instance
         # AIHandler already owns (REQ-063-03) - None whenever the flag is off or
         # telemetry was never configured, same "complete no-op" contract
         # AIHandler.get_response's own docstring describes. Unlike the legacy
         # path's contextvar-based threading (needed because AIHandler's OpenAI
-        # call sites are spread across many separate methods), this orchestrator
+        # call sites are spread across many separate methods), this backbone
         # already threads all per-turn state as plain instance attributes (see
         # _turn_mcp_calls etc. above), so a TelemetryBuilder is simply one more
         # such attribute (_turn_telemetry_builder, set in turn_with_rounds) -
@@ -183,7 +183,7 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         self._user_memory_content: str = ""
         self._user_memory_mtime: Optional[float] = None
 
-        # Set once per turn_with_rounds() call, read by the orchestration loop for
+        # Set once per turn_with_rounds() call, read by the resolution loop for
         # every round within that SAME turn (2026-09-14). Deliberately a plain
         # instance attribute, not threaded as an explicit parameter through
         # every one of the ~6 call sites across src/capabilities/* + planning.py
@@ -305,7 +305,7 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         resolve a relative clock offset ("תזכיר לי בעוד שעה") and asks the user what
         time it is instead of just computing it - a real gap the legacy code already
         fixed once for Feature 054 (reminders), confirmed via a real billed-test
-        failure (2026-09-14, this orchestrator regressed on it by injecting only the
+        failure (2026-09-14, this backbone regressed on it by injecting only the
         date - same billed test caught it here too).
         """
         now = local_from_timestamp(today_timestamp) if today_timestamp else now_local()
@@ -383,7 +383,7 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         ]
 
     # ------------------------------------------------------------------
-    # The orchestration loop (contracts/capability-resolution-loop.md)
+    # The resolution loop (contracts/capability-resolution-loop.md)
     # ------------------------------------------------------------------
 
     def turn_with_rounds(  # pylint: disable=too-many-locals
@@ -397,14 +397,14 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
             media_extraction: Optional[Dict[str, Any]] = None,
             media: Optional[Any] = None,
             media_type: Optional[str] = None) -> AIResponse:
-        """The orchestrator's entry point: resolves one WhatsApp turn (one incoming
+        """The backbone's entry point: resolves one WhatsApp turn (one incoming
         message → one final reply) via one or more OpenAI call "rounds" (2026-09-30
         rename, from the generic `get_response` — see `_call_model`'s "first round"/
         "follow-up round" context labels: a turn is NOT guaranteed to be a single
         OpenAI call, since the model may spend a round loading a flow/capability
         before it can actually answer). Same call SHAPE `AIHandler.get_response`
         already exposes (chat_id/user_role/sender/... in, `AIResponse` out) so
-        denidin.py's `backbone_orchestrator is not None` branches can call either
+        denidin.py's `backbone is not None` branches can call either
         implementation the same way, but denidin.py already dispatches explicitly by
         name (REQ-063-07) - there's no duck-typed/polymorphic interface requiring the
         two method NAMES to match, which is what made this rename safe.
@@ -501,14 +501,14 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
             # Conversation history (2026-09-14): the SAME rolling-window shape/source
             # AIHandler._call_openai_api already uses (SessionManager.get_rolling_window,
             # oldest-first, role-token-capped) - godfather/admin-only scope for now
-            # (explicit decision - client role isn't exercised through this orchestrator
+            # (explicit decision - client role isn't exercised through this backbone
             # yet), so the token cap always uses the godfather/admin limit. Set once here,
             # read by the loop for every round this turn makes (see that
             # method's own docstring for why this is a plain instance attribute rather
             # than threaded through every call site).
             self._turn_conversation_history = self._load_conversation_history(effective_chat_id)
 
-            # The tool-driven orchestration loop (see
+            # The tool-driven resolution loop (see
             # contracts/capability-resolution-loop.md): one continuous conversation
             # driven by load_capabilities/unload_capabilities/load_flows/unload_flows/reset_to_backbone/
             # record_planning_status/approval_with_yes_no_buttons/send_to_user.
@@ -516,7 +516,7 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
             # Any new turn supersedes whatever approval buttons were outstanding.
             if effective_chat_id:
                 self.session_manager.set_approval_message_id(effective_chat_id, None)
-            final_text = self._run_orchestration_loop(request, turn_context, is_media=is_media)
+            final_text = self._run_resolution_loop(request, turn_context, is_media=is_media)
 
             parties = _TurnParties(
                 effective_chat_id, role, sender, user_phone, sender_phone, is_group, chat_name,
@@ -524,7 +524,7 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
             return self._finalize_response(request, final_text, parties)
         except Exception as exc:  # pylint: disable=broad-except
             logger.error(
-                "Unexpected error in BackboneOrchestrator.turn_with_rounds for request %s: %s",
+                "Unexpected error in Backbone.turn_with_rounds for request %s: %s",
                 request.request_id, exc, exc_info=True,
             )
             # 2026-09-30 (closing a real gap): persist what the user sent and the
@@ -591,22 +591,22 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         """Everything one API call needs, recomputed from the persisted
         loaded flow/capability sets EVERY round (initial AND follow-up):
         `instructions` (backbone + catalogs + each loaded flow's and capability's prompt)
-        AND `tools` (orchestration + backbone + each loaded capability's real
+        AND `tools` (resolution + backbone + each loaded capability's real
         tools) - both from the SAME set, so a prompt is never attached
         without its tools (the root cause of the original bug), and
         previous_response_id chaining - which retains neither - never loses
         either. Returns (tags, instructions, tools)."""
         tags = self._get_active_tags(chat_id)
-        tools = list(ORCHESTRATION_TOOLS) + list(BACKBONE_TOOLS) + build_capability_tools(self, tags, turn_context)
+        tools = list(RESOLUTION_TOOLS) + list(BACKBONE_TOOLS) + build_capability_tools(self, tags, turn_context)
         instructions = self.build_instructions(
             tags, "", request.timestamp, active_flows=self._get_active_flows(chat_id))
         return tags, instructions, tools
 
     # ------------------------------------------------------------------
-    # The orchestration loop (contracts/capability-resolution-loop.md)
+    # The resolution loop (contracts/capability-resolution-loop.md)
     # ------------------------------------------------------------------
 
-    def _run_orchestration_loop(self, request: AIRequest, turn_context: Dict[str, Any],
+    def _run_resolution_loop(self, request: AIRequest, turn_context: Dict[str, Any],
                                  *, is_media: bool = False) -> str:
         """The tool-driven "resolution" loop - one continuous conversation, no
         "initial call"/"turn" concept beyond the API's own call chaining.
@@ -624,7 +624,7 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         input_items = list(self._turn_conversation_history)
         input_items.append({"role": "user", "content": request.user_prompt})
 
-        response = self._call_model("_run_orchestration_loop (first round)", {
+        response = self._call_model("_run_resolution_loop (first round)", {
             "model": request.model,
             "instructions": instructions,
             "input": input_items,
@@ -646,7 +646,7 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
                 # just-mutated) persisted set - previous_response_id retains
                 # neither.
                 tags, instructions, tools = self._build_round_inputs(request, chat_id, turn_context)
-                response = self._call_model("_run_orchestration_loop (follow-up)", {
+                response = self._call_model("_run_resolution_loop (follow-up)", {
                     "model": request.model,
                     "instructions": instructions,
                     "input": outputs,
@@ -655,11 +655,11 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
                     "tools": tools,
                 })
             except Exception as exc:  # pylint: disable=broad-except
-                logger.error("Orchestration-loop follow-up call failed (non-fatal): %s", exc)
+                logger.error("Resolution-loop follow-up call failed (non-fatal): %s", exc)
                 return (getattr(response, "output_text", "") or "").strip() or NO_REPLY_SENTINEL
 
         logger.warning(
-            "Orchestration loop hit MAX_BACKBONE_TOOL_LOOP_ITERATIONS=%d for request %s "
+            "Resolution loop hit MAX_BACKBONE_TOOL_LOOP_ITERATIONS=%d for request %s "
             "without a send_to_user call - returning whatever text the last round carries.",
             MAX_BACKBONE_TOOL_LOOP_ITERATIONS, request.request_id,
         )
@@ -672,17 +672,17 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         it carries no calls at all (plain text - the loop ends), else
         (function_call_output items for the next round, the reply text if the
         model called send_to_user/approval_with_yes_no_buttons this round)."""
-        orchestration_calls = extract_orchestration_tool_calls(response)
+        resolution_calls = extract_resolution_tool_calls(response)
         backbone_calls = extract_backbone_tool_calls(response)
         domain_calls = extract_local_calls(response, local_tool_owners(self, tags, turn_context))
-        if not orchestration_calls and not backbone_calls and not domain_calls:
+        if not resolution_calls and not backbone_calls and not domain_calls:
             return None
-        outputs, final_text = self._run_orchestration_calls(orchestration_calls, chat_id)
+        outputs, final_text = self._run_resolution_calls(resolution_calls, chat_id)
         outputs += self._run_domain_calls(domain_calls, turn_context)
         outputs += self._run_backbone_calls(backbone_calls, request)
         return outputs, final_text
 
-    def _run_orchestration_calls(self, calls: List[Tuple[str, str, Dict[str, Any]]], chat_id: str
+    def _run_resolution_calls(self, calls: List[Tuple[str, str, Dict[str, Any]]], chat_id: str
                                   ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
         outputs: List[Dict[str, Any]] = []
         final_text: Optional[str] = None
@@ -696,7 +696,7 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
                     self._turn_offered_approval = True
                 result_text = "ok"
             else:
-                result_text = self._dispatch_orchestration_tool(tool_name, args, chat_id)
+                result_text = self._dispatch_resolution_tool(tool_name, args, chat_id)
             outputs.append({"type": "function_call_output", "call_id": call_id, "output": result_text})
         return outputs, final_text
 
@@ -756,7 +756,7 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
             )
         return response
 
-    def _dispatch_orchestration_tool(self, tool_name: str, args: Dict[str, Any], chat_id: str) -> str:
+    def _dispatch_resolution_tool(self, tool_name: str, args: Dict[str, Any], chat_id: str) -> str:
         """Dispatches one load_flows/unload_flows/load_capabilities/
         unload_capabilities/reset_to_backbone/record_planning_status call,
         returning the plain-text string fed back as its function_call_output.
@@ -790,7 +790,7 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
             "unload_capabilities": ("capability", False),
         }
         if tool_name not in handlers:
-            return f"error: unknown orchestration tool {tool_name!r}"
+            return f"error: unknown resolution tool {tool_name!r}"
         kind, loading = handlers[tool_name]
         return self._apply_loading(kind, loading, args, chat_id)
 
@@ -882,7 +882,7 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
     def _recall_memory(self, user_prompt: str, chat_id: Optional[str],
                         user_phone: Optional[str], sender_phone: Optional[str]) -> str:
         """2026-09-15 (closing a real gap - long-term memory recall was never
-        wired into this orchestrator at all). Mirrors
+        wired into this backbone at all). Mirrors
         AIHandler.create_request's own recall block (ai_handler.py ~2095-2131):
         a single ChromaDB `daily_summary` semantic-similarity query over this
         chat's own collection, RBAC-filtered by the resolving user's
@@ -935,7 +935,7 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
                        parties: _TurnParties) -> None:
         """2026-09-15 (closing a real gap - flag-on turns never persisted a
         single message to the session; every rolling-window read this
-        orchestrator itself does was reading a session that this orchestrator
+        backbone itself does was reading a session that this backbone
         never wrote to). New, standalone code mirroring
         AIHandler.get_response's own persistence block (ai_handler.py
         ~3746-3862) shape-for-shape (RBAC-token-limited storage,

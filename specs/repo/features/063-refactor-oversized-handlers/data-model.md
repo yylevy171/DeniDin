@@ -1,7 +1,7 @@
 # Phase 1 Data Model: The Dynamic Capability Backbone (063)
 
 No new persisted data entities — this is a structural/code refactor. The entities below are the
-new *in-process* shapes introduced to make the Backbone-as-orchestrator architecture work; no
+new *in-process* shapes introduced to make the Backbone-as-backbone architecture work; no
 database schema, no new files under `data/`, no `LedgerEvent`/`Reminder` field changes.
 
 ---
@@ -9,7 +9,7 @@ database schema, no new files under `data/`, no `LedgerEvent`/`Reminder` field c
 ## CapabilityTag (enum-like constant)
 
 The canonical set of capabilities the model can `load_capabilities`. There are no meta
-capabilities: the orchestrator is one tool-driven loop (`contracts/capability-resolution-loop.md`).
+capabilities: the backbone is one tool-driven loop (`contracts/capability-resolution-loop.md`).
 
 | Value | Domain | Mode | Prompt file | Tools / backing code |
 |---|---|---|---|---|
@@ -42,7 +42,7 @@ every API call (`previous_response_id` retains neither).
 
 A single loaded string, from the **new** `config/prompts/backbone.md` (not
 `runtime_constitution.md`, which is untouched and stays exclusively `AIHandler`'s file). Loaded by
-the new orchestrator's own mtime-cache mechanism, structurally mirroring but not sharing code with
+the new backbone's own mtime-cache mechanism, structurally mirroring but not sharing code with
 `ai_handler.py`'s `_load_constitution`. Contains only the static behavioral constants listed in
 `research.md` R4 — no routing/classification logic (the model chooses capabilities itself via
 `load_flows`/`load_capabilities`).
@@ -58,12 +58,12 @@ context and today's date after that.
 
 `constitution_config` (used by `AIHandler`) is **untouched** — still `{file:
 "runtime_constitution.md", base_dir: "config"}`, unmodified. A new, separate config section is
-added for the new orchestrator:
+added for the new backbone:
 
 ```jsonc
 {
   "feature_flags": {
-    "enable_capability_backbone": false     // NEW — selects AIHandler (false) vs. new orchestrator (true)
+    "enable_capability_backbone": false     // NEW — selects AIHandler (false) vs. new backbone (true)
   },
   "backbone_config": {                       // NEW — parallel to constitution_config, only read
     "file": "backbone.md",                   //   when the flag is on; AIHandler never reads this
@@ -77,7 +77,7 @@ added for the new orchestrator:
 
 `denidin.py::initialize_app` reads `feature_flags.enable_capability_backbone` once at startup to
 decide which handler class to construct, and — when true — also routes media-message dispatch
-into the new orchestrator instead of `WhatsAppHandler.handle_media_message` directly (R2a);
-`backbone_config` is only ever read by the new orchestrator, so a `dev` config that never sets the
+into the new backbone instead of `WhatsAppHandler.handle_media_message` directly (R2a);
+`backbone_config` is only ever read by the new backbone, so a `dev` config that never sets the
 flag needs no `backbone_config` block at all (pure addition, zero effect on the legacy path
 either way).
