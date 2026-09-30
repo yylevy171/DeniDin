@@ -11,7 +11,7 @@ See specs/repo/features/080-higher-verbosity-speed/contracts/telemetry-recorder.
 full interface contract and data-model.md for the RequestTelemetry field-level contract.
 Recording is entirely best-effort: neither TelemetryBuilder nor TelemetryManager.record() may
 ever raise into the request path - a telemetry failure must never be able to break message
-processing (mirrors send_typing_indicator/log_outbound's existing posture in this codebase).
+processing (mirrors send_typing_indicator/audit_wire's existing posture in this codebase).
 """
 
 import json

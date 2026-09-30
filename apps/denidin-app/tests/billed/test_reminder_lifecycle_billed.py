@@ -303,6 +303,8 @@ class TestReminderLifecycleBilled:
     @pytest.mark.sanity
     def test_godfather_creates_one_time_reminder_button_approval(self, denidin_app, config):
         phone, chat_id = self._godfather(config)
+        reminder_manager = denidin_app.ai_handler.reminder_manager
+        ids_before = self._active_ids(reminder_manager)
         n1 = self._send_text(
             chat_id, phone, "Test Godfather",
             "תזכיר לי בעוד שעתיים לשלוח חשבונית ללקוח", "create2",
@@ -315,6 +317,17 @@ class TestReminderLifecycleBilled:
         )
         confirmation = self._get_response(n2)
         assert confirmation is not None
+        # 2026-09-16 (CAPABILITIES_SANITY.md T3 incident): `confirmation is not
+        # None` is satisfied just as well by a graceful FAILURE message as by
+        # a real success - it must never be the only assertion here. Diff the
+        # active reminder set (same robust-to-ordering technique
+        # _new_reminder_id already uses elsewhere in this file) to prove the
+        # reminder was ACTUALLY created, not merely that some reply came back.
+        new_ids = self._active_ids(reminder_manager) - ids_before
+        assert len(new_ids) == 1, (
+            f"expected exactly 1 new reminder to have been created, got {new_ids} "
+            f"- confirmation text was: {confirmation!r}"
+        )
 
     @pytest.mark.sanity
     def test_godfather_creates_recurring_reminder(self, denidin_app, config, monkeypatch):

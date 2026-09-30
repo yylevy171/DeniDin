@@ -1,10 +1,14 @@
-"""Unit test (T033, US2): the [[NO_REPLY]] sentinel on the final step suppresses
-the reply exactly as AIHandler's does."""
-from unittest.mock import MagicMock, patch
+"""Unit test (T033, US2; updated 2026-09-16 for the capability-resolution-loop.md
+redesign): the [[NO_REPLY]] sentinel, sent via the model's own send_to_user tool
+call, suppresses the reply exactly as before."""
+import json
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 
 from src.backbone.orchestrator import BackboneOrchestrator
+from tests.backbone_test_support import make_session_manager
 from src.models.config import AppConfiguration
 from src.models.message import AIRequest, NO_REPLY_SENTINEL
 
@@ -17,12 +21,12 @@ def prompts_root(tmp_path):
     return base
 
 
-def _orchestrator(prompts_root):
+def _orchestrator(prompts_root, client=None):
     config = AppConfiguration(
         green_api_instance_id="x", green_api_token="y", ai_api_key="z",
         backbone_config={"base_dir": str(prompts_root)},
     )
-    return BackboneOrchestrator(MagicMock(), config)
+    return BackboneOrchestrator(client or MagicMock(), config, session_manager=make_session_manager())
 
 
 def _request():
@@ -32,21 +36,31 @@ def _request():
     )
 
 
+def _send_to_user_response(text: str):
+    item = SimpleNamespace(
+        type="function_call", name="send_to_user",
+        arguments=json.dumps({"text": text}), call_id="call1",
+    )
+    return SimpleNamespace(output=[item], output_text="", id="resp1", usage=None)
+
+
 def test_no_reply_sentinel_suppresses_reply(prompts_root):
-    orchestrator = _orchestrator(prompts_root)
-    with patch.object(orchestrator, "call_capability_step") as mock_call:
-        mock_call.side_effect = [NO_REPLY_SENTINEL, '{"steps": []}']
-        response = orchestrator.get_response(_request(), user_role="client")
+    client = MagicMock()
+    client.responses.create.return_value = _send_to_user_response(NO_REPLY_SENTINEL)
+    orchestrator = _orchestrator(prompts_root, client)
+
+    response = orchestrator.get_response(_request(), user_role="client")
 
     assert response.should_reply is False
     assert response.response_text == NO_REPLY_SENTINEL
 
 
 def test_ordinary_reply_is_sent(prompts_root):
-    orchestrator = _orchestrator(prompts_root)
-    with patch.object(orchestrator, "call_capability_step") as mock_call:
-        mock_call.side_effect = ["בוקר טוב!", '{"steps": []}']
-        response = orchestrator.get_response(_request(), user_role="client")
+    client = MagicMock()
+    client.responses.create.return_value = _send_to_user_response("בוקר טוב!")
+    orchestrator = _orchestrator(prompts_root, client)
+
+    response = orchestrator.get_response(_request(), user_role="client")
 
     assert response.should_reply is True
     assert response.response_text == "בוקר טוב!"

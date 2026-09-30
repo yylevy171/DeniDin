@@ -21,7 +21,7 @@ from src.managers.pending_approval_manager import BUTTON_ID_APPROVE, BUTTON_ID_D
 from src.models.message import WhatsAppMessage, AIResponse
 from src.models.fee_agreement import GeneratedDocument
 from src.utils.logger import get_logger
-from src.utils.whatsapp_audit_log import log_outbound
+from src.utils.wire_log import audit_wire, debug_wire
 
 logger = get_logger(__name__)
 
@@ -106,7 +106,9 @@ class WhatsAppHandler:
 
         try:
             notification.answer(auto_reply)
-            log_outbound(notification.event.get("senderData", {}).get("chatId", ""), auto_reply, kind="text")
+            _wire_payload = {"chat_id": notification.event.get("senderData", {}).get("chatId", ""), "message": auto_reply}
+            audit_wire("whatsapp", "out", "text", _wire_payload)
+            debug_wire("whatsapp", "out", "text", _wire_payload)
             logger.debug("Unsupported message auto-reply sent successfully")
         except Exception as e:
             logger.error(f"Failed to send unsupported message auto-reply: {e}", exc_info=True)
@@ -213,7 +215,9 @@ class WhatsAppHandler:
                 f"[083] Fee agreement document sent: document_id={generated.document_id!r}, "
                 f"chat_id={chat_id!r}"
             )
-            log_outbound(chat_id, f"[fee agreement document: {generated.temp_path.name}]", kind="file")
+            _wire_payload = {"chat_id": chat_id, "message": f"[fee agreement document: {generated.temp_path.name}]"}
+            audit_wire("whatsapp", "out", "file", _wire_payload)
+            debug_wire("whatsapp", "out", "file", _wire_payload)
             return True
         except (requests.HTTPError, requests.Timeout, requests.ConnectionError) as e:
             logger.error(
@@ -277,10 +281,9 @@ class WhatsAppHandler:
                 f"Response sent successfully for request {response.request_id}: "
                 f"{len(response.response_text)} chars"
             )
-            log_outbound(
-                notification.event.get("senderData", {}).get("chatId", ""),
-                response.response_text, kind="text",
-            )
+            _wire_payload = {"chat_id": notification.event.get("senderData", {}).get("chatId", ""), "message": response.response_text}
+            audit_wire("whatsapp", "out", "text", _wire_payload)
+            debug_wire("whatsapp", "out", "text", _wire_payload)
 
         except requests.HTTPError as e:
             # Log specific HTTP error details
@@ -363,10 +366,9 @@ class WhatsAppHandler:
             )
             try:
                 notification.answer(APPROVAL_BUTTONS_SEND_FAILED)
-                log_outbound(
-                    notification.event.get("senderData", {}).get("chatId", ""),
-                    APPROVAL_BUTTONS_SEND_FAILED, kind="text",
-                )
+                _wire_payload = {"chat_id": notification.event.get("senderData", {}).get("chatId", ""), "message": APPROVAL_BUTTONS_SEND_FAILED}
+                audit_wire("whatsapp", "out", "text", _wire_payload)
+                debug_wire("whatsapp", "out", "text", _wire_payload)
             except Exception as notice_error:  # pylint: disable=broad-except
                 logger.error(
                     f"Failed to send approval-buttons failure notice for request "
@@ -378,10 +380,9 @@ class WhatsAppHandler:
             f"Approval buttons sent successfully for request {response.request_id}: "
             f"idMessage={id_message}"
         )
-        log_outbound(
-            notification.event.get("senderData", {}).get("chatId", ""),
-            response.response_text, kind="buttons",
-        )
+        _wire_payload = {"chat_id": notification.event.get("senderData", {}).get("chatId", ""), "message": response.response_text}
+        audit_wire("whatsapp", "out", "buttons", _wire_payload)
+        debug_wire("whatsapp", "out", "buttons", _wire_payload)
         return cast(str, id_message)
 
     def is_media_message(self, notification: Notification) -> bool:
@@ -497,7 +498,9 @@ class WhatsAppHandler:
             # Send error message to user
             logger.warning(f"Media processing failed: {result.get('error_message', 'Unknown error')}")
             notification.answer(FAILED_TO_PROCESS_FILE_DEFAULT)
-            log_outbound(chat_id, FAILED_TO_PROCESS_FILE_DEFAULT, kind="text")
+            _wire_payload = {"chat_id": chat_id, "message": FAILED_TO_PROCESS_FILE_DEFAULT}
+            audit_wire("whatsapp", "out", "text", _wire_payload)
+            debug_wire("whatsapp", "out", "text", _wire_payload)
             return None
 
         # Feature 069 (Phase 9/10): a recognised fee-agreement / bank-deposit image
@@ -517,5 +520,7 @@ class WhatsAppHandler:
         summary = result.get("summary", "")
         logger.info(f"Sending media processing summary to {sender}")
         notification.answer(summary)
-        log_outbound(chat_id, summary, kind="text")
+        _wire_payload = {"chat_id": chat_id, "message": summary}
+        audit_wire("whatsapp", "out", "text", _wire_payload)
+        debug_wire("whatsapp", "out", "text", _wire_payload)
         return cast(Dict, result)

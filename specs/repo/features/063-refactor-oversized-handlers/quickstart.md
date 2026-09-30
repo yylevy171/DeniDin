@@ -5,8 +5,7 @@
 1. In `config/config.dev.json`, set `feature_flags.enable_capability_backbone: true` and add a
    `backbone_config` block (`data-model.md`'s Config additions) — `constitution_config` (used by
    the untouched `AIHandler`) is left exactly as it is.
-2. Ensure `config/prompts/backbone.md` + `config/prompts/capabilities/*.md` (9 files: 2 meta —
-   `intent_identification.md`, `planning.md` — + 7 domain) exist — `speckit.tasks` produces these
+2. Ensure `config/prompts/backbone.md` + `config/prompts/capabilities/*.md` (one per `CapabilityTag`, see `data-model.md`) exist — `speckit.tasks` produces these
    as **new** files, authored fresh from the Capability Plugin Taxonomy in `spec.md` (not a
    split/move of `runtime_constitution.md`, `ledger_recognition_prompt.md`, or
    `prompts/image_analysis.txt`/`docx_analysis.txt`, all of which stay untouched and continue to
@@ -17,22 +16,21 @@
 
 ## Verifying it worked
 
-- Send a small-talk message → check `logs/denidin.log` for the turn's Intent Identification +
-  Planning calls, followed by zero execution steps (an empty `Plan`) → final reply composed from
-  Intent Identification's output alone, per `contracts/orchestration-loop.md`.
-- Send a Ledger Query question → check the log shows Intent Identification → Planning (producing a
-  one-step `Plan` naming `ledger_query`) → one execution-step call whose `instructions` carries
-  Backbone + the `ledger_query` capability prompt only (not the whole taxonomy at once — R3's
-  single-active-capability property).
-- Send an image containing a fee-agreement note → check the log shows a `Plan` with two ordered
-  steps (`media_analysis` then `ledger_capture`), the `media_analysis` step calling the same
-  unmodified `ImageExtractor`, and its extracted text appearing in the `ledger_capture` step's
-  accumulated context (R2a/REQ-063-04a — media enters through this same orchestrator, not a
+- Send a small-talk message → check `logs/denidin.log`: one model call whose `capabilities=` list is
+  empty (`(none - plain backbone)`), ending in `send_to_user`.
+- Send a Ledger Query question → the log shows the model calling `load_flows(["ledger_question"])` then `load_capabilities(["cap_ledger_query"])`,
+  then a follow-up call whose `capabilities=` includes `cap_ledger_query` and whose tools include
+  `query_ledger_events` (instructions and tools are rebuilt from the persisted set every call).
+- Send an image containing a fee-agreement note → the model loads `cap_media_analysis` and calls
+  `analyze_media` (the same unmodified `ImageExtractor`); ledger capture happens in denidin.py's
+  shared post-turn recognition (REQ-063-04a — media enters through this same orchestrator, not a
   separate deterministic pre-route).
+- Send a follow-up message in the same chat → the previously loaded capabilities are still listed
+  (persisted `Session.active_capabilities`) until unloaded, reset, or the idle sweep clears them.
 - Run `scripts/model_sanity_check.sh --config config/config.dev.json` (new mode from research.md
   R6) for the cache-hit/instrumentation proof: confirm `cached_tokens > 0` on the second of two
-  back-to-back calls sharing the same `active_tag` (e.g. two `ledger_query` steps from different
-  turns) — this is what REQ-063-06's 9-fixed-prefixes property predicts. Billed, human-approved
+  back-to-back calls sharing the same loaded set — this is what REQ-063-06's stable-prefix
+  property predicts. Billed, human-approved
   per run.
 
 ## Rolling back

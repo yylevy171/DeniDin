@@ -1,14 +1,14 @@
-"""Unit tests (Feature 063 remaining Deferred item): BackboneOrchestrator.
-call_capability_step attaches BACKBONE_TOOLS to every step and resolves any
-send_progress_update/react_to_message calls via one follow-up round, closing
-bugfix-042's exact failure mode (every function_call gets its output submitted)."""
+"""Unit tests: the orchestration loop attaches BACKBONE_TOOLS every round and
+resolves send_progress_update/react_to_message calls, submitting an output for
+every function_call (bugfix-042's failure mode)."""
 import json
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.backbone.capability_tags import CapabilityTag
 from src.backbone.orchestrator import BackboneOrchestrator
+from tests.backbone_test_support import make_session_manager
 from src.models.config import AppConfiguration
 from src.models.message import AIRequest
 
@@ -18,7 +18,6 @@ def prompts_root(tmp_path):
     base = tmp_path / "config"
     (base / "prompts" / "capabilities").mkdir(parents=True)
     (base / "prompts" / "backbone.md").write_text("BACKBONE", encoding="utf-8")
-    (base / "prompts" / "capabilities" / "intent_identification.md").write_text("INTENT", encoding="utf-8")
     return base
 
 
@@ -27,13 +26,14 @@ def _orchestrator(prompts_root, client):
         green_api_instance_id="x", green_api_token="y", ai_api_key="z",
         backbone_config={"base_dir": str(prompts_root)},
     )
-    return BackboneOrchestrator(client, config)
+    return BackboneOrchestrator(client, config, session_manager=make_session_manager())
 
 
 def _request():
     return AIRequest(
         user_prompt="שלח לי חשבונית", constitution="", max_tokens=1000,
         model="gpt-5.6-luna", chat_id="chat1", message_id="msg1",
+        original_message=SimpleNamespace(whatsapp_id_message="msg1"),
     )
 
 
@@ -46,94 +46,76 @@ def _function_call_item(name, call_id, args_dict):
     return item
 
 
-def test_call_capability_step_attaches_backbone_tools(prompts_root):
+def _resp(items, rid, text=""):
+    r = MagicMock()
+    r.output = items
+    r.output_text = text
+    r.id = rid
+    r.usage = None
+    return r
+
+
+def _run(orchestrator, progress_callback=None):
+    return orchestrator.get_response(_request(), chat_id="chat1", user_role="godfather",
+                                     progress_callback=progress_callback)
+
+
+def test_backbone_tools_attached_every_round(prompts_root):
     client = MagicMock()
-    response = MagicMock()
-    response.output = []
-    response.output_text = "תשובה."
-    client.responses.create.return_value = response
-    orchestrator = _orchestrator(prompts_root, client)
-
-    orchestrator.call_capability_step(CapabilityTag.INTENT_IDENTIFICATION, _request())
-
+    client.responses.create.return_value = _resp([], "r1", "תשובה.")
+    _run(_orchestrator(prompts_root, client))
     kwargs = client.responses.create.call_args.kwargs
-    tool_names = {t["name"] for t in kwargs["tools"] if t.get("type") == "function"}
-    assert "send_progress_update" in tool_names
-    assert "react_to_message" in tool_names
+    names = {t["name"] for t in kwargs["tools"] if t.get("type") == "function"}
+    assert {"send_progress_update", "react_to_message", "send_to_user"} <= names
 
 
-def test_call_capability_step_dispatches_reaction_and_resolves_follow_up(prompts_root):
+def test_reaction_dispatched_and_output_submitted(prompts_root):
     client = MagicMock()
-    first_response = MagicMock()
-    first_response.id = "resp_1"
-    first_response.output = [_function_call_item("react_to_message", "call_1", {"emoji": "👍", "message_id": None})]
-    first_response.output_text = ""
-    follow_up_response = MagicMock()
-    follow_up_response.output = []
-    follow_up_response.output_text = "בוצע."
-    client.responses.create.side_effect = [first_response, follow_up_response]
-
+    client.responses.create.side_effect = [
+        _resp([_function_call_item("react_to_message", "call_1", {"emoji": "👍", "message_id": None})], "resp_1"),
+        _resp([_function_call_item("send_to_user", "call_2", {"text": "בוצע."})], "resp_2"),
+    ]
     orchestrator = _orchestrator(prompts_root, client)
     orchestrator.green_api_bot = MagicMock()
-    orchestrator._turn_chat_id = "chat1"  # pylint: disable=protected-access
-
-    with patch("src.utils.green_api_bot.send_reaction", return_value=True) as mock_send:
-        result = orchestrator.call_capability_step(CapabilityTag.INTENT_IDENTIFICATION, _request())
-
+    with patch("src.tool_actions.messaging_actions.send_reaction", return_value=True) as mock_send:
+        response = _run(orchestrator)
     mock_send.assert_called_once_with(orchestrator.green_api_bot, "chat1", "msg1", "👍")
-    assert result == "בוצע."
+    assert response.response_text == "בוצע."
+    follow = client.responses.create.call_args_list[1].kwargs
+    assert follow["previous_response_id"] == "resp_1"
+    assert follow["input"][0]["call_id"] == "call_1"
+    assert follow["input"][0]["type"] == "function_call_output"
 
-    follow_up_kwargs = client.responses.create.call_args_list[1].kwargs
-    assert follow_up_kwargs["previous_response_id"] == "resp_1"
-    assert follow_up_kwargs["input"][0]["call_id"] == "call_1"
-    assert follow_up_kwargs["input"][0]["type"] == "function_call_output"
 
-
-def test_call_capability_step_progress_update_uses_active_callback(prompts_root):
+def test_progress_update_uses_active_callback(prompts_root):
     client = MagicMock()
-    first_response = MagicMock()
-    first_response.id = "resp_1"
-    first_response.output = [_function_call_item("send_progress_update", "call_1", {"text": "רגע..."})]
-    first_response.output_text = ""
-    follow_up_response = MagicMock()
-    follow_up_response.output = []
-    follow_up_response.output_text = "תשובה סופית."
-    client.responses.create.side_effect = [first_response, follow_up_response]
-
-    orchestrator = _orchestrator(prompts_root, client)
-    progress_callback = MagicMock()
-    orchestrator._turn_progress_callback = progress_callback  # pylint: disable=protected-access
-
-    result = orchestrator.call_capability_step(CapabilityTag.INTENT_IDENTIFICATION, _request())
-
-    progress_callback.assert_called_once_with("רגע...")
-    assert result == "תשובה סופית."
+    client.responses.create.side_effect = [
+        _resp([_function_call_item("send_progress_update", "call_1", {"text": "רגע..."})], "resp_1"),
+        _resp([_function_call_item("send_to_user", "call_2", {"text": "תשובה סופית."})], "resp_2"),
+    ]
+    cb = MagicMock()
+    response = _run(_orchestrator(prompts_root, client), progress_callback=cb)
+    cb.assert_called_once_with("רגע...")
+    assert response.response_text == "תשובה סופית."
 
 
-def test_call_capability_step_no_backbone_tool_calls_skips_follow_up(prompts_root):
+def test_no_tool_calls_returns_plain_text_single_call(prompts_root):
     client = MagicMock()
-    response = MagicMock()
-    response.output = []
-    response.output_text = "תשובה."
-    client.responses.create.return_value = response
-    orchestrator = _orchestrator(prompts_root, client)
-
-    result = orchestrator.call_capability_step(CapabilityTag.INTENT_IDENTIFICATION, _request())
-
+    client.responses.create.return_value = _resp([], "r1", "תשובה.")
+    response = _run(_orchestrator(prompts_root, client))
     assert client.responses.create.call_count == 1
-    assert result == "תשובה."
+    assert response.response_text == "תשובה."
 
 
-def test_call_capability_step_follow_up_failure_falls_back_to_original_response(prompts_root):
+def test_follow_up_failure_falls_back_to_first_round_text(prompts_root):
     client = MagicMock()
-    first_response = MagicMock()
-    first_response.id = "resp_1"
-    first_response.output = [_function_call_item("react_to_message", "call_1", {"emoji": "👍", "message_id": None})]
-    first_response.output_text = "טקסט מקורי."
-    client.responses.create.side_effect = [first_response, RuntimeError("network error")]
-
+    client.responses.create.side_effect = [
+        _resp([_function_call_item("react_to_message", "call_1", {"emoji": "👍", "message_id": None})],
+              "resp_1", "טקסט מקורי."),
+        RuntimeError("network error"),
+    ]
     orchestrator = _orchestrator(prompts_root, client)
-
-    result = orchestrator.call_capability_step(CapabilityTag.INTENT_IDENTIFICATION, _request())
-
-    assert result == "טקסט מקורי."
+    orchestrator.green_api_bot = MagicMock()
+    with patch("src.tool_actions.messaging_actions.send_reaction", return_value=True):
+        response = _run(orchestrator)
+    assert response.response_text == "טקסט מקורי."

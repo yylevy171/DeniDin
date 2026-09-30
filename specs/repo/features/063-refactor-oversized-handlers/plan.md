@@ -18,14 +18,13 @@
 
 Build a **new, fully parallel** implementation of DeniDin's turn-handling: a thin **Backbone
 orchestrator kernel** (static behavioral constants only — persona, boundaries, always-on UX) that
-drives a plan-execution loop through 2 **meta-capabilities** (Intent Identification, Planning —
-themselves real capabilities with their own prompts, not routing logic baked into the Backbone)
-and 7 **domain capabilities** (Invoicing Write/Read, Ledger Events Capture/Query, Reminders
-Write/Read, and **Media Analysis** — image/PDF/DOCX extraction, newly folded into this same
-capability model instead of living outside it). Every message — text or media — enters through
-this one orchestrator; there is no separate deterministic media pre-route. Each step of a plan is
-its own OpenAI call carrying Backbone + exactly one active capability's prompt+tools, reusing the
-existing followup-call pattern `ai_handler.py` already implements for reminders/ledger-query/etc.
+drives ONE tool-driven loop (`load_flows`/`load_capabilities` + unload counterparts/`reset_to_backbone`, persisted
+per chat — `contracts/capability-resolution-loop.md`) over 10 **domain capabilities** (Invoicing
+Write/Read, Client Write/Read, Ledger Events Capture/Query, Reminders Write/Read, Docx Write, and
+**Media Analysis** — image/PDF/DOCX extraction, folded into this same capability model instead of
+living outside it). Loading a capability attaches its prompt AND its real tools. Every message — text or media — enters through
+this one orchestrator; there is no separate deterministic media pre-route. Every round of the loop is one OpenAI call carrying Backbone + the prompt and tools of every
+currently-loaded capability, rebuilt from the persisted set each call.
 
 This is selected at startup via `config.feature_flags.enable_capability_backbone` (default
 `false`) — **not** a conditional inside the existing handler, and not a default for new work in
@@ -64,10 +63,10 @@ not assumed.
 cached prefix per call; REQ-063-07 — `ai_handler.py`, `runtime_constitution.md`,
 `config/ledger_recognition_prompt.md`, `prompts/*.txt`, and `handlers/extractors/*.py` must remain
 byte-for-byte untouched while the flag exists; zero observable behavior change with the flag on
-(REQ-063-05); Planning failure must fail open, never silently drop a needed capability
-(data-model.md).
-**Scale/Scope**: 1 new `src/backbone/` package (orchestrator + 2 meta-capabilities) + 4 new domain
-capability packages under `src/capabilities/` (9 new prompt files total: 2 meta + 7 domain,
+(REQ-063-05); the model, not code, chooses flows and capabilities (`load_flows`/`load_capabilities`), so there is no
+planning-failure fallback to maintain.
+**Scale/Scope**: 1 new `src/backbone/` package (orchestrator + orchestration/backbone tools) + domain
+capability packages under `src/capabilities/` (10 domain capability prompt files,
 consolidating what's currently split across `runtime_constitution.md`,
 `ledger_recognition_prompt.md`, and 2 standalone `.txt` files) built alongside (not replacing) the
 existing 4,859-line `ai_handler.py`; the 3 named oversized managers plus the 3 extractor classes
@@ -86,7 +85,7 @@ section, post-design).*
 | No monkey-patching (CONSTITUTION §XVII) | ✅ Pass | Capability/plan loading is plain conditional dispatch + dependency injection (config-driven file paths), no runtime method replacement. |
 | `pathlib.Path`, not string concatenation | ✅ Pass | New `_load_capability_prompt` follows `_load_constitution`'s existing `Path(base_dir) / ...` pattern. |
 | Integration tests as real entry points, zero internal mocking (CONSTITUTION §I/§V) | ✅ Pass | No new integration tests planned beyond what `speckit.tasks` derives per-capability; existing integration suite untouched. |
-| Retry policy (retry once on 5xx/timeout, never 4xx) | ✅ Pass | Every orchestration-loop step (Intent Identification, Planning, each domain capability call) reuses `_timed_llm_call`'s existing retry policy, reimplemented in the new module (research.md R2), no new policy. |
+| Retry policy (retry once on 5xx/timeout, never 4xx) | ✅ Pass | Every orchestration-loop round reuses `_timed_llm_call`'s existing retry policy, reimplemented in the new module (research.md R2), no new policy. |
 | Version/release decisions human-only | ✅ N/A at plan stage | No release cut as part of this plan; flag-default-flip and eventual legacy-path deletion are explicitly out of scope, deferred to a later human decision. |
 
 No violations requiring Complexity Tracking justification.
@@ -119,17 +118,14 @@ apps/denidin-app/
 │   └── prompts/                                   # NEW — used only by the new orchestrator (flag on)
 │       ├── backbone.md
 │       └── capabilities/
-│           ├── intent_identification.md           # meta
-│           ├── planning.md                        # meta
-│           ├── invoicing_write.md
-│           ├── invoicing_read.md
-│           ├── ledger_capture.md                   # includes domain rules split out of
-│           │                                        #   ledger_recognition_prompt.md (backbone gets the
-│           │                                        #   generic recognition-step mechanism instead)
-│           ├── ledger_query.md
-│           ├── reminders_write.md
-│           ├── reminders_read.md
-│           └── media_analysis.md                   # consolidates prompts/image_analysis.txt + docx_analysis.txt
+│           ├── cap_invoicing_write.md
+│           ├── cap_invoicing_read.md
+│           ├── cap_client_write.md / cap_client_read.md
+│           ├── cap_docx_write.md
+│           ├── cap_ledger_query.md
+│           ├── cap_reminders_write.md
+│           ├── cap_reminders_read.md
+│           └── cap_media_analysis.md                   # consolidates prompts/image_analysis.txt + docx_analysis.txt
 ├── prompts/                                        # UNTOUCHED — image_analysis.txt/docx_analysis.txt,
 │                                                     #   still used verbatim by the legacy extractors
 ├── src/
@@ -139,9 +135,9 @@ apps/denidin-app/
 │   ├── backbone/                                  # NEW package — the orchestrator kernel (flag on)
 │   │   ├── orchestrator.py                        # new get_response/resolve_button_tap equivalent — the
 │   │   │                                            #   plan-execution loop (contracts/orchestration-loop.md)
-│   │   ├── capability_tags.py                      # the 9-value CapabilityTag enum (data-model.md)
-│   │   ├── intent_identification.py                # meta-capability
-│   │   └── planning.py                             # meta-capability — also holds the Plan model + RBAC filter
+│   │   ├── capability_tags.py                      # the 10-value CapabilityTag enum (data-model.md)
+│   │   ├── orchestration_tools.py                  # load/unload/reset/record_planning_status/approval/send_to_user
+│   │   └── backbone_tools.py                       # send_progress_update / react_to_message
 │   ├── capabilities/                              # NEW package — 4 domain subpackages (write/read stays a
 │   │   │                                            #   prompt/tool distinction, not a Python file split)
 │   │   ├── invoicing/
@@ -170,8 +166,8 @@ apps/denidin-app/
 ```
 
 **Structure Decision**: Single-project structure (Option 1 from the template), scoped entirely to
-`apps/denidin-app` — no new app, no frontend/backend split. `src/backbone/` (orchestrator + 2
-meta-capabilities) and `src/capabilities/` (4 domain subpackages) are new top-level packages,
+`apps/denidin-app` — no new app, no frontend/backend split. `src/backbone/` (orchestrator +
+orchestration tools) and `src/capabilities/` (domain subpackages + `toolsets.py`) are new top-level packages,
 fully additive alongside the existing (untouched) `src/handlers/ai_handler.py` and
 `src/handlers/extractors/`. Write/read stays a prompt/tool-attachment distinction (R3) rather than
 a Python package split, per research.md R5's rationale. The domains with real local

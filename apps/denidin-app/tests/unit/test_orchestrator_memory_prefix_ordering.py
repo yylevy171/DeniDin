@@ -8,6 +8,7 @@ memory varies per turn/query, so placing it earlier would silently break every
 call from ever sharing a cached prefix with another call using the same tag."""
 from src.backbone.capability_tags import CapabilityTag
 from src.backbone.orchestrator import BackboneOrchestrator
+from tests.backbone_test_support import make_session_manager
 from src.models.config import AppConfiguration
 
 
@@ -16,14 +17,14 @@ def _orchestrator(prompts_root):
         green_api_instance_id="x", green_api_token="y", ai_api_key="z",
         backbone_config={"base_dir": str(prompts_root)},
     )
-    return BackboneOrchestrator(object(), config)
+    return BackboneOrchestrator(object(), config, session_manager=make_session_manager())
 
 
 def _prompts_root(tmp_path):
     base = tmp_path / "config"
     (base / "prompts" / "capabilities").mkdir(parents=True)
     (base / "prompts" / "backbone.md").write_text("BACKBONE-TEXT", encoding="utf-8")
-    (base / "prompts" / "capabilities" / "ledger_query.md").write_text(
+    (base / "prompts" / "capabilities" / "cap_ledger_query.md").write_text(
         "LEDGER-QUERY-CAPABILITY-TEXT", encoding="utf-8",
     )
     return base

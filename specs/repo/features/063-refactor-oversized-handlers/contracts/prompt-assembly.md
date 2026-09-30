@@ -32,9 +32,9 @@ instructions = backbone_content
              + today_date
 ```
 
-`active_tag` is always exactly one of the 9 `CapabilityTag`s (Intent Identification, Planning, or
-one domain capability) — never a union of several, unlike the original (superseded) multi-plugin
-design. This is what gives REQ-063-06's cache-prefix property its strength (`research.md` R3):
+(Superseded 2026-09-24: instructions now carry the prompt of EVERY currently-loaded capability, in
+canonical order, after a `## Loaded capabilities` section — see `capability-resolution-loop.md`.)
+The text below is the earlier single-`active_tag` reasoning, kept for the cache-prefix argument. This is what gives REQ-063-06's cache-prefix property its strength (`research.md` R3):
 `backbone_content + load_capability_prompt(tag)` is a **fixed, small set of possible prefixes**
 (1 Backbone × 9 capabilities = 9 distinct byte-stable prefixes total, system-wide), so any two
 calls anywhere in the system using the same `active_tag` share a cache hit on that prefix,

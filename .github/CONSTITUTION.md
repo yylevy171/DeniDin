@@ -596,9 +596,9 @@ if config.feature_flags.get("enable_memory_system", False):
 
 ## VIII. Test Immutability
 
-**Principle**: Once tests are approved, they are immutable without explicit human approval.
+**Principle**: Once tests are approved, they are immutable without explicit human approval — but this only applies to the tier the human actually reviews and approves as user experience: `billed`/`expensive` acceptance tests (per §VI's TDD redefinition — the plain-language scenarios drafted and approved with the human before `speckit.plan`, then coded once as the final acceptance pass). **This is a 2026-09-24 clarification, not a new rule** — the original wording below read as blanket-covering every test tier, which was never the actual intent and caused confusion about what an AI agent may freely change.
 
-**Requirements**:
+**Requirements (billed/expensive acceptance tests — human-approved, genuinely immutable)**:
 - Tests reviewed and approved by human are IMMUTABLE
 - New phases ADD new tests, never modify existing ones
 - If test change is necessary:
@@ -606,7 +606,9 @@ if config.feature_flags.get("enable_memory_system", False):
   2. Explicit human approval before changes
   3. Documentation in commit message with "HUMAN APPROVED:" tag
 
-**Rationale**: Ensures regression protection and maintains confidence in previously validated functionality.
+**Unit and integration tests are NOT covered by this section.** They are the agent's own tooling for verifying an implementation, not a human-reviewed acceptance artifact — an agent may add, rewrite, restructure, or delete them freely to keep pace with a design change (e.g. a refactor that changes an internal contract), with no separate human sign-off required for the test-file edit itself, **as long as the rewritten test still faithfully exercises the real functionality it's meant to cover** — never weakened, narrowed, or deleted just to make a failing test pass without the underlying behavior actually being fixed. The RED→GREEN/human-approval-on-the-underlying-code discipline (§VI.b) is unchanged — this only removes a separate approval gate on the *test file* itself for these two tiers.
+
+**Rationale**: Ensures regression protection and maintains confidence in previously validated *user-facing* functionality, without blocking normal agent-driven maintenance of the tests that only verify internal implementation.
 
 ---
 

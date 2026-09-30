@@ -22,7 +22,7 @@ from src.utils.green_api_bot import (
     start_typing_keepalive,
     stop_typing_keepalive,
 )
-from src.utils.whatsapp_audit_log import log_inbound, log_outbound
+from src.utils.wire_log import audit_wire, debug_wire
 from src.utils.time_utils import local_from_timestamp
 from src.constants.error_messages import (
     APP_NOT_READY_RETRY_LATER,
@@ -40,6 +40,7 @@ from src.managers.group_membership_resolver import GroupMembershipResolver
 from src.services.reminder_delivery_service import (
     run_startup_reminder_sweep, start_reminder_scheduler,
 )
+from src.services.capability_reset_service import start_capability_reset_scheduler
 from src.services.accounting_reconciliation_service import (
     run_startup_accounting_reconciliation_sweep, start_accounting_reconciliation_scheduler,
 )
@@ -181,6 +182,7 @@ class DeniDin:
     def __init__(self, ai_handler, config, whatsapp_handler, cleanup_thread=None,
                  group_membership_resolver=None, reminder_scheduler=None,
                  accounting_reconciliation_scheduler=None, daily_roll_scheduler=None,
+                 capability_reset_scheduler=None,
                  backbone_orchestrator=None):
         self.ai_handler = ai_handler
         self.config = config
@@ -210,6 +212,9 @@ class DeniDin:
         # an ordinary test run reach live external services unattended).
         # Also None (inactive) whenever config.accounting_ledger_update_freq == 0.
         self.accounting_reconciliation_scheduler = accounting_reconciliation_scheduler
+        # Feature 063: idle capability-reset sweep (capabilities_reset_minutes) - None until
+        # __main__ sets it, same placement rule as accounting_reconciliation_scheduler.
+        self.capability_reset_scheduler = capability_reset_scheduler
         # Feature 070: the single shared APScheduler instance driving the nightly
         # 02:00 daily-summary roll - None until __main__ sets it (NEVER
         # initialize_app(), same rule as accounting_reconciliation_scheduler -
@@ -353,6 +358,9 @@ class DeniDin:
             self._logger.info("Stopping accounting reconciliation scheduler...")
             self.accounting_reconciliation_scheduler.shutdown(wait=False)
             self._logger.info("Accounting reconciliation scheduler stopped")
+        if self.capability_reset_scheduler is not None:
+            self._logger.info("Stopping idle capability-reset scheduler...")
+            self.capability_reset_scheduler.shutdown(wait=False)
         if self.daily_roll_scheduler is not None:
             self._logger.info("Stopping daily-summary roll scheduler...")
             self.daily_roll_scheduler.shutdown(wait=False)
@@ -378,9 +386,23 @@ def _handle_not_initialized_error(notification: Notification, message_type: str)
     logger.error(f"CRITICAL: denidin_app not initialized - cannot process {message_type} messages")
     try:
         notification.answer(APP_NOT_READY_RETRY_LATER)
-        log_outbound(notification.event.get("senderData", {}).get("chatId", ""), APP_NOT_READY_RETRY_LATER, kind="text")
+        _wire_payload = {"chat_id": notification.event.get("senderData", {}).get("chatId", ""), "message": APP_NOT_READY_RETRY_LATER}
+        audit_wire("whatsapp", "out", "text", _wire_payload)
+        debug_wire("whatsapp", "out", "text", _wire_payload)
     except Exception:
         pass
+
+
+def start_capability_reset_if_enabled(denidin: "DeniDin"):
+    """Feature 063: starts the idle capability-reset scheduler, or returns None.
+    Only ever started when the backbone flag is on (`backbone_orchestrator` is
+    constructed only then - the legacy path never loads capabilities) AND
+    `capabilities_reset_minutes` > 0 (0 = inactive, the default)."""
+    if denidin.backbone_orchestrator is None:
+        return None
+    return start_capability_reset_scheduler(
+        denidin, getattr(denidin.config, "capabilities_reset_minutes", 0)
+    )
 
 
 def initialize_app(config_dict: dict, green_api: Optional[Any] = None) -> DeniDin:
@@ -467,7 +489,7 @@ def initialize_app(config_dict: dict, green_api: Optional[Any] = None) -> DeniDi
     # above, unconditionally, so the flag-off path is byte-for-byte identical to
     # before this feature existed) or the new BackboneOrchestrator. Reuses
     # ai_handler's own manager instances (reminder_manager/ledger_event_manager/
-    # pending_local_tool_approval_manager/morning_mcp_locator) rather than
+    # morning_mcp_locator) rather than
     # constructing duplicates - REQ-063-03: those managers stay exactly where they
     # are, shared, unmodified, by both implementations.
     backbone_orchestrator = None
@@ -477,10 +499,8 @@ def initialize_app(config_dict: dict, green_api: Optional[Any] = None) -> DeniDi
             ai_client, config,
             reminder_manager=ai_handler.reminder_manager,
             ledger_event_manager=ai_handler.ledger_event_manager,
-            pending_local_tool_approval_manager=ai_handler.pending_local_tool_approval_manager,
             morning_mcp_locator=ai_handler.morning_mcp_locator,
             session_manager=ai_handler.session_manager,
-            pending_approval_manager=ai_handler.pending_approval_manager,
             # 2026-09-15 (closing a real gap): session persistence and
             # long-term memory recall both need these same shared instances
             # (REQ-063-03) - memory_manager/user_manager for
@@ -495,6 +515,11 @@ def initialize_app(config_dict: dict, green_api: Optional[Any] = None) -> DeniDi
             # Feature 080's flag is off/telemetry was never configured, same
             # complete-no-op contract as everywhere else it's threaded through.
             telemetry_manager=ai_handler.telemetry_manager,
+            # 2026-09-16 (cap_docx_write capability): same shared FeeAgreementToolHandler/WhatsAppHandler
+            # instances ai_handler.py already owns/was just given above
+            # (REQ-063-03).
+            fee_agreement_tools=getattr(ai_handler, 'fee_agreement_tools', None),
+            whatsapp_handler=whatsapp_handler,
         )
 
     # Create DeniDin instance (will be used as context for background threads and MediaHandler)
@@ -586,6 +611,8 @@ def _send_ai_response_and_attach(notification: Notification, chat_id: str, ai_re
         denidin_app.ai_handler.pending_local_tool_approval_manager.attach_sent_message_id(
             chat_id, sent_id_message
         )
+        if denidin_app.backbone_orchestrator is not None:
+            denidin_app.backbone_orchestrator.record_approval_message_id(chat_id, sent_id_message)
 
 
 def _run_post_turn_ledger_recognition(
@@ -727,7 +754,18 @@ def _process_conversational_message(notification: Notification) -> None:
         # next scheduled tick - best-effort/log-only, same as every other typing-indicator
         # call, never allowed to affect message delivery.
         def _progress_callback_with_typing_refresh(text: str) -> None:
-            notification.answer(text)
+            # notification.answer() below previously crossed the WhatsApp
+            # boundary with NO log at all, audit or otherwise, unlike every
+            # other outbound send in this codebase (2026-09-24,
+            # debug_exact_calls skill investigation) - audit_wire/debug_wire
+            # are the ONLY two wire-logging functions in this codebase (see
+            # src/utils/wire_log.py), called directly, here as everywhere.
+            _wire_payload = {"chat_id": message.chat_id, "message": text}
+            audit_wire("whatsapp", "out", "progress_update", _wire_payload)
+            debug_wire("whatsapp", "out", "progress_update", _wire_payload)
+            result = notification.answer(text)
+            audit_wire("whatsapp", "in", "progress_update", {"chat_id": message.chat_id, "message": repr(result)})
+            debug_wire("whatsapp", "in", "progress_update", {"result": repr(result)})
             if denidin_app.green_api_bot is not None:
                 send_typing_indicator(denidin_app.green_api_bot, message.chat_id, is_blocked)
 
@@ -850,10 +888,9 @@ def _process_conversational_message(notification: Notification) -> None:
         # Send generic fallback message to user
         try:
             notification.answer(ERROR_PROCESSING_MESSAGE_TRY_AGAIN)
-            log_outbound(
-                notification.event.get("senderData", {}).get("chatId", ""),
-                ERROR_PROCESSING_MESSAGE_TRY_AGAIN, kind="text",
-            )
+            _wire_payload = {"chat_id": notification.event.get("senderData", {}).get("chatId", ""), "message": ERROR_PROCESSING_MESSAGE_TRY_AGAIN}
+            audit_wire("whatsapp", "out", "text", _wire_payload)
+            debug_wire("whatsapp", "out", "text", _wire_payload)
             try:
                 logger.info(f"{tracking} Generic fallback message sent to user")
             except (NameError, AttributeError):
@@ -878,20 +915,18 @@ def _process_media_message_via_backbone(notification: Notification, message, kee
     `_process_media_message` so that function's own complexity stays bounded.
 
     Threads RAW, not-yet-extracted media into the Backbone orchestrator - no
-    eager extraction before Intent Identification even runs. This does ONLY a
+    eager extraction before the model decides it needs cap_media_analysis. This does ONLY a
     download + format/size validation up front (reusing the unmodified,
     standalone low-level MediaFileManager methods, REQ-063-03 - never the
     monolithic MediaHandler.process_media_message, which also extracts/
     persists/ledger-detects in the same call and is left completely untouched
     for the flag-off legacy path). The orchestrator gets the raw `Media`
-    object; Intent Identification is told only "media attached, not yet
-    extracted" (src/backbone/intent_identification.py); Planning is what
-    actually CHOOSES whether this turn's plan needs a media_analysis step at
-    all (src/backbone/planning.py's _ALWAYS_ALLOWED_CAPABILITIES); only if/when
-    that step runs does src/capabilities/media_analysis/handler.py::extract()
-    make the real extraction call - and a following ledger_capture step
-    (Planning's own choice, same as any text turn) is what persists a
-    recognized fee-agreement/bank-deposit event, not an eager side effect of
+    object; the model is told only "media attached, not yet extracted", and itself
+    CHOOSES whether to `load_capabilities(["cap_media_analysis"])` and call its
+    `analyze_media` tool (src/capabilities/media_analysis/handler.py makes the
+    real extraction call only then); ledger recognition of a fee-agreement/
+    bank-deposit event is denidin.py's shared post-turn step, same as any text
+    turn - not an eager side effect of
     downloading.
     """
     from src.models.media import Media
@@ -916,7 +951,9 @@ def _process_media_message_via_backbone(notification: Notification, message, kee
         if denidin_app.typing_keepalive_scheduler is not None:
             stop_typing_keepalive(denidin_app.typing_keepalive_scheduler, keepalive_job_id)
         notification.answer(FAILED_TO_PROCESS_FILE_DEFAULT)
-        log_outbound(message.chat_id, FAILED_TO_PROCESS_FILE_DEFAULT, kind="text")
+        _wire_payload = {"chat_id": message.chat_id, "message": FAILED_TO_PROCESS_FILE_DEFAULT}
+        audit_wire("whatsapp", "out", "text", _wire_payload)
+        debug_wire("whatsapp", "out", "text", _wire_payload)
         return
 
     if denidin_app.typing_keepalive_scheduler is not None:
@@ -945,7 +982,9 @@ def _process_media_message_via_backbone(notification: Notification, message, kee
     denidin_app.ai_handler.last_response = response
     if response.should_reply:
         notification.answer(response.response_text)
-        log_outbound(message.chat_id, response.response_text, kind="text")
+        _wire_payload = {"chat_id": message.chat_id, "message": response.response_text}
+        audit_wire("whatsapp", "out", "text", _wire_payload)
+        debug_wire("whatsapp", "out", "text", _wire_payload)
 
     # 2026-09-15 (closing a real gap): a media turn is a real godfather/admin
     # turn exactly like a text one - it needs the SAME shared post-turn ledger
@@ -994,7 +1033,7 @@ def _process_media_message(notification: Notification) -> None:
     # Feature 063 (REQ-063-04a, real design 2026-09-15 - corrects the 2026-09-14
     # shortcut this used to take): when the flag is on, media messages enter
     # through the SAME Backbone orchestrator as text turns, RAW - no eager
-    # extraction before Intent Identification even runs. See
+    # extraction before the model even decides it needs cap_media_analysis. See
     # _process_media_message_via_backbone's own docstring for the full design.
     if denidin_app.backbone_orchestrator is not None:
         _process_media_message_via_backbone(notification, message, keepalive_job_id)
@@ -1032,7 +1071,8 @@ def handle_text_message(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing message data
     """
-    log_inbound(notification)
+    audit_wire("whatsapp", "in", "webhook", notification.event)
+    debug_wire("whatsapp", "in", "webhook", notification.event)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "text")
         return
@@ -1053,7 +1093,8 @@ def handle_contact_message(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing message data
     """
-    log_inbound(notification)
+    audit_wire("whatsapp", "in", "webhook", notification.event)
+    debug_wire("whatsapp", "in", "webhook", notification.event)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "contact")
         return
@@ -1074,13 +1115,16 @@ def handle_contacts_array_message(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing message data
     """
-    log_inbound(notification)
+    audit_wire("whatsapp", "in", "webhook", notification.event)
+    debug_wire("whatsapp", "in", "webhook", notification.event)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "contacts array")
         return
 
     notification.answer(CONTACT_CARD_ONE_AT_A_TIME)
-    log_outbound(notification.event.get("senderData", {}).get("chatId", ""), CONTACT_CARD_ONE_AT_A_TIME, kind="text")
+    _wire_payload = {"chat_id": notification.event.get("senderData", {}).get("chatId", ""), "message": CONTACT_CARD_ONE_AT_A_TIME}
+    audit_wire("whatsapp", "out", "text", _wire_payload)
+    debug_wire("whatsapp", "out", "text", _wire_payload)
 
 
 def handle_image_message(notification: Notification) -> None:
@@ -1091,7 +1135,8 @@ def handle_image_message(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing image data
     """
-    log_inbound(notification)
+    audit_wire("whatsapp", "in", "webhook", notification.event)
+    debug_wire("whatsapp", "in", "webhook", notification.event)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "image")
         return
@@ -1107,7 +1152,8 @@ def handle_document_message(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing document data
     """
-    log_inbound(notification)
+    audit_wire("whatsapp", "in", "webhook", notification.event)
+    debug_wire("whatsapp", "in", "webhook", notification.event)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "document")
         return
@@ -1123,7 +1169,8 @@ def handle_video_message(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing video data
     """
-    log_inbound(notification)
+    audit_wire("whatsapp", "in", "webhook", notification.event)
+    debug_wire("whatsapp", "in", "webhook", notification.event)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "video")
         return
@@ -1183,7 +1230,8 @@ def handle_edited_message(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing the edit
     """
-    log_inbound(notification)
+    audit_wire("whatsapp", "in", "webhook", notification.event)
+    debug_wire("whatsapp", "in", "webhook", notification.event)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "editedMessage")
         return
@@ -1208,7 +1256,8 @@ def handle_deleted_message(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing the deletion
     """
-    log_inbound(notification)
+    audit_wire("whatsapp", "in", "webhook", notification.event)
+    debug_wire("whatsapp", "in", "webhook", notification.event)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "deletedMessage")
         return
@@ -1227,19 +1276,18 @@ def handle_ignored_message_default(notification: Notification) -> None:
     Replaces the old `handle_unsupported_message_default` as CATCH_ALL_HANDLER -
     reactions, stickers, locations, poll votes, and any `typeMessage` never seen
     before now get NO WhatsApp reply at all, only the existing verbatim
-    `log_inbound` audit record. This deliberately relaxes the old "no message
+    `audit_wire`/`debug_wire` record. This deliberately relaxes the old "no message
     type is silently *dropped*" invariant to "no message type is silently
-    *lost*" (spec.md "Non-Functional / Constraints" - `log_inbound` is the
-    thing that keeps it non-lost) - see .github/ARCHITECTURE.md for the same
+    *lost*" (spec.md "Non-Functional / Constraints" - `audit_wire`/`debug_wire` are
+    the thing that keeps it non-lost) - see .github/ARCHITECTURE.md for the same
     note. `denidin_app is None` needs no special handling here (unlike every
     other handler) - there is nothing to reply with either way.
 
     Args:
         notification: Green API notification object containing message data
     """
-    log_inbound(notification)
-
-
+    audit_wire("whatsapp", "in", "webhook", notification.event)
+    debug_wire("whatsapp", "in", "webhook", notification.event)
 def handle_button_tap(notification: Notification) -> None:
     """
     Feature 047: handle a WhatsApp interactive-buttons tap resolving a pending
@@ -1260,7 +1308,8 @@ def handle_button_tap(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing the tap
     """
-    log_inbound(notification)
+    audit_wire("whatsapp", "in", "webhook", notification.event)
+    debug_wire("whatsapp", "in", "webhook", notification.event)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "interactiveButtonsResponse")
         return
@@ -1287,23 +1336,22 @@ def handle_button_tap(notification: Notification) -> None:
         )
 
     try:
-        # Feature 063 (contracts/orchestration-loop.md Non-goals): a button tap
-        # skips Intent Identification/Planning and resumes the specific pending
-        # step directly - tried first when the flag is on, since a
-        # reminders_write proposal from the new orchestrator is tracked in its
-        # own PendingLocalToolApprovalManager instance (shared with ai_handler's,
-        # see initialize_app), not ai_handler's MCP PendingApprovalManager.
+        # Feature 063 (2026-09-16 redesign): a button tap is tried first
+        # against cap_invoicing_write's own pending MCP approval (a real OpenAI
+        # protocol necessity - see BackboneOrchestrator.resolve_button_tap's
+        # own docstring); anything else is routed through the normal
+        # get_response() loop as an ordinary "כן"/"לא" conversational turn,
+        # same as a typed reply - no more separate pending-approval state for
+        # cap_reminders_write or the new approval_with_yes_no_buttons tool.
         ai_response = None
         if denidin_app.backbone_orchestrator is not None:
-            # 2026-09-15 (closing a real gap found via T7/T10): some capabilities'
-            # own resolve_button_tap (invoicing_write's in particular) need a real
-            # AIRequest to make their approval-resolution follow-up call (model,
-            # max_tokens) - passing request=None (the old behavior) always made
-            # that branch fail with a generic "the action failed" reply, silently,
-            # every single time, never actually attempting the real Morning call.
-            # reminders_write's own resolve_button_tap doesn't need request at all,
-            # which is why this was never caught by T3/T4 - only by T7/T10.
-            # Mirrors AIHandler.resolve_button_tap's own synthetic_request exactly.
+            # 2026-09-15 (closing a real gap found via T7/T10): cap_invoicing_write's
+            # own resolve_button_tap needs a real AIRequest to make its
+            # approval-resolution follow-up call (model, max_tokens) - passing
+            # request=None always made that branch fail with a generic "the
+            # action failed" reply, silently, never actually attempting the
+            # real Morning call. Mirrors AIHandler.resolve_button_tap's own
+            # synthetic_request exactly.
             synthetic_request = AIRequest(
                 user_prompt="כן" if selected_id == "denidin_approve" else "לא",
                 constitution="",
@@ -1313,9 +1361,11 @@ def handle_button_tap(notification: Notification) -> None:
                 message_id=message.message_id,
                 original_message=message,
             )
+            resolved_user = denidin_app.ai_handler.user_manager.get_user(message.sender_id)
             ai_response = denidin_app.backbone_orchestrator.resolve_button_tap(
-                chat_id=message.chat_id, selected_id=selected_id, stanza_id=stanza_id,
+                chat_id=message.chat_id, stanza_id=stanza_id,
                 request=synthetic_request,
+                user_role=resolved_user.role if resolved_user else 'client',
             )
             if ai_response is not None:
                 # 2026-09-15 (closing a real gap - same fix as the text/media
@@ -1358,6 +1408,9 @@ def handle_button_tap(notification: Notification) -> None:
         denidin_app.ai_handler.pending_local_tool_approval_manager.attach_sent_message_id(
             message.chat_id, sent_id_message
         )
+        if denidin_app.backbone_orchestrator is not None:
+            # Under the Backbone a tap's resolution CAN chain a fresh approval.
+            denidin_app.backbone_orchestrator.record_approval_message_id(message.chat_id, sent_id_message)
     logger.info(f"[047] Button tap resolved and response sent for chat={message.chat_id!r}")
 
     # Feature 069: a button tap that resolved an approval (e.g. an add_client or a
@@ -1381,7 +1434,8 @@ def handle_unsupported_message_default(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing message data
     """
-    log_inbound(notification)
+    audit_wire("whatsapp", "in", "webhook", notification.event)
+    debug_wire("whatsapp", "in", "webhook", notification.event)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "unsupported")
         return
@@ -1428,7 +1482,7 @@ ERROR_REPLY_TYPES = {
 }
 
 # Feature 076 (Q7, FR-006): any message type not present in HANDLER_REGISTRY
-# and not in ERROR_REPLY_TYPES routes here - silently ignored (log_inbound
+# and not in ERROR_REPLY_TYPES routes here - silently ignored (audit_wire/debug_wire
 # only, no reply). Replaces the old handle_unsupported_message_default
 # catch-all, which now serves only ERROR_REPLY_TYPES.
 CATCH_ALL_HANDLER: Callable[[Notification], None] = handle_ignored_message_default
@@ -1509,7 +1563,7 @@ def dispatch_notification(type_message: str, notification: Notification) -> None
     `notification.event` directly) so a test double with no `.event`
     attribute at all (test_denidin_dispatch.py's `fake_notification =
     object()`) is simply never deduped, not a crash - matches
-    log_inbound/log_outbound's own "never break real processing" discipline.
+    audit_wire/debug_wire's own "never break real processing" discipline.
     """
     event = getattr(notification, "event", None)
     id_message = event.get("idMessage") if isinstance(event, dict) else None
@@ -1570,6 +1624,8 @@ if __name__ == "__main__":
         # the scheduler silently never started because this dict dropped it
         # before it ever reached initialize_app()).
         'accounting_ledger_update_freq': config.accounting_ledger_update_freq,
+        # Feature 063: idle-reset threshold (minutes) - same must-be-listed-here rule.
+        'capabilities_reset_minutes': config.capabilities_reset_minutes,
         # Feature 069: context-window size for the post-turn ledger recognition call.
         'ledger_recognition_context_window_hours': config.ledger_recognition_context_window_hours,
         # bugfix-043: same "hand-maintained subset dict, easy to forget"
@@ -1698,6 +1754,11 @@ if __name__ == "__main__":
             denidin, update_freq
         )
 
+    # Feature 063: idle capability-reset sweep (capabilities_reset_minutes; 0 =
+    # inactive) - only meaningful when the backbone flag is on (that's the only
+    # path that loads capabilities). Same deliberate placement as above.
+    denidin.capability_reset_scheduler = start_capability_reset_if_enabled(denidin)
+
     # Feature 070: nightly 02:00 Israel-local daily-summary roll - same
     # deliberate-placement rule as the two schedulers above (started HERE,
     # never inside initialize_app() - see contracts/daily-summary-roll-service.md).
@@ -1737,6 +1798,11 @@ if __name__ == "__main__":
             if denidin.accounting_reconciliation_scheduler is not None:
                 logger.info("Stopping accounting reconciliation scheduler...")
                 denidin.accounting_reconciliation_scheduler.shutdown(wait=False)
+
+            # Feature 063: stop the idle capability-reset scheduler, if active
+            if denidin.capability_reset_scheduler is not None:
+                logger.info("Stopping idle capability-reset scheduler...")
+                denidin.capability_reset_scheduler.shutdown(wait=False)
 
             # Feature 070: stop the daily-summary roll scheduler, if active
             if denidin.daily_roll_scheduler is not None:
@@ -1786,6 +1852,11 @@ if __name__ == "__main__":
             if denidin.accounting_reconciliation_scheduler is not None:
                 logger.info("Stopping accounting reconciliation scheduler...")
                 denidin.accounting_reconciliation_scheduler.shutdown(wait=False)
+
+            # Feature 063: stop the idle capability-reset scheduler, if active
+            if denidin.capability_reset_scheduler is not None:
+                logger.info("Stopping idle capability-reset scheduler...")
+                denidin.capability_reset_scheduler.shutdown(wait=False)
 
             # Feature 070: stop the daily-summary roll scheduler if not already stopped
             if denidin.daily_roll_scheduler is not None:

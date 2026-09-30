@@ -19,7 +19,7 @@ import logging
 import re
 from src.models.media import Media
 from src.handlers.extractors.base import MediaExtractor
-from src.handlers.ai_handler import _log_raw_response
+from src.utils.wire_log import audit_wire, debug_wire
 
 logger = logging.getLogger(__name__)
 
@@ -287,7 +287,8 @@ class ImageExtractor(MediaExtractor):
             ],
             max_output_tokens=self.config.ai_reply_max_tokens
         )
-        _log_raw_response("ImageExtractor._vision_extract", response)
+        audit_wire("openai", "in", "ImageExtractor._vision_extract", response)
+        debug_wire("openai", "in", "ImageExtractor._vision_extract", response)
 
         raw_response = cast(str, response.output_text)
         logger.info(f"[ImageExtractor._vision_extract] Raw OpenAI response ({len(raw_response)} chars):")

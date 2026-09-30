@@ -4,8 +4,6 @@ import json
 from unittest.mock import MagicMock, patch
 
 from src.backbone.backbone_tools import (
-    dispatch_react_to_message,
-    dispatch_send_progress_update,
     extract_backbone_tool_calls,
 )
 
@@ -47,48 +45,3 @@ def test_extract_backbone_tool_calls_skips_malformed_arguments():
     response = MagicMock()
     response.output = [item]
     assert extract_backbone_tool_calls(response) == []
-
-
-def test_dispatch_send_progress_update_calls_callback_and_reports_sent():
-    callback = MagicMock()
-    result = dispatch_send_progress_update(callback, "chat1", {"text": "רגע..."})
-    callback.assert_called_once_with("רגע...")
-    assert result == {"sent": True}
-
-
-def test_dispatch_send_progress_update_no_callback_reports_not_sent():
-    result = dispatch_send_progress_update(None, "chat1", {"text": "רגע..."})
-    assert result == {"sent": False}
-
-
-def test_dispatch_send_progress_update_callback_failure_is_swallowed():
-    callback = MagicMock(side_effect=RuntimeError("boom"))
-    result = dispatch_send_progress_update(callback, "chat1", {"text": "רגע..."})
-    assert result == {"sent": False}
-
-
-def test_dispatch_react_to_message_calls_send_reaction():
-    bot = MagicMock()
-    with patch("src.utils.green_api_bot.send_reaction", return_value=True) as mock_send:
-        result = dispatch_react_to_message(bot, "chat1", "default_msg", {"emoji": "✅", "message_id": None})
-    mock_send.assert_called_once_with(bot, "chat1", "default_msg", "✅")
-    assert result == {"success": True}
-
-
-def test_dispatch_react_to_message_uses_explicit_message_id_over_default():
-    bot = MagicMock()
-    with patch("src.utils.green_api_bot.send_reaction", return_value=True) as mock_send:
-        dispatch_react_to_message(bot, "chat1", "default_msg", {"emoji": "✅", "message_id": "explicit_msg"})
-    mock_send.assert_called_once_with(bot, "chat1", "explicit_msg", "✅")
-
-
-def test_dispatch_react_to_message_no_bot_reports_failure_without_raising():
-    result = dispatch_react_to_message(None, "chat1", "default_msg", {"emoji": "✅", "message_id": None})
-    assert result == {"success": False}
-
-
-def test_dispatch_react_to_message_send_failure_is_swallowed():
-    bot = MagicMock()
-    with patch("src.utils.green_api_bot.send_reaction", side_effect=RuntimeError("boom")):
-        result = dispatch_react_to_message(bot, "chat1", "default_msg", {"emoji": "✅", "message_id": None})
-    assert result == {"success": False}

@@ -75,6 +75,8 @@ from .denidin_mcp_e2e_helpers import (
     _send_turn,
     _send_turn_and_approve,
     _send_turn_and_decline,
+    _send_turn_with_notification,
+    get_button_send,
 )
 
 logger = logging.getLogger(__name__)
@@ -183,7 +185,7 @@ def test_godfather_creates_invoice_via_whatsapp_button_tap(denidin_app):
     description = _random_description()
     client_name = pick_existing_client()["name"]  # Feature 059 item 5: any existing client works
 
-    ask_response, ask_ai_response = _send_turn(
+    ask_response, ask_ai_response, ask_notification = _send_turn_with_notification(
         chat_id=GODFATHER_CHAT_ID,
         text=f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח לא כולל מע\"מ עבור {description}",
         id_prefix="E2E_CREATE_TAP_ASK",
@@ -194,33 +196,36 @@ def test_godfather_creates_invoice_via_whatsapp_button_tap(denidin_app):
         f"{ask_ai_response.mcp_calls if ask_ai_response else None!r}"
     )
 
-    # The ASK turn must have actually sent real interactive buttons - not
-    # silently fallen back to plain text (which would make this test
-    # indistinguishable from the text-path test above, and mask a real
-    # regression the way this exact scenario did before the E2E harness
-    # gained answer_with_interactive_buttons support, 2026-08-14). Checked
-    # right here, between the ASK and TAP turns - checking any later (e.g.
-    # after the tap has already resolved and cleared it) would always show
-    # None regardless of whether the buttons send itself actually worked, a
-    # real ordering bug caught in this test's own first run, 2026-08-14.
-    # sent_message_id is populated by the exact same production wiring
-    # (denidin.py's attach_sent_message_id call) that requires a real,
-    # successful buttons send in the first place, so its presence here is
-    # direct proof - no need for get_button_send()'s captured body/buttons.
-    import denidin as denidin_module
-    pending_after_ask = denidin_module.denidin_app.ai_handler.pending_approval_manager.get(
-        GODFATHER_CHAT_ID
+    # The ASK turn must have actually sent a real approval prompt - not
+    # silently skipped straight to creation (which would make this test
+    # indistinguishable from a no-approval regression). `ask_response` is
+    # dual-written identically whether the prompt went out as plain text or
+    # as real interactive buttons, so parsing it directly is sufficient proof
+    # a genuine approval gate was reached.
+    assert _is_real_approval_prompt(ask_response), (
+        f"ASK turn's reply was not a real approval prompt: {ask_response!r}"
     )
-    assert pending_after_ask is not None and pending_after_ask.sent_message_id, (
-        "ASK turn did not result in a pending approval with a real "
-        "sent_message_id attached - either no pending approval was created, "
-        "or the interactive-buttons send failed and silently fell back "
+
+    # The ASK turn must specifically have sent real interactive buttons (not
+    # a plain-text fallback of that same prompt) - checked via the actual
+    # captured WhatsApp buttons send on this turn's own Notification object
+    # (the test harness's outbound-send spy, not app business state), right
+    # here between the ASK and TAP turns - checking any later (e.g. after the
+    # tap has already resolved) would no longer prove anything about the ASK
+    # turn's own send, a real ordering bug caught in this test's own first
+    # run, 2026-08-14. The real idMessage read here is also what a real phone
+    # would have on-screen to tap - needed to drive the TAP turn below.
+    button_send = get_button_send(ask_notification)
+    assert button_send is not None and button_send.get("idMessage"), (
+        "ASK turn did not send real interactive buttons - either it fell "
+        "back to plain text, or the interactive-buttons send failed "
         "(check for 'Failed to send approval buttons' in the log)."
     )
 
     from src.managers.pending_approval_manager import BUTTON_ID_APPROVE
     response, ai_response = _send_button_tap(
-        GODFATHER_CHAT_ID, BUTTON_ID_APPROVE, id_prefix="E2E_CREATE_TAP_APPROVE"
+        GODFATHER_CHAT_ID, BUTTON_ID_APPROVE, id_prefix="E2E_CREATE_TAP_APPROVE",
+        stanza_id=button_send["idMessage"],
     )
 
     create_calls = _calls_for(ai_response, "create_invoice")
@@ -245,9 +250,9 @@ def test_godfather_creates_invoice_via_whatsapp_button_tap(denidin_app):
         f"regression): {create_calls!r}"
     )
 
-    assert "http" in response, (
-        f"Bot reply did not include an invoice link. Full reply: {response!r}"
-    )
+    # 2026-09-27: a download link is no longer a required part of the reply
+    # (flows/*.md were changed to stop unconditionally fetching one - it was
+    # causing real tool-confusion failures) - no longer asserted here.
 
 
 @pytest.mark.billed
@@ -343,10 +348,15 @@ def test_godfather_approval_survives_intervening_small_talk(denidin_app):
     )
     # Feature 027: "no error" alone isn't proof of real success anymore - a
     # "client not found" refusal is also a normal (error=None) tool return.
-    # An actual link is airtight proof the document was really created.
-    assert "http" in response, (
-        f"Bot reply did not include an invoice link - possibly a silent "
-        f"'client not found' refusal rather than a real success. Full reply: {response!r}"
+    # 2026-09-27: switched from asserting "http" in the model's own reply
+    # text (a download link is no longer a required part of the report,
+    # flows/*.md) to checking the tool call's own raw output for a real
+    # display_number - still airtight proof the document was actually
+    # created, but no longer dependent on the model choosing to relay a link.
+    assert create_calls[0]["output"] and '"display_number"' in create_calls[0]["output"], (
+        f"create_invoice's own tool output carried no display_number - "
+        f"possibly a silent 'client not found' refusal rather than a real "
+        f"success. Tool output: {create_calls[0]['output']!r}. Full reply: {response!r}"
     )
 
 

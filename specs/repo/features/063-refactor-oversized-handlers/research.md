@@ -157,14 +157,14 @@ config/prompts/
 └── capabilities/
     ├── intent_identification.md      # meta
     ├── planning.md                   # meta
-    ├── invoicing_write.md
-    ├── invoicing_read.md
+    ├── cap_invoicing_write.md
+    ├── cap_invoicing_read.md
     ├── ledger_capture.md             # includes domain-specific rules split out of
     │                                  #   config/ledger_recognition_prompt.md
-    ├── ledger_query.md
-    ├── reminders_write.md
-    ├── reminders_read.md
-    └── media_analysis.md             # consolidates prompts/image_analysis.txt + docx_analysis.txt
+    ├── cap_ledger_query.md
+    ├── cap_reminders_write.md
+    ├── cap_reminders_read.md
+    └── cap_media_analysis.md             # consolidates prompts/image_analysis.txt + docx_analysis.txt
 ```
 Existing files (`config/runtime_constitution.md`, `config/ledger_recognition_prompt.md`,
 `prompts/image_analysis.txt`, `prompts/docx_analysis.txt`) are **left in place, untouched** — the

@@ -74,6 +74,14 @@ class AppConfiguration:
     # - this field only controls whether the background poller runs.
     accounting_ledger_update_freq: int = 0
 
+    # Backbone capability idle reset (Feature 063, 2026-09-24): minutes of chat
+    # inactivity (no message sent or received - Session.last_active) after
+    # which a background sweep clears that chat's loaded capabilities
+    # (Session.active_capabilities), returning it to the plain backbone. 0 =
+    # inactive (no scheduler started). Top-level like
+    # accounting_ledger_update_freq; deliberately NOT a feature flag.
+    capabilities_reset_minutes: int = 0
+
     # Feature 069: how many hours of chat history the post-turn ledger-recognition
     # call sees as its context window (float; DI only, never an env var). Older
     # messages are excluded from the recognition input. Default 1.0.
@@ -159,6 +167,7 @@ class AppConfiguration:
             'mcp': {},
             'reminders': {},
             'accounting_ledger_update_freq': 0,
+            'capabilities_reset_minutes': 0,
             'ledger_recognition_context_window_hours': 1.0,
             'logging': {}
         }

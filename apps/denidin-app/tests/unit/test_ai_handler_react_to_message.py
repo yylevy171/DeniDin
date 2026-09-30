@@ -160,7 +160,7 @@ class TestSingleCallDispatch:
         ])
         mock_ai_client.responses.create.return_value = _followup_response()
 
-        with patch("src.handlers.ai_handler.send_reaction", return_value=True) as mock_send:
+        with patch("src.tool_actions.messaging_actions.send_reaction", return_value=True) as mock_send:
             result = ai_handler._handle_react_to_message(request, response, None, "chat1")
 
         mock_send.assert_called_once_with(ai_handler.green_api_bot, "chat1", "wamid.current", "🙏")
@@ -175,7 +175,7 @@ class TestSingleCallDispatch:
         ])
         mock_ai_client.responses.create.return_value = _followup_response()
 
-        with patch("src.handlers.ai_handler.send_reaction", return_value=True) as mock_send:
+        with patch("src.tool_actions.messaging_actions.send_reaction", return_value=True) as mock_send:
             ai_handler._handle_react_to_message(request, response, None, "chat1")
 
         mock_send.assert_called_once_with(ai_handler.green_api_bot, "chat1", "wamid.earlier", "✅")
@@ -187,7 +187,7 @@ class TestSingleCallDispatch:
         ])
         mock_ai_client.responses.create.return_value = _followup_response()
 
-        with patch("src.handlers.ai_handler.send_reaction", return_value=False):
+        with patch("src.tool_actions.messaging_actions.send_reaction", return_value=False):
             result = ai_handler._handle_react_to_message(request, response, None, "chat1")
 
         assert result is not None
@@ -202,7 +202,7 @@ class TestSingleCallDispatch:
         ])
         mock_ai_client.responses.create.return_value = _followup_response()
 
-        with patch("src.handlers.ai_handler.send_reaction") as mock_send:
+        with patch("src.tool_actions.messaging_actions.send_reaction") as mock_send:
             result = ai_handler._handle_react_to_message(request, response, None, "chat1")
 
         mock_send.assert_not_called()
@@ -216,7 +216,7 @@ class TestSingleCallDispatch:
         ])
         mock_ai_client.responses.create.side_effect = RuntimeError("api down")
 
-        with patch("src.handlers.ai_handler.send_reaction", return_value=True):
+        with patch("src.tool_actions.messaging_actions.send_reaction", return_value=True):
             result = ai_handler._handle_react_to_message(request, response, None, "chat1")
 
         assert result is None
@@ -235,7 +235,7 @@ class TestMultiCallDispatch:
         ])
         mock_ai_client.responses.create.return_value = _followup_response()
 
-        with patch("src.handlers.ai_handler.send_reaction", return_value=True) as mock_send:
+        with patch("src.tool_actions.messaging_actions.send_reaction", return_value=True) as mock_send:
             ai_handler._handle_react_to_message(request, response, None, "chat1")
 
         assert mock_send.call_count == 2
@@ -253,7 +253,7 @@ class TestMultiCallDispatch:
         ])
         mock_ai_client.responses.create.return_value = _followup_response()
 
-        with patch("src.handlers.ai_handler.send_reaction", return_value=True) as mock_send:
+        with patch("src.tool_actions.messaging_actions.send_reaction", return_value=True) as mock_send:
             ai_handler._handle_react_to_message(request, response, None, "chat1")
 
         mock_send.assert_called_once()

@@ -7,6 +7,7 @@ import pytest
 
 from src.backbone.capability_tags import CapabilityTag
 from src.backbone.orchestrator import BackboneOrchestrator
+from tests.backbone_test_support import make_session_manager
 from src.models.config import AppConfiguration
 
 
@@ -15,7 +16,7 @@ def prompts_root(tmp_path):
     base = tmp_path / "config"
     (base / "prompts" / "capabilities").mkdir(parents=True)
     (base / "prompts" / "backbone.md").write_text("BACKBONE", encoding="utf-8")
-    (base / "prompts" / "capabilities" / "reminders_read.md").write_text("REMINDERS_READ", encoding="utf-8")
+    (base / "prompts" / "capabilities" / "cap_reminders_read.md").write_text("REMINDERS_READ", encoding="utf-8")
     return base
 
 
@@ -24,7 +25,7 @@ def _orchestrator(prompts_root):
         green_api_instance_id="x", green_api_token="y", ai_api_key="z",
         backbone_config={"base_dir": str(prompts_root)},
     )
-    return BackboneOrchestrator(MagicMock(), config)
+    return BackboneOrchestrator(MagicMock(), config, session_manager=make_session_manager())
 
 
 def test_assembly_order_backbone_then_capability_then_context_then_date(prompts_root):
@@ -49,7 +50,7 @@ def test_assembly_omits_accumulated_context_when_empty(prompts_root):
 
 
 def test_assembly_carries_exactly_one_active_capability(prompts_root):
-    (prompts_root / "prompts" / "capabilities" / "ledger_query.md").write_text(
+    (prompts_root / "prompts" / "capabilities" / "cap_ledger_query.md").write_text(
         "LEDGER_QUERY", encoding="utf-8"
     )
     orchestrator = _orchestrator(prompts_root)

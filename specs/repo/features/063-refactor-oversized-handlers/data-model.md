@@ -8,70 +8,35 @@ database schema, no new files under `data/`, no `LedgerEvent`/`Reminder` field c
 
 ## CapabilityTag (enum-like constant)
 
-The canonical set of capabilities, fixing both the routing vocabulary and the per-step prompt
-file lookup (R2/R3, REQ-063-06). Two kinds: **meta** (about orchestration itself) and **domain**
-(business logic).
+The canonical set of capabilities the model can `load_capabilities`. There are no meta
+capabilities: the orchestrator is one tool-driven loop (`contracts/capability-resolution-loop.md`).
 
-| Value | Kind | Domain | Mode | Prompt file | Manager/backing code |
-|---|---|---|---|---|---|
-| `intent_identification` | Meta | — | — | `config/prompts/capabilities/intent_identification.md` | none |
-| `planning` | Meta | — | — | `config/prompts/capabilities/planning.md` | none |
-| `invoicing_write` | Domain | Invoicing/Morning | Write | `config/prompts/capabilities/invoicing_write.md` | none (remote MCP) |
-| `invoicing_read` | Domain | Invoicing/Morning | Read | `config/prompts/capabilities/invoicing_read.md` | none (remote MCP) |
-| `ledger_capture` | Domain | Ledger Events | Capture | `config/prompts/capabilities/ledger_capture.md` | `managers/ledger_event_manager.py` (unmodified, shared with `AIHandler`) |
-| `ledger_query` | Domain | Ledger Events | Query | `config/prompts/capabilities/ledger_query.md` | `managers/ledger_event_manager.py` (shared) |
-| `reminders_write` | Domain | Reminders | Write | `config/prompts/capabilities/reminders_write.md` | `managers/reminder_manager.py` (unmodified, shared) |
-| `reminders_read` | Domain | Reminders | Read | `config/prompts/capabilities/reminders_read.md` | `managers/reminder_manager.py` (shared) |
-| `media_analysis` | Domain | Media | Extraction | `config/prompts/capabilities/media_analysis.md` | `handlers/extractors/{image,pdf,docx}_extractor.py` (unmodified, shared) |
+| Value | Domain | Mode | Prompt file | Tools / backing code |
+|---|---|---|---|---|
+| `cap_invoicing_write` | Invoicing/Morning | Write | `cap_invoicing_write.md` | Morning MCP tools (shared MCP entry, `require_approval:"never"`) |
+| `cap_invoicing_read` | Invoicing/Morning | Read | `cap_invoicing_read.md` | Morning MCP tools |
+| `cap_client_write` | Morning clients | Write | `cap_client_write.md` | Morning MCP tools (`add_client`/`update_client`) |
+| `cap_client_read` | Morning clients | Read | `cap_client_read.md` | Morning MCP tools |
+| `cap_ledger_query` | Ledger Events | Query | `cap_ledger_query.md` | local `query_ledger_events` (`managers/ledger_event_manager.py`, shared, unmodified) |
+| `cap_reminders_write` | Reminders | Write | `cap_reminders_write.md` | local create/modify/delete tools (`managers/reminder_manager.py`) |
+| `cap_reminders_read` | Reminders | Read | `cap_reminders_read.md` | local `list_reminders` |
+| `cap_media_analysis` | Media | Extraction | `cap_media_analysis.md` | local `analyze_media` (`handlers/extractors/*`, shared, unmodified) |
+| `cap_docx_write` | Fee agreement docs | Write | `cap_docx_write.md` | local docx tools |
 
-Canonical order (the table's row order above) is the fixed reference order for REQ-063-06, though
-under R2's step-by-step execution model each call carries at most one active `CapabilityTag`'s
-content at a time (see `Backbone content` below) — canonical order now matters for cache-hit
-*consistency of individual capability prompts*, not for concatenation order of a multi-capability
-union (the original, superseded design).
+All prompt files live under `config/prompts/capabilities/`. Tool mapping is authored once in
+`src/capabilities/toolsets.py`.
 
-**Validation rule**: a `CapabilityTag` value a Planning step names that isn't one of these 9 is
-dropped (logged as a warning), never executed — an unrecognized tag must not silently expand what
-prompt/tools a turn receives.
+**Validation rule**: a capability name passed to `load_capabilities`/`unload_capabilities` (an array) that isn't
+one of these tags is rejected with an error result to the model, never silently accepted.
 
-## Plan (Planning capability's output, R2)
+## Loaded-capability set (persisted)
 
-```json
-{"steps": [
-  {"capability": "media_analysis", "note": "extract the incoming image"},
-  {"capability": "ledger_capture", "note": "check if the extracted text describes a fee agreement or deposit"}
-]}
-```
-
-- `steps`: `List[{capability: CapabilityTag, note: str}]`, may be empty (Backbone-only turn,
-  AS-1's small-talk case — Intent Identification determined nothing further is needed), never
-  `null`. Order is the actual execution order (unlike the old `ClassificationResult`, which had no
-  ordering semantics) — a step may depend on a prior step's result (e.g. `ledger_capture` above
-  needs `media_analysis`'s extracted text).
-- Only ever contains **domain** `CapabilityTag`s — Intent Identification and Planning are
-  themselves always the first two steps of *every* turn (implicit, not part of the `Plan` object
-  they jointly produce) and are never named inside a `Plan`.
-- Not persisted. Exists only for the duration of one turn's processing.
-- On a Planning call failure (timeout, malformed JSON after retry): **fail open** — execute every
-  domain capability the role has access to, in canonical order (equivalent to today's
-  always-everything constitution), rather than fail closed to an empty plan. Silently dropping a
-  capability the user actually needs is a worse failure mode than a temporarily larger set of
-  calls. Logged as an ERROR either way.
-- A step whose named capability the executing role isn't allowed (see RBAC below) is dropped
-  before execution, logged as a WARNING — Planning is only ever told about the role's allowed
-  capabilities in the first place (R2), so this should be rare, but the check is defense in depth.
-
-## RBAC-filtered capability set (computed before Planning runs, not after)
-
-`available_capabilities_for_planning = role_allowed_capabilities(user.role)`
-
-`role_allowed_capabilities` mirrors today's `_assemble_tools` RBAC checks: `client`/`blocked`
-roles never receive `invoicing_*`/`ledger_*`/`reminders_*` (those are godfather/admin-only today);
-`media_analysis` follows the same media-message RBAC any role already has today (no new
-restriction). `godfather`/`admin` receive the full domain set. Unlike the original (classifier)
-design, this filtering happens **before** Planning is even invoked (R2) — Planning is told which
-capabilities exist for this role, so it never proposes one the turn can't execute in the first
-place, rather than proposing freely and being filtered after the fact.
+`Session.active_capabilities: List[str]` — the growing set of loaded capability tags for the
+chat, persisted via `SessionManager.set_active_capabilities`, surviving turns and restarts.
+`load_capabilities` adds, `unload_capabilities` removes, `reset_to_backbone` clears all (and the parallel `Session.active_flows`, managed by `load_flows`/`unload_flows`, see `FlowTag` in `backbone/flow_tags.py`); the
+idle sweep (`capabilities_reset_minutes`, `services/capability_reset_service.py`) clears any
+session idle longer than the threshold. `instructions` AND `tools` are rebuilt from this set on
+every API call (`previous_response_id` retains neither).
 
 ## Backbone content (static, not per-turn)
 
@@ -79,16 +44,15 @@ A single loaded string, from the **new** `config/prompts/backbone.md` (not
 `runtime_constitution.md`, which is untouched and stays exclusively `AIHandler`'s file). Loaded by
 the new orchestrator's own mtime-cache mechanism, structurally mirroring but not sharing code with
 `ai_handler.py`'s `_load_constitution`. Contains only the static behavioral constants listed in
-`research.md` R4 — no routing/classification logic (that's Intent Identification/Planning's own
-prompt content, loaded per-step like any other capability).
+`research.md` R4 — no routing/classification logic (the model chooses capabilities itself via
+`load_flows`/`load_capabilities`).
 
 ## Capability prompt content (per-capability, independently cached)
 
-9 independently mtime-cached strings (2 meta + 7 domain), loaded from
-`config/prompts/capabilities/<tag>.md` by the new orchestrator. For a given call in the plan
-execution loop, exactly one capability's content is active — appended to the Backbone content for
-that call only (R3) — plus the accumulated results of prior steps in the same plan, appended after
-that (analogous to how `_build_instructions` appends memory context today).
+10 independently mtime-cached strings, loaded from `config/prompts/capabilities/<tag>.md`. Each
+round's `instructions` = Backbone content + a `## Loaded capabilities` section (tag list, or
+`(none - plain backbone)`) + the prompt of every loaded capability, in canonical order, + memory
+context and today's date after that.
 
 ## Config additions (`models/config.py`)
 
@@ -106,7 +70,8 @@ added for the new orchestrator:
     "base_dir": "config",
     "prompts_dir": "prompts",                // NEW — relative to base_dir: config/prompts/
     "capabilities_dir": "capabilities"       // relative to prompts_dir: config/prompts/capabilities/
-  }
+  },
+  "capabilities_reset_minutes": 60           // NEW — top-level (not a flag): idle minutes before the loaded set clears; 0 = off
 }
 ```
 

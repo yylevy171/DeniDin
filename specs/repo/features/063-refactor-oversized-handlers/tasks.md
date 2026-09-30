@@ -1,5 +1,7 @@
 # Tasks: The Dynamic Capability Backbone (063)
 
+> **Note 2026-09-24**: the task history below records the design as it evolved (two-call Intent Identification/Planning → `use_capability`/`note` → the current "resolution" loop). Only `contracts/capability-resolution-loop.md` describes the CURRENT design; older entries are historical and intentionally left as written.
+
 **Input**: `plan.md`, `spec.md`, `research.md`, `data-model.md`, `contracts/orchestration-loop.md`,
 `contracts/prompt-assembly.md`, `quickstart.md`, `user-stories.md`
 **Tests**: per `user-stories.md`'s §VI.a decision, no new `billed`/`expensive` tests are added —
@@ -98,16 +100,16 @@ prompt/tools swapped in one at a time, later steps seeing earlier steps' accumul
       `src/backbone/orchestrator.py` per `contracts/orchestration-loop.md` step 3: per-step
       instructions assembly, accumulated-context threading, non-fatal per-step-failure handling.
 - [X] T041 [P] [US3] Create `apps/denidin-app/src/capabilities/__init__.py`.
-- [X] T042 [P] [US3] Author `config/prompts/capabilities/reminders_read.md` +
+- [X] T042 [P] [US3] Author `config/prompts/capabilities/cap_reminders_read.md` +
       `src/capabilities/reminders/handler.py::read()` — wraps `reminder_manager.py`'s existing
       `list_reminders`-equivalent query, unmodified manager, new thin capability handler.
-- [X] T043 [P] [US3] Author `config/prompts/capabilities/ledger_query.md` +
+- [X] T043 [P] [US3] Author `config/prompts/capabilities/cap_ledger_query.md` +
       `src/capabilities/ledger_events/handler.py::query()` — wraps `LedgerEventManager.query_events`
       unmodified.
-- [X] T044 [P] [US3] Author `config/prompts/capabilities/invoicing_read.md` +
+- [X] T044 [P] [US3] Author `config/prompts/capabilities/cap_invoicing_read.md` +
       `src/capabilities/invoicing/handler.py::read_tools()` — remote MCP tool passthrough, same
       tool set `_build_morning_mcp_tools`'s read subset exposes today.
-- [X] T045 [P] [US3] Author `config/prompts/capabilities/media_analysis.md` +
+- [X] T045 [P] [US3] Author `config/prompts/capabilities/cap_media_analysis.md` +
       `src/capabilities/media_analysis/handler.py::extract()` — wraps
       `handlers/extractors/{image,pdf,docx}_extractor.py` unmodified, MIME-dispatched exactly as
       `MediaHandler` does today.
@@ -117,8 +119,8 @@ prompt/tools swapped in one at a time, later steps seeing earlier steps' accumul
 - [X] T047 [P] [US3] Unit tests for each T042-T045 handler (read/query/extract paths only —
       `test_capability_reminders_read.py`, `test_capability_ledger_query.py`,
       `test_capability_invoicing_read.py`, `test_capability_media_analysis.py`).
-- [X] T048 [US3] Unit test: a 2-step `Plan` (`media_analysis` → `ledger_capture` note-only stub)
-      threads `media_analysis`'s output into the second step's accumulated context
+- [X] T048 [US3] Unit test: a 2-step `Plan` (`cap_media_analysis` → `ledger_capture` note-only stub)
+      threads `cap_media_analysis`'s output into the second step's accumulated context
       (`test_orchestrator_multi_step_context.py`).
 - [X] T049 [US3] Integration test: flag-on media dispatch (`denidin.py`) reaches
       `BackboneOrchestrator` instead of `WhatsAppHandler.handle_media_message()`; flag-off dispatch
@@ -134,7 +136,7 @@ Write as the first fully-ported template; the same shape then applies to the rem
 capabilities as separately-scoped follow-up work (see "Deferred" below) rather than four more
 copies rushed in this pass.
 
-- [X] T050 [US1] Author `config/prompts/capabilities/reminders_write.md`.
+- [X] T050 [US1] Author `config/prompts/capabilities/cap_reminders_write.md`.
 - [X] T051 [US1] Implement `src/capabilities/reminders/handler.py::propose_write()` — builds a
       `PendingLocalToolApproval` via the existing, unmodified
       `pending_local_tool_approval_manager.py`, mirroring `AIHandler._handle_reminder_creation_proposal`'s
@@ -214,7 +216,7 @@ Kept as a record of what was closed, not as open work:
   `_process_media_message_via_backbone`) downloads/validates real media via the unmodified
   low-level `MediaFileManager` methods and threads the raw `Media` object into
   `BackboneOrchestrator.get_response(media=..., media_type=...)`; Planning decides whether the
-  turn's plan even includes a `media_analysis` step at all — REQ-063-04a's real design (corrects
+  turn's plan even includes a `cap_media_analysis` step at all — REQ-063-04a's real design (corrects
   the earlier 2026-09-14 eager-extraction shortcut, per explicit human correction: media enters
   the orchestrator raw, like any other message, and the orchestrator chooses whether/when to
   extract). Done.
@@ -230,3 +232,87 @@ cross-referencing every spec artifact against the actual code, not just this tas
   tool calls into `AIResponse.mcp_calls` and the persisted assistant message), closing a gap where
   the post-turn ledger-recognition hook always saw an empty list under flag-on regardless of real
   Morning activity that turn.
+
+---
+
+## Next Up (approved design, not yet implemented) — opened 2026-09-16
+
+The two-call Intent Identification → Planning design (this file's closed items above,
+`contracts/orchestration-loop.md`) is retired — see `spec.md`'s 2026-09-16 clarification session.
+Two approved-but-unbuilt designs, not yet broken into tasks:
+
+- **Tool-driven orchestration loop** — `contracts/tool-driven-orchestration.md`. Deletes
+  `intent_identification.py`/`planning.py`/`fail_open_plan`/`_execute_plan`'s step-list; replaces
+  with one merged orchestrator call driven by four real function-calling tools
+  (`load_capability`, `use_capability`, `record_planning_status`, `send_to_user`) on a
+  generalized version of the existing chained (`previous_response_id`) tool-dispatch loop.
+- **`cap_docx_write` capability** — `contracts/docx-write-capability.md`. Wraps Feature 083's
+  `FeeAgreementToolHandler`/`DocTemplateEngine` unmodified; needs its own inner multi-round
+  tool-dispatch loop (no approval gate), local to this one capability.
+
+---
+
+## Bug fix: `use_capability`'s original always-`call_capability_step` design — CLOSED 2026-09-23
+
+Root cause: a real T3 sanity-test trace (`tests/billed/T3_rawlog_*.log`) showed
+`cap_reminders_write`'s `create_reminder` computing a wrong `one_time_due_at` twice in a row
+(different wrong years both times) despite the correct current date being present in
+`instructions` on every call. Traced to `use_capability` *always* dispatching through
+`call_capability_step` — a brand-new, non-chained Responses API call resending the full
+Backbone + capability prompt and conversation history from scratch — giving the model two
+fully disconnected chances to compute the same relative date (once composing `note`, once
+independently re-deriving the ISO value from it). Explicit user correction: `use_capability`
+was always meant to mean "the capability you just loaded is now live — its tools are attached
+to THIS call" — never a second, disconnected AI call; see `contracts/tool-driven-
+orchestration.md`'s new "Dynamic tool-attachment" section for the full corrected contract.
+
+- [X] T070 Update `contracts/tool-driven-orchestration.md`: corrected `use_capability`'s own
+      description + new "Dynamic tool-attachment" section documenting the fix, the original
+      flaw, and which capabilities are/aren't migrated. Done.
+- [X] T071 `orchestrator.py`: `_dynamic_capability_tools` (allowlist — `cap_reminders_write` only
+      so far), `_maybe_activate_dynamic_capability` (attaches domain tools to the SAME chained
+      follow-up instead of spawning a new call), `_extract_dynamic_capability_calls` /
+      `_dispatch_dynamic_capability_call` (recognizes and executes the domain tool call once it
+      comes back on that same chain), `_turn_active_dynamic_capability` per-turn state
+      (reset in `get_response`, one-shot per activation). Done.
+- [X] T072 `src/capabilities/reminders/tools.py`: `extract_reminder_tool_calls` (same
+      `(call_id, tool_name, args)` shape as `backbone_tools.extract_backbone_tool_calls`).
+      `src/capabilities/reminders/handler.py`: `dispatch_direct_tool_call` (direct-execute entry
+      point against `ReminderManager`, no `call_capability_step` involved). Done.
+- [X] T073 Unit suite green (`tests/unit -k "orchestrator or reminders"`, 111/111 passed; full
+      `tests/unit` run to confirm no unrelated regression). `reminders/handler.py`'s existing
+      `write()`/`read()` (the old `call_capability_step`-based path) are left in place, unused by
+      this new path for `cap_reminders_write` specifically but still directly unit-testable and still
+      the live path for `cap_reminders_read` (not migrated — no strict-schema re-derivation risk
+      there) — no removal, per minimal-diff scoping.
+- [ ] T074 **Not done, explicitly scoped out for now**: migrating any other capability
+      (`cap_invoicing_write`, `ledger_capture`, `cap_media_analysis`, `cap_docx_write`) to this same
+      mechanism — each has its own protocol constraints worth reviewing on their own (see
+      "Dynamic tool-attachment"'s own note on why). Tracked here, not silently dropped.
+- [X] T075 Re-ran `tests/billed/test_reminder_lifecycle_billed.py::TestReminderLifecycleBilled::
+      test_godfather_creates_one_time_reminder_button_approval` (T3) with
+      `feature_flags.enable_capability_backbone` scope-toggled true for the run only, reverted
+      immediately after (confirmed 0 `feature_flags` keys left in `config.test.json`). Found TWO
+      real bugs in the T071 implementation via this re-run, both fixed same session:
+      1. `_turn_active_dynamic_capability` was cleared after the FIRST domain-tool dispatch
+         (success or failure) - broke `cap_reminders_write.md`'s own "retry the SAME call once on
+         failure" contract, since a model retry calls `create_reminder` directly again with no
+         fresh `use_capability` in between. The orphaned retry call went unanswered and the loop
+         silently returned `NO_REPLY_SENTINEL`. Fixed: stays active for the rest of the turn,
+         reset only at the top of the next `get_response` call.
+      2. A model several rounds deep in one chained turn declined to call `create_reminder` at
+         all, replying that "the system didn't supply the required current date" - even though
+         the date WAS present, just several rounds back (a chained follow-up carries no
+         `instructions` of its own). Fixed: `_current_date_time_line` factored out of
+         `build_instructions` and restated verbatim in the dynamic-capability activation
+         acknowledgment text itself, right next to where the strict-schema date field actually
+         gets filled.
+      Final re-run: **PASSED** - `one_time_due_at=2026-09-23T20:43:00+03:00` (correct date, first
+      try, no retry needed), reminder actually created and verified via the active-reminder-set
+      diff assertion, confirmed via log grep that `call_capability_step[cap_reminders_write]` was
+      called zero times in this run's window. Unit suite re-confirmed green after both fixes
+      (111/111 scoped, 1649/1649 full) with the flag reverted off.
+
+
+## Resolution redesign — implemented 2026-09-24
+See `contracts/capability-resolution-loop.md`. Unit + integration suites green (1753 passed). Remaining: the 10 billed capability tests (need explicit go-ahead via sanctioned scripts).

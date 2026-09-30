@@ -434,6 +434,20 @@ def _send_turn(chat_id: str, text: str, id_prefix: str,
     `timestamp` (unix epoch seconds) pins the Green API notification time — pass
     it when the test needs a known `event_datetime`; defaults to now.
     """
+    response, ai_response, _notification = _send_turn_with_notification(
+        chat_id, text, id_prefix, timestamp=timestamp
+    )
+    return response, ai_response
+
+
+def _send_turn_with_notification(
+    chat_id: str, text: str, id_prefix: str, timestamp: Optional[int] = None
+) -> Tuple[Optional[str], Optional[AIResponse], Notification]:
+    """Same as `_send_turn`, but also returns the `Notification` object this
+    turn used - the test harness's own simulated-webhook-plus-outbound-send-spy
+    object (not app business state), needed whenever a test must read what was
+    actually sent over the WhatsApp boundary (e.g. `get_button_send()`, for the
+    real message id a button tap needs) rather than inferring it from app state."""
     from denidin import handle_text_message
 
     notification = create_real_notification(build_text_webhook(
@@ -457,7 +471,7 @@ def _send_turn(chat_id: str, text: str, id_prefix: str,
             )
     logger.info(f"Bot response: {response}")
 
-    return response, ai_response
+    return response, ai_response, notification
 
 
 def _calls_for(ai_response: Optional[AIResponse], tool_name: str) -> List[dict]:
@@ -777,6 +791,45 @@ def _normalize_hebrew_geresh(name):
     return out
 
 
+_APPROVAL_WORD_VARIANTS = (
+    # noun forms ("approval")
+    "לאישור",
+    "אישור",
+    "האישור",
+    "אישורך",
+    "אישורו",
+    # infinitive/imperative ("to approve"/"approve!")
+    "לאשר",
+    "אשר",
+    "אשרי",
+    "אשרו",
+    # present-tense verb, all genders/numbers ("I/you/it approve(s)")
+    "מאשר",
+    "מאשרת",
+    "מאשרים",
+    "מאשרות",
+    # future-tense verb ("will approve")
+    "תאשר",
+    "תאשרי",
+    "תאשרו",
+    "יאשר",
+    "יאשרו",
+    "נאשר",
+    # past-tense/passive verb ("approved")
+    "אישרתי",
+    "אישרת",
+    "אישר",
+    "אישרה",
+    "אישרנו",
+    "אישרתם",
+    "אישרו",
+    "אושר",
+    "אושרה",
+)
+_YES_WORD_VARIANTS = ("כן",)
+_NO_WORD_VARIANTS = ("לא",)
+
+
 def _is_real_approval_prompt(text: Optional[str]) -> bool:
     """Whether `text` is the REAL mutation-approval gate ("...לאישור...
     אישור — כן/לא?"), as opposed to an identity-resolution question
@@ -784,9 +837,22 @@ def _is_real_approval_prompt(text: Optional[str]) -> bool:
     found live 2026-08-13: a bare "כן" only correctly answers the former: it
     isn't a valid answer to either shape of the latter, and a test blindly
     sending "כן" every round can stall forever against one. The real
-    approval gate is reliably identifiable by its own fixed shape - it
-    always contains all three of "לאישור", "כן", and "לא" together."""
-    return bool(text and "לאישור" in text and "כן" in text and "לא" in text)
+    approval gate's fixed contract (`cap_approval_with_buttons.md`) is to end
+    the text with the exact literal `לאישור — כן/לא?`. Match on that anchor
+    string first; fall back to a broad, deliberately over-inclusive check
+    against every Hebrew conjugation/form of "approve"/"approval" (noun,
+    infinitive, present/future/past-tense verb, any gender/number) alongside
+    "כן"/"לא", so a future wording drift in the prompt NEVER silently breaks
+    this detector again the way the single-noun-only version did on
+    2026-09-27."""
+    if not text:
+        return False
+    if "לאישור — כן/לא?" in text:
+        return True
+    has_approval_word = any(variant in text for variant in _APPROVAL_WORD_VARIANTS)
+    has_yes = any(variant in text for variant in _YES_WORD_VARIANTS)
+    has_no = any(variant in text for variant in _NO_WORD_VARIANTS)
+    return has_approval_word and has_yes and has_no
 
 
 def _is_genuine_document_creation(call: dict) -> bool:

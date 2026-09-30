@@ -1,3 +1,10 @@
+> **SUPERSEDED 2026-09-24 by [`capability-resolution-loop.md`](capability-resolution-loop.md).** Historical record only.
+
+> **Superseded 2026-09-16 by [`tool-driven-orchestration.md`](tool-driven-orchestration.md).**
+> Kept in place as historical record of the reasoning that led there (including a
+> reverted, unapproved JSON-schema merge attempt) — not the current design. Read
+> `tool-driven-orchestration.md` first.
+
 # Contract: Backbone Orchestration Loop (supersedes the retired `pre-classifier.md`)
 
 **Component**: `src/backbone/orchestrator.py`'s `get_response()` (the new module's equivalent
@@ -27,7 +34,7 @@ entry point to `ai_handler.py::AIHandler.get_response`) + `src/backbone/intent_i
      (accumulated context) + today's date.
    - Issue the call (reusing `_timed_llm_call`'s retry policy, reimplemented in the new module —
      see `research.md` R2's point 4).
-   - If the step is `media_analysis`: the call's tool is a wrapper around the existing, unmodified
+   - If the step is `cap_media_analysis`: the call's tool is a wrapper around the existing, unmodified
      `ImageExtractor`/`PDFExtractor`/`DOCXExtractor` (dispatched by MIME type exactly as
      `MediaHandler` does today) — its result (extracted text + ledger/document analysis) becomes
      part of the accumulated context for the next step.

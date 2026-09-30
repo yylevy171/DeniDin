@@ -61,7 +61,7 @@ class ReactionCaptureStub:
         `with` block. Each scenario run should use a FRESH ReactionCaptureStub instance
         (never reused across scenarios) so `self.calls` reflects exactly one scenario's
         outcome."""
-        with patch("src.handlers.ai_handler.send_reaction", side_effect=self._recorder("react_to_message")):
+        with patch("src.tool_actions.messaging_actions.send_reaction", side_effect=self._recorder("react_to_message")):
             yield self
 
 

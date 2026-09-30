@@ -97,7 +97,9 @@ class TestLedgerQueryRouting:
                 'ai_reply_max_tokens': config.ai_reply_max_tokens,
                 'log_level': config.log_level,
                 'data_root': config.data_root,
-                'feature_flags': config.feature_flags,
+                # This file tests the legacy AIHandler routing; config.test.json keeps the
+                # backbone flag ON for billed runs, so pin it off here.
+                'feature_flags': {**(config.feature_flags or {}), 'enable_capability_backbone': False},
                 'godfather_phone': config.godfather_phone,
                 'memory': config.memory,
                 'constitution_config': config.constitution_config,

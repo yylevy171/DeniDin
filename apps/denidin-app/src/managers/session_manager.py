@@ -143,6 +143,30 @@ class Session:
     # several conversational turns. Set when such a workflow's document is ingested; cleared
     # once it resolves (see data-model.md's message_id resolution fallback chain).
     active_document_message_id: Optional[str] = None
+    # Feature 063 redesign (2026-09-24, "resolution" model): the Backbone
+    # capability tags currently "loaded" for this chat — CapabilityTag values
+    # (plain strings; the dataclass never imports src.backbone.capability_tags,
+    # same reasoning as every other plain-string persisted field on this class).
+    # Grows via load_capabilities, shrinks via unload_capabilities/reset_to_backbone,
+    # and is cleared by the capabilities_reset_minutes idle sweep - see
+    # BackboneOrchestrator's own docstring for the full contract. Deliberately a
+    # Session field, not a BackboneOrchestrator instance attribute: it must
+    # survive across separate get_response() calls for the same chat (a button
+    # tap is a new webhook, not a new conversation), and persisting it here reuses
+    # the exact save path every other message write already goes through - no new
+    # data model, no new file, per explicit user instruction to not maintain a
+    # second persistence mechanism just for this.
+    active_capabilities: List[str] = field(default_factory=list)
+    # Same contract as active_capabilities, for the loaded FLOWS (blueprints in
+    # config/prompts/flows/) - grows via load_flows, shrinks via unload_flows/
+    # reset_to_backbone, cleared by the same idle sweep.
+    active_flows: List[str] = field(default_factory=list)
+    # Feature 047 parity under the Backbone: the WhatsApp idMessage of the
+    # interactive-buttons message currently offering this chat an approval
+    # (set by denidin.py right after that send; cleared when a tap consumes it
+    # or any new turn starts). A tap whose stanzaId doesn't equal this value is
+    # stale and ignored - WhatsApp itself offers no staleness protection.
+    approval_message_id: Optional[str] = None
 
 
 class SessionManager:
@@ -330,6 +354,32 @@ class SessionManager:
 
         logger.info(f"Created new session {session_id} for chat {chat_id}")
         return session
+
+    def set_active_capabilities(self, chat_id: str, capabilities: List[str]) -> None:
+        """Persists this chat's currently-loaded Backbone capability tags
+        (Feature 063 redesign) - the one write path every load_capabilities/
+        unload_capabilities/reset_to_backbone dispatch and the
+        capabilities_reset_minutes idle sweep all go through, so there is
+        exactly one place that mutates+saves this field. `capabilities` is
+        taken as the new value verbatim (caller's own list, already
+        de-duplicated/ordered) - this does not merge or append."""
+        session = self.get_session(chat_id)
+        session.active_capabilities = list(capabilities)
+        self._save_session(session)
+
+    def set_active_flows(self, chat_id: str, flows: List[str]) -> None:
+        """Persists this chat's currently-loaded flow tags - same single write
+        path/verbatim-replace contract as set_active_capabilities."""
+        session = self.get_session(chat_id)
+        session.active_flows = list(flows)
+        self._save_session(session)
+
+    def set_approval_message_id(self, chat_id: str, message_id: Optional[str]) -> None:
+        """Persists (or clears, with None) the idMessage of the approval-buttons
+        message currently outstanding for this chat."""
+        session = self.get_session(chat_id)
+        session.approval_message_id = message_id
+        self._save_session(session)
 
     def add_message(
         self,

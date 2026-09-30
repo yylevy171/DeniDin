@@ -95,7 +95,10 @@ def test_create_document_for_existing_client_happy_path(denidin_app):
     assert create_calls and create_calls[0]["error"] is None, (
         f"create_invoice did not succeed for an existing client: {ai_response.mcp_calls!r}"
     )
-    assert "http" in response, f"Bot reply did not include an invoice link: {response!r}"
+    # 2026-09-27: a download link is no longer a required part of the reply
+    # (flows/*.md were changed to stop unconditionally fetching one - it was
+    # causing real tool-confusion failures); create_calls' own error=None check
+    # above is the real proof of success now.
     # Geresh-normalized: create_invoice's own arguments echo the CONFIRMED
     # exact name resolve_client_name disclosed (client-name-resolution
     # architecture, 2026-08-12), which is Morning's own normalized form - a
@@ -332,7 +335,10 @@ def test_create_document_for_new_client_full_flow_happy_path(denidin_app):
     assert create_calls and create_calls[0]["error"] is None, (
         f"Retried create_invoice did not succeed after client creation: {ai_response.mcp_calls!r}"
     )
-    assert "http" in response, f"Bot reply did not include an invoice link: {response!r}"
+    # 2026-09-27: a download link is no longer a required part of the reply
+    # (flows/*.md were changed to stop unconditionally fetching one - it was
+    # causing real tool-confusion failures); create_calls' own error=None check
+    # above is the real proof of success now.
 
     # Verified via Morning: both the new client and the new document, via
     # real follow-up lookups. "תבדוק מול מורנינג" (same phrasing as the
@@ -578,7 +584,10 @@ def test_create_document_for_new_client_asked_for_missing_info_then_provided(den
     assert create_calls and create_calls[0]["error"] is None, (
         f"Retried create_invoice did not succeed after client creation: {ai_response.mcp_calls!r}"
     )
-    assert "http" in response, f"Bot reply did not include an invoice link: {response!r}"
+    # 2026-09-27: a download link is no longer a required part of the reply
+    # (flows/*.md were changed to stop unconditionally fetching one - it was
+    # causing real tool-confusion failures); create_calls' own error=None check
+    # above is the real proof of success now.
 
 
 @pytest.mark.billed

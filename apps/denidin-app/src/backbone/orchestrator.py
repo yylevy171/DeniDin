@@ -5,37 +5,65 @@ Backbone-as-tool-orchestrator-kernel architecture. Selected once at startup by
 is true; `src/handlers/ai_handler.py` is never imported by, and never imports, this
 module (REQ-063-07).
 
-See contracts/orchestration-loop.md (the loop) and contracts/prompt-assembly.md
+See contracts/capability-resolution-loop.md (the loop) and contracts/prompt-assembly.md
 (the prompt-loading/caching + per-call instructions assembly this module implements).
 """
 import json
+from dataclasses import dataclass
 import logging
 import time
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from src.backbone.backbone_tools import (
     BACKBONE_TOOLS,
-    dispatch_react_to_message,
-    dispatch_send_progress_update,
     extract_backbone_tool_calls,
 )
-from src.backbone.capability_tags import CapabilityTag, DOMAIN_CAPABILITY_TAGS, capability_catalog_text
-from src.backbone.intent_identification import identify_intent
-from src.backbone.planning import Plan, build_plan, role_allowed_capabilities
+from src.backbone.capability_tags import ALWAYS_PRESENT_CAPABILITIES, CapabilityTag, capability_catalog_text
+from src.backbone.flow_tags import FlowTag, flow_catalog_text
+from src.backbone.loading import apply_loading, describe_loading, parse_requested
+from src.backbone.prompt_cache import MtimePromptCache
+from src.backbone.orchestration_tools import ORCHESTRATION_TOOLS, extract_orchestration_tool_calls
+from src.capabilities.toolsets import (
+    build_capability_tools,
+    dispatch_local_tool,
+    extract_local_calls,
+    local_tool_owners,
+)
 from src.constants.error_messages import BACKBONE_UNEXPECTED_ERROR
 from src.models.config import AppConfiguration
 from src.models.message import AIRequest, AIResponse, NO_REPLY_SENTINEL
 from src.models.user import Role
+from src.utils.capability_audit_log import log_capability_action, log_loading_action
+from src.utils.logger import read_version, DEFAULT_VERSION_FILE
+from src.tool_actions.messaging_actions import (
+    build_react_to_message_payload, send_progress_update_message,
+)
+from src.utils.wire_log import audit_wire, debug_wire
 from src.utils.time_utils import now_local, local_from_timestamp
 
 logger = logging.getLogger(__name__)
 
-# 2026-09-15 (closing a real gap - see _resolve_backbone_tool_calls' own
-# docstring): same value/reasoning as AIHandler's MAX_LOCAL_TOOL_LOOP_ITERATIONS -
-# a generous bound, never expected to bind in practice, existing purely so a
-# pathological back-and-forth can't loop forever.
-MAX_BACKBONE_TOOL_LOOP_ITERATIONS = 10
+
+@dataclass(frozen=True)
+class _TurnParties:
+    """Who/where one turn is with - the values _finalize_response/_persist_turn
+    need to store the turn on the right session (bundled to keep signatures small)."""
+    chat_id: str
+    role: Role
+    sender: Optional[str]
+    user_phone: Optional[str]
+    sender_phone: Optional[str]
+    is_group: bool
+    chat_name: Optional[str]
+
+# A generous bound, never expected to bind in practice, existing purely so a
+# pathological back-and-forth can't loop forever. Raised 10 -> 100 (2026-09-28)
+# after the mandatory-every-interaction send_progress_update wording pushed
+# ordinary multi-step turns (e.g. a ledger query needing two searches) past
+# the old cap of 10, which silently dropped a genuinely-produced final
+# send_to_user answer - see the loop-cap fallback's own known bug noted below.
+MAX_BACKBONE_TOOL_LOOP_ITERATIONS = 100
 
 # 2026-09-15: standalone equivalent of ai_handler.py's _MIN_PLAUSIBLE_SOURCE_EPOCH
 # (REQ-063-07 - never imported from there). A plausible real WhatsApp send epoch
@@ -58,23 +86,22 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
     (`get_response`, `resolve_button_tap`), so the rest of the app is unaware
     which implementation it is talking to (REQ-063-07)."""
 
-    def __init__(self, ai_client: Any, config: AppConfiguration,  # pylint: disable=too-many-positional-arguments
+    def __init__(self, ai_client: Any, config: AppConfiguration, *,
+                 session_manager: Any,
                  reminder_manager: Optional[Any] = None,
                  ledger_event_manager: Optional[Any] = None,
-                 pending_local_tool_approval_manager: Optional[Any] = None,
                  morning_mcp_locator: Optional[Any] = None,
-                 session_manager: Optional[Any] = None,
-                 pending_approval_manager: Optional[Any] = None,
                  green_api_bot: Optional[Any] = None,
                  memory_manager: Optional[Any] = None,
                  user_manager: Optional[Any] = None,
                  own_whatsapp_number: str = "",
-                 telemetry_manager: Optional[Any] = None):
+                 telemetry_manager: Optional[Any] = None,
+                 fee_agreement_tools: Optional[Any] = None,
+                 whatsapp_handler: Optional[Any] = None):
         self.client = ai_client
         self.config = config
         self.reminder_manager = reminder_manager
         self.ledger_event_manager = ledger_event_manager
-        self.pending_local_tool_approval_manager = pending_local_tool_approval_manager
         self.morning_mcp_locator = morning_mcp_locator
         # green_api_bot (2026-09-14): the SAME live bot instance AIHandler already
         # uses for react_to_message's real send_reaction side effect (Feature 084)
@@ -82,16 +109,11 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         # misconfigured process) - a reaction call is then a logged no-op, never
         # a crash (mirrors send_reaction's own "never raises" contract).
         self.green_api_bot = green_api_bot
-        # pending_approval_manager (2026-09-14): the SAME PendingApprovalManager
-        # instance AIHandler already uses for MCP document-creation approvals
-        # (Feature 022) - shared, unmodified (REQ-063-03), now also populated by
-        # this orchestrator's own invoicing_write step.
-        self.pending_approval_manager = pending_approval_manager
         # session_manager: the SAME SessionManager instance AIHandler already uses
-        # (REQ-063-03) - gives every step this turn real conversation history via
-        # get_rolling_window, same shape/source the legacy path has always used.
-        # None is tolerated (unit tests, or a misconfigured process) - a turn just
-        # runs with no history rather than crashing.
+        # (REQ-063-03) - gives every round this turn real conversation history via
+        # get_rolling_window, same shape/source the legacy path has always used,
+        # and is the sole home of the loaded-capability set. Required: the app
+        # cannot run without it.
         self.session_manager = session_manager
         # memory_manager/user_manager/own_whatsapp_number (2026-09-15, closing a
         # real gap found by full re-audit against spec.md/plan.md: session
@@ -121,20 +143,42 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         # simpler, same end result.
         self.telemetry_manager = telemetry_manager
         self._turn_telemetry_builder: Optional[Any] = None
+        # fee_agreement_tools/whatsapp_handler (2026-09-16, cap_docx_write capability,
+        # resolution redesign): the SAME FeeAgreementToolHandler/
+        # WhatsAppHandler instances ai_handler.py already owns (REQ-063-03) - None
+        # tolerated (unit tests, or a misconfigured process), in which case
+        # cap_docx_write returns a friendly "not configured" text rather than crashing.
+        self.fee_agreement_tools = fee_agreement_tools
+        self.whatsapp_handler = whatsapp_handler
+        # _app_version (2026-09-17, closing a real gap found by direct user
+        # review: build_instructions never told the model its own version at
+        # all, unlike AIHandler._load_constitution's "YOUR CURRENT VERSION
+        # IS..." line - under the backbone, "what version are you running?"
+        # had no way to be answered. Same source (read_version against
+        # DEFAULT_VERSION_FILE), read once at construction, mirroring
+        # AIHandler's own self._app_version.
+        self._app_version = read_version(DEFAULT_VERSION_FILE)
 
         backbone_config = dict(_DEFAULT_BACKBONE_CONFIG)
         backbone_config.update(config.backbone_config or {})
         self._backbone_config = backbone_config
 
+        # This turn's own record_planning_status output (2026-09-16) - the ONLY
+        # new persisted cross-turn state the resolution redesign adds: a plain
+        # internal-note history entry, threaded back into the next turn purely
+        # via the existing rolling-window conversation history (no new store, no
+        # schema). Reset every turn in get_response.
+        self._turn_planning_status: Optional[str] = None
+
         self._backbone_content: str = ""
         self._backbone_mtime: Optional[float] = None
-        self._capability_content: Dict[str, str] = {}
-        self._capability_mtimes: Dict[str, float] = {}
+        self._capability_prompts = MtimePromptCache("capability", self._capabilities_dir)
+        self._flow_prompts = MtimePromptCache("flow", self._flows_dir)
         self._user_memory_content: str = ""
         self._user_memory_mtime: Optional[float] = None
 
-        # Set once per get_response() call, read by call_capability_step() for
-        # every step within that SAME turn (2026-09-14). Deliberately a plain
+        # Set once per get_response() call, read by the orchestration loop for
+        # every round within that SAME turn (2026-09-14). Deliberately a plain
         # instance attribute, not threaded as an explicit parameter through
         # every one of the ~6 call sites across src/capabilities/* + planning.py
         # - this process handles one webhook turn at a time (same assumption
@@ -143,22 +187,30 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         self._turn_conversation_history: List[Dict[str, Any]] = []
 
         # Set once per get_response() call, same lifecycle/reasoning as
-        # _turn_conversation_history above - read by call_capability_step's
+        # _turn_conversation_history above - read by the loop's
         # backbone-tool resolution (send_progress_update/react_to_message) for
-        # every step this turn makes.
+        # every round this turn makes.
         self._turn_progress_callback: Optional[Callable[[str], None]] = None
         self._turn_chat_id: Optional[str] = None
         self._turn_message_id: Optional[str] = None
 
+        # Set False at the top of every get_response() call; flipped True by
+        # ApprovalCapability.handle() iff the approval capability was used
+        # THIS turn (2026-09-16) - _finalize_response reads this instead of
+        # checking pending-approval managers to decide whether to offer
+        # WhatsApp interactive buttons, now that cap_reminders_write creates no
+        # pending-approval record of its own.
+        self._turn_offered_approval: bool = False
+
         # Set once per get_response() call (2026-09-15) - the ChromaDB
         # daily_summary semantic recall for this turn's own query, appended into
-        # every step's instructions the same way AIHandler appends it to
+        # every round's instructions the same way AIHandler appends it to
         # `constitution` (see _recall_memory's own docstring for the exact
         # parity call this mirrors). "" when memory_manager is None/recall fails/
         # nothing relevant found - never blocks the turn.
         self._turn_memory_context: str = ""
 
-        # Accumulates every real Morning MCP tool call made by any step this
+        # Accumulates every real Morning MCP tool call made by any round this
         # turn (2026-09-15) - same {"name","error","arguments","output"} shape
         # AIHandler._finalize_response already extracts (REQ-SEC-002 audit
         # logging parity) - threaded into the returned AIResponse.mcp_calls so
@@ -166,6 +218,10 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         # _run_post_turn_ledger_recognition) sees this turn's real Morning
         # activity under the flag-on path too, not an empty list.
         self._turn_mcp_calls: List[Dict[str, Any]] = []
+
+        # Which capabilities are loaded is NOT per-turn instance state - it lives
+        # in Session.active_capabilities (persisted with the session on every
+        # change; see _get_active_tags/_set_active_tags).
 
     # ------------------------------------------------------------------
     # Prompt loading/caching (contracts/prompt-assembly.md)
@@ -179,6 +235,9 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
 
     def _capabilities_dir(self) -> Path:
         return self._prompts_dir() / self._backbone_config.get("capabilities_dir", "capabilities")
+
+    def _flows_dir(self) -> Path:
+        return self._prompts_dir() / self._backbone_config.get("flows_dir", "flows")
 
     def load_backbone(self) -> str:
         """Loads config/prompts/backbone.md via an mtime cache (mirrors
@@ -213,28 +272,27 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         return self._user_memory_content
 
     def load_capability_prompt(self, tag: CapabilityTag) -> str:
-        """Independent mtime cache per capability tag. Missing file: log WARNING,
-        return "" — that capability silently contributes nothing rather than
-        crashing the turn (mirrors _load_constitution's fallback pattern)."""
-        prompt_path = self._capabilities_dir() / f"{tag.value}.md"
-        cache_key = tag.value
-        try:
-            mtime = prompt_path.stat().st_mtime
-        except FileNotFoundError:
-            logger.warning("Capability prompt file not found for %s at %s", tag.value, prompt_path)
-            return self._capability_content.get(cache_key, "")
+        """Independent mtime cache per capability tag (see MtimePromptCache)."""
+        return self._capability_prompts.get(tag.value)
 
-        if cache_key not in self._capability_mtimes or mtime != self._capability_mtimes[cache_key]:
-            self._capability_content[cache_key] = prompt_path.read_text(encoding="utf-8")
-            self._capability_mtimes[cache_key] = mtime
-        return self._capability_content[cache_key]
+    def load_flow_prompt(self, tag: FlowTag) -> str:
+        """Independent mtime cache per flow tag, same contract as
+        load_capability_prompt."""
+        return self._flow_prompts.get(tag.value)
 
-    def build_instructions(self, active_tag: CapabilityTag, accumulated_context: str = "",
-                            today_timestamp: Optional[int] = None) -> str:
+    def build_instructions(self, active_tags: Union[None, CapabilityTag, List[CapabilityTag]],
+                            accumulated_context: str = "",
+                            today_timestamp: Optional[int] = None,
+                            *, active_flows: Optional[List[FlowTag]] = None) -> str:
         """contracts/prompt-assembly.md's fixed assembly order:
-        backbone + exactly ONE capability's prompt + accumulated_context + recalled
-        memory + '---' + today (memory deliberately last among the dynamic parts -
-        see the inline comment above its append call for why).
+        backbone + the always-present capabilities' prompts (fixed order) + flow
+        catalog + capability catalog + EVERY loaded flow's blueprint + EVERY loaded
+        capability's prompt (a growing set each) +
+        "Loaded flows"/"Loaded capabilities" lines +
+        accumulated_context + recalled memory + '---' + today (memory
+        deliberately last among the dynamic parts - see the inline comment
+        above its append call for why). `active_tags` may be None (plain
+        backbone), one tag, or a list.
 
         Date AND time (not date alone) - mirrors AIHandler._load_constitution's own
         current-date-and-time injection: without a current TIME, the model cannot
@@ -245,39 +303,44 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         date - same billed test caught it here too).
         """
         now = local_from_timestamp(today_timestamp) if today_timestamp else now_local()
-        # Capability catalog (2026-09-14): every domain capability's name +
-        # one-line description, authored once in capability_tags.py, rendered
-        # here so it's part of the same stable instructions prefix every call
-        # already shares - not injected per-call by Intent Identification/
-        # Planning individually. Godfather/Admin-only scope for now (client role
-        # RBAC narrowing is deferred - see role_allowed_capabilities), so the
-        # full catalog is always shown unconditionally; parse_plan still drops
-        # any step naming a capability this role isn't allowed, unchanged.
-        catalog = capability_catalog_text(list(DOMAIN_CAPABILITY_TAGS))
+        # Capability catalog: every capability's name + one-line description,
+        # authored once in capability_tags.py, rendered here as part of the same
+        # stable instructions prefix every call shares. Godfather/Admin-only
+        # scope for now (client role is out of scope), so the full catalog is
+        # always shown unconditionally.
+        catalog = capability_catalog_text(list(CapabilityTag))
+        if active_tags is None:
+            tags: List[CapabilityTag] = []
+        elif isinstance(active_tags, CapabilityTag):
+            tags = [active_tags]
+        else:
+            tags = list(active_tags)
+        # Loaded flows/capabilities render in CANONICAL order (enum order), never
+        # load order, so the same set always yields the same bytes (cache hits).
+        flows = sorted(set(active_flows or []), key=list(FlowTag).index)
+        tags = sorted(set(tags), key=list(CapabilityTag).index)
+        flow_catalog = flow_catalog_text(list(FlowTag))
+        loaded_line = (
+            "## Loaded flows\n\n" + (", ".join(f.value for f in flows) if flows else "(none)")
+            + "\n\n## Loaded capabilities\n\n"
+            + (", ".join(t.value for t in tags) if tags else "(none - plain backbone)")
+        )
         parts = [
             self.load_backbone(),
+            *[self._capability_prompts.get(name) for name in ALWAYS_PRESENT_CAPABILITIES],
+            f"## Flows\n\n{flow_catalog}" if flow_catalog else "",
             f"## Capabilities\n\n{catalog}" if catalog else "",
-            self.load_capability_prompt(active_tag),
+            *[self.load_flow_prompt(f) for f in flows],
+            *[self.load_capability_prompt(t) for t in tags],
+            loaded_line,
             self.load_user_memory(),
         ]
         if accumulated_context:
             parts.append(accumulated_context)
-        # self._turn_memory_context (2026-09-15, position corrected 2026-09-15 -
-        # a real gap found on re-audit against contracts/prompt-assembly.md's own
-        # formula, which has no memory_context between backbone and capability
-        # content at all): MUST be appended AFTER capability content, never
-        # between backbone and load_capability_prompt(active_tag) - REQ-063-06
-        # requires `backbone_content + load_capability_prompt(tag)` to form one
-        # of only 9 distinct byte-stable prefixes system-wide, regardless of
-        # turn/conversation. Memory recall varies per query/chat, so placing it
-        # before capability content would break every call after it from ever
-        # sharing a cached prefix with another call using the same tag - the
-        # opposite of what SC-005's "same capability set hits cache" property
-        # requires. Placed alongside accumulated_context (also turn-varying) at
-        # the very end, right before the date suffix, instead - mirrors
-        # AIHandler's own "constitution stays the stable prefix, everything
-        # dynamic comes after" principle, just correctly extended to this
-        # design's extra capability-content tier.
+        # Memory recall varies per query/chat, so it goes AFTER all capability
+        # content, next to the other turn-varying part (accumulated_context), right
+        # before the date suffix - REQ-063-06: the stable backbone + always-present
+        # + capability prefix must stay byte-identical across turns to hit the cache.
         if self._turn_memory_context:
             parts.append(self._turn_memory_context)
         parts.append("---")
@@ -286,90 +349,15 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
             f"(Asia/Jerusalem, Israel local time). Treat this as the authoritative \"now\" when "
             f"resolving any relative or partial date/time the user gives (a day/month with no "
             f"year, \"היום\", \"אתמול\", \"בעוד שעה\", \"בעוד חצי שעה\", etc.) — never fall back "
-            f"on a year from your training data, and never ask the user what time it is now."
+            f"on a year from your training data, and never ask the user what time it is now.\n"
+            f"YOUR CURRENT VERSION IS {self._app_version}. If asked what version you are "
+            f"running (in any language), state this exact value."
         )
         return "\n\n".join(part for part in parts if part)
 
     # ------------------------------------------------------------------
-    # The single-step OpenAI call primitive every capability step uses
+    # MCP call extraction
     # ------------------------------------------------------------------
-
-    def call_capability_step(self, tag: CapabilityTag, request: AIRequest,
-                              accumulated_context: str = "", *,
-                              tools: Optional[List[Dict]] = None,
-                              return_response: bool = False) -> Any:
-        """Issues one Responses API call with Backbone + exactly one active
-        capability's prompt+tools + accumulated context (R3's single-active-capability
-        property). Returns the response's plain text output by default.
-
-        return_response (2026-09-16, closing a real gap): a write-flow step (e.g.
-        invoicing_write/reminders_write's propose_write) needs the raw response
-        object itself - to scan for mcp_approval_request/function_call items via
-        find_approval_request/extract_any_function_call - not just its
-        output_text. Before this, both of those handlers' propose_write
-        reimplemented this entire method inline just to get the raw response
-        back, which silently dropped _turn_conversation_history and
-        BACKBONE_TOOLS from their calls (the actual root cause of a real T10
-        sanity-suite bug - see CAPABILITIES_SANITY.md). Pass True here instead
-        of forking the call path - every capability step, write flows included,
-        now goes through this one method, no exceptions."""
-        instructions = self.build_instructions(tag, accumulated_context, request.timestamp)
-        # self._turn_conversation_history (2026-09-14): the rolling window computed
-        # ONCE in get_response() for this turn, prepended before the current
-        # message - same shape/order AIHandler._call_openai_api already uses
-        # (oldest-first history, then the current turn), given to every step this
-        # turn makes, not just the first.
-        input_items = list(self._turn_conversation_history)
-        input_items.append({"role": "user", "content": request.user_prompt})
-        # BACKBONE_TOOLS (2026-09-14): send_progress_update/react_to_message apply
-        # to every capability step uniformly (backbone.md's own cross-cutting
-        # sections), so they're attached here regardless of which tag/tools this
-        # step's own capability offers - not something each capability handler
-        # needs to remember to add itself.
-        all_tools = list(tools) if tools else []
-        all_tools.extend(BACKBONE_TOOLS)
-        kwargs: Dict[str, Any] = {
-            "model": request.model,
-            "instructions": instructions,
-            "input": input_items,
-            "max_output_tokens": request.max_tokens,
-            "tools": all_tools,
-        }
-
-        start = time.monotonic()
-        response = self.client.responses.create(**kwargs)
-        # 2026-09-15: mcp_call accumulation now happens INSIDE
-        # _resolve_backbone_tool_calls, across every round of its own loop (see
-        # that method's docstring) - extracting only the FINAL round's
-        # response.output here, as this used to, silently dropped an mcp_call
-        # made in an earlier round whenever a later round also ran (the exact
-        # same bug class as AIHandler._run_local_tool_dispatch_loop's own
-        # accumulated_mcp_calls fix earlier this session - see that method's
-        # docstring). This step's own mcp_call items (if the very first round,
-        # before any backbone-tool call, already made one) are captured here.
-        self._turn_mcp_calls.extend(self._extract_mcp_call_items(response))
-        response = self._resolve_backbone_tool_calls(request, response, all_tools)
-        duration_ms = (time.monotonic() - start) * 1000
-        usage = getattr(response, "usage", None)
-        cached_tokens = getattr(getattr(usage, "input_tokens_details", None), "cached_tokens", None)
-        logger.info(
-            "Backbone step=%s instructions_bytes=%d duration_ms=%.0f cached_tokens=%s",
-            tag.value, len(instructions.encode("utf-8")), duration_ms, cached_tokens,
-        )
-        # Feature 080 telemetry (2026-09-15, closing a real gap): this is the
-        # single low-level OpenAI call site every capability step routes through
-        # (R3's single-active-capability property), so it's the one place that
-        # needs instrumenting to cover every LLM call this turn makes - mirrors
-        # AIHandler's own per-call-site record_llm_call() calls.
-        if self._turn_telemetry_builder is not None:
-            self._turn_telemetry_builder.record_llm_call(
-                int(duration_ms),
-                int(getattr(usage, "input_tokens", 0) or 0),
-                int(getattr(usage, "output_tokens", 0) or 0),
-            )
-        if return_response:
-            return response
-        return getattr(response, "output_text", "") or ""
 
     @staticmethod
     def _extract_mcp_call_items(response) -> List[Dict[str, Any]]:
@@ -388,80 +376,12 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
             if getattr(item, "type", None) == "mcp_call"
         ]
 
-    def _resolve_backbone_tool_calls(self, request: AIRequest, response, tools: List[Dict]) -> Any:
-        """Dispatches every send_progress_update/react_to_message call this step's
-        response made (real side effects: an interim WhatsApp send, a reaction),
-        submitting each round's outputs via a follow-up call chained through
-        `previous_response_id`, LOOPING (capped by MAX_BACKBONE_TOOL_LOOP_ITERATIONS)
-        until a round comes back with no more backbone-tool calls - never assuming
-        one round is enough.
-
-        2026-09-15 (closing a real gap - a billed test caught it): this used to be
-        a single, unlooped follow-up round (see this method's own prior docstring,
-        now corrected) - a real turn genuinely needs more than one, e.g. round 1
-        calls ONLY react_to_message (the mandatory "ack, I'm doing something" call,
-        no MCP call yet, no text - reasoning models emit a function_call OR a
-        final message in one turn, never both, same reasoning
-        AIHandler._call_openai_reminder_followup_api's own docstring documents),
-        and the ONE follow-up round then lets the model make its real MCP call,
-        which can ALSO end with no trailing text. Without a loop, that second
-        round's response was returned as final with response_text still empty -
-        AIResponse.__post_init__'s own should_reply=True-with-no-text guard then
-        raised, caught only by get_response's new top-level except (a friendly
-        fallback, not a crash, but still the wrong answer for a working turn).
-        Same MAX_LOCAL_TOOL_LOOP_ITERATIONS-style bounded loop shape
-        AIHandler._run_local_tool_dispatch_loop already uses for the identical
-        reason, reimplemented here as new code (REQ-063-07)."""
-        current_response = response
-        for _loop_round in range(MAX_BACKBONE_TOOL_LOOP_ITERATIONS):
-            calls = extract_backbone_tool_calls(current_response)
-            if not calls:
-                return current_response
-
-            outputs = []
-            for call_id, tool_name, args in calls:
-                if tool_name == "send_progress_update":
-                    payload = dispatch_send_progress_update(
-                        self._turn_progress_callback, self._turn_chat_id, args,
-                    )
-                else:
-                    payload = dispatch_react_to_message(
-                        self.green_api_bot, self._turn_chat_id,
-                        request.message_id or self._turn_message_id, args,
-                    )
-                outputs.append({"type": "function_call_output", "call_id": call_id, "output": json.dumps(payload)})
-
-            try:
-                current_response = self.client.responses.create(
-                    model=request.model,
-                    input=outputs,
-                    previous_response_id=getattr(current_response, "id", None),
-                    max_output_tokens=request.max_tokens,
-                    tools=tools,
-                )
-                # Each new round's response can itself carry real mcp_call items
-                # (e.g. round 1 = react_to_message ack only, round 2 = the actual
-                # Morning MCP call) - accumulate every round, not just the last
-                # one this loop happens to return (same fix as call_capability_step's
-                # own docstring above describes).
-                self._turn_mcp_calls.extend(self._extract_mcp_call_items(current_response))
-            except Exception as exc:  # pylint: disable=broad-except
-                logger.error("Backbone-tool follow-up call failed (non-fatal): %s", exc)
-                return current_response
-
-        logger.warning(
-            "Backbone-tool follow-up loop hit MAX_BACKBONE_TOOL_LOOP_ITERATIONS=%d for request %s "
-            "without a final text reply - returning the last response as-is.",
-            MAX_BACKBONE_TOOL_LOOP_ITERATIONS, request.request_id,
-        )
-        return current_response
-
     # ------------------------------------------------------------------
-    # The orchestration loop (contracts/orchestration-loop.md)
+    # The orchestration loop (contracts/capability-resolution-loop.md)
     # ------------------------------------------------------------------
 
-    def get_response(  # pylint: disable=too-many-positional-arguments,too-many-locals
-            self, request: AIRequest, chat_id: Optional[str] = None,
+    def get_response(  # pylint: disable=too-many-locals
+            self, request: AIRequest, chat_id: Optional[str] = None, *,
             user_role: str = "client", sender: Optional[str] = None,
             recipient: Optional[str] = None, user_phone: Optional[str] = None,
             is_group: bool = False, chat_name: Optional[str] = None,
@@ -486,23 +406,19 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         `MediaFileManager.download_file`/`validate_file_size`/`validate_format`,
         REQ-063-03), builds a `Media` object, and hands it here as-is, WITHOUT
         running any extraction call first. This is the real design per
-        contracts/orchestration-loop.md: the turn enters Intent Identification →
-        Planning like any other turn (knowing only "media attached, type X,
-        caption Y" — no content), and Planning is what actually CHOOSES whether
-        this turn's plan includes a media_analysis step at all; only if/when that
-        step runs does `src/capabilities/media_analysis/handler.py::extract()`
-        make the real vision/PDF/DOCX extraction call, via `turn_context["media"]`/
+        contracts/capability-resolution-loop.md: the model is told only "media
+        attached, type X, caption Y" — no content — and itself CHOOSES whether
+        to `load_capabilities(["cap_media_analysis"])` and call its `analyze_media` tool;
+        only then does `src/capabilities/media_analysis/handler.py` make the
+        real vision/PDF/DOCX extraction call, via `turn_context["media"]`/
         `["media_type"]` below. media_extraction (above) and media/media_type are
         mutually exclusive in practice — a caller passes at most one.
         """
-        # 2026-09-15 (closing a real gap): the ENTIRE turn below is now wrapped in
-        # one top-level try/except, mirroring AIHandler._get_response_impl's own
-        # APITimeoutError/RateLimitError/APIError/Exception -> friendly fallback
-        # safety net exactly. Before this fix, only the two meta-steps (Intent
-        # Identification/Planning) and each individual plan step self-caught their
-        # own errors - anything else that raised (pending-approval resolution,
-        # memory recall, session persistence, finalize) propagated straight out of
-        # get_response() uncaught, crashing the turn instead of replying at all.
+        # The ENTIRE turn below is wrapped in one top-level try/except, mirroring
+        # AIHandler._get_response_impl's own APITimeoutError/RateLimitError/
+        # APIError/Exception -> friendly fallback safety net: anything that raises
+        # (memory recall, session persistence, finalize, a model call) replies
+        # with a friendly fallback instead of crashing the turn.
         # Feature 080 telemetry (2026-09-15, closing a real gap - see __init__'s
         # telemetry_manager docstring): one TelemetryBuilder per turn, recorded in
         # the `finally` below regardless of how the turn ends (success or the
@@ -531,21 +447,26 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
             # Reset per-turn MCP-call accumulator (2026-09-15) - see __init__'s
             # _turn_mcp_calls docstring.
             self._turn_mcp_calls = []
+            # Reset per-turn approval-buttons flag (2026-09-16) - see __init__'s
+            # _turn_offered_approval docstring.
+            self._turn_offered_approval = False
             # Long-term memory recall (2026-09-15, closing a real gap - see
             # _recall_memory's own docstring): computed once here, read by
-            # build_instructions for every step this turn makes, same
-            # once-per-turn/read-by-every-step lifecycle as _turn_conversation_history.
+            # build_instructions for every round this turn makes, same
+            # once-per-turn/read-by-every-round lifecycle as _turn_conversation_history.
             self._turn_memory_context = self._recall_memory(
                 request.user_prompt, effective_chat_id, user_phone, sender_phone,
             )
             turn_context = {
                 "role": role,
+                "request_id": request.request_id,
                 "user_phone": user_phone or sender_phone,
                 "chat_id": effective_chat_id,
                 "sender_phone": sender_phone,
                 "media_extraction": media_extraction,
                 "media": media,
                 "media_type": media_type,
+                "timestamp": request.timestamp,
             }
 
             # Conversation history (2026-09-14): the SAME rolling-window shape/source
@@ -553,59 +474,25 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
             # oldest-first, role-token-capped) - godfather/admin-only scope for now
             # (explicit decision - client role isn't exercised through this orchestrator
             # yet), so the token cap always uses the godfather/admin limit. Set once here,
-            # read by call_capability_step for every step this turn makes (see that
+            # read by the loop for every round this turn makes (see that
             # method's own docstring for why this is a plain instance attribute rather
             # than threaded through every call site).
             self._turn_conversation_history = self._load_conversation_history(effective_chat_id)
 
-            # Feature 063: a typed "כן"/"לא" reply resolves a pending reminders_write
-            # local-tool approval BEFORE Intent Identification/Planning run at all -
-            # the same gate contracts/local-tool-approval-gate.md and AIHandler's own
-            # get_response/_resolve_pending_local_tool_approval already implement,
-            # reimplemented here as new code (REQ-063-07). A decline/unrecognized
-            # reply returns None and falls through to a normal turn below, same
-            # contract as the legacy resolver.
-            pending_resolved = self._resolve_pending_local_tool_approval(request, effective_chat_id, turn_context)
-            if pending_resolved is not None:
-                return pending_resolved
+            # The tool-driven orchestration loop (see
+            # contracts/capability-resolution-loop.md): one continuous conversation
+            # driven by load_capabilities/unload_capabilities/load_flows/unload_flows/reset_to_backbone/
+            # record_planning_status/approval_with_yes_no_buttons/send_to_user.
+            self._turn_planning_status = None
+            # Any new turn supersedes whatever approval buttons were outstanding.
+            if effective_chat_id:
+                self.session_manager.set_approval_message_id(effective_chat_id, None)
+            final_text = self._run_orchestration_loop(request, turn_context, is_media=is_media)
 
-            # Same gate for a pending invoicing_write MCP approval (Feature 022's
-            # PendingApprovalManager, shared with ai_handler.py) - checked in the
-            # same "before Intent Identification/Planning run at all" position, same
-            # decline-returns-None-and-falls-through contract.
-            pending_mcp_resolved = self._resolve_pending_mcp_approval(request, effective_chat_id)
-            if pending_mcp_resolved is not None:
-                return pending_mcp_resolved
-
-            # Step 1: Intent Identification. allowed_tags is computed here, BEFORE Intent
-            # Identification runs (not just before Planning, as originally written) -
-            # Intent Identification needs to know what domains of capability this role
-            # even HAS this turn to correctly recognize which domain a request touches
-            # (e.g. "how much was agreed with X" -> Ledger Query's domain), without that
-            # requiring per-capability hardcoded phrasing examples in its own prompt file
-            # (a real bug found via a billed test, 2026-09-14: with no visibility into the
-            # capability catalog at all, Intent Identification didn't just fail to route -
-            # it answered the user's question itself, incorrectly, having no way to know a
-            # ledger lookup tool existed to route to instead).
-            allowed_tags = role_allowed_capabilities(role)
-            intent_text = identify_intent(
-                self, request, allowed_tags, is_media=is_media, media_extraction=media_extraction,
+            parties = _TurnParties(
+                effective_chat_id, role, sender, user_phone, sender_phone, is_group, chat_name,
             )
-
-            # Step 2: Planning
-            plan = build_plan(self, request, intent_text, allowed_tags, is_media=is_media)
-
-            # Step 3: Execution loop (empty plan => step 4 uses Intent Identification's
-            # output alone, per contracts/orchestration-loop.md)
-            if plan.is_empty:
-                final_text = intent_text
-            else:
-                final_text = self._execute_plan(plan, request, intent_text, turn_context)
-
-            return self._finalize_response(
-                request, final_text, effective_chat_id, role,
-                sender, recipient, user_phone, sender_phone, is_group, chat_name,
-            )
+            return self._finalize_response(request, final_text, parties)
         except Exception as exc:  # pylint: disable=broad-except
             logger.error(
                 "Unexpected error in BackboneOrchestrator.get_response for request %s: %s",
@@ -620,147 +507,281 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
                 except Exception as telemetry_error:  # pylint: disable=broad-except
                     logger.warning("Feature 080 telemetry finalize/record failed: %s", telemetry_error)
 
-    def _resolve_pending_local_tool_approval(self, request: AIRequest, effective_chat_id: str,
-                                              turn_context: Dict[str, Any]) -> Optional[AIResponse]:
-        """Only reminders_write populates pending_local_tool_approval_manager today
-        (REQ-063-03: shared with ai_handler.py, so a legacy-created pending approval
-        is resolvable here too, and vice versa). Lazily imported, same reasoning as
-        _resolve_capability_handler above."""
-        if self.pending_local_tool_approval_manager is None:
-            return None
-        # pylint: disable=import-outside-toplevel
-        from src.capabilities.reminders.handler import resolve_typed_reply
-        literal_sender_phone = (
-            request.original_message.sender_id if request.original_message
-            else (turn_context.get("user_phone") or effective_chat_id)
-        )
-        literal_sender_role = str(turn_context.get("role", Role.CLIENT))
-        return resolve_typed_reply(
-            self, request, effective_chat_id, literal_sender_phone, literal_sender_role,
-        )
+    # ------------------------------------------------------------------
+    # Loaded-capability state (persisted on Session.active_capabilities)
+    # ------------------------------------------------------------------
 
-    def _resolve_pending_mcp_approval(self, request: AIRequest,
-                                       effective_chat_id: str) -> Optional[AIResponse]:
-        """invoicing_write populates pending_approval_manager - lazily imported,
-        same reasoning as _resolve_pending_local_tool_approval above."""
-        if self.pending_approval_manager is None:
-            return None
-        # pylint: disable=import-outside-toplevel
-        from src.capabilities.invoicing.handler import resolve_typed_reply as invoicing_resolve_typed_reply
-        return invoicing_resolve_typed_reply(self, request, effective_chat_id)
-
-    def _execute_plan(self, plan: Plan, request: AIRequest, intent_text: str,
-                       turn_context: Dict[str, Any]) -> str:
-        """Executes each step in order, threading prior steps' results into the next
-        step's accumulated context (contracts/orchestration-loop.md step 3). A step's
-        own failure does not abort the whole plan (logged, continues with an error
-        note in the accumulated context)."""
-        accumulated_context = f"Intent Identification determined: {intent_text}"
-        last_output = intent_text
-
-        for step in plan.steps:
-            # 2026-09-15 (closing a real, repeatedly-observed gap - T1's original
-            # failure and T10's): despite planning.md's explicit "only include
-            # media_analysis when told media is attached" rule and the media_status
-            # signal threaded into Planning's own context, the model has
-            # demonstrably still planned a media_analysis step for a plain-text
-            # turn more than once - prompt guidance alone hasn't been sufficient.
-            # This is a deterministic, code-level safety net: never actually run
-            # media_analysis when this turn genuinely has no media, regardless of
-            # what Planning said - mirrors Planning's own fail_open_plan philosophy
-            # of never trusting a single layer to hold on its own.
-            if step.capability == CapabilityTag.MEDIA_ANALYSIS and turn_context.get("media") is None:
-                logger.warning(
-                    "Planning included a media_analysis step for request %s but this "
-                    "turn has no media attached - dropping the step rather than "
-                    "returning its 'no media' fallback as if it were a real answer.",
-                    request.request_id,
-                )
-                accumulated_context += (
-                    "\n\n[media_analysis] step skipped: this turn has no media attached."
-                )
-                continue
+    def _get_active_tags(self, chat_id: str) -> List[CapabilityTag]:
+        """This chat's currently-loaded capabilities, oldest-loaded first -
+        read from the persisted Session (the sole source of truth). Unknown/
+        retired tag values are dropped."""
+        tags: List[CapabilityTag] = []
+        for name in self.session_manager.get_session(chat_id).active_capabilities:
             try:
-                handler = self._resolve_capability_handler(step.capability)
-                step_output = handler(self, request, accumulated_context, step.note, turn_context)
-                accumulated_context += f"\n\n[{step.capability.value}] {step_output}"
-                last_output = step_output
+                tag = CapabilityTag(name)
+            except ValueError:
+                continue
+            if tag not in tags:
+                tags.append(tag)
+        return tags
+
+    def _set_active_tags(self, chat_id: str, tags: List[CapabilityTag]) -> None:
+        """Persists the loaded set (Session.active_capabilities) - the one
+        write path every load/unload/reset dispatch goes through."""
+        self.session_manager.set_active_capabilities(chat_id, [t.value for t in tags])
+
+    def _get_active_flows(self, chat_id: str) -> List[FlowTag]:
+        """This chat's currently-loaded flows, oldest-loaded first, read from
+        the persisted Session. Unknown/retired values are dropped."""
+        flows: List[FlowTag] = []
+        for name in self.session_manager.get_session(chat_id).active_flows:
+            try:
+                flow = FlowTag(name)
+            except ValueError:
+                continue
+            if flow not in flows:
+                flows.append(flow)
+        return flows
+
+    def _set_active_flows(self, chat_id: str, flows: List[FlowTag]) -> None:
+        """Persists the loaded flow set (Session.active_flows)."""
+        self.session_manager.set_active_flows(chat_id, [f.value for f in flows])
+
+    def _build_round_inputs(self, request: AIRequest, chat_id: str,
+                             turn_context: Dict[str, Any]):
+        """Everything one API call needs, recomputed from the persisted
+        loaded flow/capability sets EVERY round (initial AND follow-up):
+        `instructions` (backbone + catalogs + each loaded flow's and capability's prompt)
+        AND `tools` (orchestration + backbone + each loaded capability's real
+        tools) - both from the SAME set, so a prompt is never attached
+        without its tools (the root cause of the original bug), and
+        previous_response_id chaining - which retains neither - never loses
+        either. Returns (tags, instructions, tools)."""
+        tags = self._get_active_tags(chat_id)
+        tools = list(ORCHESTRATION_TOOLS) + list(BACKBONE_TOOLS) + build_capability_tools(self, tags, turn_context)
+        instructions = self.build_instructions(
+            tags, "", request.timestamp, active_flows=self._get_active_flows(chat_id))
+        return tags, instructions, tools
+
+    # ------------------------------------------------------------------
+    # The orchestration loop (contracts/capability-resolution-loop.md)
+    # ------------------------------------------------------------------
+
+    def _run_orchestration_loop(self, request: AIRequest, turn_context: Dict[str, Any],
+                                 *, is_media: bool = False) -> str:
+        """The tool-driven "resolution" loop - one continuous conversation, no
+        "initial call"/"turn" concept beyond the API's own call chaining.
+        Every round (including the first) rebuilds instructions AND tools from
+        the persisted loaded-capability set; `load_flows` / `load_capabilities` /
+        their unload counterparts / `reset_to_backbone` mutate those sets, so the
+        change takes effect starting the very next round - and persists into
+        following messages. Loops (capped by MAX_BACKBONE_TOOL_LOOP_ITERATIONS)
+        until send_to_user / approval_with_yes_no_buttons is called, or the
+        cap is hit (falls back to the last round's plain text - "never leave
+        a turn silent")."""
+        del is_media  # the model itself judges media-attached state from turn_context/backbone.md
+        chat_id = turn_context.get("chat_id")
+        tags, instructions, tools = self._build_round_inputs(request, chat_id, turn_context)
+        input_items = list(self._turn_conversation_history)
+        input_items.append({"role": "user", "content": request.user_prompt})
+
+        response = self._call_model("_run_orchestration_loop (first round)", {
+            "model": request.model,
+            "instructions": instructions,
+            "input": input_items,
+            "max_output_tokens": request.max_tokens,
+            "tools": tools,
+        })
+
+        for _loop_round in range(MAX_BACKBONE_TOOL_LOOP_ITERATIONS):
+            round_result = self._execute_round_calls(
+                request, turn_context, chat_id=chat_id, tags=tags, response=response)
+            if round_result is None:
+                return (getattr(response, "output_text", "") or "").strip() or NO_REPLY_SENTINEL
+            outputs, final_text = round_result
+            if final_text is not None:
+                return final_text or NO_REPLY_SENTINEL
+
+            try:
+                # Recompute BOTH instructions and tools from the (possibly
+                # just-mutated) persisted set - previous_response_id retains
+                # neither.
+                tags, instructions, tools = self._build_round_inputs(request, chat_id, turn_context)
+                response = self._call_model("_run_orchestration_loop (follow-up)", {
+                    "model": request.model,
+                    "instructions": instructions,
+                    "input": outputs,
+                    "previous_response_id": getattr(response, "id", None),
+                    "max_output_tokens": request.max_tokens,
+                    "tools": tools,
+                })
             except Exception as exc:  # pylint: disable=broad-except
-                logger.error("Plan step %s failed (non-fatal, continuing): %s", step.capability.value, exc)
-                accumulated_context += f"\n\n[{step.capability.value}] step failed: {exc}"
+                logger.error("Orchestration-loop follow-up call failed (non-fatal): %s", exc)
+                return (getattr(response, "output_text", "") or "").strip() or NO_REPLY_SENTINEL
 
-        return last_output
-
-    @staticmethod
-    def _resolve_capability_handler(tag: CapabilityTag) -> Callable[..., str]:  # pylint: disable=too-many-return-statements
-        """Maps a domain CapabilityTag to its capability handler's step entry
-        point. Imported lazily to avoid a hard import-time dependency from
-        src/backbone on every src/capabilities subpackage."""
-        # pylint: disable=import-outside-toplevel
-        if tag == CapabilityTag.REMINDERS_READ:
-            from src.capabilities.reminders.handler import read as reminders_read
-            return reminders_read
-        if tag == CapabilityTag.REMINDERS_WRITE:
-            from src.capabilities.reminders.handler import propose_write as reminders_write
-            return reminders_write
-        if tag == CapabilityTag.LEDGER_QUERY:
-            from src.capabilities.ledger_events.handler import query as ledger_query
-            return ledger_query
-        if tag == CapabilityTag.LEDGER_CAPTURE:
-            from src.capabilities.ledger_events.handler import capture as ledger_capture
-            return ledger_capture
-        if tag == CapabilityTag.INVOICING_READ:
-            from src.capabilities.invoicing.handler import read_step as invoicing_read
-            return invoicing_read
-        if tag == CapabilityTag.INVOICING_WRITE:
-            from src.capabilities.invoicing.handler import propose_write as invoicing_write
-            return invoicing_write
-        if tag == CapabilityTag.MEDIA_ANALYSIS:
-            from src.capabilities.media_analysis.handler import extract as media_extract
-            return media_extract
-        raise NotImplementedError(
-            f"No capability handler wired yet for {tag.value} "
-            "(see tasks.md's 'Deferred' section — write-approval-flow parity is scoped follow-up work)"
+        logger.warning(
+            "Orchestration loop hit MAX_BACKBONE_TOOL_LOOP_ITERATIONS=%d for request %s "
+            "without a send_to_user call - returning whatever text the last round carries.",
+            MAX_BACKBONE_TOOL_LOOP_ITERATIONS, request.request_id,
         )
+        return (getattr(response, "output_text", "") or "").strip() or NO_REPLY_SENTINEL
 
-    def _finalize_response(self, request: AIRequest, final_text: str,  # pylint: disable=too-many-arguments,too-many-positional-arguments
-                            effective_chat_id: Optional[str] = None,
-                            role: Optional[Role] = None,
-                            sender: Optional[str] = None,
-                            recipient: Optional[str] = None,
-                            user_phone: Optional[str] = None,
-                            sender_phone: Optional[str] = None,
-                            is_group: bool = False,
-                            chat_name: Optional[str] = None) -> AIResponse:
+    def _execute_round_calls(self, request: AIRequest, turn_context: Dict[str, Any], *, chat_id: str,
+                              tags: List[CapabilityTag], response: Any
+                              ) -> Optional[Tuple[List[Dict[str, Any]], Optional[str]]]:
+        """Executes every tool call in one round's `response`: returns None when
+        it carries no calls at all (plain text - the loop ends), else
+        (function_call_output items for the next round, the reply text if the
+        model called send_to_user/approval_with_yes_no_buttons this round)."""
+        orchestration_calls = extract_orchestration_tool_calls(response)
+        backbone_calls = extract_backbone_tool_calls(response)
+        domain_calls = extract_local_calls(response, local_tool_owners(self, tags, turn_context))
+        if not orchestration_calls and not backbone_calls and not domain_calls:
+            return None
+        outputs, final_text = self._run_orchestration_calls(orchestration_calls, chat_id)
+        outputs += self._run_domain_calls(domain_calls, turn_context)
+        outputs += self._run_backbone_calls(backbone_calls, request)
+        return outputs, final_text
+
+    def _run_orchestration_calls(self, calls: List[Tuple[str, str, Dict[str, Any]]], chat_id: str
+                                  ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+        outputs: List[Dict[str, Any]] = []
+        final_text: Optional[str] = None
+        for call_id, tool_name, args in calls:
+            if tool_name in ("send_to_user", "approval_with_yes_no_buttons"):
+                final_text = str(args.get("text", "")).strip()
+                if tool_name == "approval_with_yes_no_buttons":
+                    # Stateless, domain-agnostic: just asks WhatsAppHandler to
+                    # render the reply as tappable buttons - _finalize_response
+                    # reads this flag.
+                    self._turn_offered_approval = True
+                result_text = "ok"
+            else:
+                result_text = self._dispatch_orchestration_tool(tool_name, args, chat_id)
+            outputs.append({"type": "function_call_output", "call_id": call_id, "output": result_text})
+        return outputs, final_text
+
+    def _run_domain_calls(self, calls: List[Tuple[str, str, Dict[str, Any], CapabilityTag]],
+                           turn_context: Dict[str, Any]) -> List[Dict[str, Any]]:
+        outputs: List[Dict[str, Any]] = []
+        for call_id, tool_name, args, owner_tag in calls:
+            try:
+                result_text = dispatch_local_tool(self, owner_tag, tool_name, args, turn_context)
+                outcome = "failure" if result_text.startswith(("⚠️", "error:")) else "success"
+            except Exception as exc:  # pylint: disable=broad-except
+                logger.error("%s(%s) failed (non-fatal): %s", tool_name, owner_tag.value, exc, exc_info=True)
+                result_text, outcome = f"error: {tool_name} failed: {exc}", "exception"
+            log_capability_action(owner_tag.value, f"{tool_name}({args})", outcome, result_text)
+            outputs.append({"type": "function_call_output", "call_id": call_id, "output": result_text})
+        return outputs
+
+    def _run_backbone_calls(self, calls: List[Tuple[str, str, Dict[str, Any]]], request: AIRequest
+                             ) -> List[Dict[str, Any]]:
+        outputs: List[Dict[str, Any]] = []
+        for call_id, tool_name, args in calls:
+            if tool_name == "send_progress_update":
+                payload = {"sent": send_progress_update_message(
+                    self._turn_progress_callback, self._turn_telemetry_builder,
+                    self._turn_chat_id, args.get("text"),
+                )}
+            else:
+                payload = build_react_to_message_payload(
+                    self.green_api_bot, self.session_manager, request, self._turn_chat_id, args, call_id,
+                )
+            outputs.append({"type": "function_call_output", "call_id": call_id,
+                            "output": json.dumps(payload, ensure_ascii=False)})
+        return outputs
+
+    def _call_model(self, context: str, kwargs: Dict[str, Any]) -> Any:
+        """One Responses API call, wire-logged both directions, its mcp_call
+        items accumulated for this turn, telemetry recorded."""
+        audit_wire("openai", "out", context, kwargs)
+        debug_wire("openai", "out", context, kwargs)
+        start = time.monotonic()
+        response = self.client.responses.create(**kwargs)
+        duration_ms = (time.monotonic() - start) * 1000
+        audit_wire("openai", "in", context, response)
+        debug_wire("openai", "in", context, response)
+        self._turn_mcp_calls.extend(self._extract_mcp_call_items(response))
+        if self._turn_telemetry_builder is not None:
+            usage = getattr(response, "usage", None)
+            self._turn_telemetry_builder.record_llm_call(
+                int(duration_ms),
+                int(getattr(usage, "input_tokens", 0) or 0),
+                int(getattr(usage, "output_tokens", 0) or 0),
+            )
+        return response
+
+    def _dispatch_orchestration_tool(self, tool_name: str, args: Dict[str, Any], chat_id: str) -> str:
+        """Dispatches one load_flows/unload_flows/load_capabilities/
+        unload_capabilities/reset_to_backbone/record_planning_status call,
+        returning the plain-text string fed back as its function_call_output.
+
+        Loading a capability attaches BOTH its prompt text AND its real tools
+        to every following round (see _build_round_inputs); loading a flow
+        attaches its blueprint text only - the flow itself tells the model
+        which capabilities to load. Loading an already-loaded item / unloading
+        one that isn't loaded is a harmless no-op. Every load/unload/reset is
+        audit-logged with the model's own latest planning status (its stated
+        reasoning) - see log_loading_action."""
+        if tool_name == "record_planning_status":
+            self._turn_planning_status = (
+                f"WHERE I WAS: {args.get('where_i_was', '')}\n"
+                f"THIS TURN'S PURPOSE: {args.get('this_turns_purpose', '')}\n"
+                f"EXPECTATION: {args.get('expectation', '')}"
+            )
+            return "recorded"
+        if tool_name == "reset_to_backbone":
+            flows = [f.value for f in self._get_active_flows(chat_id)]
+            capabilities = [t.value for t in self._get_active_tags(chat_id)]
+            self._set_active_flows(chat_id, [])
+            self._set_active_tags(chat_id, [])
+            log_loading_action("reset", "all", flows + capabilities, now_loaded_flows=[],
+                               now_loaded_capabilities=[], planning_status=self._turn_planning_status)
+            return "reset - every flow and capability unloaded; you are back to the plain backbone."
+        handlers = {
+            "load_flows": ("flow", True),
+            "unload_flows": ("flow", False),
+            "load_capabilities": ("capability", True),
+            "unload_capabilities": ("capability", False),
+        }
+        if tool_name not in handlers:
+            return f"error: unknown orchestration tool {tool_name!r}"
+        kind, loading = handlers[tool_name]
+        return self._apply_loading(kind, loading, args, chat_id)
+
+    def _apply_loading(self, kind: str, loading: bool, args: Dict[str, Any], chat_id: str) -> str:
+        """Shared body of the four load/unload tools: parse the requested names
+        against the closed enum (unknown ones are reported back), update the
+        persisted set, audit-log, and describe the resulting sets to the model."""
+        is_flow = kind == "flow"
+        requested = list(args.get("flows" if is_flow else "capabilities") or [])
+        valid, unknown = parse_requested(FlowTag if is_flow else CapabilityTag, requested)
+        current = self._get_active_flows(chat_id) if is_flow else self._get_active_tags(chat_id)
+        updated = apply_loading(current, valid, loading=loading)
+        if updated != current:
+            if is_flow:
+                self._set_active_flows(chat_id, updated)
+            else:
+                self._set_active_tags(chat_id, updated)
+        flows_now = [f.value for f in self._get_active_flows(chat_id)]
+        capabilities_now = [t.value for t in self._get_active_tags(chat_id)]
+        log_loading_action("load" if loading else "unload", kind, requested, now_loaded_flows=flows_now,
+                           now_loaded_capabilities=capabilities_now, planning_status=self._turn_planning_status)
+        return describe_loading(kind, loading=loading, valid=valid, unknown=unknown,
+                                flows_now=flows_now, capabilities_now=capabilities_now)
+
+    def _finalize_response(self, request: AIRequest, final_text: str, parties: _TurnParties) -> AIResponse:
         """Same [[NO_REPLY]] sentinel handling as AIHandler._finalize_response
-        (contracts/orchestration-loop.md step 4) — reimplemented here, not shared
+        (contracts/capability-resolution-loop.md) — reimplemented here, not shared
         code, per REQ-063-07.
 
-        offer_approval_buttons (Feature 047 parity, added 2026-09-14 after a real
-        billed-test failure): True iff a reminders_write step just created a NEW
-        pending local-tool approval THIS turn. Any approval that existed BEFORE
-        this turn was already resolved-or-cleared by
-        _resolve_pending_local_tool_approval at the top of get_response (its
-        typed-reply resolver clears the manager on every path — approve, decline,
-        AND unrecognized — before this turn ever reaches Planning/execution), so a
-        pending approval found here can only be one this turn's own
-        propose_write just set — same "computed once, lockstep with the actual
-        state" property AIHandler's own new_pending_approval_created has, just
-        checked by re-reading the shared manager instead of a locally threaded
-        bool (mirrors _resolve_pending_local_tool_approval's own reasoning for
-        reusing the same shared instance)."""
+        offer_approval_buttons (Feature 047 parity): True iff the model called
+        `approval_with_yes_no_buttons` THIS turn (self._turn_offered_approval),
+        which asks WhatsAppHandler to render the reply as tappable buttons."""
         should_reply = final_text.strip() != NO_REPLY_SENTINEL
-        offer_approval_buttons = bool(effective_chat_id and (
-            (self.pending_local_tool_approval_manager is not None
-             and self.pending_local_tool_approval_manager.get(effective_chat_id) is not None)
-            or (self.pending_approval_manager is not None
-                and self.pending_approval_manager.get(effective_chat_id) is not None)
-        ))
-        if effective_chat_id:
-            self._persist_turn(
-                request, final_text, should_reply, effective_chat_id, role,
-                sender, recipient, user_phone, sender_phone, is_group, chat_name,
-            )
+        offer_approval_buttons = bool(self._turn_offered_approval)
+        self._persist_turn(request, final_text, should_reply, parties)
         return AIResponse(
             request_id=request.request_id,
             response_text=final_text,
@@ -811,7 +832,7 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         back to. Returns [] (never raises) when session_manager isn't configured or
         the lookup fails - a turn with no history is a degraded turn, not a crashed
         one, matching AIHandler's own try/except around this same call."""
-        if self.session_manager is None or not chat_id:
+        if not chat_id:
             return []
         try:
             session_config = (self.config.memory or {}).get('session', {})
@@ -877,11 +898,8 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
             logger.error("Failed to recall memories for %s: %s", chat_id, exc)
             return ""
 
-    def _persist_turn(self, request: AIRequest, final_text: str, should_reply: bool,  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
-                       effective_chat_id: str, role: Optional[Role],
-                       sender: Optional[str], recipient: Optional[str],
-                       user_phone: Optional[str], sender_phone: Optional[str],
-                       is_group: bool, chat_name: Optional[str]) -> None:
+    def _persist_turn(self, request: AIRequest, final_text: str, should_reply: bool,
+                       parties: _TurnParties) -> None:
         """2026-09-15 (closing a real gap - flag-on turns never persisted a
         single message to the session; every rolling-window read this
         orchestrator itself does was reading a session that this orchestrator
@@ -894,77 +912,92 @@ class BackboneOrchestrator:  # pylint: disable=too-many-instance-attributes
         REQ-063-05. Best-effort: any failure is logged, never raised (a
         storage failure must not turn an already-composed, already-sendable
         reply into a hard error)."""
-        if self.session_manager is None:
-            return
         try:
             own_number_jid = f"{self.own_whatsapp_number}@c.us" if self.own_whatsapp_number else None
-            resolved_sender_phone = sender_phone or user_phone or (
-                effective_chat_id if not is_group else None
+            resolved_sender_phone = parties.sender_phone or parties.user_phone or (
+                parties.chat_id if not parties.is_group else None
             )
-            user_msg_recipient = effective_chat_id if is_group else own_number_jid
-            user_msg_recipient_name = (chat_name or effective_chat_id) if is_group else "DeniDin"
-            assistant_msg_recipient = effective_chat_id if is_group else resolved_sender_phone
-            assistant_msg_recipient_name = (chat_name or effective_chat_id) if is_group else sender
+            user_msg_recipient = parties.chat_id if parties.is_group else own_number_jid
+            user_msg_recipient_name = (parties.chat_name or parties.chat_id) if parties.is_group else "DeniDin"
+            assistant_msg_recipient = parties.chat_id if parties.is_group else resolved_sender_phone
+            assistant_msg_recipient_name = (
+                (parties.chat_name or parties.chat_id) if parties.is_group else parties.sender
+            )
 
             source_epoch = request.timestamp if (
                 request.timestamp is not None and request.timestamp >= _MIN_PLAUSIBLE_SOURCE_EPOCH
             ) else None
-            user_source_ts = None if source_epoch is None else local_from_timestamp(source_epoch)
-            assistant_source_ts = None if source_epoch is None else local_from_timestamp(source_epoch)
-            effective_role = role or Role.CLIENT
+            source_ts = None if source_epoch is None else local_from_timestamp(source_epoch)
 
             self.session_manager.add_message_with_tokens(
-                chat_id=effective_chat_id,
+                chat_id=parties.chat_id,
                 role="user",
                 content=request.user_prompt,
-                user_role=effective_role,
+                user_role=parties.role,
                 sender=resolved_sender_phone,
-                sender_name=sender,
+                sender_name=parties.sender,
                 recipient=user_msg_recipient,
                 recipient_name=user_msg_recipient_name,
                 message_id=request.message_id,
-                timestamp=user_source_ts,
+                timestamp=source_ts,
             )
             if should_reply:
                 self.session_manager.add_message_with_tokens(
-                    chat_id=effective_chat_id,
+                    chat_id=parties.chat_id,
                     role="assistant",
                     content=final_text,
-                    user_role=effective_role,
+                    user_role=parties.role,
                     sender=own_number_jid,
                     sender_name="DeniDin",
                     recipient=assistant_msg_recipient,
                     recipient_name=assistant_msg_recipient_name,
                     mcp_calls=list(self._turn_mcp_calls),
-                    timestamp=assistant_source_ts,
+                    timestamp=source_ts,
+                )
+            # record_planning_status (2026-09-16): the ONLY new persisted
+            # cross-turn state the resolution redesign adds - a plain,
+            # clearly-tagged internal-note history entry, persisted via this
+            # SAME add_message_with_tokens call (never merged into the real
+            # send_to_user reply above). Flows back into the next turn purely
+            # via the existing rolling-window conversation history - no new
+            # store, no schema. Persisted regardless of should_reply (a
+            # [[NO_REPLY]] turn can still usefully record status).
+            if self._turn_planning_status:
+                self.session_manager.add_message_with_tokens(
+                    chat_id=parties.chat_id,
+                    role="assistant",
+                    content=f"[[INTERNAL_PLANNING_NOTE]]\n{self._turn_planning_status}",
+                    user_role=parties.role,
+                    sender=own_number_jid,
+                    sender_name="DeniDin",
+                    recipient=assistant_msg_recipient,
+                    recipient_name=assistant_msg_recipient_name,
+                    timestamp=source_ts,
                 )
         except Exception as exc:  # pylint: disable=broad-except
-            logger.error("Failed to persist turn to session %s: %s", effective_chat_id, exc)
+            logger.error("Failed to persist turn to session %s: %s", parties.chat_id, exc)
 
     # ------------------------------------------------------------------
-    # Pending-approval / button-tap resolution (contracts/orchestration-loop.md
-    # Non-goals: skips Intent Identification/Planning, resumes the specific
-    # pending step directly)
+    # Button-tap resolution (a tap is just an ordinary "כן"/"לא" turn)
     # ------------------------------------------------------------------
 
-    def resolve_button_tap(self, chat_id: str, selected_id: str, stanza_id: str,
-                            request: Optional[AIRequest] = None) -> Optional[AIResponse]:
-        """Resolves a WhatsApp interactive-button tap against whichever pending
-        approval this chat actually has - at most one populated per chat in
-        practice (mirrors denidin.py's own "checks the MCP-pending manager
-        first, then the local-tool one" ordering for AIHandler). Returns None
-        for a stale tap (no pending approval anywhere, or stanza_id mismatch on
-        whichever one exists) — silently ignored, exactly as
-        AIHandler.resolve_button_tap's own staleness guard does."""
-        # pylint: disable=import-outside-toplevel
-        if self.pending_approval_manager is not None:
-            from src.capabilities.invoicing.handler import resolve_button_tap as invoicing_resolve_tap
-            resolved = invoicing_resolve_tap(self, chat_id, selected_id, stanza_id, request)
-            if resolved is not None:
-                return resolved
+    def record_approval_message_id(self, chat_id: str, message_id: str) -> None:
+        """Called by denidin.py right after an approval-buttons message is
+        actually sent: remembers its idMessage so a later tap can be matched
+        against it (Feature 047's stale-tap guard)."""
+        self.session_manager.set_approval_message_id(chat_id, message_id)
 
-        if self.pending_local_tool_approval_manager is not None:
-            from src.capabilities.reminders.handler import resolve_button_tap as reminders_resolve_tap
-            return reminders_resolve_tap(self, chat_id, selected_id, stanza_id, request)
-
-        return None
+    def resolve_button_tap(self, chat_id: str, stanza_id: str, request: AIRequest, *,
+                            user_role: str = "godfather") -> Optional[AIResponse]:
+        """Feature 047's stale-tap guard: a tap is live only if its `stanza_id`
+        exactly equals the idMessage of the approval-buttons message this chat
+        is currently offering (Session.approval_message_id). A stale/superseded/
+        already-used tap returns None - the caller sends nothing at all. A live
+        tap is consumed (cleared, so a second tap on the same message is stale)
+        and then resolved like a typed "כן"/"לא": `request` is the caller's
+        synthetic "כן"/"לא" AIRequest, run through the ordinary get_response()
+        loop, where the model reads its own history and acts on the answer."""
+        if self.session_manager.get_session(chat_id).approval_message_id != stanza_id:
+            logger.info("[047] Stale button tap ignored: chat=%r stanza_id=%r", chat_id, stanza_id)
+            return None
+        return self.get_response(request, chat_id=chat_id, user_role=user_role)

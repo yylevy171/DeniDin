@@ -83,7 +83,7 @@ class TestReactionCaptureStub:
         assert stub.calls == []
 
     def test_records_a_react_to_message_tool_call(self):
-        from src.handlers import ai_handler
+        from src.tool_actions import messaging_actions as ai_handler
 
         stub = ReactionCaptureStub()
         with stub.installed():
@@ -92,7 +92,7 @@ class TestReactionCaptureStub:
         assert stub.calls[0].source == "react_to_message"
 
     def test_fresh_stub_per_scenario_does_not_leak_calls(self):
-        from src.handlers import ai_handler
+        from src.tool_actions import messaging_actions as ai_handler
 
         first = ReactionCaptureStub()
         with first.installed():
@@ -138,7 +138,7 @@ class TestReactionTuningJudgmentLog:
         assert len(second.entries) == 2
 
     def test_captured_reaction_calls_are_serialized_as_dicts(self, tmp_path):
-        from src.handlers import ai_handler
+        from src.tool_actions import messaging_actions as ai_handler
 
         stub = ReactionCaptureStub()
         with stub.installed():

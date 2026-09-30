@@ -30,7 +30,8 @@ from typing import Any, List, Optional
 from apscheduler.schedulers.background import BackgroundScheduler  # type: ignore[import-untyped]
 from apscheduler.triggers.interval import IntervalTrigger  # type: ignore[import-untyped]
 
-from src.handlers.ai_handler import LEDGER_EVENT_TOOL, _log_outgoing_request, _log_raw_response
+from src.handlers.ai_handler import LEDGER_EVENT_TOOL
+from src.utils.wire_log import audit_wire, debug_wire
 from src.models.user import Role
 from src.utils.logger import get_logger
 from src.utils.time_utils import now_local
@@ -233,13 +234,15 @@ def _sweep_accounting_documents(global_context: Any, log_prefix: str = "") -> No
         "max_output_tokens": ai_handler.config.ai_reply_max_tokens,
     }
     try:
-        _log_outgoing_request(f"{log_prefix}accounting_reconciliation_sweep", reconciliation_kwargs)
+        audit_wire("openai", "out", f"{log_prefix}accounting_reconciliation_sweep", reconciliation_kwargs)
+        debug_wire("openai", "out", f"{log_prefix}accounting_reconciliation_sweep", reconciliation_kwargs)
         # bugfix-047: override the shared client's conversational-turn timeout
         # (30s) and retry (1) - see RECONCILIATION_CALL_TIMEOUT_SECONDS above.
         response = ai_handler.client.with_options(
             timeout=RECONCILIATION_CALL_TIMEOUT_SECONDS, max_retries=0
         ).responses.create(**reconciliation_kwargs)
-        _log_raw_response(f"{log_prefix}accounting_reconciliation_sweep", response)
+        audit_wire("openai", "in", f"{log_prefix}accounting_reconciliation_sweep", response)
+        debug_wire("openai", "in", f"{log_prefix}accounting_reconciliation_sweep", response)
     except Exception as e:  # pylint: disable=broad-except
         logger.error(
             f"{log_prefix}[025] Accounting reconciliation sweep failed (OpenAI/MCP call): {e}",

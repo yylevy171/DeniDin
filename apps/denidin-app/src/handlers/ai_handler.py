@@ -22,7 +22,7 @@ from src.models.message import (
 from src.utils.logger import get_logger, read_version, DEFAULT_VERSION_FILE
 from src.utils.green_api_bot import send_reaction
 from src.utils.time_utils import now_local, local_from_timestamp, to_local
-from src.utils.whatsapp_audit_log import log_outbound
+from src.utils.wire_log import audit_wire, debug_wire
 from src.managers.session_manager import SessionManager, Session
 from src.managers.memory_collections import collection_name_for_chat
 from src.managers.roll_marker_store import RollMarkerStore
@@ -60,73 +60,15 @@ logger = get_logger(__name__)
 # RESPONSE HEADERS only - never a response BODY, so there was previously no
 # way to see what a model's function_call actually asked for, or what a
 # response actually contained, short of ad hoc re-instrumentation after the
-# fact. These two helpers are called at every responses.create() call site in
-# this app (and, via import, in accounting_reconciliation_service.py and
-# image_extractor.py) - deliberately verbose, deliberately everywhere: "I want
-# logs of EVERYTHING so we can get to the bottom of what is going on" (disk
-# space is explicitly not a constraint here). Never raises - a logging
-# failure must never break the actual call it's describing.
-
-def _log_outgoing_request(context: str, kwargs: Dict[str, Any]) -> None:
-    """Logs exactly what's about to be sent to responses.create(), mirroring
-    _log_raw_response for the outgoing side. `context` is a short label
-    identifying the call site (e.g. "get_response (initial call)",
-    "_call_openai_query_ledger_events_followup_api")."""
-    try:
-        tools = kwargs.get("tools") or []
-        tool_names = [
-            t.get("name") or t.get("server_label") or t.get("type") for t in tools
-        ]
-        logger.debug(
-            f"[RAWLOG] {context} >>> SENDING: model={kwargs.get('model')!r}, "
-            f"tools={tool_names!r}, input={kwargs.get('input')!r}, "
-            f"previous_response_id={kwargs.get('previous_response_id')!r}, "
-            f"instructions_len={len(kwargs.get('instructions') or '')}, "
-            f"max_output_tokens={kwargs.get('max_output_tokens')!r}"
-        )
-    except Exception as e:  # pylint: disable=broad-except
-        logger.error(f"[RAWLOG] {context} >>> SENDING: failed to log outgoing request: {e}", exc_info=True)
-
-
-def _log_raw_response(context: str, response) -> None:
-    """Logs the FULL raw content of a responses.create() result: every
-    output item verbatim (a function_call's raw, unparsed `arguments`
-    string and `call_id`; a message's full content; an mcp_call/
-    mcp_approval_request's name/arguments/output/error), plus output_text,
-    status, and usage. `context` matches the paired _log_outgoing_request
-    call for the same request."""
-    try:
-        items_repr = []
-        for item in (getattr(response, "output", None) or []):
-            item_type = getattr(item, "type", None)
-            detail: Dict[str, Any] = {"type": item_type}
-            if item_type == "function_call":
-                detail["name"] = getattr(item, "name", None)
-                detail["call_id"] = getattr(item, "call_id", None)
-                detail["arguments_raw"] = getattr(item, "arguments", None)
-            elif item_type == "message":
-                detail["content"] = getattr(item, "content", None)
-            elif item_type in ("mcp_call", "mcp_approval_request"):
-                detail["id"] = getattr(item, "id", None)
-                detail["name"] = getattr(item, "name", None)
-                detail["arguments"] = getattr(item, "arguments", None)
-                detail["output"] = getattr(item, "output", None)
-                detail["error"] = getattr(item, "error", None)
-            elif item_type == "mcp_list_tools":
-                tools_list = getattr(item, "tools", None) or []
-                detail["tool_count"] = len(tools_list)
-                detail["tool_names"] = [getattr(t, "name", None) for t in tools_list]
-            items_repr.append(detail)
-        logger.debug(
-            f"[RAWLOG] {context} <<< RECEIVED: response.id={getattr(response, 'id', None)!r}, "
-            f"status={getattr(response, 'status', None)!r}, "
-            f"incomplete_details={getattr(response, 'incomplete_details', None)!r}, "
-            f"output_text={getattr(response, 'output_text', None)!r}, "
-            f"usage={getattr(response, 'usage', None)!r}, "
-            f"output_items={items_repr!r}"
-        )
-    except Exception as e:  # pylint: disable=broad-except
-        logger.error(f"[RAWLOG] {context} <<< RECEIVED: failed to log raw response: {e}", exc_info=True)
+# fact. `audit_wire`/`debug_wire` (src/utils/wire_log.py) are called directly
+# at every responses.create() call site in this app, and in
+# accounting_reconciliation_service.py/image_extractor.py (2026-09-24: those
+# two now import wire_log.py directly too, not this module's aliases -
+# there is exactly one audit_wire and one debug_wire in this codebase, no
+# per-module re-export). Deliberately verbose, deliberately everywhere: "I
+# want logs of EVERYTHING so we can get to the bottom of what is going on"
+# (disk space is explicitly not a constraint here). Never raises - a
+# logging failure must never break the actual call it's describing.
 
 # Roles authorized to have the Morning MCP invoicing tools attached (Feature 018)
 MORNING_MCP_AUTHORIZED_ROLES = (Role.GODFATHER, Role.ADMIN)
@@ -1114,486 +1056,18 @@ def build_ledger_stash_text(
     return "\n".join(lines)
 
 
-# Reminders (Feature 054) - a local `type: "function"` tool, same shape/parsing
-# machinery as LEDGER_EVENT_TOOL, but - unlike capture_ledger_event, which
-# dispatches immediately - this one creates a PendingLocalToolApproval instead
-# of executing (see _handle_reminder_creation_proposal /
-# contracts/local-tool-approval-gate.md). No owner/chat_id field in the
-# schema itself: the model never supplies a delivery target. It's resolved by
-# the application at approval time instead (2026-08-19, user decision,
-# supersedes the original "always config.godfather_phone" FR-008 design) -
-# delivery_chat_id is set to the chat/group the request was actually made in
-# (_resolve_pending_local_tool_approval passes effective_chat_id), with a
-# fallback to the requester's own 1:1 chat only if delivery there ever fails
-# (see reminder_delivery_service.py's _deliver_one_occurrence).
-CREATE_REMINDER_TOOL: Dict[str, Any] = {
-    "type": "function",
-    "name": "create_reminder",
-    "description": (
-        "ONLY call this when the user's own message explicitly asks to be "
-        "reminded of something at a future time (e.g. \"תזכיר לי...\", a "
-        "recurring cadence like \"כל יום/שבוע\"). NEVER call this to interpret "
-        "a confirmation reply (\"כן\"/\"לא\"), an ambiguous message, or any "
-        "message about clients, invoices, or documents - those are handled by "
-        "entirely separate tools and this one is never a fallback for them. "
-        "Propose creating a new reminder, after gathering the message text and "
-        "either a one-time date/time or a full recurrence rule through conversation. "
-        "This call itself does NOT persist anything - it is presented to the user as "
-        "an approval summary (with the actual time shown AFTER rounding to the "
-        "nearest 5 minutes); the reminder is only created if the user then "
-        "explicitly approves."
-    ),
-    "strict": True,
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "message_text": {
-                "type": "string",
-                "description": (
-                    "The actual thing to be reminded about, in the user's own words - "
-                    "taken directly from what they said. Never a placeholder "
-                    "(\"תזכורת\", \"בדיקה\", \"test\", or similar) - if the user's message "
-                    "doesn't actually contain something to be reminded about, do not "
-                    "call this tool at all."
-                ),
-            },
-            "schedule_type": {"type": "string", "enum": ["one_time", "recurring"]},
-            "one_time_due_at": {
-                "type": ["string", "null"],
-                "description": (
-                    "ISO-8601 local datetime (Asia/Jerusalem), required iff "
-                    "schedule_type=one_time, must be strictly in the future after "
-                    "rounding to the nearest 5 minutes."
-                ),
-            },
-            "recurrence": {
-                "type": ["object", "null"],
-                "description": "Required iff schedule_type=recurring, else null.",
-                "properties": {
-                    "interval": {"type": "integer", "description": "Every N units, minimum 1."},
-                    "freq": {"type": "string", "enum": ["daily", "weekly", "monthly"]},
-                    "weekdays": {
-                        "type": ["array", "null"],
-                        "items": {"type": "string", "enum": ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]},
-                        "description": "Required (non-empty) iff freq=weekly, else null.",
-                    },
-                    "month_day": {
-                        "type": ["integer", "null"],
-                        "description": "1-31, one of two monthly variants; null unless freq=monthly.",
-                    },
-                    "month_nth_weekday": {
-                        "type": ["object", "null"],
-                        "description": (
-                            "The other monthly variant, e.g. {n:1, weekday:'MO'} = first "
-                            "Monday; null unless freq=monthly."
-                        ),
-                        "properties": {
-                            "n": {"type": "integer", "enum": [1, 2, 3, 4, -1], "description": "-1 means 'last'."},
-                            "weekday": {"type": "string", "enum": ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]},
-                        },
-                        "required": ["n", "weekday"],
-                        "additionalProperties": False,
-                    },
-                    "first_occurrence_at": {
-                        "type": "string",
-                        "description": "ISO-8601 local datetime of the FIRST occurrence, must be strictly in the future after rounding.",
-                    },
-                    "end_condition": {"type": "string", "enum": ["never", "after_n", "until_date"]},
-                    "end_count": {"type": ["integer", "null"], "description": "Required iff end_condition=after_n."},
-                    "end_until": {
-                        "type": ["string", "null"],
-                        "description": "ISO-8601 local date, required iff end_condition=until_date, must not be in the past.",
-                    },
-                },
-                "required": [
-                    "interval", "freq", "weekdays", "month_day", "month_nth_weekday",
-                    "first_occurrence_at", "end_condition", "end_count", "end_until",
-                ],
-                "additionalProperties": False,
-            },
-        },
-        "required": ["message_text", "schedule_type", "one_time_due_at", "recurrence"],
-        "additionalProperties": False,
-    },
-}
-
-# Read-only - no approval gate applies (FR-013), dispatched immediately like
-# capture_ledger_event, never creates a PendingLocalToolApproval. Lets the
-# model resolve a user's natural-language description of a reminder to a
-# concrete reminder_id before calling modify_reminder/delete_reminder - never
-# a code-level fuzzy string match, never a guessed identifier.
-LIST_REMINDERS_TOOL: Dict[str, Any] = {
-    "type": "function",
-    "name": "list_reminders",
-    "description": (
-        "ONLY call this when the user's own message explicitly asks about their "
-        "reminders (e.g. \"מה יש לי מחר\", or as a precursor to an explicit modify/"
-        "delete request). NEVER call this to interpret a confirmation reply "
-        "(\"כן\"/\"לא\"), an ambiguous message, or any message about clients, "
-        "invoices, or documents - those are handled by entirely separate tools. "
-        "Returns the current active reminder list (message text + human-readable schedule) "
-        "so you can resolve a user's natural-language description of a reminder to a concrete "
-        "reminder_id before calling modify_reminder or delete_reminder. Never guess a "
-        "reminder_id - always call this first if you don't already know it from earlier in "
-        "the conversation. Read-only: calling this never changes anything and needs no "
-        "user approval."
-    ),
-    "strict": True,
-    "parameters": {"type": "object", "properties": {}, "required": [], "additionalProperties": False},
-}
-
-# Feature 080 (REQ-080-02): send_progress_update is the mechanism the model
-# actually uses to send a real, mid-turn interim WhatsApp message on a
-# multi-step/slow turn - see runtime_constitution.md's "Proactive Progress
-# Updates" section for when it's appropriate. Dispatched immediately (like
-# list_reminders/query_ledger_events) - it's a real outbound send with no
-# approval gate, never a substitute for the turn's actual final answer.
-# Attached for EVERY role (not RBAC-gated like reminders/ledger-query) since
-# any role can have a slow turn (e.g. a client's own document upload).
-SEND_PROGRESS_UPDATE_TOOL: Dict[str, Any] = {
-    "type": "function",
-    "name": "send_progress_update",
-    "description": (
-        "Send ONE short interim WhatsApp message to the user mid-turn, before your real "
-        "final answer is ready - use ONLY on a turn you already know will take a while "
-        "(e.g. processing a multi-page document, a multi-step tool sequence), never on an "
-        "ordinary fast turn. This is NOT your final answer and NEVER counts as one - you "
-        "MUST still produce a real final answer as a normal message after this. Never call "
-        "this in place of asking a genuine clarifying question, and never send more than one "
-        "progress update per turn unless the turn is unusually long."
-    ),
-    "strict": True,
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "text": {
-                "type": "string",
-                "description": "The short interim status message to show the user right now.",
-            },
-        },
-        "required": ["text"],
-        "additionalProperties": False,
-    },
-}
-
-# modify_reminder/delete_reminder share the reminder_id+scope shape - both
-# create a PendingLocalToolApproval, never dispatch immediately, same as
-# create_reminder.
-MODIFY_REMINDER_TOOL: Dict[str, Any] = {
-    "type": "function",
-    "name": "modify_reminder",
-    "description": (
-        "ONLY call this when the user's own message explicitly asks to change an "
-        "existing reminder (e.g. \"תעדכן/תדחה את התזכורת...\"). NEVER call this to "
-        "interpret a confirmation reply (\"כן\"/\"לא\"), an ambiguous message, or any "
-        "message about clients, invoices, or documents - those are handled by "
-        "entirely separate tools and this one is never a fallback for them. "
-        "Propose a modification to an existing reminder already identified via "
-        "list_reminders or earlier conversation - never a guessed reminder_id. Does not "
-        "persist anything - presented as an approval summary first, with any new time "
-        "shown AFTER rounding to the nearest 5 minutes."
-    ),
-    "strict": True,
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "reminder_id": {"type": "string"},
-            "scope": {"type": "string", "enum": ["single_occurrence", "whole_series"]},
-            "occurrence_date_hint": {
-                "type": ["string", "null"],
-                "description": (
-                    "ISO-8601 local date/datetime identifying WHICH occurrence (matched "
-                    "against the plain rule's own generated dates), required iff "
-                    "scope=single_occurrence."
-                ),
-            },
-            "new_message_text": {
-                "type": ["string", "null"],
-                "description": (
-                    "The new text, in the user's own words, if they're changing what the "
-                    "reminder is about; null if only the schedule is changing. Never a "
-                    "placeholder (\"תזכורת\", \"בדיקה\", \"test\", or similar)."
-                ),
-            },
-            "new_due_at": {
-                "type": ["string", "null"],
-                "description": (
-                    "The new due date/time - meaningful for scope=single_occurrence, or for "
-                    "scope=whole_series when the target reminder is one-time (no recurrence "
-                    "to replace); must be in the future after rounding."
-                ),
-            },
-            "new_recurrence": {
-                "type": ["object", "null"],
-                "description": "Only meaningful for scope=whole_series on a recurring reminder; same shape as create_reminder's recurrence.",
-                "properties": CREATE_REMINDER_TOOL["parameters"]["properties"]["recurrence"]["properties"],
-                "required": CREATE_REMINDER_TOOL["parameters"]["properties"]["recurrence"]["required"],
-                "additionalProperties": False,
-            },
-        },
-        "required": [
-            "reminder_id", "scope", "occurrence_date_hint",
-            "new_message_text", "new_due_at", "new_recurrence",
-        ],
-        "additionalProperties": False,
-    },
-}
-
-DELETE_REMINDER_TOOL: Dict[str, Any] = {
-    "type": "function",
-    "name": "delete_reminder",
-    "description": (
-        "ONLY call this when the user's own message explicitly asks to cancel an "
-        "existing reminder (e.g. \"תבטל את התזכורת...\"). NEVER call this to "
-        "interpret a confirmation reply (\"כן\"/\"לא\"), an ambiguous message, or any "
-        "message about clients, invoices, or documents - those are handled by "
-        "entirely separate tools and this one is never a fallback for them. "
-        "Propose deleting a reminder (single occurrence or whole series), already identified "
-        "via list_reminders or earlier conversation - never a guessed reminder_id. Does not "
-        "persist anything - presented as an approval summary first."
-    ),
-    "strict": True,
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "reminder_id": {"type": "string"},
-            "scope": {"type": "string", "enum": ["single_occurrence", "whole_series"]},
-            "occurrence_date_hint": {"type": ["string", "null"], "description": "Required iff scope=single_occurrence."},
-        },
-        "required": ["reminder_id", "scope", "occurrence_date_hint"],
-        "additionalProperties": False,
-    },
-}
-
-
-# Ledger Event Querying (Feature 044) - a local `type: "function"` tool,
-# RBAC-gated like the reminder tools (LEDGER_QUERY_AUTHORIZED_ROLES), but
-# read-only and dispatched immediately - no PendingLocalToolApproval, ever.
-# Unlike list_reminders, a single turn may legitimately contain SEVERAL calls
-# to this tool (research.md Decision 10) - see _handle_query_ledger_events.
-QUERY_LEDGER_EVENTS_TOOL: Dict[str, Any] = {
-    "type": "function",
-    "name": "query_ledger_events",
-    "description": (
-        "Search previously captured ledger events (fee agreements, bank-deposit records, "
-        "and accounting documents pulled from Morning) to answer a question about past "
-        "agreements, amounts, hours, percentages, or payments - without needing the user "
-        "to paste the original message again. This is a synced CACHE of Morning's own "
-        "data (documents) alongside ledger-only records (fee agreements, bank deposits) "
-        "that never exist in Morning at all - for ANY query-shaped question (how much, "
-        "who, when, which document, what status, how many), prefer this over a live "
-        "Morning tool (list_invoices/get_invoice_details/get_financial_summary/etc.). "
-        "Once this has answered the question in this turn, that answer is final - do "
-        "NOT also call a Morning tool afterward to double-check; only fall back to a "
-        "live Morning tool if the ledger genuinely can't answer or the user explicitly "
-        "insists on a live check. ONLY call this when the user's question gives "
-        "you at least ONE identifying detail to search on - if the question is too vague to "
-        "form a real search (e.g. 'what did we agree on' with nothing else), ASK the user "
-        "for the missing detail FIRST; never call this with an empty criteria list just to "
-        "see what comes back. "
-        "criteria is a list of {text, hint} pairs, one per distinct fact you're searching "
-        "for. EVERY criterion searches EVERY field on every event (name, date, amount, "
-        "percent, description, document number, bank details, everything) - there is no "
-        "way to restrict a criterion to only one field. A NUMBER given as text (e.g. "
-        "'100', '40000') is compared numerically against the event's numeric fields only "
-        "(amount, hourly_rate, percent, percent_base, split_percent, bank_number, "
-        "bank_branch, bank_account) - exact value, not fuzzy string similarity, so pass the "
-        "literal number, not a description of it. Any other text is fuzzy/typo-tolerant "
-        "matched (NOT meaning-based - it finds similar WORDING, not a differently-phrased "
-        "version of the same idea) against every text field. Resolve relative/approximate "
-        "phrasing yourself before calling (e.g. 'August' -> pass a date like '2026-08', "
-        "'around 40,000, might include VAT' -> consider searching both the round number and "
-        "a VAT-adjusted figure as separate criteria if genuinely ambiguous). "
-        "hint is optional and is a SOFT signal only, never a hard filter - see the hint "
-        "parameter's own description below for the full list of groups and what each means. "
-        "If the question is scoped to a time period (this month, this week, since Monday, "
-        "etc.) always add a separate criterion with hint='date' carrying that period - this "
-        "tool applies no date filtering on its own, so without a date-hinted criterion a "
-        "time-scoped question can match events from ANY month, not just the intended one. "
-        "Multiple criteria in ONE call are ANDed - only events matching ALL of them "
-        "(individually, above a real-match confidence floor) come back. Each returned event "
-        "also carries a 'confidence' score - higher means a stronger match across the given "
-        "criteria; use your judgment about how much confidence to trust for borderline "
-        "matches. "
-        "If an 'identity'-hinted criterion matches more than one distinct real client/payer "
-        "with no single clear winner, this returns candidates instead of events - relay them "
-        "to the user and ask which one they meant. If they confirm more than one (or 'both'/"
-        "'all'), call this again ONCE PER confirmed exact name and combine the results "
-        "yourself. An empty result means no matching record was found - say so plainly, "
-        "never fabricate an answer. "
-        "For OR-type questions (spanning more than one name, date range, or other criterion "
-        "where ANY may match - e.g. 'client A or client B', 'hours in August or September'), "
-        "issue ONE SEPARATE CALL PER alternative and combine all the results yourself when "
-        "you reply - this tool is read-only, so calling it several times in the same turn is "
-        "always safe. For NOT/exclusion or numeric-threshold questions (e.g. 'everyone except "
-        "X', 'who owes more than 100'), call this with a broad criteria set that retrieves "
-        "every plausibly-relevant event (do NOT try to encode the exclusion/threshold into "
-        "criteria - there is no such filter), then apply the exclusion or threshold yourself "
-        "by reasoning over the returned events' own fields before replying. For a question "
-        "needing arithmetic (a sum, a balance owed, a total across clients/periods), use the "
-        "returned events' own clean numeric fields yourself - this tool never computes totals "
-        "for you. If a single call's matches are very numerous, don't just dump every event "
-        "verbatim - use your own judgment about summarizing or asking the user to narrow "
-        "further, the same way you would for any other long answer."
-    ),
-    "strict": True,
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "criteria": {
-                "type": "array",
-                "description": (
-                    "One entry per distinct fact being searched for within this call "
-                    "(ANDed together). Use multiple calls, not multiple array entries, for "
-                    "OR-type questions - see the tool description."
-                ),
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "text": {
-                            "type": "string",
-                            "description": (
-                                "The literal value to search for - a name, a date, a plain "
-                                "number, or free text. Searched against every field on every "
-                                "event; see the tool description for how numbers vs. text are "
-                                "compared."
-                            ),
-                        },
-                        "hint": {
-                            "type": ["string", "null"],
-                            "enum": [
-                                "identity", "date", "event_type", "vat", "amount",
-                                "percentage", "free_text", "document", "banking", None,
-                            ],
-                            "description": (
-                                "Optional soft weighting signal - which closed field group "
-                                "this text is most likely describing. Never a hard filter: "
-                                "every field is always checked regardless, this only nudges "
-                                "scoring if the text's best match lands in the hinted group. "
-                                "Leave null if unsure. Groups: "
-                                "'identity' = client name, payer name, or split-partner name. "
-                                "'date' = the event's own date/time or a transaction date - "
-                                "use this whenever the question is scoped to a period (this "
-                                "month, this week, since Monday, etc.); pass the "
-                                "period/date as the criterion's text. "
-                                "'event_type' = source type (הסכם/בנק/חשבונית) or event "
-                                "subtype (e.g. חשבונית מס, קבלה). "
-                                "'vat' = VAT status/treatment. "
-                                "'amount' = amount or hourly rate. "
-                                "'percentage' = percent, percent base, or split percent. "
-                                "'free_text' = the free-text description, a trigger "
-                                "condition, or a reference hint - prose, not a specific field. "
-                                "'document' = the accounting document's display number, "
-                                "payment method, or its status/status label (open/paid/"
-                                "cancelled etc. - a document lifecycle fact, not the event's "
-                                "own date). "
-                                "'banking' = bank number, branch, or account."
-                            ),
-                        },
-                    },
-                    "required": ["text", "hint"],
-                    "additionalProperties": False,
-                },
-            },
-        },
-        "required": ["criteria"],
-        "additionalProperties": False,
-    },
-}
-
-
-# Feature 084 (WhatsApp reactions): a local `type: "function"` tool, attached
-# unconditionally to every role (contracts/react-to-message-tool-schema.md) -
-# unlike every other tool in this file, reacting carries no financial,
-# data-integrity, or disclosure risk. Dispatched immediately (no
-# PendingLocalToolApproval), same as list_reminders/query_ledger_events.
-REACT_TO_MESSAGE_TOOL: Dict[str, Any] = {
-    "type": "function",
-    "name": "react_to_message",
-    "description": (
-        "Call this proactively, every turn where it applies - do not wait to be asked and "
-        "do not treat it as optional decoration. Two mandatory moments call for it: (1) the "
-        "user asked you to DO something (not just answer a question) - call this as your "
-        "very first tool call, before any other tool, with a quick ack emoji (e.g. \U0001FAE1/\U0001F44D), "
-        "so the user sees you registered the request within 1-2 seconds; (2) that ask just "
-        "became RESOLVED in this reply - success, failure, validation problem, or a blocked/"
-        "abandoned action - call this again with a terminal emoji (✅/\U0001F389 success, "
-        "⚠️/❓/❌ failure) BEFORE or ALONGSIDE writing that resolution into your reply text. "
-        "This applies even when the ask and its resolution both happen in this SAME single "
-        "turn with no back-and-forth - 'it resolved instantly' is never a reason to skip "
-        "either call, and a turn that resolves more than one ask deserves a reaction for "
-        "each. Never substitute an emoji embedded in your reply text for this tool call - "
-        "only a real call here counts. Pass an empty string for emoji to clear an existing "
-        "reaction. Omit message_id (pass null) to react to the CURRENT user turn's incoming "
-        "message; pass a known earlier message id to flip a reaction you or the system set "
-        "earlier in this workflow (e.g. flipping a document's in-flight emoji to a final "
-        "checkmark once its ledger capture is complete). This is purely cosmetic and "
-        "reversible - a failure here is logged and never blocks your reply, so there is no "
-        "downside to calling it liberally."
-    ),
-    "strict": True,
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "emoji": {
-                "type": "string",
-                "description": "A single unicode emoji, or \"\" to clear the reaction.",
-            },
-            "message_id": {
-                "type": ["string", "null"],
-                "description": (
-                    "The target message's id. Pass null to default to the current turn's "
-                    "incoming message, or to the active document/action workflow's "
-                    "originating message if one is open."
-                ),
-            },
-        },
-        "required": ["emoji", "message_id"],
-        "additionalProperties": False,
-    },
-}
-
-
-def _format_reminder_schedule(rrule_str: Optional[str], dtstart_iso: str) -> str:
-    """Human-readable Hebrew summary of a reminder's schedule, for the approval
-    block (_build_reminder_approval_details). The persisted RRULE string is the
-    source of truth for actual firing (ReminderManager/recurring_ical_events) -
-    this is display-only and deliberately simple, not a full RFC5545 renderer.
-    """
-    try:
-        when = datetime.fromisoformat(dtstart_iso).strftime("%d/%m/%Y %H:%M")
-    except (TypeError, ValueError):
-        when = dtstart_iso
-
-    if not rrule_str:
-        return f"חד-פעמי, {when}"
-
-    parts = dict(p.split("=", 1) for p in rrule_str.split(";") if "=" in p)
-    freq_labels = {"DAILY": "יומי", "WEEKLY": "שבועי", "MONTHLY": "חודשי"}
-    freq_label = freq_labels.get(parts.get("FREQ", ""), parts.get("FREQ", ""))
-    interval = parts.get("INTERVAL")
-    cadence = f"כל {interval} × {freq_label}" if interval else freq_label
-
-    extra = ""
-    if "BYDAY" in parts:
-        byday_labels = {
-            "SU": "א", "MO": "ב", "TU": "ג", "WE": "ד",
-            "TH": "ה", "FR": "ו", "SA": "ש",
-        }
-        days_he = ",".join(
-            byday_labels.get(code, code) for code in parts["BYDAY"].split(",")
-        )
-        extra = f", בימים {days_he}"
-    elif "BYMONTHDAY" in parts:
-        extra = f", ביום {parts['BYMONTHDAY']} לחודש"
-
-    end = ""
-    if "COUNT" in parts:
-        end = f", {parts['COUNT']} פעמים"
-    elif "UNTIL" in parts:
-        end = f", עד {parts['UNTIL'][:8]}"
-
-    return f"{cadence}{extra}, החל מ-{when}{end}"
+from src.tool_actions.morning_mcp import resolve_morning_mcp_connection
+from src.tool_actions.messaging_actions import (  # noqa: F401
+    build_react_to_message_payload, resolve_react_to_message_target, send_progress_update_message,
+)
+from src.tool_actions.reminder_actions import (  # noqa: F401
+    build_list_reminders_summary, execute_reminder_action, resolve_literal_sender,
+    format_reminder_schedule as _format_reminder_schedule,
+)
+from src.tool_actions.tool_schemas import (  # noqa: F401  (re-exported: callers/tests import these from ai_handler)
+    CREATE_REMINDER_TOOL, LIST_REMINDERS_TOOL, MODIFY_REMINDER_TOOL, DELETE_REMINDER_TOOL,
+    SEND_PROGRESS_UPDATE_TOOL, QUERY_LEDGER_EVENTS_TOOL, REACT_TO_MESSAGE_TOOL,
+)
 
 
 def _build_reminder_approval_details(
@@ -2208,23 +1682,12 @@ class AIHandler:
         if user_obj is None or user_obj.role not in MORNING_MCP_AUTHORIZED_ROLES:
             return None
 
-        server_url = self.morning_mcp_locator.current_server_url()
-        if not server_url:
-            logger.warning("Morning MCP server unavailable - proceeding without invoicing tools")
-            return None
-
-        mcp_config = getattr(self.config, 'mcp', {}) or {}
-        auth_token = mcp_config.get('morning_auth_token')
-        if not auth_token:
-            logger.warning("mcp.morning_auth_token not configured - proceeding without invoicing tools")
-            return None
-
-        masked_token = f"{auth_token[:4]}...{auth_token[-4:]}" if len(auth_token) > 8 else "***"
-        logger.info(
-            f"Attaching Morning MCP tools for request={correlation_id}, role={user_obj.role}, "
-            f"url_host={server_url.split('/')[2] if '//' in server_url else server_url}, "
-            f"token={masked_token}"
+        connection = resolve_morning_mcp_connection(
+            self.morning_mcp_locator, self.config, correlation_id, user_obj.role,
         )
+        if connection is None:
+            return None
+        server_url, auth_token, mcp_config = connection
 
         return [{
             "type": "mcp",
@@ -2418,10 +1881,11 @@ class AIHandler:
         # type (dict[str, object]) never lines up with any single overload of the
         # SDK's heavily-overloaded create() - safe to ignore, the actual value
         # types are correct for the Responses API.
-        _log_outgoing_request("_call_openai_api (initial call)", kwargs)
+        audit_wire("openai", "out", "_call_openai_api (initial call)", kwargs)
+        debug_wire("openai", "out", "_call_openai_api (initial call)", kwargs)
         response = self._timed_llm_call(lambda: self.client.responses.create(**kwargs))  # type: ignore[call-overload]
-        _log_raw_response("_call_openai_api (initial call)", response)
-
+        audit_wire("openai", "in", "_call_openai_api (initial call)", response)
+        debug_wire("openai", "in", "_call_openai_api (initial call)", response)
         return response
 
     def get_response(self, request: AIRequest, chat_id: Optional[str] = None,
@@ -2886,9 +2350,11 @@ class AIHandler:
         if tools:
             kwargs["tools"] = tools
         logger.info(f"[054] _call_openai_list_reminders_followup_api: call_id={call_id!r}")
-        _log_outgoing_request("_call_openai_list_reminders_followup_api", kwargs)
+        audit_wire("openai", "out", "_call_openai_list_reminders_followup_api", kwargs)
+        debug_wire("openai", "out", "_call_openai_list_reminders_followup_api", kwargs)
         response = self._timed_llm_call(lambda: self.client.responses.create(**kwargs))  # type: ignore[call-overload]
-        _log_raw_response("_call_openai_list_reminders_followup_api", response)
+        audit_wire("openai", "in", "_call_openai_list_reminders_followup_api", response)
+        debug_wire("openai", "in", "_call_openai_list_reminders_followup_api", response)
         return response
 
     def _compute_list_reminders_outputs(self, response) -> Optional[List[Dict[str, Any]]]:
@@ -2900,15 +2366,7 @@ class AIHandler:
         if call_id is None:
             return None
 
-        reminders = self.reminder_manager.list_active()
-        summary = [
-            {
-                "reminder_id": r["reminder_id"],
-                "message_text": r["message_text"],
-                "schedule": _format_reminder_schedule(r["rrule"], r["dtstart"]),
-            }
-            for r in reminders
-        ]
+        summary = build_list_reminders_summary(self.reminder_manager)
         return [{"call_id": call_id, "payload": {"reminders": summary}}]
 
     def _handle_list_reminders(self, request: AIRequest, response, tools: Optional[List[Dict]]):
@@ -2964,9 +2422,11 @@ class AIHandler:
         if tools:
             kwargs["tools"] = tools
         logger.info(f"[080] _call_openai_send_progress_update_followup_api: call_id={call_id!r}")
-        _log_outgoing_request("_call_openai_send_progress_update_followup_api", kwargs)
+        audit_wire("openai", "out", "_call_openai_send_progress_update_followup_api", kwargs)
+        debug_wire("openai", "out", "_call_openai_send_progress_update_followup_api", kwargs)
         response = self._timed_llm_call(lambda: self.client.responses.create(**kwargs))  # type: ignore[call-overload]
-        _log_raw_response("_call_openai_send_progress_update_followup_api", response)
+        audit_wire("openai", "in", "_call_openai_send_progress_update_followup_api", response)
+        debug_wire("openai", "in", "_call_openai_send_progress_update_followup_api", response)
         return response
 
     def _compute_send_progress_update_outputs(
@@ -2983,24 +2443,9 @@ class AIHandler:
 
         args = extract_function_call(response, SEND_PROGRESS_UPDATE_TOOL["name"]) or {}
         text = args.get("text")
-        sent = False
-        callback = _active_progress_callback.get()
-        if text and callback is not None:
-            try:
-                callback(text)
-                sent = True
-                builder = _active_telemetry_builder.get()
-                if builder is not None:
-                    builder.mark_progress_update_sent()
-                log_outbound(request.chat_id, text, kind="progress_update")
-            except Exception as e:  # pylint: disable=broad-except
-                # Best-effort, per runtime_constitution.md: a failed interim send must
-                # never fail the turn - the real final answer still has to go out below.
-                logger.warning(f"[080] send_progress_update: failed to send interim message: {e}")
-        elif not text:
-            logger.warning("[080] send_progress_update called with no text argument - nothing sent")
-        else:
-            logger.debug("[080] send_progress_update called but no progress_callback is active - nothing sent")
+        sent = send_progress_update_message(
+            _active_progress_callback.get(), _active_telemetry_builder.get(), request.chat_id, text,
+        )
 
         return [{"call_id": call_id, "payload": {"sent": sent}}]
 
@@ -3063,9 +2508,11 @@ class AIHandler:
         if tools:
             kwargs["tools"] = tools
         logger.info(f"[083] _call_openai_fee_agreement_followup_api: call_id={call_id!r}, payload={payload!r}")
-        _log_outgoing_request("_call_openai_fee_agreement_followup_api", kwargs)
+        audit_wire("openai", "out", "_call_openai_fee_agreement_followup_api", kwargs)
+        debug_wire("openai", "out", "_call_openai_fee_agreement_followup_api", kwargs)
         response = self._timed_llm_call(lambda: self.client.responses.create(**kwargs))  # type: ignore[call-overload]
-        _log_raw_response("_call_openai_fee_agreement_followup_api", response)
+        audit_wire("openai", "in", "_call_openai_fee_agreement_followup_api", response)
+        debug_wire("openai", "in", "_call_openai_fee_agreement_followup_api", response)
         return response
 
     def _compute_verify_fee_agreement_document_outputs(
@@ -3185,9 +2632,11 @@ class AIHandler:
         call_ids = [item["call_id"] for item in outputs]
         logger.info(f"[044] _call_openai_query_ledger_events_followup_api: call_ids={call_ids!r}")
         logger.debug(f"[044][RAWLOG] query_events payload(s) sent back to model: {outputs!r}")
-        _log_outgoing_request("_call_openai_query_ledger_events_followup_api", kwargs)
+        audit_wire("openai", "out", "_call_openai_query_ledger_events_followup_api", kwargs)
+        debug_wire("openai", "out", "_call_openai_query_ledger_events_followup_api", kwargs)
         response = self._timed_llm_call(lambda: self.client.responses.create(**kwargs))  # type: ignore[call-overload]
-        _log_raw_response("_call_openai_query_ledger_events_followup_api", response)
+        audit_wire("openai", "in", "_call_openai_query_ledger_events_followup_api", response)
+        debug_wire("openai", "in", "_call_openai_query_ledger_events_followup_api", response)
         return response
 
     def _compute_query_ledger_events_outputs(self, response) -> Optional[List[Dict[str, Any]]]:
@@ -3261,23 +2710,11 @@ class AIHandler:
     def _resolve_react_to_message_target(
         self, request: AIRequest, effective_chat_id: Optional[str], explicit_message_id: Optional[str],
     ) -> Optional[str]:
-        """Feature 084's message_id resolution fallback chain (data-model.md):
-        explicit arg -> Session.active_document_message_id -> the current turn's
-        own Message.whatsapp_id_message. Returns None if nothing resolves (no
-        real wire id available at any level - e.g. a replay/test message with no
-        original notification)."""
-        if explicit_message_id:
-            return explicit_message_id
-
-        if effective_chat_id:
-            try:
-                session = self.session_manager.get_session(effective_chat_id)
-                if session.active_document_message_id:
-                    return session.active_document_message_id
-            except Exception as e:  # pylint: disable=broad-except
-                logger.warning(f"[084] Could not resolve active_document_message_id: {e}")
-
-        return getattr(request.original_message, "whatsapp_id_message", None)
+        """Feature 084's message_id resolution fallback chain - see
+        src/tool_actions/messaging_actions.py::resolve_react_to_message_target."""
+        return resolve_react_to_message_target(
+            self.session_manager, request, effective_chat_id, explicit_message_id
+        )
 
     def _call_openai_react_to_message_followup_api(
         self, request: AIRequest, previous_response_id: str,
@@ -3308,9 +2745,11 @@ class AIHandler:
             kwargs["tools"] = tools
         call_ids = [item["call_id"] for item in outputs]
         logger.info(f"[084] _call_openai_react_to_message_followup_api: call_ids={call_ids!r}")
-        _log_outgoing_request("_call_openai_react_to_message_followup_api", kwargs)
+        audit_wire("openai", "out", "_call_openai_react_to_message_followup_api", kwargs)
+        debug_wire("openai", "out", "_call_openai_react_to_message_followup_api", kwargs)
         response = self.client.responses.create(**kwargs)  # type: ignore[call-overload]
-        _log_raw_response("_call_openai_react_to_message_followup_api", response)
+        audit_wire("openai", "in", "_call_openai_react_to_message_followup_api", response)
+        debug_wire("openai", "in", "_call_openai_react_to_message_followup_api", response)
         return response
 
     def _compute_react_to_message_outputs(
@@ -3341,24 +2780,12 @@ class AIHandler:
                 })
                 continue
 
-            emoji = call["arguments"].get("emoji", "")
-            explicit_message_id = call["arguments"].get("message_id")
-            target_id = self._resolve_react_to_message_target(
-                request, effective_chat_id, explicit_message_id
-            )
-            if not target_id or not effective_chat_id or self.green_api_bot is None:
-                logger.warning(
-                    f"[084] react_to_message call {call['call_id']!r}: nothing to react "
-                    f"through (target_id={target_id!r}, chat_id={effective_chat_id!r}, "
-                    f"green_api_bot_set={self.green_api_bot is not None})"
-                )
-                outputs.append({"call_id": call["call_id"], "payload": {"status": "failed"}})
-                continue
-
-            success = send_reaction(self.green_api_bot, effective_chat_id, target_id, emoji)
             outputs.append({
                 "call_id": call["call_id"],
-                "payload": {"status": "ok" if success else "failed"},
+                "payload": build_react_to_message_payload(
+                    self.green_api_bot, self.session_manager, request, effective_chat_id,
+                    call["arguments"], call["call_id"],
+                ),
             })
         return outputs
 
@@ -3426,9 +2853,11 @@ class AIHandler:
             kwargs["tools"] = tools
         call_ids = [item["call_id"] for item in outputs]
         logger.info(f"[LOOP] _call_openai_combined_local_tools_followup_api: call_ids={call_ids!r}")
-        _log_outgoing_request("_call_openai_combined_local_tools_followup_api", kwargs)
+        audit_wire("openai", "out", "_call_openai_combined_local_tools_followup_api", kwargs)
+        debug_wire("openai", "out", "_call_openai_combined_local_tools_followup_api", kwargs)
         response = self._timed_llm_call(lambda: self.client.responses.create(**kwargs))  # type: ignore[call-overload]
-        _log_raw_response("_call_openai_combined_local_tools_followup_api", response)
+        audit_wire("openai", "in", "_call_openai_combined_local_tools_followup_api", response)
+        debug_wire("openai", "in", "_call_openai_combined_local_tools_followup_api", response)
         return response
 
     def _dispatch_all_local_tools(
@@ -4271,9 +3700,11 @@ class AIHandler:
         if tools:
             kwargs["tools"] = tools
         logger.info(f"[054] _call_openai_reminder_followup_api: call_id={pending.call_id!r}, result={result!r}")
-        _log_outgoing_request("_call_openai_reminder_followup_api", kwargs)
+        audit_wire("openai", "out", "_call_openai_reminder_followup_api", kwargs)
+        debug_wire("openai", "out", "_call_openai_reminder_followup_api", kwargs)
         response = self._timed_llm_call(lambda: self.client.responses.create(**kwargs))  # type: ignore[call-overload]
-        _log_raw_response("_call_openai_reminder_followup_api", response)
+        audit_wire("openai", "in", "_call_openai_reminder_followup_api", response)
+        debug_wire("openai", "in", "_call_openai_reminder_followup_api", response)
         logger.info(
             f"[054] _call_openai_reminder_followup_api response: id={getattr(response, 'id', None)!r}, "
             f"output_text={response.output_text!r}"
@@ -4338,9 +3769,11 @@ class AIHandler:
         logger.info("[024] capture_ledger_events_from_text: classifying extracted image text")
         # See _call_openai_api's comment: dynamically-built kwargs never match a
         # single create() overload.
-        _log_outgoing_request("capture_ledger_events_from_text", kwargs)
+        audit_wire("openai", "out", "capture_ledger_events_from_text", kwargs)
+        debug_wire("openai", "out", "capture_ledger_events_from_text", kwargs)
         response = self._timed_llm_call(lambda: self.client.responses.create(**kwargs))  # type: ignore[call-overload]
-        _log_raw_response("capture_ledger_events_from_text", response)
+        audit_wire("openai", "in", "capture_ledger_events_from_text", response)
+        debug_wire("openai", "in", "capture_ledger_events_from_text", response)
         ledger_calls = extract_all_function_calls(response, LEDGER_EVENT_TOOL["name"])
         ledger_events = [c["arguments"] for c in ledger_calls]
         logger.info(
@@ -4371,9 +3804,11 @@ class AIHandler:
             }]
             # See _call_openai_api's comment: dynamically-built kwargs never match a
             # single create() overload.
-            _log_outgoing_request("capture_ledger_events_from_text (retry)", retry_kwargs)
+            audit_wire("openai", "out", "capture_ledger_events_from_text (retry)", retry_kwargs)
+            debug_wire("openai", "out", "capture_ledger_events_from_text (retry)", retry_kwargs)
             response = self._timed_llm_call(lambda: self.client.responses.create(**retry_kwargs))  # type: ignore[call-overload]
-            _log_raw_response("capture_ledger_events_from_text (retry)", response)
+            audit_wire("openai", "in", "capture_ledger_events_from_text (retry)", response)
+            debug_wire("openai", "in", "capture_ledger_events_from_text (retry)", response)
             ledger_calls = extract_all_function_calls(response, LEDGER_EVENT_TOOL["name"])
             ledger_events = [c["arguments"] for c in ledger_calls]
             logger.info(
@@ -4545,10 +3980,11 @@ class AIHandler:
 
         kwargs = dict(base_kwargs)
         kwargs["input"] = self._assemble_recognition_input(session, reply_text, turn_mcp_calls)
-        _log_outgoing_request("recognize_ledger_event", kwargs)
+        audit_wire("openai", "out", "recognize_ledger_event", kwargs)
+        debug_wire("openai", "out", "recognize_ledger_event", kwargs)
         response = self._timed_llm_call(lambda: self.client.responses.create(**kwargs))
-        _log_raw_response("recognize_ledger_event", response)
-
+        audit_wire("openai", "in", "recognize_ledger_event", response)
+        debug_wire("openai", "in", "recognize_ledger_event", response)
         # Bounded query_ledger_events loop: keep feeding the model its own lookup
         # results until it reports, or the round budget is spent.
         for _round in range(self.MAX_RECOGNITION_QUERY_ROUNDS):
@@ -4578,10 +4014,11 @@ class AIHandler:
             follow_kwargs = dict(base_kwargs)
             follow_kwargs["input"] = output_items
             follow_kwargs["previous_response_id"] = response.id
-            _log_outgoing_request("recognize_ledger_event (query round)", follow_kwargs)
+            audit_wire("openai", "out", "recognize_ledger_event (query round)", follow_kwargs)
+            debug_wire("openai", "out", "recognize_ledger_event (query round)", follow_kwargs)
             response = self._timed_llm_call(lambda: self.client.responses.create(**follow_kwargs))
-            _log_raw_response("recognize_ledger_event (query round)", response)
-
+            audit_wire("openai", "in", "recognize_ledger_event (query round)", response)
+            debug_wire("openai", "in", "recognize_ledger_event (query round)", response)
         # If the model produced no report call at all (only text, or it spent its
         # query budget without reporting), that is a plain `none` - not a retry case.
         if not extract_all_function_calls(response, RECOGNITION_TOOL_NAME):
@@ -4602,9 +4039,11 @@ class AIHandler:
                 ),
             }]
             retry_kwargs["previous_response_id"] = response.id
-            _log_outgoing_request("recognize_ledger_event (retry)", retry_kwargs)
+            audit_wire("openai", "out", "recognize_ledger_event (retry)", retry_kwargs)
+            debug_wire("openai", "out", "recognize_ledger_event (retry)", retry_kwargs)
             response = self._timed_llm_call(lambda: self.client.responses.create(**retry_kwargs))
-            _log_raw_response("recognize_ledger_event (retry)", response)
+            audit_wire("openai", "in", "recognize_ledger_event (retry)", response)
+            debug_wire("openai", "in", "recognize_ledger_event (retry)", response)
             args = self._extract_recognition_args(response)
 
         return self._normalize_recognition_verdict(args)
@@ -4690,7 +4129,8 @@ class AIHandler:
         # right here, rather than relying on any outer/shared retry layer to
         # respect this. No retry of this call is ever safe, at any layer.
         response = self._timed_llm_call(lambda: self.client.with_options(max_retries=0).responses.create(**kwargs))  # type: ignore[call-overload]
-        _log_raw_response("_call_openai_approval_api", response)
+        audit_wire("openai", "in", "_call_openai_approval_api", response)
+        debug_wire("openai", "in", "_call_openai_approval_api", response)
         logger.info(
             f"[022] _call_openai_approval_api response: id={getattr(response, 'id', None)!r}, "
             f"output item types={[getattr(i, 'type', None) for i in (response.output or [])]!r}, "
@@ -4888,7 +4328,8 @@ class AIHandler:
             # .get() is typed Any to mypy - each ReminderManager method
             # validates the actual values at runtime regardless.
             args = pending.arguments
-            scope = args.get("scope")
+            literal_sender_phone = None
+            literal_sender_role = None
             if pending.tool_name == CREATE_REMINDER_TOOL["name"]:
                 # created_by_phone/role must reflect the LITERAL sender of this
                 # turn, not the RBAC-resolved user_obj/user_role - for a group
@@ -4899,54 +4340,22 @@ class AIHandler:
                 # from request.original_message (2026-08-19 fix - see
                 # AIRequest.original_message's docstring) rather than user_obj.
                 if request.original_message:
-                    literal_sender_phone = request.original_message.sender_id
-                    literal_sender_role = user_role
-                    if self.rbac_enabled and self.user_manager:
-                        literal_user_obj = self.user_manager.get_user(literal_sender_phone)
-                        if literal_user_obj:
-                            literal_sender_role = literal_user_obj.role
+                    literal_sender_phone, literal_sender_role = resolve_literal_sender(
+                        request.original_message.sender_id, user_role,
+                        self.user_manager if self.rbac_enabled else None,
+                    )
                 else:
                     # No original_message on this request (should not happen
                     # in production - defensive fallback only) - fall back to
                     # the previous, RBAC-resolved behavior rather than error.
                     literal_sender_phone = user_obj.phone if user_obj else (sender or effective_chat_id)
                     literal_sender_role = user_obj.role if user_obj else user_role
-                result = self.reminder_manager.create_reminder(
-                    message_text=cast(str, args.get("message_text")),
-                    schedule_type=cast(str, args.get("schedule_type")),
-                    one_time_due_at=args.get("one_time_due_at"),
-                    recurrence=args.get("recurrence"),
-                    created_by_phone=literal_sender_phone,
-                    created_by_role=literal_sender_role,
-                    delivery_chat_id=effective_chat_id,
-                )
-            elif pending.tool_name == MODIFY_REMINDER_TOOL["name"] and scope == "single_occurrence":
-                result = self.reminder_manager.modify_single_occurrence(
-                    reminder_id=cast(str, args.get("reminder_id")),
-                    occurrence_date_hint=cast(str, args.get("occurrence_date_hint")),
-                    new_message_text=args.get("new_message_text"),
-                    new_due_at=args.get("new_due_at"),
-                )
-            elif pending.tool_name == MODIFY_REMINDER_TOOL["name"]:  # scope == "whole_series"
-                result = self.reminder_manager.modify_whole_series(
-                    reminder_id=cast(str, args.get("reminder_id")),
-                    new_message_text=args.get("new_message_text"),
-                    new_recurrence=args.get("new_recurrence"),
-                    new_due_at=args.get("new_due_at"),
-                )
-            elif pending.tool_name == DELETE_REMINDER_TOOL["name"] and scope == "single_occurrence":
-                result = self.reminder_manager.delete_single_occurrence(
-                    reminder_id=cast(str, args.get("reminder_id")),
-                    occurrence_date_hint=cast(str, args.get("occurrence_date_hint")),
-                )
-            elif pending.tool_name == DELETE_REMINDER_TOOL["name"]:  # scope == "whole_series"
-                result = self.reminder_manager.delete_whole_series(
-                    reminder_id=cast(str, args.get("reminder_id")),
-                )
-            else:
-                raise InvalidRecurrenceError(
-                    f"unresolvable pending tool_name/scope: {pending.tool_name!r}/{scope!r}"
-                )
+            result = execute_reminder_action(
+                self.reminder_manager, pending.tool_name, args,
+                created_by_phone=literal_sender_phone,
+                created_by_role=literal_sender_role,
+                delivery_chat_id=effective_chat_id,
+            )
         except (ReminderPastDateError, ReminderCapExceededError, ReminderNotFoundError,
                 InvalidRecurrenceError, OccurrenceNotFoundError) as e:
             logger.error(

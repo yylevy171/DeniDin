@@ -1,5 +1,6 @@
 {
   "accounting_ledger_update_freq": 60,
+  "capabilities_reset_minutes": 60,
   "ai_api_key": "YOUR_OPENAI_API_KEY",
   "ai_embedding_model": "text-embedding-3-large",
   "ai_model": "gpt-5.6-luna",
@@ -9,7 +10,8 @@
     "file": "backbone.md",
     "base_dir": "config",
     "prompts_dir": "prompts",
-    "capabilities_dir": "capabilities"
+    "capabilities_dir": "capabilities",
+    "flows_dir": "flows"
   },
   "constitution_config": {
     "file": "runtime_constitution.md"

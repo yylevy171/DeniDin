@@ -4,8 +4,8 @@ media into BackboneOrchestrator.get_response - downloading and validating only
 (reusing the unmodified, standalone MediaFileManager methods), never running the
 full legacy MediaHandler.process_media_message pipeline (which also extracts/
 persists/ledger-detects in one call) for the flag-on path. Extraction itself is
-left entirely to the orchestrator's own Planning -> media_analysis capability
-step, per contracts/orchestration-loop.md.
+left entirely to the model loading media_analysis and calling its tool, per
+contracts/capability-resolution-loop.md.
 """
 from unittest.mock import Mock
 
