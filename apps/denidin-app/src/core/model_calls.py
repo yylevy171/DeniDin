@@ -14,7 +14,7 @@ from typing import Any, Callable, Optional
 from openai import APIStatusError
 
 from src.models.message import AIResponse
-from src.utils.time_utils import local_from_timestamp, now_local
+from src.utils.time_utils import now_local
 
 logger = logging.getLogger(__name__)
 
@@ -108,52 +108,3 @@ def telemetry_span(telemetry_manager: Optional[Any], request_id: str, effective_
             telemetry_manager.record(record)
         except Exception as telemetry_error:  # pylint: disable=broad-except
             logger.warning("Feature 080 telemetry finalize/record failed: %s", telemetry_error)
-
-
-def record_exchange(session_manager, *, memory_enabled: bool, rbac_enabled: bool,
-                     user_manager, own_whatsapp_number: Optional[str],
-                     chat_id: str, user_text: Optional[str],
-                     assistant_text: Optional[str], sender_phone: Optional[str],
-                     sender_display: Optional[str], is_group: bool = False,
-                     chat_name: Optional[str] = None,
-                     whatsapp_id_message: Optional[str] = None,
-                     source_timestamp: Optional[int] = None) -> None:
-    """bugfix-058: records an exchange that never reached a normal reply - e.g.
-    an unsupported-type auto-reply, a failed media turn, the catch-all error
-    reply, or (2026-09-30) an OpenAI-call exception in either the legacy or
-    backbone path - so what the user sent and what they were told is still in
-    the session. `user_text=None` records only the assistant text (a notice
-    with no new user message). The user message is skipped when the chat
-    already holds one with the same `whatsapp_id_message` (the turn persisted
-    it before failing). Never raises."""
-    if not (memory_enabled and session_manager and chat_id):
-        return
-    try:
-        if rbac_enabled and user_manager and sender_phone:
-            role = user_manager.get_user(sender_phone).role
-        else:
-            role = "client"
-        own_number_jid = f"{own_whatsapp_number}@c.us" if own_whatsapp_number else None
-        epoch = sane_source_epoch(source_timestamp)
-        user_ts = None if epoch is None else local_from_timestamp(epoch)
-        already_stored = bool(
-            whatsapp_id_message
-            and session_manager.has_whatsapp_id_message(chat_id, whatsapp_id_message)
-        )
-        if user_text and not already_stored:
-            session_manager.add_message(
-                chat_id=chat_id, role="user", content=user_text, user_role=role,
-                sender=sender_phone, sender_name=sender_display,
-                recipient=chat_id if is_group else own_number_jid,
-                recipient_name=(chat_name or chat_id) if is_group else "DeniDin",
-                whatsapp_id_message=whatsapp_id_message, timestamp=user_ts,
-            )
-        if assistant_text:
-            session_manager.add_message(
-                chat_id=chat_id, role="assistant", content=assistant_text, user_role=role,
-                sender=own_number_jid, sender_name="DeniDin",
-                recipient=chat_id if is_group else sender_phone,
-                recipient_name=(chat_name or chat_id) if is_group else sender_display,
-            )
-    except Exception as e:  # pylint: disable=broad-except
-        logger.error(f"Failed to record exchange in session: {e}", exc_info=True)

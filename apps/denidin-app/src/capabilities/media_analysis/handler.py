@@ -72,6 +72,16 @@ def _build_extractor(media_type: str, context_shim: "_ExtractorContextShim"):
     raise ValueError(f"Unsupported media_type for extraction: {media_type!r}")
 
 
+def _record_extracted_text(backbone, turn_context: Dict[str, Any], extracted_text: str) -> None:
+    """Fills the extracted text into the turn's already-stored media message the moment
+    it's known (2026-09-30), same field the legacy media path sets; "" normalizes to None
+    (Message.extracted_text contract)."""
+    chat_log = getattr(backbone, "chat_log", None)
+    if chat_log is not None:
+        chat_log.update(turn_context.get("chat_id"), turn_context.get("message_id"),
+                        extracted_text=extracted_text or None)
+
+
 def dispatch_direct_tool_call(backbone, tool_name: str, args: Dict[str, Any],
                                turn_context: Dict[str, Any]) -> str:
     """Executes one `analyze_media` call directly on the ongoing chain
@@ -88,7 +98,7 @@ def dispatch_direct_tool_call(backbone, tool_name: str, args: Dict[str, Any],
     if media_extraction:
         extracted_text = media_extraction.get("extracted_text", "")
         analysis = media_extraction.get("document_analysis", {})
-        turn_context["extracted_text"] = extracted_text or None
+        _record_extracted_text(backbone, turn_context, extracted_text)
         return f"Extracted text: {extracted_text}\n\nDocument analysis: {analysis}"
 
     media = turn_context.get("media")
@@ -101,7 +111,5 @@ def dispatch_direct_tool_call(backbone, tool_name: str, args: Dict[str, Any],
                                       today_timestamp=turn_context.get("timestamp"))
     extracted_text = result.get("extracted_text", "")
     analysis = result.get("document_analysis", {})
-    # Persisted onto this turn's user message (Backbone._persist_turn), same as the
-    # legacy media path; "" normalizes to None (Message.extracted_text contract).
-    turn_context["extracted_text"] = extracted_text or None
+    _record_extracted_text(backbone, turn_context, extracted_text)
     return f"Extracted text: {extracted_text}\n\nDocument analysis: {analysis}"

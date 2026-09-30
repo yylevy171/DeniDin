@@ -11,7 +11,7 @@ import re
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Callable, cast, Optional, List, Dict
+from typing import TYPE_CHECKING, Any, Callable, cast, Optional, List, Dict
 
 from openai import OpenAI, APITimeoutError, RateLimitError, APIError
 from src.models.config import AppConfiguration
@@ -25,7 +25,6 @@ from src.utils.time_utils import now_local, local_from_timestamp, to_local
 from src.utils.wire_log import audit_wire, debug_wire
 from src.managers.session_manager import SessionManager, Session
 from src.core.turn_context import load_rolling_window, recall_memory_context
-from src.core.turn_persistence import persist_turn
 from src.managers.roll_marker_store import RollMarkerStore
 from src.managers.memory_manager import MemoryManager
 from src.managers.ledger_event_manager import LedgerEventManager, is_incomplete_capture
@@ -126,13 +125,6 @@ _active_telemetry_builder: "contextvars.ContextVar[Optional[Any]]" = contextvars
 # flag being off means the tool is never attached anyway) makes the handler a no-op.
 _active_progress_callback: "contextvars.ContextVar[Optional[Callable[[str], None]]]" = contextvars.ContextVar(
     "denidin_active_progress_callback", default=None
-)
-
-# bugfix-058: the text of every interim progress message actually sent to the user this turn, in
-# send order - so the turn's persistence step can record them (between the user's message and the
-# final reply) instead of leaving them out of the session. Set per get_response() call.
-_active_interim_messages: "contextvars.ContextVar[Optional[List[str]]]" = contextvars.ContextVar(
-    "denidin_active_interim_messages", default=None
 )
 
 # Architectural fix (2026-08-25): _finalize_response used to run the local-tool
@@ -1080,6 +1072,9 @@ from src.tool_actions.tool_schemas import (  # noqa: F401  (re-exported: callers
     SEND_PROGRESS_UPDATE_TOOL, QUERY_LEDGER_EVENTS_TOOL, REACT_TO_MESSAGE_TOOL,
 )
 
+if TYPE_CHECKING:
+    from src.core.chat_log import ChatLog
+
 
 def _build_reminder_approval_details(
     tool_name: str, args: Dict[str, Any], due_at_iso: Optional[str] = None,
@@ -1347,6 +1342,9 @@ class AIHandler:
         # create_request to normalize a native @-mention of DeniDin's own number into
         # the name-shaped form the model's existing addressee judgment recognizes.
         self.own_whatsapp_number: str = ""
+        # 2026-09-30: the shared src/core/chat_log.ChatLog (set by initialize_app) - used
+        # here only to fill ledger event ids into an already-stored user message.
+        self.chat_log: Optional["ChatLog"] = None
 
         # Feature 022: tracks, per chat_id, an MCP document-creation call
         # currently held pending the user's explicit approval. In-memory only
@@ -1904,7 +1902,6 @@ class AIHandler:
         from src.core.model_calls import telemetry_span
 
         callback_token = _active_progress_callback.set(progress_callback)
-        interim_token = _active_interim_messages.set([])
         effective_chat_id = chat_id or request.chat_id
         try:
             with telemetry_span(self.telemetry_manager, request.request_id, effective_chat_id) as builder:
@@ -1919,7 +1916,6 @@ class AIHandler:
                     _active_telemetry_builder.reset(telemetry_token)
         finally:
             _active_progress_callback.reset(callback_token)
-            _active_interim_messages.reset(interim_token)
 
     def _get_response_impl(self, request: AIRequest, chat_id: Optional[str] = None,
                      user_role: str = 'client', sender: Optional[str] = None,
@@ -2042,6 +2038,7 @@ class AIHandler:
             conversation_history = load_rolling_window(
                 self.session_manager, effective_chat_id,
                 window_days=self.window_days, max_tokens=max_tokens,
+                exclude_message_ids=[request.message_id],
             ) or None
 
         try:
@@ -2054,9 +2051,7 @@ class AIHandler:
             response = self._call_openai_api(request, conversation_history=conversation_history, tools=tools)
 
             return self._finalize_response(
-                request, response, effective_chat_id, user_obj, user_role, sender, recipient, tools,
-                user_phone=user_phone, is_group=is_group, chat_name=chat_name,
-                sender_phone=sender_phone
+                request, response, effective_chat_id, sender, tools,
             )
 
         except APITimeoutError as e:
@@ -2064,7 +2059,7 @@ class AIHandler:
                 f"OpenAI API timeout for request {request.request_id} after retries: {e}",
                 exc_info=True
             )
-            return self._fallback_and_persist(
+            return self._fallback_response_for(
                 request, effective_chat_id, user_obj, user_role, sender, user_phone, sender_phone,
                 is_group, chat_name,
                 "Sorry, I'm having trouble connecting to my AI service. Please try again later."
@@ -2075,7 +2070,7 @@ class AIHandler:
                 f"OpenAI rate limit exceeded for request {request.request_id} after retries: {e}",
                 exc_info=True
             )
-            return self._fallback_and_persist(
+            return self._fallback_response_for(
                 request, effective_chat_id, user_obj, user_role, sender, user_phone, sender_phone,
                 is_group, chat_name,
                 "I'm currently at capacity. Please try again in a minute."
@@ -2086,7 +2081,7 @@ class AIHandler:
                 f"OpenAI API error for request {request.request_id} after retries: {e}",
                 exc_info=True
             )
-            return self._fallback_and_persist(
+            return self._fallback_response_for(
                 request, effective_chat_id, user_obj, user_role, sender, user_phone, sender_phone,
                 is_group, chat_name,
                 "Sorry, I encountered an error processing your request. Please try again."
@@ -2097,7 +2092,7 @@ class AIHandler:
                 f"Unexpected error in get_response for request {request.request_id}: {e}",
                 exc_info=True
             )
-            return self._fallback_and_persist(
+            return self._fallback_response_for(
                 request, effective_chat_id, user_obj, user_role, sender, user_phone, sender_phone,
                 is_group, chat_name,
                 "Sorry, I encountered an unexpected error. Please try again."
@@ -2421,19 +2416,8 @@ class AIHandler:
         sent = send_progress_update_message(
             _active_progress_callback.get(), _active_telemetry_builder.get(), request.chat_id, text,
         )
-        # bugfix-058: track every interim message actually sent this turn (see
-        # _active_interim_messages and src/core/turn_persistence.persist_turn) so it survives even
-        # if the turn later fails before the assistant's real final reply is
-        # persisted - the shared send_progress_update_message() helper (used by
-        # both this legacy path and the backbone) intentionally
-        # doesn't do this itself, since bugfix-058's persistence mechanism is
-        # ai_handler-specific for now (see fix #3/#4 discussion for closing that
-        # gap in the backbone path too).
-        if sent:
-            interim = _active_interim_messages.get()
-            if interim is not None:
-                interim.append(text)
-
+        # The progress message is stored in the session by the send itself (denidin.py's
+        # progress callback), the moment it's sent - nothing to track here.
         return [{"call_id": call_id, "payload": {"sent": sent}}]
 
     def _handle_send_progress_update(self, request: AIRequest, response, tools: Optional[List[Dict]]):
@@ -3214,45 +3198,21 @@ class AIHandler:
             accumulated_mcp_calls,
         )
 
-    def _persist_turn(self, request: AIRequest, response_text: str, should_reply: bool,
-                      effective_chat_id: Optional[str], user_obj, user_role: str,
-                      sender: Optional[str], *, user_phone: Optional[str] = None,
-                      sender_phone: Optional[str] = None, is_group: bool = False,
-                      chat_name: Optional[str] = None, ledger_event_ids=None,
-                      mcp_calls=None) -> None:
-        """Stores one turn - the user's message, any interim progress messages, and (when
-        `should_reply`) the assistant's `response_text`. Used by `_finalize_response` for a
-        normal turn and (bugfix-058) by `_get_response_impl`'s error branches. Thin wrapper
-        over src/core/turn_persistence.persist_turn, the one implementation shared with the
-        Backbone and MediaHandler. Never raises."""
-        if not self.memory_enabled:
-            return
-        use_tokens = bool(self.rbac_enabled and user_obj)
-        persist_turn(
-            self.session_manager, chat_id=effective_chat_id,
-            user_role=user_obj.role if use_tokens else (user_role or "client"),
-            count_tokens=use_tokens, own_whatsapp_number=self.own_whatsapp_number,
-            user_text=request.user_prompt, reply_text=response_text, should_reply=should_reply,
-            sender_phone=sender_phone, sender_display=sender, user_phone=user_phone,
-            is_group=is_group, chat_name=chat_name, source_timestamp=request.timestamp,
-            replayed=bool(getattr(request.original_message, "is_replay", False)),
-            message_id=request.message_id,
-            whatsapp_id_message=getattr(request.original_message, "whatsapp_id_message", None),
-            ledger_event_ids=ledger_event_ids, mcp_calls=mcp_calls,
-            interim_messages=_active_interim_messages.get(),
-        )
+    def _attach_ledger_event_ids(self, chat_id: Optional[str], message_id: Optional[str],
+                                 ledger_event_ids) -> None:
+        """Fills this turn's captured ledger event ids (Feature 033) into the user message,
+        which was already stored the moment it arrived (2026-09-30 - the reply is stored
+        when sent, with its mcp_calls). Never raises."""
+        if ledger_event_ids and self.chat_log is not None:
+            self.chat_log.update(chat_id, message_id, ledger_event_ids=list(ledger_event_ids))
 
 
     def _finalize_response(self, request: AIRequest, response, effective_chat_id: Optional[str],
-                           user_obj, user_role: str, sender: Optional[str],
-                           recipient: Optional[str], tools: Optional[List[Dict]], *,
-                           user_phone: Optional[str] = None, is_group: bool = False,
-                           chat_name: Optional[str] = None,
-                           sender_phone: Optional[str] = None) -> AIResponse:
+                           sender: Optional[str], tools: Optional[List[Dict]]) -> AIResponse:
         """
         Shared post-API-call logic: extract mcp_calls, detect a new pending
-        approval (Feature 022), store messages in session, build the final
-        AIResponse. Used by both the normal turn path and the pending-approval
+        approval (Feature 022), fill ledger_event_ids into the already-stored user
+        message, build the final AIResponse. Used by both the normal turn path and the pending-approval
         resolution path in `get_response`/`_resolve_pending_approval`.
         """
         # Extract response
@@ -3505,17 +3465,11 @@ class AIHandler:
         logger.debug(f"Full response: {response_text[:200]}...")
 
         # Feature 039 (US4a): the model signals "send nothing" by returning exactly
-        # the sentinel as its entire response - the user's message is still
-        # persisted below (conversation context isn't lost), but no assistant
-        # reply is stored, and the caller (denidin.py) must not send anything.
+        # the sentinel as its entire response - the caller (denidin.py) then sends,
+        # and therefore stores, nothing. The user's message was stored on receipt.
         should_reply = should_reply_for(response_text)
 
-        # Store messages in session if memory enabled (shared with the error paths, bugfix-058)
-        self._persist_turn(
-            request, response_text, should_reply, effective_chat_id, user_obj, user_role, sender,
-            user_phone=user_phone, sender_phone=sender_phone, is_group=is_group,
-            chat_name=chat_name, ledger_event_ids=ledger_event_ids, mcp_calls=mcp_calls,
-        )
+        self._attach_ledger_event_ids(effective_chat_id, request.message_id, ledger_event_ids)
 
         # Create response object.
         # Responses API has no per-choice finish_reason; derive from
@@ -4076,7 +4030,7 @@ class AIHandler:
                     f"tool={pending.tool_name!r}, approval_request_id={pending.approval_request_id!r}: {e}",
                     exc_info=True
                 )
-                return self._fallback_and_persist(
+                return self._fallback_response_for(
                     request, effective_chat_id, user_obj, user_role, sender, user_phone,
                     sender_phone, is_group, chat_name, APPROVAL_FAILED_TRY_AGAIN)
 
@@ -4119,7 +4073,7 @@ class AIHandler:
                     f"in one response (expected exactly 1). All mcp_calls: {executed_calls!r}"
                 )
                 self.pending_approval_manager.clear(effective_chat_id)
-                return self._fallback_and_persist(
+                return self._fallback_response_for(
                     request, effective_chat_id, user_obj, user_role, sender, user_phone,
                     sender_phone, is_group, chat_name, APPROVAL_POSSIBLY_DUPLICATED)
 
@@ -4152,7 +4106,7 @@ class AIHandler:
                     f"All mcp_calls: {executed_calls!r}"
                 )
                 self.pending_approval_manager.clear(effective_chat_id)
-                return self._fallback_and_persist(
+                return self._fallback_response_for(
                     request, effective_chat_id, user_obj, user_role, sender, user_phone,
                     sender_phone, is_group, chat_name,
                     f"אישרת, אבל הפעולה לא בוצעה בפועל{failure_detail}. "
@@ -4162,9 +4116,7 @@ class AIHandler:
             self.pending_approval_manager.clear(effective_chat_id)
             logger.info(f"[022] Approved and cleared pending for chat={effective_chat_id!r}")
             return self._finalize_response(
-                request, response, effective_chat_id, user_obj, user_role, sender, recipient, tools,
-                user_phone=user_phone, is_group=is_group, chat_name=chat_name,
-                sender_phone=sender_phone
+                request, response, effective_chat_id, sender, tools,
             )
 
         # Not a recognized affirmative: decline, close out OpenAI's
@@ -4269,7 +4221,7 @@ class AIHandler:
                 f"{effective_chat_id!r}, tool={pending.tool_name!r}: {e}", exc_info=True
             )
             self.pending_local_tool_approval_manager.clear(effective_chat_id)
-            return self._fallback_and_persist(
+            return self._fallback_response_for(
                 request, effective_chat_id, user_obj, user_role, sender, user_phone,
                 sender_phone, is_group, chat_name, REMINDER_ACTION_FAILED_TRY_AGAIN)
 
@@ -4336,13 +4288,7 @@ class AIHandler:
                 "fallback text so the user never receives a silently empty reply."
             )
 
-        # Same shared persistence as every other turn (bugfix-058) - full sender/recipient
-        # conventions, interim messages, and its own never-raises guard.
-        self._persist_turn(
-            request, response_text, True, effective_chat_id, user_obj, user_role, sender,
-            user_phone=user_phone, sender_phone=sender_phone, is_group=is_group,
-            chat_name=chat_name,
-        )
+        # Nothing to store here: the reply is stored when it's sent (2026-09-30).
 
         ai_response = AIResponse(
             request_id=request.request_id,
@@ -4458,42 +4404,16 @@ class AIHandler:
             sender_phone=message.sender_id,
         )
 
-    def record_exchange(self, chat_id: str, *, user_text: Optional[str],
-                        assistant_text: Optional[str], sender_phone: Optional[str],
-                        sender_display: Optional[str], is_group: bool = False,
-                        chat_name: Optional[str] = None,
-                        whatsapp_id_message: Optional[str] = None,
-                        source_timestamp: Optional[int] = None) -> None:
-        """bugfix-058: records an exchange that never reached the AI pipeline - e.g. an
-        unsupported-type auto-reply, a failed media turn, a declined multi-contact card, the
-        catch-all error reply - so what the user sent and what they were told is still in the
-        session. 2026-09-30 consolidation: thin wrapper delegating to
-        model_calls.record_exchange, the one shared implementation also used by
-        Backbone (e.g. on an OpenAI-call exception)."""
-        from src.core.model_calls import record_exchange as _shared_record_exchange
-        _shared_record_exchange(
-            self.session_manager, memory_enabled=self.memory_enabled,
-            rbac_enabled=self.rbac_enabled, user_manager=self.user_manager,
-            own_whatsapp_number=self.own_whatsapp_number, chat_id=chat_id,
-            user_text=user_text, assistant_text=assistant_text, sender_phone=sender_phone,
-            sender_display=sender_display, is_group=is_group, chat_name=chat_name,
-            whatsapp_id_message=whatsapp_id_message, source_timestamp=source_timestamp,
-        )
-
-    def _fallback_and_persist(self, request: AIRequest, effective_chat_id: Optional[str],
+    def _fallback_response_for(self, request: AIRequest, effective_chat_id: Optional[str],
                               user_obj, user_role: str, sender: Optional[str],
                               user_phone: Optional[str], sender_phone: Optional[str],
                               is_group: bool, chat_name: Optional[str],
                               message: str) -> AIResponse:
-        """bugfix-058: builds the fallback AIResponse for an error the user is about to be told
-        about, and first records that turn - the user's own message and exactly the fallback text
-        they will receive - in the session like any other turn. Every path that answers a user
-        with a fallback goes through here so an error is never an unrecorded exchange."""
-        self._persist_turn(
-            request, message, True, effective_chat_id, user_obj, user_role, sender,
-            user_phone=user_phone, sender_phone=sender_phone, is_group=is_group,
-            chat_name=chat_name,
-        )
+        """Builds the fallback AIResponse for an error the user is about to be told about.
+        2026-09-30: nothing to store here any more - the user's message was stored on receipt
+        and the fallback text is stored when it's actually sent."""
+        del effective_chat_id, user_obj, user_role, sender, user_phone, sender_phone
+        del is_group, chat_name
         return self._create_fallback_response(request.request_id, message)
 
     def _create_fallback_response(self, request_id: str, message: str) -> AIResponse:

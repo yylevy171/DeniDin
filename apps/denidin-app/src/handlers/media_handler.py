@@ -8,8 +8,7 @@ Since extractors (Phase 4) already return document_analysis, MediaHandler
 formats the extractor's analysis into user-friendly summaries.
 """
 
-from typing import Dict, List, Optional
-from pathlib import Path
+from typing import Any, Dict, List, Optional
 from datetime import datetime
 
 from src.models.media import Media
@@ -21,7 +20,6 @@ from src.managers.media_file_manager import MediaFileManager
 from src.utils.logger import get_logger
 from src.utils.time_utils import now_local
 from src.handlers.ai_handler import build_ledger_stash_text
-from src.core.turn_persistence import persist_turn, resolve_user_role
 
 logger = get_logger(__name__)
 
@@ -79,9 +77,6 @@ class MediaHandler:
         caption: str = "",
         timestamp: Optional[int] = None,
         message_id: Optional[str] = None,
-        sender_display_name: Optional[str] = None,
-        is_group: bool = False,
-        chat_name: Optional[str] = None
     ) -> Dict:
         """
         Process media message through complete workflow.
@@ -107,19 +102,6 @@ class MediaHandler:
             message_id: Real Green API notification message id (Feature 033) - the
                 source-message pointer for any ledger event captured from this
                 message (LedgerEvent.message_id).
-            sender_display_name: Resolved human-readable sender name (Feature 039,
-                WhatsAppMessage.sender_display_name) - used only for the persisted
-                Message.sender_name value in _store_media_turn, never for
-                filenames (which keep using sender_phone, the raw JID, unchanged;
-                ledger events no longer persist a sender field at all - Phase 11,
-                2026-08-16). Falls back to sender_phone if not given.
-            is_group: Whether chat_id is a WhatsApp group (2026-08-19,
-                WhatsAppMessage.is_group) - drives Message.recipient/
-                .recipient_name resolution in _store_media_turn, same as the
-                text path (AIHandler._finalize_response).
-            chat_name: Green API's resolved chat display name
-                (senderData.chatName, WhatsAppMessage.chat_name) - a group's
-                real subject/name when is_group.
 
         Returns:
             {
@@ -274,9 +256,8 @@ class MediaHandler:
             # Message.extracted_text's "None when nothing extracted" contract.
             extracted_text = analysis_result.get("extracted_text") or None
             self._store_media_turn(
-                chat_id, sender_phone, sender_display_name or sender_phone, media_type,
-                caption, summary, ledger_event_ids, message_id, relative_image_path,
-                extracted_text, is_group, chat_name, source_timestamp=timestamp
+                chat_id, message_id, image_path=relative_image_path,
+                extracted_text=extracted_text, ledger_event_ids=ledger_event_ids,
             )
 
             return {
@@ -308,62 +289,22 @@ class MediaHandler:
             )
 
     def _store_media_turn(
-        self, chat_id: str, sender_phone: str, sender_display: str, media_type: str,
-        caption: str, summary: str, ledger_event_ids: Optional[list] = None,
-        message_id: Optional[str] = None, image_path: Optional[str] = None,
-        extracted_text: Optional[str] = None, is_group: bool = False,
-        chat_name: Optional[str] = None, source_timestamp: Optional[int] = None
+        self, chat_id: str, message_id: Optional[str], *, image_path: Optional[str] = None,
+        extracted_text: Optional[str] = None, ledger_event_ids: Optional[list] = None,
     ) -> None:
-        """bugfix-017: store both sides of a media turn in the session, mirroring
-        AIHandler._finalize_response's user+assistant storage for text turns.
-        Never lets a storage failure fail the whole media-processing turn - the
-        user still gets their summary reply even if this logging step errors.
-
-        ledger_event_ids (Feature 033): id(s) of any LedgerEvent(s) captured from
-        this message, threaded onto the user message only (never the assistant
-        reply) - REQ-TRACE-003.
-
-        message_id (Feature 033, confirmed design): the id decided once at
-        message-arrival time (WhatsAppHandler.handle_media_message, via
-        WhatsAppMessage.from_notification) - MUST be identical across the
-        persisted message's filename, the session's message_ids entry, and
-        LedgerEvent.message_id. Applied to the user message only; the assistant
-        reply gets its own fresh id, same as always.
-
-        image_path (bugfix-009, reopened 2026-07-30): relative to data_root,
-        resolved by the caller - attached to the user message only, so the
-        session can be traced back to the saved media file on disk. This
-        parameter regressed to always-omitted when this method replaced
-        bugfix-009's original call site; restored here alongside the Feature
-        033 traceability fields it was merged with.
-
-        extracted_text (Feature 043, 2026-08-18): the media extractor's own
-        extracted_text for this attachment (image/PDF/DOCX), if any - attached
-        to the user message only, same as image_path. None when the extractor
-        found no text.
-
-        sender_phone / sender_display (2026-08-19): sender_phone is the real
-        WhatsApp JID (Message.sender); sender_display is the resolved display
-        name (Message.sender_name) - see AIHandler._finalize_response's own
-        docstring for the full sender/recipient design this mirrors.
-
-        is_group / chat_name (2026-08-19): drive Message.recipient/
-        .recipient_name resolution exactly like the text path - a group
-        message is addressed to the group's own JID/name, never to one
-        member or to DeniDin alone."""
-        # 2026-09-30: thin wrapper over src/core/turn_persistence.persist_turn - the one
-        # implementation shared with the text path and the Backbone.
-        ai_handler = self.denidin.ai_handler
-        persist_turn(
-            self.session_manager, chat_id=chat_id,
-            user_role=resolve_user_role(ai_handler.user_manager, ai_handler.rbac_enabled, sender_phone),
-            count_tokens=False, own_whatsapp_number=ai_handler.own_whatsapp_number,
-            user_text=caption or f"[{media_type} sent]", reply_text=summary, should_reply=True,
-            sender_phone=sender_phone, sender_display=sender_display,
-            is_group=is_group, chat_name=chat_name, source_timestamp=source_timestamp,
-            message_id=message_id, ledger_event_ids=ledger_event_ids,
-            image_path=image_path, extracted_text=extracted_text,
-        )
+        """2026-09-30: the media message itself was already stored the moment it was
+        received (denidin.py's _process_media_message, under `message_id`), and the
+        summary reply is stored when it's actually sent (WhatsAppHandler.send_text) - so
+        this only fills in what was learned while processing it: image_path (bugfix-009,
+        relative to data_root), extracted_text (Feature 043; None when nothing was
+        extracted) and ledger_event_ids (Feature 033). Never raises."""
+        chat_log = getattr(self.denidin, "chat_log", None)
+        if chat_log is None:
+            return
+        facts: Dict[str, Any] = {"image_path": image_path, "extracted_text": extracted_text}
+        if ledger_event_ids:
+            facts["ledger_event_ids"] = list(ledger_event_ids)
+        chat_log.update(chat_id, message_id, **facts)
 
     def _extract_text(self, media_type: str, media: Media, caption: str = "",
                        today_timestamp: Optional[int] = None) -> Dict:

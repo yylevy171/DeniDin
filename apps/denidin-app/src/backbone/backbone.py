@@ -9,7 +9,6 @@ See contracts/capability-resolution-loop.md (the loop) and contracts/prompt-asse
 (the prompt-loading/caching + per-call instructions assembly this module implements).
 """
 import json
-from dataclasses import dataclass
 import logging
 import time
 from pathlib import Path
@@ -40,9 +39,8 @@ from src.tool_actions.messaging_actions import (
     build_react_to_message_payload, send_progress_update_message,
 )
 from src.core.turn_context import load_rolling_window, recall_memory_context
-from src.core.turn_persistence import persist_turn
 from src.core.model_calls import (
-    build_fallback_response, call_model_with_retry, record_exchange as shared_record_exchange,
+    build_fallback_response, call_model_with_retry,
     telemetry_span,
 )
 from src.utils.wire_log import audit_wire, debug_wire
@@ -50,18 +48,6 @@ from src.utils.time_utils import now_local, local_from_timestamp
 
 logger = logging.getLogger(__name__)
 
-
-@dataclass(frozen=True)
-class _TurnParties:
-    """Who/where one turn is with - the values _finalize_response/_persist_turn
-    need to store the turn on the right session (bundled to keep signatures small)."""
-    chat_id: str
-    role: Role
-    sender: Optional[str]
-    user_phone: Optional[str]
-    sender_phone: Optional[str]
-    is_group: bool
-    chat_name: Optional[str]
 
 # A generous bound, never expected to bind in practice, existing purely so a
 # pathological back-and-forth can't loop forever. Raised 10 -> 100 (2026-09-28)
@@ -102,8 +88,14 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
                  own_whatsapp_number: str = "",
                  telemetry_manager: Optional[Any] = None,
                  fee_agreement_tools: Optional[Any] = None,
-                 whatsapp_handler: Optional[Any] = None):
+                 whatsapp_handler: Optional[Any] = None,
+                 chat_log: Optional[Any] = None):
         self.client = ai_client
+        # 2026-09-30: the shared src/core/chat_log.ChatLog. Messages are stored at the
+        # WhatsApp boundary (received / sent), never by the backbone; the backbone uses
+        # it only for what never crosses that boundary (its planning notes) and for facts
+        # learned mid-turn (a media message's extracted text).
+        self.chat_log = chat_log
         self.config = config
         self.reminder_manager = reminder_manager
         self.ledger_event_manager = ledger_event_manager
@@ -224,10 +216,9 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
         # activity under the flag-on path too, not an empty list.
         self._turn_mcp_calls: List[Dict[str, Any]] = []
 
-        # bugfix-058 parity (2026-09-30): the text of every interim
-        # send_progress_update message actually sent this turn, stored in the
-        # session right after the user's message (core.turn_persistence).
-        self._turn_interim_messages: List[str] = []
+        # The inbound WhatsAppMessage this turn answers (request.original_message) -
+        # the addressing for internal notes stored mid-turn (see record_planning_status).
+        self._turn_original_message: Optional[Any] = None
 
         # Which capabilities are loaded is NOT per-turn instance state - it lives
         # in Session.active_capabilities (persisted with the session on every
@@ -400,8 +391,7 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
             is_media: bool = False,
             media_extraction: Optional[Dict[str, Any]] = None,
             media: Optional[Any] = None,
-            media_type: Optional[str] = None,
-            media_path: Optional[str] = None) -> AIResponse:
+            media_type: Optional[str] = None) -> AIResponse:
         """The backbone's entry point: resolves one WhatsApp turn (one incoming
         message → one final reply) via one or more OpenAI call "rounds" (2026-09-30
         rename, from the generic `get_response` — see `_call_model`'s "first round"/
@@ -432,11 +422,6 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
         real vision/PDF/DOCX extraction call, via `turn_context["media"]`/
         `["media_type"]` below. media_extraction (above) and media/media_type are
         mutually exclusive in practice — a caller passes at most one.
-
-        media_path (2026-09-30): where denidin.py archived the incoming file,
-        relative to data_root (MediaFileManager.store_media) - persisted as the user
-        message's image_path, same as the legacy media path. None if archiving failed
-        (the turn still proceeds on the in-memory bytes).
         """
         # The ENTIRE turn below is wrapped in one top-level try/except, mirroring
         # AIHandler._get_response_impl's own APITimeoutError/RateLimitError/
@@ -459,7 +444,7 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
                 request, chat_id=chat_id, user_role=user_role, sender=sender, recipient=recipient,
                 user_phone=user_phone, is_group=is_group, chat_name=chat_name, sender_phone=sender_phone,
                 progress_callback=progress_callback, is_media=is_media, media_extraction=media_extraction,
-                media=media, media_type=media_type, media_path=media_path,
+                media=media, media_type=media_type,
             )
 
     def _turn_with_rounds_body(  # pylint: disable=too-many-locals,too-many-arguments
@@ -468,10 +453,13 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
             is_group: bool, chat_name: Optional[str], sender_phone: Optional[str],
             progress_callback: Optional[Callable[[str], None]], is_media: bool,
             media_extraction: Optional[Dict[str, Any]], media: Optional[Any],
-            media_type: Optional[str], media_path: Optional[str] = None) -> AIResponse:
+            media_type: Optional[str]) -> AIResponse:
         """The actual per-turn logic, split out of turn_with_rounds so the telemetry_span
         context manager above wraps it cleanly (a context manager's body can't easily
         `return` from inside a try/except/finally spanning the whole call otherwise)."""
+        # Message addressing (sender/recipient/group) is no longer needed here - every
+        # message is stored at the WhatsApp boundary by ChatLog (2026-09-30).
+        del sender, recipient, is_group, chat_name
         try:
             role = self._resolve_role(user_role)
             effective_chat_id = chat_id or request.chat_id
@@ -486,7 +474,7 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
             # Reset per-turn MCP-call accumulator (2026-09-15) - see __init__'s
             # _turn_mcp_calls docstring.
             self._turn_mcp_calls = []
-            self._turn_interim_messages = []
+            self._turn_original_message = request.original_message
             # Reset per-turn approval-buttons flag (2026-09-16) - see __init__'s
             # _turn_offered_approval docstring.
             self._turn_offered_approval = False
@@ -507,13 +495,11 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
                 "media": media,
                 "media_type": media_type,
                 "timestamp": request.timestamp,
-                # Media turn (2026-09-30): the caption (request.user_prompt, may be ""),
-                # where the file was archived, and - once analyze_media runs - the
-                # extractor's extracted_text; all persisted onto the user message.
+                # The stored inbound message this turn answers - analyze_media fills
+                # its extracted text into it (2026-09-30).
+                "message_id": request.message_id,
                 "is_media": is_media,
                 "caption": request.user_prompt if is_media else "",
-                "media_path": media_path,
-                "extracted_text": None,
             }
 
             # Conversation history (2026-09-14): the SAME rolling-window shape/source
@@ -524,7 +510,8 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
             # read by the loop for every round this turn makes (see that
             # method's own docstring for why this is a plain instance attribute rather
             # than threaded through every call site).
-            self._turn_conversation_history = self._load_conversation_history(effective_chat_id)
+            self._turn_conversation_history = self._load_conversation_history(
+                effective_chat_id, exclude_message_id=request.message_id)
 
             # The tool-driven resolution loop (see
             # contracts/capability-resolution-loop.md): one continuous conversation
@@ -536,32 +523,15 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
                 self.session_manager.set_approval_message_id(effective_chat_id, None)
             final_text = self._run_resolution_loop(request, turn_context, is_media=is_media)
 
-            parties = _TurnParties(
-                effective_chat_id, role, sender, user_phone, sender_phone, is_group, chat_name,
-            )
-            return self._finalize_response(request, final_text, parties, turn_context)
+            return self._finalize_response(request, final_text)
         except Exception as exc:  # pylint: disable=broad-except
             logger.error(
                 "Unexpected error in Backbone.turn_with_rounds for request %s: %s",
                 request.request_id, exc, exc_info=True,
             )
-            # 2026-09-30 (closing a real gap): persist what the user sent and the
-            # fallback text they're about to be told, the same as AIHandler's own
-            # _fallback_and_persist - previously an exception here (e.g. an OpenAI
-            # 424 on an image turn) left the user's message, and any image, with
-            # no record in the session at all. effective_chat_id may not exist yet
-            # if the exception happened before it was computed above, so it's
-            # re-derived here rather than assumed.
-            shared_record_exchange(
-                self.session_manager, memory_enabled=True,
-                rbac_enabled=bool(self.user_manager), user_manager=self.user_manager,
-                own_whatsapp_number=self.own_whatsapp_number,
-                chat_id=chat_id or request.chat_id, user_text=request.user_prompt,
-                assistant_text=BACKBONE_UNEXPECTED_ERROR, sender_phone=sender_phone or user_phone,
-                sender_display=sender, is_group=is_group, chat_name=chat_name,
-                whatsapp_id_message=getattr(request.original_message, "whatsapp_id_message", None),
-                source_timestamp=request.timestamp,
-            )
+            # Nothing to store here: the user's message was stored on receipt, every
+            # message sent so far was stored as it was sent, and this fallback text is
+            # stored when it's sent.
             return self._create_fallback_response(request.request_id, BACKBONE_UNEXPECTED_ERROR)
 
     # ------------------------------------------------------------------
@@ -755,8 +725,7 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
                     self._turn_progress_callback, self._turn_telemetry_builder,
                     self._turn_chat_id, args.get("text"),
                 )
-                if sent:
-                    self._turn_interim_messages.append(args.get("text"))
+                # Stored by the send itself (the progress callback), like every message.
                 payload = {"sent": sent}
             else:
                 payload = build_react_to_message_payload(
@@ -809,6 +778,13 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
                 f"THIS TURN'S PURPOSE: {args.get('this_turns_purpose', '')}\n"
                 f"EXPECTATION: {args.get('expectation', '')}"
             )
+            # Stored the moment it's recorded, as a clearly-tagged internal note (never
+            # sent to the user) - flows into later turns via the rolling window.
+            if self.chat_log is not None and self._turn_original_message is not None:
+                self.chat_log.store_note(
+                    self._turn_original_message,
+                    f"[[INTERNAL_PLANNING_NOTE]]\n{self._turn_planning_status}",
+                )
             return "recorded"
         if tool_name == "reset_to_backbone":
             flows = [f.value for f in self._get_active_flows(chat_id)]
@@ -850,8 +826,7 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
         return describe_loading(kind, loading=loading, valid=valid, unknown=unknown,
                                 flows_now=flows_now, capabilities_now=capabilities_now)
 
-    def _finalize_response(self, request: AIRequest, final_text: str, parties: _TurnParties,
-                           turn_context: Optional[Dict[str, Any]] = None) -> AIResponse:
+    def _finalize_response(self, request: AIRequest, final_text: str) -> AIResponse:
         """[[NO_REPLY]] sentinel handling via the shared models.message.should_reply_for
         (the same check AIHandler._finalize_response uses).
 
@@ -860,7 +835,6 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
         which asks WhatsAppHandler to render the reply as tappable buttons."""
         should_reply = should_reply_for(final_text)
         offer_approval_buttons = bool(self._turn_offered_approval)
-        self._persist_turn(request, final_text, should_reply, parties, turn_context)
         return AIResponse(
             request_id=request.request_id,
             response_text=final_text,
@@ -891,7 +865,8 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
         except ValueError:
             return Role.CLIENT
 
-    def _load_conversation_history(self, chat_id: Optional[str]) -> List[Dict[str, Any]]:
+    def _load_conversation_history(self, chat_id: Optional[str],
+                                   exclude_message_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """Feature 070 rolling window via the shared core.turn_context.load_rolling_window.
         Godfather/Admin-only scope for now (explicit decision, 2026-09-14): always the
         godfather/admin token limit from config.memory['session']['max_tokens_by_role']."""
@@ -900,6 +875,7 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
             self.session_manager, chat_id,
             window_days=session_config.get('window_days', 14),
             max_tokens=session_config.get('max_tokens_by_role', {}).get('godfather', 100000),
+            exclude_message_ids=[exclude_message_id] if exclude_message_id else None,
         )
 
     def _recall_memory(self, user_prompt: str, chat_id: Optional[str],
@@ -913,40 +889,6 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
             top_k=longterm_config.get('daily_summary_top_k', 10),
             min_similarity=longterm_config.get('min_similarity', 0.7),
             user_manager=self.user_manager, user_phone=user_phone or sender_phone,
-        )
-
-    def _persist_turn(self, request: AIRequest, final_text: str, should_reply: bool,
-                       parties: _TurnParties, turn_context: Optional[Dict[str, Any]] = None) -> None:
-        """Stores the turn via the shared core.turn_persistence.persist_turn (the same
-        implementation AIHandler and MediaHandler use): user message, interim progress
-        messages, the reply (when should_reply), then this turn's record_planning_status
-        note as a clearly-tagged [[INTERNAL_PLANNING_NOTE]] entry (stored regardless of
-        should_reply; flows into the next turn via the rolling window). A media turn
-        stores the caption (or "[<type> sent]", same as MediaHandler) with its
-        image_path/extracted_text. Never raises."""
-        turn_context = turn_context or {}
-        user_text = request.user_prompt
-        if turn_context.get("is_media"):
-            user_text = request.user_prompt or f"[{turn_context.get('media_type') or 'media'} sent]"
-        notes = (
-            [f"[[INTERNAL_PLANNING_NOTE]]\n{self._turn_planning_status}"]
-            if self._turn_planning_status else None
-        )
-        persist_turn(
-            self.session_manager, chat_id=parties.chat_id, user_role=parties.role,
-            count_tokens=True, own_whatsapp_number=self.own_whatsapp_number,
-            user_text=user_text, reply_text=final_text, should_reply=should_reply,
-            sender_phone=parties.sender_phone, sender_display=parties.sender,
-            user_phone=parties.user_phone, is_group=parties.is_group, chat_name=parties.chat_name,
-            source_timestamp=request.timestamp,
-            replayed=bool(getattr(request.original_message, "is_replay", False)),
-            message_id=request.message_id,
-            whatsapp_id_message=getattr(request.original_message, "whatsapp_id_message", None),
-            mcp_calls=list(self._turn_mcp_calls),
-            image_path=turn_context.get("media_path"),
-            extracted_text=turn_context.get("extracted_text"),
-            interim_messages=self._turn_interim_messages,
-            trailing_notes=notes,
         )
 
     # ------------------------------------------------------------------

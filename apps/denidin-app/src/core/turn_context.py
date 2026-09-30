@@ -15,9 +15,12 @@ RECALLED_MEMORIES_HEADER = "RECALLED MEMORIES (from past conversations):\n"
 
 
 def load_rolling_window(session_manager: Any, chat_id: Optional[str], *,
-                        window_days: int, max_tokens: int) -> List[Dict[str, Any]]:
+                        window_days: int, max_tokens: int,
+                        exclude_message_ids: Optional[List[str]] = None) -> List[Dict[str, Any]]:
     """Feature 070: the chat's rolling verbatim window (oldest-first
     {"role", "content"} dicts, trimmed oldest-first to `max_tokens`, read-only).
+    `exclude_message_ids`: the current turn's own inbound message (already stored on
+    receipt) - the caller sends it to the model explicitly as the turn's input.
     Returns [] - never raises - when there's no session manager/chat or the read
     fails: a turn with no history is degraded, not crashed."""
     if not (session_manager and chat_id):
@@ -25,6 +28,7 @@ def load_rolling_window(session_manager: Any, chat_id: Optional[str], *,
     try:
         history = session_manager.get_rolling_window(
             chat_id, window_days=window_days, max_tokens=max_tokens,
+            exclude_message_ids=[m for m in (exclude_message_ids or []) if m],
         )
         if history:
             logger.info(f"Retrieved {len(history)} messages from session history")

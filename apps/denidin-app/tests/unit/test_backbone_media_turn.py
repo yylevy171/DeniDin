@@ -1,20 +1,22 @@
 """Unit tests (Feature 063, 2026-09-30): the Backbone media turn -
-the first-round "[מדיה מצורפת: ...]" marker, analyze_media recording the
-extracted text on the turn, the turn persisted with image_path/extracted_text
-(same as the legacy MediaHandler path), and MediaFileManager.store_media."""
-import json
+the first-round "[מדיה מצורפת: ...]" marker, analyze_media filling the extracted
+text into the already-stored media message (same field the legacy MediaHandler
+path sets), record_planning_status storing its note the moment it's recorded,
+and MediaFileManager.store_media."""
+import time
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 
-from src.backbone.backbone import Backbone, _TurnParties
+from src.backbone.backbone import Backbone
 from src.capabilities.media_analysis.handler import dispatch_direct_tool_call
+from src.core.chat_log import ChatLog
 from src.managers.media_file_manager import MediaFileManager
 from src.models.config import AppConfiguration
 from src.models.media import Media
-from src.models.message import AIRequest
-from src.models.user import Role
+from src.models.message import AIRequest, WhatsAppMessage
 from tests.backbone_test_support import make_session_manager
 
 CHAT_ID = "972501234567@c.us"
@@ -30,7 +32,18 @@ def backbone(tmp_path):
         green_api_instance_id="x", green_api_token="y", ai_api_key="z",
         backbone_config={"base_dir": str(base)},
     )
-    return Backbone(MagicMock(), config, session_manager=make_session_manager())
+    session_manager = make_session_manager()
+    chat_log = ChatLog(session_manager, None, rbac_enabled=False)
+    return Backbone(MagicMock(), config, session_manager=session_manager, chat_log=chat_log)
+
+
+def _inbound(text="", message_id="msg-media-1"):
+    return WhatsAppMessage(
+        message_id=message_id, chat_id=CHAT_ID, sender_id=SENDER, sender_name="Yaron",
+        text_content=text, timestamp=int(time.time()), message_type="imageMessage",
+        is_group=False, received_timestamp=datetime.now(timezone.utc),
+        whatsapp_id_message="WA-media-1",
+    )
 
 
 def _request(user_prompt: str) -> AIRequest:
@@ -49,9 +62,7 @@ def _media_context(media_type="image", filename="receipt.jpg", **extra):
 def _stored_messages(backbone):
     sm = backbone.session_manager
     session = sm.get_session(CHAT_ID)
-    messages_dir = sm.storage_dir / session.session_id / "messages"
-    return [json.loads((messages_dir / f"{mid}.json").read_text(encoding="utf-8"))
-            for mid in session.message_ids]
+    return [mdata for _mid, mdata in sm._iter_persisted_messages(session, live_only=True)]
 
 
 class TestFirstRoundMarker:
@@ -74,45 +85,36 @@ class TestFirstRoundMarker:
         assert content.startswith("[מדיה מצורפת: מסמך Word,")
 
 
-class TestAnalyzeMediaRecordsExtractedText:
-    def test_extracted_text_stored_on_turn_context(self, backbone):
-        ctx = {"media_extraction": {"extracted_text": "סכום: 500", "document_analysis": {}}}
+class TestAnalyzeMediaFillsExtractedTextIntoTheStoredMessage:
+    def _analyze(self, backbone, extracted_text):
+        backbone.chat_log.store_inbound(_inbound("מה זה?"))
+        ctx = {"chat_id": CHAT_ID, "message_id": "msg-media-1",
+               "media_extraction": {"extracted_text": extracted_text, "document_analysis": {}}}
         dispatch_direct_tool_call(backbone, "analyze_media", {}, ctx)
-        assert ctx["extracted_text"] == "סכום: 500"
+        [stored] = _stored_messages(backbone)
+        return stored
+
+    def test_extracted_text_filled_in(self, backbone):
+        stored = self._analyze(backbone, "סכום: 500")
+        assert stored["content"] == "מה זה?"
+        assert stored["extracted_text"] == "סכום: 500"
 
     def test_empty_extracted_text_normalizes_to_none(self, backbone):
-        ctx = {"media_extraction": {"extracted_text": "", "document_analysis": {}}}
-        dispatch_direct_tool_call(backbone, "analyze_media", {}, ctx)
-        assert ctx["extracted_text"] is None
+        assert self._analyze(backbone, "")["extracted_text"] is None
 
 
-class TestMediaTurnPersistence:
-    def _persist(self, backbone, request, turn_context):
-        parties = _TurnParties(CHAT_ID, Role.GODFATHER, "Yaron", SENDER, SENDER, False, None)
-        backbone._persist_turn(request, "קיבלתי", True, parties, turn_context)
+class TestPlanningNoteStoredImmediately:
+    def test_note_stored_the_moment_it_is_recorded(self, backbone):
+        backbone._turn_original_message = _inbound("שלום")
+        result = backbone._dispatch_resolution_tool(
+            "record_planning_status",
+            {"where_i_was": "התחלה", "this_turns_purpose": "לענות", "expectation": "תשובה"},
+            CHAT_ID)
 
-    def test_user_message_carries_image_path_and_extracted_text(self, backbone):
-        self._persist(backbone, _request("מה זה?"), _media_context(
-            media_path="media/DD-972501234567-u.jpg", extracted_text="סכום: 500"))
-        user_msg, reply = _stored_messages(backbone)
-        assert user_msg["content"] == "מה זה?"
-        assert user_msg["image_path"] == "media/DD-972501234567-u.jpg"
-        assert user_msg["extracted_text"] == "סכום: 500"
-        assert reply["content"] == "קיבלתי"
-        assert reply.get("image_path") is None
-
-    def test_captionless_media_stored_as_type_sent(self, backbone):
-        self._persist(backbone, _request(""), _media_context("pdf", "a.pdf", media_path=None))
-        user_msg, _ = _stored_messages(backbone)
-        assert user_msg["content"] == "[pdf sent]"
-        assert user_msg.get("image_path") is None
-
-    def test_interim_progress_messages_stored_between_user_and_reply(self, backbone):
-        backbone._turn_interim_messages = ["רגע, בודק..."]
-        self._persist(backbone, _request("שלום"), {})
-        contents = [m["content"] for m in _stored_messages(backbone)]
-        assert contents == ["שלום", "רגע, בודק...", "קיבלתי"]
-        assert backbone._turn_interim_messages == []
+        assert result == "recorded"
+        [note] = _stored_messages(backbone)
+        assert note["ai_required_role"] == "assistant"
+        assert note["content"].startswith("[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: התחלה")
 
 
 class TestStoreMedia:

@@ -60,8 +60,9 @@ def test_ledger_stash_result_is_routed_as_synthetic_text_turn(app, monkeypatch):
     }
     seen = {}
 
-    def _fake_conv(notification):
+    def _fake_conv(notification, *, internal=False):
         seen['event'] = notification.event
+        seen['internal'] = internal
 
     monkeypatch.setattr(denidin_module, '_process_conversational_message', _fake_conv)
 
@@ -74,6 +75,8 @@ def test_ledger_stash_result_is_routed_as_synthetic_text_turn(app, monkeypatch):
     assert 'fileMessageData' not in md
     # original routing context preserved for chat id / RBAC / timestamp
     assert seen['event']['senderData']['chatId'] == '972509999999@c.us'
+    # DeniDin-generated context, not the user's own WhatsApp message (stored without its idMessage)
+    assert seen['internal'] is True
     assert seen['event']['timestamp'] == 1755331200
     assert seen['event']['idMessage'] == 'MEDIA1'
 

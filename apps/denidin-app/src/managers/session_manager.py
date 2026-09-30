@@ -11,7 +11,7 @@ import uuid
 from dataclasses import dataclass, asdict, field, fields
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Dict
+from typing import Any, Collection, List, Optional, Dict
 
 import tiktoken
 
@@ -707,8 +707,13 @@ class SessionManager:
         now: Optional[datetime] = None,
         window_days: int = 14,
         max_tokens: Optional[int] = None,
+        exclude_message_ids: Optional[Collection[str]] = None,
     ) -> List[Dict]:
         """The per-turn conversation context under Feature 070 (REQ-MEM-001).
+
+        `exclude_message_ids` (2026-09-30): messages left out of the window - the
+        current turn's own inbound message, which is stored the moment it arrives
+        and which the caller sends to the model explicitly as the turn's input.
 
         Every message for the chat whose Israel-local calendar date is within
         the last `window_days` calendar days, verbatim, oldest-first, with the
@@ -735,7 +740,10 @@ class SessionManager:
 
         # Collect in-window messages in stored (chronological) order.
         in_window: List[Dict] = []
+        excluded = set(exclude_message_ids or ())
         for _mid, mdata in self._iter_persisted_messages(session, live_only=True):
+            if _mid in excluded:
+                continue
             mdate = self._message_local_date(mdata)
             # A future-dated / undatable message is kept (never excludes
             # everything because of one bad timestamp).
@@ -762,6 +770,35 @@ class SessionManager:
             kept_reversed.append(item)
             running += cost
         return list(reversed(kept_reversed))
+
+    # Fields of an already-stored message that may be filled in after it was stored -
+    # facts learned later in the turn (2026-09-30: every message is stored the moment
+    # it's sent/received, so these can no longer wait for the end of the turn).
+    UPDATABLE_MESSAGE_FIELDS = frozenset({"image_path", "extracted_text", "ledger_event_ids", "mcp_calls"})
+
+    def update_message(self, whatsapp_chat: str, message_id: str, **fields: Any) -> bool:
+        """Sets `fields` (only UPDATABLE_MESSAGE_FIELDS) on an already-stored live message
+        of the chat. Returns False - never raises - when the message isn't found or the
+        write fails."""
+        unknown = set(fields) - self.UPDATABLE_MESSAGE_FIELDS
+        if unknown:
+            raise ValueError(f"update_message: fields not updatable: {sorted(unknown)}")
+        try:
+            session = self.get_session(whatsapp_chat)
+            message_file = (self.storage_dir / (session.storage_path or session.session_id)
+                            / "messages" / f"{message_id}.json")
+            if not message_file.exists():
+                logger.warning("update_message: message %s not found for %s", message_id, whatsapp_chat)
+                return False
+            with open(message_file, encoding="utf-8") as f:
+                data = json.load(f)
+            data.update(fields)
+            with open(message_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            return True
+        except Exception as e:  # pylint: disable=broad-except
+            logger.error("update_message failed for %s/%s: %s", whatsapp_chat, message_id, e)
+            return False
 
     def has_whatsapp_id_message(self, whatsapp_chat: str, whatsapp_id_message: str) -> bool:
         """Whether a live (non-archived) message of the chat already carries this real Green API

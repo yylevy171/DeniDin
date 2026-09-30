@@ -432,6 +432,21 @@ class TestSessionManagement:
         assert history2[0]["content"] == "Chat 2 message"
 
 
+def _store_received_media(denidin_context, chat_id, message_id):
+    """The media message as denidin.py stores it on receipt (2026-09-30)."""
+    from datetime import datetime, timezone
+    from src.core.chat_log import ChatLog
+    from src.models.message import WhatsAppMessage
+    denidin_context.chat_log = ChatLog(
+        denidin_context.ai_handler.session_manager, None, rbac_enabled=False)
+    denidin_context.chat_log.store_inbound(WhatsAppMessage(
+        message_id=message_id, chat_id=chat_id, sender_id=chat_id, sender_name="John",
+        text_content="Check out this image!", timestamp=int(datetime.now(timezone.utc).timestamp()),
+        message_type="imageMessage", is_group=False,
+        received_timestamp=datetime.now(timezone.utc),
+    ))
+
+
 class TestImagePathStorage:
     """Test image path field for media persistence."""
 
@@ -444,7 +459,6 @@ class TestImagePathStorage:
         without carrying image_path forward. This exercises the real call site
         instead of SessionManager directly."""
         chat_id = "1234567890@c.us"
-        sender_phone = "1234567890"
         saved_file_path = tmp_path / "media" / "DD-1234567890-abc123.jpg"
 
         denidin_context = SimpleNamespace(
@@ -460,23 +474,15 @@ class TestImagePathStorage:
                 # this suite's real-internal-components convention, even
                 # though this specific test never exercises it directly.
                 ledger_event_manager=LedgerEventManager(storage_dir=str(tmp_path / "events")),
-                # 2026-08-19: _store_media_turn now resolves role/own-number via
-                # these - RBAC disabled here since this test is about
-                # image_path/extracted_text storage, not RBAC.
-                rbac_enabled=False,
-                user_manager=None,
-                own_whatsapp_number="",
             ),
         )
         media_handler = MediaHandler(denidin_context)
+        # 2026-09-30: the media message is stored on receipt; _store_media_turn fills in
+        # what processing learned.
+        _store_received_media(denidin_context, chat_id, "msg-media-1")
 
         media_handler._store_media_turn(
-            chat_id=chat_id,
-            sender_phone=sender_phone,
-            sender_display=sender_phone,
-            media_type="image",
-            caption="Check out this image!",
-            summary="AI analysis of the image",
+            chat_id, "msg-media-1",
             image_path=str(saved_file_path.relative_to(tmp_path)),
         )
 
@@ -488,8 +494,7 @@ class TestImagePathStorage:
         with open(message_file) as f:
             message_data = json.load(f)
 
-        # 2026-08-19: role is the real role - "client" (RBAC disabled fallback,
-        # same as AIHandler._finalize_response's own RBAC-disabled path).
+        # role is the real role - "client" (the RBAC-disabled fallback).
         assert message_data["role"] == "client"
         assert message_data["image_path"] == "media/DD-1234567890-abc123.jpg"
     
@@ -522,7 +527,6 @@ class TestExtractedTextStorage:
 
     def test_extracted_text_storage(self, session_manager, tmp_path):
         chat_id = "1234567890@c.us"
-        sender_phone = "1234567890"
         saved_file_path = tmp_path / "media" / "DD-1234567890-abc123.jpg"
 
         denidin_context = SimpleNamespace(
@@ -534,20 +538,13 @@ class TestExtractedTextStorage:
             ai_handler=SimpleNamespace(
                 session_manager=session_manager,
                 ledger_event_manager=LedgerEventManager(storage_dir=str(tmp_path / "events")),
-                rbac_enabled=False,
-                user_manager=None,
-                own_whatsapp_number="",
             ),
         )
         media_handler = MediaHandler(denidin_context)
+        _store_received_media(denidin_context, chat_id, "msg-media-1")
 
         media_handler._store_media_turn(
-            chat_id=chat_id,
-            sender_phone=sender_phone,
-            sender_display=sender_phone,
-            media_type="image",
-            caption="Check out this image!",
-            summary="AI analysis of the image",
+            chat_id, "msg-media-1",
             image_path=str(saved_file_path.relative_to(tmp_path)),
             extracted_text="טקסט שחולץ מהתמונה",
         )

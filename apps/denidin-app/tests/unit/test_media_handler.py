@@ -12,6 +12,7 @@ import json
 import pytest
 from unittest.mock import Mock, MagicMock, patch
 from pathlib import Path
+from src.core.chat_log import ChatLog
 from src.handlers.media_handler import MediaHandler
 from src.models.media_attachment import MediaAttachment
 
@@ -645,6 +646,18 @@ class TestMediaHandlerErrorHandling:
         handler.docx_extractor.analyze_media.assert_called_once()
 
 
+def _store_received(denidin, message_id, chat_id, timestamp):
+    """The media message as denidin.py stores it on receipt (2026-09-30) - MediaHandler
+    then only fills in what it learns (image_path, extracted_text, ledger_event_ids)."""
+    from datetime import datetime, timezone
+    from src.models.message import WhatsAppMessage
+    denidin.chat_log.store_inbound(WhatsAppMessage(
+        message_id=message_id, chat_id=chat_id, sender_id=chat_id, sender_name="John",
+        text_content="[photo sent]", timestamp=timestamp, message_type="imageMessage",
+        is_group=False, received_timestamp=datetime.now(timezone.utc),
+    ))
+
+
 class TestLedgerEventPersistenceViaMediaHandler:
     """T024a (Feature 069): MediaHandler NO LONGER persists ledger events directly.
     A recognised fee-agreement / bank-deposit image (or DOCX) instead surfaces a
@@ -673,6 +686,7 @@ class TestLedgerEventPersistenceViaMediaHandler:
         denidin.ai_handler.ledger_event_manager = LedgerEventManager(
             storage_dir=str(tmp_path / "events")
         )
+        denidin.chat_log = ChatLog(denidin.ai_handler.session_manager, None, rbac_enabled=False)
         return denidin
 
     def test_recognised_bank_image_surfaces_stash_and_does_not_persist(
@@ -705,6 +719,7 @@ class TestLedgerEventPersistenceViaMediaHandler:
         handler.media_file_manager.save_file = Mock(return_value=tmp_path / "media" / "DD-x.jpg")
         handler.media_file_manager.relative_to_data_root = Mock(side_effect=str)
 
+        _store_received(real_denidin_context, "media-msg-1", "972500000000@c.us", 1770000300)
         result = handler.process_media_message(
             file_url="https://example.com/bank.jpg", filename="bank.jpg",
             mime_type="image/jpeg", file_size=1000,
@@ -762,6 +777,7 @@ class TestLedgerEventPersistenceViaMediaHandler:
         handler.media_file_manager.save_file = Mock(return_value=tmp_path / "media" / "DD-a.docx")
         handler.media_file_manager.relative_to_data_root = Mock(side_effect=str)
 
+        _store_received(real_denidin_context, "media-msg-3", "972500000002@c.us", 1770000500)
         result = handler.process_media_message(
             file_url="https://example.com/agreement.docx", filename="agreement.docx",
             mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -793,6 +809,7 @@ class TestLedgerEventPersistenceViaMediaHandler:
         handler.media_file_manager.save_file = Mock(return_value=tmp_path / "media" / "DD-y.jpg")
         handler.media_file_manager.relative_to_data_root = Mock(side_effect=str)
 
+        _store_received(real_denidin_context, "media-msg-2", "972500000001@c.us", 1770000400)
         handler.process_media_message(
             file_url="https://example.com/photo.jpg", filename="photo.jpg",
             mime_type="image/jpeg", file_size=1000,
@@ -838,6 +855,7 @@ class TestExtractedTextPersistence:
         denidin.ai_handler.ledger_event_manager = LedgerEventManager(
             storage_dir=str(tmp_path / "events")
         )
+        denidin.chat_log = ChatLog(denidin.ai_handler.session_manager, None, rbac_enabled=False)
         return denidin
 
     def _process_and_get_user_message(self, real_denidin_context, tmp_path, analyze_media_result,
@@ -853,6 +871,7 @@ class TestExtractedTextPersistence:
         handler.media_file_manager.save_file = Mock(return_value=tmp_path / "media" / "DD-x.jpg")
         handler.media_file_manager.relative_to_data_root = Mock(side_effect=str)
 
+        _store_received(real_denidin_context, message_id, chat_id, 1770000500)
         result = handler.process_media_message(
             file_url="https://example.com/photo.jpg", filename="photo.jpg",
             mime_type="image/jpeg", file_size=1000,

@@ -80,10 +80,11 @@ class TestNoReplySentinelDetection:
 
         handler.get_response(_make_request(), chat_id="chat_123", sender="Godfather")
 
-        # Only the user message is persisted - one call, not two.
-        assert handler.session_manager.add_message_with_tokens.call_count == 1
-        call = handler.session_manager.add_message_with_tokens.call_args_list[0]
-        assert call[1]["role"] == "user"
+        # 2026-09-30: messages are stored at the WhatsApp boundary (src/core/chat_log.py) -
+        # the user's on receipt, a reply only once it's sent - so AIHandler itself stores
+        # nothing, and a no-reply turn (nothing sent) adds nothing. The boundary side is
+        # covered by test_chat_log.py::test_a_no_reply_turn_stores_nothing.
+        assert handler.session_manager.add_message_with_tokens.call_count == 0
 
     def test_sentinel_with_extra_whitespace_still_detected(self, memory_enabled_config):
         """Trailing/leading whitespace around the sentinel is trimmed before comparison."""
@@ -109,7 +110,6 @@ class TestNoReplySentinelDetection:
         response = handler.get_response(_make_request(), chat_id="chat_123", sender="Godfather")
 
         assert response.should_reply is True
-        assert handler.session_manager.add_message_with_tokens.call_count == 2
 
     def test_normal_response_sets_should_reply_true(self, memory_enabled_config):
         client = MagicMock()
@@ -121,4 +121,3 @@ class TestNoReplySentinelDetection:
         response = handler.get_response(_make_request(), chat_id="chat_123", sender="Godfather")
 
         assert response.should_reply is True
-        assert handler.session_manager.add_message_with_tokens.call_count == 2

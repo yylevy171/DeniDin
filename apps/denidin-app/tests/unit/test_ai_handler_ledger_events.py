@@ -767,8 +767,7 @@ class TestMaxOutputTokensTruncationCausesEmptyReply:
 
         ai_response = ai_handler._finalize_response(
             request, response, effective_chat_id="972500000000@c.us",
-            user_obj=None, user_role="godfather", sender="972500000000@c.us",
-            recipient=None, tools=None,
+            sender="972500000000@c.us", tools=None,
         )
 
         assert ai_response.response_text.strip() != "", (
@@ -780,10 +779,21 @@ class TestMaxOutputTokensTruncationCausesEmptyReply:
 
 
 class TestFinalizeResponseThreadsLedgerEventIds:
-    """T008a: the stored user message must carry ledger_event_ids at creation
-    time (Feature 033's Message.ledger_event_ids, REQ-TRACE-003)."""
+    """T008a: the stored user message carries ledger_event_ids (Feature 033's
+    Message.ledger_event_ids, REQ-TRACE-003). 2026-09-30: the user message is stored on
+    receipt (src/core/chat_log.py); _finalize_response fills its ids in afterwards."""
 
     def test_no_capture_leaves_ledger_event_ids_empty(self, ai_handler, mock_ai_client):
+        from datetime import datetime, timezone
+        from src.core.chat_log import ChatLog
+        from src.models.message import WhatsAppMessage
+        ai_handler.chat_log = ChatLog(ai_handler.session_manager, None, rbac_enabled=False)
+        ai_handler.chat_log.store_inbound(WhatsAppMessage(
+            message_id="msg-none", chat_id="972500000000@c.us", sender_id="972500000000@c.us",
+            sender_name="John", text_content="מה קורה?", timestamp=1770000000,
+            message_type="textMessage", is_group=False,
+            received_timestamp=datetime.now(timezone.utc),
+        ))
         response = SimpleNamespace(
             id="resp_no_capture", output=[], output_text="שלום, איך אפשר לעזור?",
             model="gpt-5.6-luna",
@@ -797,8 +807,7 @@ class TestFinalizeResponseThreadsLedgerEventIds:
 
         ai_handler._finalize_response(
             request, response, effective_chat_id="972500000000@c.us",
-            user_obj=None, user_role="client", sender="972500000000@c.us",
-            recipient="AI", tools=None
+            sender="972500000000@c.us", tools=None
         )
 
         session = ai_handler.session_manager.get_session("972500000000@c.us")

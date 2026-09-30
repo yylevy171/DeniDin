@@ -13,6 +13,7 @@ import pytest
 from whatsapp_chatbot_python import Notification
 
 import denidin as denidin_module
+from src.constants.error_messages import FAILED_TO_PROCESS_FILE_DEFAULT
 from src.models.message import AIResponse
 
 
@@ -109,4 +110,6 @@ def test_flag_on_media_dispatch_unsupported_format_sends_friendly_error_without_
     denidin_module._process_media_message(notification)  # pylint: disable=protected-access
 
     app.backbone.turn_with_rounds.assert_not_called()
-    assert len(notification._test_sent_messages) == 1
+    # Sent through WhatsAppHandler.send_text (2026-09-30) - the one send point that
+    # also stores the sent message in the session.
+    app.whatsapp_handler.send_text.assert_called_once_with(notification, FAILED_TO_PROCESS_FILE_DEFAULT)

@@ -183,8 +183,11 @@ class DeniDin:
                  group_membership_resolver=None, reminder_scheduler=None,
                  accounting_reconciliation_scheduler=None, daily_roll_scheduler=None,
                  capability_reset_scheduler=None,
-                 backbone=None):
+                 backbone=None, chat_log=None):
         self.ai_handler = ai_handler
+        # 2026-09-30: the one session log every inbound/outbound message is stored
+        # through, the moment it crosses the WhatsApp boundary (src/core/chat_log.py).
+        self.chat_log = chat_log
         self.config = config
         self.whatsapp_handler = whatsapp_handler
         self.cleanup_thread = cleanup_thread
@@ -475,9 +478,16 @@ def initialize_app(config_dict: dict, green_api: Optional[Any] = None) -> DeniDi
     # monkey-patching - WhatsAppHandler itself never depends on AIHandler,
     # so this can't be a constructor arg without a circular dependency).
     ai_handler.whatsapp_handler = whatsapp_handler
-    # bugfix-058: error/notice exchanges that never reach AIHandler.get_response (unsupported
-    # types, failed media, ...) are still recorded in the session - same post-construction DI.
-    whatsapp_handler.record_exchange = ai_handler.record_exchange
+    # 2026-09-30: every message is stored the moment it's received/sent, through one
+    # shared ChatLog - injected into every component that receives or sends messages.
+    from src.core.chat_log import ChatLog
+    chat_log = ChatLog(
+        ai_handler.session_manager if ai_handler.memory_enabled else None,
+        ai_handler.user_manager, rbac_enabled=ai_handler.rbac_enabled,
+        own_whatsapp_number=ai_handler.own_whatsapp_number,
+    )
+    whatsapp_handler.chat_log = chat_log
+    ai_handler.chat_log = chat_log
 
     # Feature 039: most-permissive-role RBAC resolution for group turns - built off
     # the injected green_api's own Green API groups client (Feature 043: no longer a
@@ -504,12 +514,8 @@ def initialize_app(config_dict: dict, green_api: Optional[Any] = None) -> DeniDi
             ledger_event_manager=ai_handler.ledger_event_manager,
             morning_mcp_locator=ai_handler.morning_mcp_locator,
             session_manager=ai_handler.session_manager,
-            # 2026-09-15 (closing a real gap): session persistence and
-            # long-term memory recall both need these same shared instances
-            # (REQ-063-03) - memory_manager/user_manager for
-            # Backbone._recall_memory, own_whatsapp_number
-            # (already resolved above) for Backbone._persist_turn's
-            # assistant-message sender JID.
+            # memory_manager/user_manager: long-term memory recall (shared instances,
+            # REQ-063-03); chat_log: storing internal planning notes / media facts.
             memory_manager=ai_handler.memory_manager,
             user_manager=ai_handler.user_manager,
             own_whatsapp_number=ai_handler.own_whatsapp_number,
@@ -523,13 +529,14 @@ def initialize_app(config_dict: dict, green_api: Optional[Any] = None) -> DeniDi
             # (REQ-063-03).
             fee_agreement_tools=getattr(ai_handler, 'fee_agreement_tools', None),
             whatsapp_handler=whatsapp_handler,
+            chat_log=chat_log,
         )
 
     # Create DeniDin instance (will be used as context for background threads and MediaHandler)
     denidin = DeniDin(
         ai_handler, config, whatsapp_handler, cleanup_thread=None,
         group_membership_resolver=group_membership_resolver,
-        backbone=backbone,
+        backbone=backbone, chat_log=chat_log,
     )
     
     # Initialize MediaHandler with DeniDin context and attach to WhatsAppHandler
@@ -657,7 +664,7 @@ def _run_post_turn_ledger_recognition(
         )
 
 
-def _process_conversational_message(notification: Notification) -> None:
+def _process_conversational_message(notification: Notification, *, internal: bool = False) -> None:
     """
     Shared turn-processing logic for any message type that flows into the conversational
     AIHandler pipeline: validate -> parse -> AIHandler -> send response, with the same global
@@ -671,6 +678,9 @@ def _process_conversational_message(notification: Notification) -> None:
 
     Args:
         notification: Green API notification object containing message data
+        internal: the message is DeniDin-generated context re-entering the pipeline
+            (Feature 069's ledger-stash turn), not the user's own WhatsApp message -
+            stored without its WhatsApp idMessage.
     """
     try:
         # Validate message type
@@ -680,6 +690,10 @@ def _process_conversational_message(notification: Notification) -> None:
 
         # Process notification into WhatsAppMessage (includes message_id and received_timestamp)
         message = denidin_app.whatsapp_handler.process_notification(notification)
+        # 2026-09-30: stored the moment it's received - before any processing, so it's
+        # in the session whatever happens to the rest of the turn.
+        if denidin_app.chat_log is not None:
+            denidin_app.chat_log.store_inbound(message, internal=internal)
 
         # Create tracking prefix for all logs related to this message
         tracking = f"[msg_id={message.message_id}] [recv_ts={message.received_timestamp.isoformat()}]"
@@ -769,6 +783,13 @@ def _process_conversational_message(notification: Notification) -> None:
             result = notification.answer(text)
             audit_wire("whatsapp", "in", "progress_update", {"chat_id": message.chat_id, "message": repr(result)})
             debug_wire("whatsapp", "in", "progress_update", {"result": repr(result)})
+            # A progress update is a message like any other: stored right after it's sent.
+            if denidin_app.chat_log is not None:
+                _data = getattr(result, "data", None)
+                denidin_app.chat_log.store_outbound(
+                    message, text,
+                    whatsapp_id_message=_data.get("idMessage") if isinstance(_data, dict) else None,
+                )
             if denidin_app.green_api_bot is not None:
                 send_typing_indicator(denidin_app.green_api_bot, message.chat_id, is_blocked)
 
@@ -831,7 +852,8 @@ def _process_conversational_message(notification: Notification) -> None:
 
         # Feature 039 (US4a): should_reply=False means the model determined this
         # message wasn't for DeniDin - not an error, not a failure, just no reply.
-        # The user's message was already persisted inside get_response.
+        # The user's message was already stored on receipt; nothing is sent, so nothing
+        # more is stored.
         if not ai_response.should_reply:
             logger.info(f"{tracking} No reply sent (should_reply=False, no-reply sentinel)")
             return
@@ -888,22 +910,10 @@ def _process_conversational_message(notification: Notification) -> None:
                 exc_info=True
             )
 
-        # Send generic fallback message to user
+        # Send generic fallback message to user (stored once sent, like every message;
+        # the user's own message was already stored on receipt).
         try:
-            notification.answer(ERROR_PROCESSING_MESSAGE_TRY_AGAIN)
-            _wire_payload = {"chat_id": notification.event.get("senderData", {}).get("chatId", ""), "message": ERROR_PROCESSING_MESSAGE_TRY_AGAIN}
-            audit_wire("whatsapp", "out", "text", _wire_payload)
-            debug_wire("whatsapp", "out", "text", _wire_payload)
-            # bugfix-058: the user's message and this error reply belong in the session too
-            # (the user message is skipped if get_response already stored it before failing).
-            try:
-                from src.models.message import WhatsAppMessage  # local import - matches existing style
-                _failed_text = WhatsAppMessage.from_notification(notification).text_content
-            except Exception:  # pylint: disable=broad-except
-                _failed_text = None
-            denidin_app.whatsapp_handler.record_error_exchange(
-                notification, _failed_text, ERROR_PROCESSING_MESSAGE_TRY_AGAIN
-            )
+            denidin_app.whatsapp_handler.send_text(notification, ERROR_PROCESSING_MESSAGE_TRY_AGAIN)
             try:
                 logger.info(f"{tracking} Generic fallback message sent to user")
             except (NameError, AttributeError):
@@ -963,10 +973,7 @@ def _process_media_message_via_backbone(notification: Notification, message, kee
         logger.warning(f"Media download/validation failed (flag-on path): {exc}")
         if denidin_app.typing_keepalive_scheduler is not None:
             stop_typing_keepalive(denidin_app.typing_keepalive_scheduler, keepalive_job_id)
-        notification.answer(FAILED_TO_PROCESS_FILE_DEFAULT)
-        _wire_payload = {"chat_id": message.chat_id, "message": FAILED_TO_PROCESS_FILE_DEFAULT}
-        audit_wire("whatsapp", "out", "text", _wire_payload)
-        debug_wire("whatsapp", "out", "text", _wire_payload)
+        denidin_app.whatsapp_handler.send_text(notification, FAILED_TO_PROCESS_FILE_DEFAULT)
         return
 
     if denidin_app.typing_keepalive_scheduler is not None:
@@ -981,6 +988,8 @@ def _process_media_message_via_backbone(notification: Notification, message, kee
         media_path = file_manager.store_media(content, filename, message.sender_id)
     except Exception as exc:  # pylint: disable=broad-except
         logger.error(f"Failed to archive incoming media file (flag-on path): {exc}", exc_info=True)
+    if media_path and denidin_app.chat_log is not None:
+        denidin_app.chat_log.update(message.chat_id, message.message_id, image_path=media_path)
 
     media = Media(data=content, mime_type=mime_type, filename=filename)
     # user_prompt is the caption only ("" when none) - the backbone prepends the
@@ -998,7 +1007,7 @@ def _process_media_message_via_backbone(notification: Notification, message, kee
     )
     response = denidin_app.backbone.turn_with_rounds(
         request, chat_id=message.chat_id, is_media=True, media=media, media_type=media_type,
-        media_path=media_path, sender=message.sender_display_name, user_phone=message.sender_id,
+        sender=message.sender_display_name, user_phone=message.sender_id,
         sender_phone=message.sender_id, is_group=message.is_group, chat_name=message.chat_name,
     )
     # 2026-09-15 (closing a real gap - same fix as the text-turn call site
@@ -1006,19 +1015,16 @@ def _process_media_message_via_backbone(notification: Notification, message, kee
     # too, since it's always the same shared ai_handler instance regardless of
     # which backbone actually served the turn.
     denidin_app.ai_handler.last_response = response
+    # Same send as a text turn (plain text or approval buttons), stored once sent.
     if response.should_reply:
-        notification.answer(response.response_text)
-        _wire_payload = {"chat_id": message.chat_id, "message": response.response_text}
-        audit_wire("whatsapp", "out", "text", _wire_payload)
-        debug_wire("whatsapp", "out", "text", _wire_payload)
+        _send_ai_response_and_attach(notification, message.chat_id, response)
 
     # 2026-09-15 (closing a real gap): a media turn is a real godfather/admin
     # turn exactly like a text one - it needs the SAME shared post-turn ledger
     # recognition hook _process_conversational_message already runs, so a
     # fee-agreement/bank-deposit photo captures correctly under flag-on too.
-    # Only possible now that the turn above is actually persisted to the
-    # session (Backbone._persist_turn) - recognize_ledger_event
-    # reads its context from the session, not from this function's own locals.
+    # recognize_ledger_event reads its context from the session (every message of
+    # this turn is already stored, as it was received/sent), not from locals.
     _run_post_turn_ledger_recognition(
         chat_id=message.chat_id, sender_phone=message.sender_id,
         reply_text=response.response_text, turn_mcp_calls=response.mcp_calls,
@@ -1043,6 +1049,15 @@ def _process_media_message(notification: Notification) -> None:
     from src.models.message import WhatsAppMessage  # local import - matches existing style
 
     message = WhatsAppMessage.from_notification(notification)
+    # 2026-09-30: stored the moment it's received (both paths) - caption, or
+    # "[<filename> sent]" with no caption. The saved file's path and its extracted
+    # text are filled into this same stored message later in the turn.
+    if denidin_app.chat_log is not None:
+        _file_data = notification.event.get('messageData', {}).get('fileMessageData', {})
+        denidin_app.chat_log.store_inbound(
+            message,
+            content=_file_data.get('caption', '') or f"[{_file_data.get('fileName', 'file')} sent]",
+        )
     is_blocked = denidin_app.ai_handler.user_manager.get_user(message.sender_id).is_blocked
     # Feature 080: same renewal-vs-single-call choice as _process_conversational_message
     # above - see that function's comment for the full rationale.
@@ -1065,7 +1080,7 @@ def _process_media_message(notification: Notification) -> None:
         _process_media_message_via_backbone(notification, message, keepalive_job_id)
         return
 
-    result = denidin_app.whatsapp_handler.handle_media_message(notification)
+    result = denidin_app.whatsapp_handler.handle_media_message(notification, message=message)
     if denidin_app.typing_keepalive_scheduler is not None:
         stop_typing_keepalive(denidin_app.typing_keepalive_scheduler, keepalive_job_id)
 
@@ -1086,7 +1101,7 @@ def _process_media_message(notification: Notification) -> None:
         message_data.clear()
         message_data["typeMessage"] = "textMessage"
         message_data["textMessageData"] = {"textMessage": stash_text}
-        _process_conversational_message(notification)
+        _process_conversational_message(notification, internal=True)
 
 
 def handle_text_message(notification: Notification) -> None:
@@ -1147,13 +1162,8 @@ def handle_contacts_array_message(notification: Notification) -> None:
         _handle_not_initialized_error(notification, "contacts array")
         return
 
-    notification.answer(CONTACT_CARD_ONE_AT_A_TIME)
-    _wire_payload = {"chat_id": notification.event.get("senderData", {}).get("chatId", ""), "message": CONTACT_CARD_ONE_AT_A_TIME}
-    audit_wire("whatsapp", "out", "text", _wire_payload)
-    debug_wire("whatsapp", "out", "text", _wire_payload)
-    denidin_app.whatsapp_handler.record_error_exchange(
-        notification, "[contacts sent]", CONTACT_CARD_ONE_AT_A_TIME
-    )
+    denidin_app.whatsapp_handler.store_received(notification, "[contacts sent]")
+    denidin_app.whatsapp_handler.send_text(notification, CONTACT_CARD_ONE_AT_A_TIME)
 
 
 def handle_image_message(notification: Notification) -> None:
@@ -1349,6 +1359,11 @@ def handle_button_tap(notification: Notification) -> None:
     button_data = notification.event.get("messageData", {}).get("interactiveButtonsResponse", {})
     selected_id = button_data.get("selectedId", "")
     stanza_id = button_data.get("stanzaId", "")
+    # 2026-09-30: the tap is a message received from the user - stored on receipt, as the
+    # answer it gives ("כן"/"לא"); the synthetic requests below reuse its message_id.
+    if denidin_app.chat_log is not None:
+        denidin_app.chat_log.store_inbound(
+            message, content="כן" if selected_id == "denidin_approve" else "לא")
 
     # Feature 080: a button tap is a real turn too (resolve_button_tap can itself take a
     # while - it's a live MCP/local-tool call, same as any other turn) - start the same
