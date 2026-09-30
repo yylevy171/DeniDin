@@ -3,7 +3,7 @@
 Each numbered section below is one wire-crossing event, in strict chronological order (the number always goes up by 1, regardless of which boundary/direction it is). Click a section to expand it. Each has exactly two sub-sections, marked `↳` - Audit (concise) and Debug (full, verbatim) - and, inside Debug only, the long `instructions` text nests one level deeper, marked `↳↳`.
 
 <details>
-<summary>1. [2026-09-30 14:45:39] USER → APP — context=webhook</summary>
+<summary>1. [2026-09-30 14:55:16] USER → APP — context=webhook</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -11,8 +11,8 @@ Each numbered section below is one wire-crossing event, in strict chronological 
 ```json
 {
   "typeWebhook": "incomingMessageReceived",
-  "idMessage": "billed_modify_single_setup_propose_fd6fff89",
-  "timestamp": 1790768739,
+  "idMessage": "billed_modify_single_setup_propose_43bfc759",
+  "timestamp": 1790769316,
   "senderData": {
     "chatId": "+972501234567@c.us",
     "sender": "+972501234567",
@@ -35,8 +35,8 @@ Each numbered section below is one wire-crossing event, in strict chronological 
 ```json
 {
   "typeWebhook": "incomingMessageReceived",
-  "idMessage": "billed_modify_single_setup_propose_fd6fff89",
-  "timestamp": 1790768739,
+  "idMessage": "billed_modify_single_setup_propose_43bfc759",
+  "timestamp": 1790769316,
   "senderData": {
     "chatId": "+972501234567@c.us",
     "sender": "+972501234567",
@@ -56,7 +56,7 @@ Each numbered section below is one wire-crossing event, in strict chronological 
 </details>
 
 <details>
-<summary>2. [2026-09-30 14:45:42] APP → MODEL — context=_run_resolution_loop (first round)</summary>
+<summary>2. [2026-09-30 14:55:18] APP → MODEL — context=_run_resolution_loop (first round)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -353,7 +353,7 @@ Also note what you are waiting for and what you will do with each possible answe
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 14:45 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-09-30 14:55 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -364,16 +364,16 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>3. [2026-09-30 14:45:44] MODEL → APP — context=_run_resolution_loop (first round)</summary>
+<summary>3. [2026-09-30 14:55:21] MODEL → APP — context=_run_resolution_loop (first round)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0d38f97036a28e45006abcf666c3c487d1b4d2c42f7866449f`
+- response.id: `resp_06f355ba791d8d5b006abcf8a7230487d19f873f6a7c217c93`
 - status: `completed`
-- usage: `{"input_tokens": 5927, "input_tokens_details": {"cache_write_tokens": 5924, "cached_tokens": 0}, "output_tokens": 88, "output_tokens_details": {"reasoning_tokens": 60}, "total_tokens": 6015}`
+- usage: `{"input_tokens": 5927, "input_tokens_details": {"cache_write_tokens": 5924, "cached_tokens": 0}, "output_tokens": 68, "output_tokens_details": {"reasoning_tokens": 40}, "total_tokens": 5995}`
 - reasoning item (content not user-visible)
-- function_call: `react_to_message` call_id=`call_drobHKLXbQKSEL5P4PpWVUZy`
+- function_call: `react_to_message` call_id=`call_J9qiOaDr5F17lzWCddqIWzTI`
 ```json
 {
   "emoji": "🫡",
@@ -386,11 +386,11 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0d38f97036a28e45006abcf666c3c487d1b4d2c42f7866449f`
+- response.id: `resp_06f355ba791d8d5b006abcf8a7230487d19f873f6a7c217c93`
 - status: `completed`
-- usage: `{"input_tokens": 5927, "input_tokens_details": {"cache_write_tokens": 5924, "cached_tokens": 0}, "output_tokens": 88, "output_tokens_details": {"reasoning_tokens": 60}, "total_tokens": 6015}`
+- usage: `{"input_tokens": 5927, "input_tokens_details": {"cache_write_tokens": 5924, "cached_tokens": 0}, "output_tokens": 68, "output_tokens_details": {"reasoning_tokens": 40}, "total_tokens": 5995}`
 - reasoning item (content not user-visible)
-- function_call: `react_to_message` call_id=`call_drobHKLXbQKSEL5P4PpWVUZy`
+- function_call: `react_to_message` call_id=`call_J9qiOaDr5F17lzWCddqIWzTI`
 ```json
 {
   "emoji": "🫡",
@@ -403,7 +403,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>4. [2026-09-30 14:45:44] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>4. [2026-09-30 14:55:21] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -414,7 +414,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 **input:**
 
-- app's reply to `react_to_message` (call_id=`call_drobHKLXbQKSEL5P4PpWVUZy`):
+- app's reply to `react_to_message` (call_id=`call_J9qiOaDr5F17lzWCddqIWzTI`):
 ```text
 {
   "status": "failed"
@@ -423,7 +423,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 - tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
 
-- previous_response_id: `'resp_0d38f97036a28e45006abcf666c3c487d1b4d2c42f7866449f'`
+- previous_response_id: `'resp_06f355ba791d8d5b006abcf8a7230487d19f873f6a7c217c93'`
 
 - max_output_tokens: `20000`
 
@@ -442,7 +442,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 **input:**
 
-- app's reply to `react_to_message` (call_id=`call_drobHKLXbQKSEL5P4PpWVUZy`):
+- app's reply to `react_to_message` (call_id=`call_J9qiOaDr5F17lzWCddqIWzTI`):
 ```text
 {
   "status": "failed"
@@ -451,7 +451,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 - tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
 
-- previous_response_id: `'resp_0d38f97036a28e45006abcf666c3c487d1b4d2c42f7866449f'`
+- previous_response_id: `'resp_06f355ba791d8d5b006abcf8a7230487d19f873f6a7c217c93'`
 
 - max_output_tokens: `20000`
 
@@ -710,7 +710,7 @@ Also note what you are waiting for and what you will do with each possible answe
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 14:45 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-09-30 14:55 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -721,18 +721,19 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>5. [2026-09-30 14:45:46] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>5. [2026-09-30 14:55:23] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0d38f97036a28e45006abcf668d46487d1b3509c461d4d67c3`
+- response.id: `resp_06f355ba791d8d5b006abcf8a9f56c87d1b3a0b3ba21c705a1`
 - status: `completed`
-- usage: `{"input_tokens": 6033, "input_tokens_details": {"cache_write_tokens": 106, "cached_tokens": 5924}, "output_tokens": 29, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6062}`
-- function_call: `send_progress_update` call_id=`call_9hl0oLscwQ2JcC2cu46Qpx3D`
+- usage: `{"input_tokens": 6013, "input_tokens_details": {"cache_write_tokens": 86, "cached_tokens": 5924}, "output_tokens": 50, "output_tokens_details": {"reasoning_tokens": 10}, "total_tokens": 6063}`
+- reasoning item (content not user-visible)
+- function_call: `send_progress_update` call_id=`call_ORqJoAJ8wnR5aLXwwlkTEwmo`
 ```json
 {
-  "text": "מטפל ביצירת התזכורת היומית."
+  "text": "מגדיר תזכורת יומית לשתיית מים בשעה 9:00."
 }
 ```
 
@@ -741,13 +742,14 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0d38f97036a28e45006abcf668d46487d1b3509c461d4d67c3`
+- response.id: `resp_06f355ba791d8d5b006abcf8a9f56c87d1b3a0b3ba21c705a1`
 - status: `completed`
-- usage: `{"input_tokens": 6033, "input_tokens_details": {"cache_write_tokens": 106, "cached_tokens": 5924}, "output_tokens": 29, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6062}`
-- function_call: `send_progress_update` call_id=`call_9hl0oLscwQ2JcC2cu46Qpx3D`
+- usage: `{"input_tokens": 6013, "input_tokens_details": {"cache_write_tokens": 86, "cached_tokens": 5924}, "output_tokens": 50, "output_tokens_details": {"reasoning_tokens": 10}, "total_tokens": 6063}`
+- reasoning item (content not user-visible)
+- function_call: `send_progress_update` call_id=`call_ORqJoAJ8wnR5aLXwwlkTEwmo`
 ```json
 {
-  "text": "מטפל ביצירת התזכורת היומית."
+  "text": "מגדיר תזכורת יומית לשתיית מים בשעה 9:00."
 }
 ```
 
@@ -756,7 +758,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>6. [2026-09-30 14:45:46] APP → USER — context=progress_update</summary>
+<summary>6. [2026-09-30 14:55:23] APP → USER — context=progress_update</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -764,7 +766,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 ```json
 {
   "chat_id": "+972501234567@c.us",
-  "message": "מטפל ביצירת התזכורת היומית."
+  "message": "מגדיר תזכורת יומית לשתיית מים בשעה 9:00."
 }
 ```
 
@@ -776,7 +778,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 ```json
 {
   "chat_id": "+972501234567@c.us",
-  "message": "מטפל ביצירת התזכורת היומית."
+  "message": "מגדיר תזכורת יומית לשתיית מים בשעה 9:00."
 }
 ```
 
@@ -785,7 +787,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>7. [2026-09-30 14:45:46] USER ← APP (send result) — context=progress_update</summary>
+<summary>7. [2026-09-30 14:55:23] USER ← APP (send result) — context=progress_update</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -813,7 +815,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>8. [2026-09-30 14:45:46] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>8. [2026-09-30 14:55:23] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -824,7 +826,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 **input:**
 
-- app's reply to `send_progress_update` (call_id=`call_9hl0oLscwQ2JcC2cu46Qpx3D`):
+- app's reply to `send_progress_update` (call_id=`call_ORqJoAJ8wnR5aLXwwlkTEwmo`):
 ```text
 {
   "sent": true
@@ -833,7 +835,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 - tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
 
-- previous_response_id: `'resp_0d38f97036a28e45006abcf668d46487d1b3509c461d4d67c3'`
+- previous_response_id: `'resp_06f355ba791d8d5b006abcf8a9f56c87d1b3a0b3ba21c705a1'`
 
 - max_output_tokens: `20000`
 
@@ -852,7 +854,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 **input:**
 
-- app's reply to `send_progress_update` (call_id=`call_9hl0oLscwQ2JcC2cu46Qpx3D`):
+- app's reply to `send_progress_update` (call_id=`call_ORqJoAJ8wnR5aLXwwlkTEwmo`):
 ```text
 {
   "sent": true
@@ -861,7 +863,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 - tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
 
-- previous_response_id: `'resp_0d38f97036a28e45006abcf668d46487d1b3509c461d4d67c3'`
+- previous_response_id: `'resp_06f355ba791d8d5b006abcf8a9f56c87d1b3a0b3ba21c705a1'`
 
 - max_output_tokens: `20000`
 
@@ -1120,7 +1122,7 @@ Also note what you are waiting for and what you will do with each possible answe
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 14:45 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-09-30 14:55 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -1131,20 +1133,20 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>9. [2026-09-30 14:45:49] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>9. [2026-09-30 14:55:27] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0d38f97036a28e45006abcf66a918887d1b14042f000fda89a`
+- response.id: `resp_06f355ba791d8d5b006abcf8ac379087d1b4b0a8ec0517a06f`
 - status: `completed`
-- usage: `{"input_tokens": 6079, "input_tokens_details": {"cache_write_tokens": 46, "cached_tokens": 6030}, "output_tokens": 111, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6190}`
-- function_call: `record_planning_status` call_id=`call_WFcNS8iiHy6uAhYLzOQoCVTK`
+- usage: `{"input_tokens": 6080, "input_tokens_details": {"cache_write_tokens": 67, "cached_tokens": 6010}, "output_tokens": 109, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6189}`
+- function_call: `record_planning_status` call_id=`call_gvjSmKejhXhtCOq0RxC6PtRE`
 ```json
 {
-  "where_i_was": "הבקשה היא ליצור תזכורת חדשה שחוזרת מדי יום.",
-  "this_turns_purpose": "להפעיל את מסלול יצירת התזכורת, לאשר את הנוסח והשעה, ואז ליצור אותה רק לאחר אישור.",
-  "expectation": "אטעין את המסלול והיכולות הנדרשות, אציג סיכום לאישור, ואמתין לתשובת המשתמש לפני הכתיבה."
+  "where_i_was": "המשתמש ביקש ליצור תזכורת חוזרת יומית.",
+  "this_turns_purpose": "לטעון את תהליך יצירת התזכורת, לאשר את הנוסח והשעה, ואז ליצור אותה לאחר אישור.",
+  "expectation": "אציג אישור ממוקד עם תזכורת יומית בשעה 9:00 לשתות מים; לאחר אישור אצור אותה."
 }
 ```
 
@@ -1153,15 +1155,15 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0d38f97036a28e45006abcf66a918887d1b14042f000fda89a`
+- response.id: `resp_06f355ba791d8d5b006abcf8ac379087d1b4b0a8ec0517a06f`
 - status: `completed`
-- usage: `{"input_tokens": 6079, "input_tokens_details": {"cache_write_tokens": 46, "cached_tokens": 6030}, "output_tokens": 111, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6190}`
-- function_call: `record_planning_status` call_id=`call_WFcNS8iiHy6uAhYLzOQoCVTK`
+- usage: `{"input_tokens": 6080, "input_tokens_details": {"cache_write_tokens": 67, "cached_tokens": 6010}, "output_tokens": 109, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6189}`
+- function_call: `record_planning_status` call_id=`call_gvjSmKejhXhtCOq0RxC6PtRE`
 ```json
 {
-  "where_i_was": "הבקשה היא ליצור תזכורת חדשה שחוזרת מדי יום.",
-  "this_turns_purpose": "להפעיל את מסלול יצירת התזכורת, לאשר את הנוסח והשעה, ואז ליצור אותה רק לאחר אישור.",
-  "expectation": "אטעין את המסלול והיכולות הנדרשות, אציג סיכום לאישור, ואמתין לתשובת המשתמש לפני הכתיבה."
+  "where_i_was": "המשתמש ביקש ליצור תזכורת חוזרת יומית.",
+  "this_turns_purpose": "לטעון את תהליך יצירת התזכורת, לאשר את הנוסח והשעה, ואז ליצור אותה לאחר אישור.",
+  "expectation": "אציג אישור ממוקד עם תזכורת יומית בשעה 9:00 לשתות מים; לאחר אישור אצור אותה."
 }
 ```
 
@@ -1170,7 +1172,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>10. [2026-09-30 14:45:49] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>10. [2026-09-30 14:55:27] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -1181,14 +1183,14 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 **input:**
 
-- app's reply to `record_planning_status` (call_id=`call_WFcNS8iiHy6uAhYLzOQoCVTK`):
+- app's reply to `record_planning_status` (call_id=`call_gvjSmKejhXhtCOq0RxC6PtRE`):
 ```text
 recorded
 ```
 
 - tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
 
-- previous_response_id: `'resp_0d38f97036a28e45006abcf66a918887d1b14042f000fda89a'`
+- previous_response_id: `'resp_06f355ba791d8d5b006abcf8ac379087d1b4b0a8ec0517a06f'`
 
 - max_output_tokens: `20000`
 
@@ -1207,14 +1209,14 @@ recorded
 
 **input:**
 
-- app's reply to `record_planning_status` (call_id=`call_WFcNS8iiHy6uAhYLzOQoCVTK`):
+- app's reply to `record_planning_status` (call_id=`call_gvjSmKejhXhtCOq0RxC6PtRE`):
 ```text
 recorded
 ```
 
 - tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
 
-- previous_response_id: `'resp_0d38f97036a28e45006abcf66a918887d1b14042f000fda89a'`
+- previous_response_id: `'resp_06f355ba791d8d5b006abcf8ac379087d1b4b0a8ec0517a06f'`
 
 - max_output_tokens: `20000`
 
@@ -1473,7 +1475,7 @@ Also note what you are waiting for and what you will do with each possible answe
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 14:45 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-09-30 14:55 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -1484,15 +1486,15 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>11. [2026-09-30 14:45:50] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>11. [2026-09-30 14:55:29] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0d38f97036a28e45006abcf66da62c87d1adeb70aa9863c56b`
+- response.id: `resp_06f355ba791d8d5b006abcf8afa53087d1af23d0820e3f2b53`
 - status: `completed`
-- usage: `{"input_tokens": 6205, "input_tokens_details": {"cache_write_tokens": 126, "cached_tokens": 6076}, "output_tokens": 23, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6228}`
-- function_call: `load_flows` call_id=`call_hOPMgkIGyNedvcSBwTSJwqiH`
+- usage: `{"input_tokens": 6204, "input_tokens_details": {"cache_write_tokens": 124, "cached_tokens": 6077}, "output_tokens": 23, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6227}`
+- function_call: `load_flows` call_id=`call_eOxSMF23Fm0mHmgVKXyLy7pk`
 ```json
 {
   "flows": [
@@ -1506,10 +1508,10 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0d38f97036a28e45006abcf66da62c87d1adeb70aa9863c56b`
+- response.id: `resp_06f355ba791d8d5b006abcf8afa53087d1af23d0820e3f2b53`
 - status: `completed`
-- usage: `{"input_tokens": 6205, "input_tokens_details": {"cache_write_tokens": 126, "cached_tokens": 6076}, "output_tokens": 23, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6228}`
-- function_call: `load_flows` call_id=`call_hOPMgkIGyNedvcSBwTSJwqiH`
+- usage: `{"input_tokens": 6204, "input_tokens_details": {"cache_write_tokens": 124, "cached_tokens": 6077}, "output_tokens": 23, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6227}`
+- function_call: `load_flows` call_id=`call_eOxSMF23Fm0mHmgVKXyLy7pk`
 ```json
 {
   "flows": [
@@ -1523,7 +1525,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>12. [2026-09-30 14:45:50] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>12. [2026-09-30 14:55:29] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -1534,14 +1536,14 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 **input:**
 
-- app's reply to `load_flows` (call_id=`call_hOPMgkIGyNedvcSBwTSJwqiH`):
+- app's reply to `load_flows` (call_id=`call_eOxSMF23Fm0mHmgVKXyLy7pk`):
 ```text
 loaded flows: flow_create_reminder. Loaded flows now: flow_create_reminder. Loaded capabilities now: (none). Their blueprint text is attached starting now.
 ```
 
 - tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
 
-- previous_response_id: `'resp_0d38f97036a28e45006abcf66da62c87d1adeb70aa9863c56b'`
+- previous_response_id: `'resp_06f355ba791d8d5b006abcf8afa53087d1af23d0820e3f2b53'`
 
 - max_output_tokens: `20000`
 
@@ -1560,14 +1562,14 @@ loaded flows: flow_create_reminder. Loaded flows now: flow_create_reminder. Load
 
 **input:**
 
-- app's reply to `load_flows` (call_id=`call_hOPMgkIGyNedvcSBwTSJwqiH`):
+- app's reply to `load_flows` (call_id=`call_eOxSMF23Fm0mHmgVKXyLy7pk`):
 ```text
 loaded flows: flow_create_reminder. Loaded flows now: flow_create_reminder. Loaded capabilities now: (none). Their blueprint text is attached starting now.
 ```
 
 - tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
 
-- previous_response_id: `'resp_0d38f97036a28e45006abcf66da62c87d1adeb70aa9863c56b'`
+- previous_response_id: `'resp_06f355ba791d8d5b006abcf8afa53087d1af23d0820e3f2b53'`
 
 - max_output_tokens: `20000`
 
@@ -1842,7 +1844,7 @@ flow_create_reminder
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 14:45 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-09-30 14:55 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -1853,19 +1855,19 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>13. [2026-09-30 14:45:53] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>13. [2026-09-30 14:55:31] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0d38f97036a28e45006abcf66f149c87d19db116926e0e0a5e`
+- response.id: `resp_06f355ba791d8d5b006abcf8b23cc487d1b11ba9cbd0072f69`
 - status: `completed`
-- usage: `{"input_tokens": 6581, "input_tokens_details": {"cache_write_tokens": 6578, "cached_tokens": 0}, "output_tokens": 64, "output_tokens_details": {"reasoning_tokens": 28}, "total_tokens": 6645}`
+- usage: `{"input_tokens": 6580, "input_tokens_details": {"cache_write_tokens": 6577, "cached_tokens": 0}, "output_tokens": 55, "output_tokens_details": {"reasoning_tokens": 20}, "total_tokens": 6635}`
 - reasoning item (content not user-visible)
-- function_call: `send_progress_update` call_id=`call_tuVUVU6YubqynjuWH6sLgP2g`
+- function_call: `send_progress_update` call_id=`call_5xqWXFRZ0CewG4NsQfYNdx8E`
 ```json
 {
-  "text": "בודק את פרטי התזכורת ומכין אותה לאישור."
+  "text": "בודק את פרטי התזכורת לפני בקשת האישור."
 }
 ```
 
@@ -1874,14 +1876,14 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0d38f97036a28e45006abcf66f149c87d19db116926e0e0a5e`
+- response.id: `resp_06f355ba791d8d5b006abcf8b23cc487d1b11ba9cbd0072f69`
 - status: `completed`
-- usage: `{"input_tokens": 6581, "input_tokens_details": {"cache_write_tokens": 6578, "cached_tokens": 0}, "output_tokens": 64, "output_tokens_details": {"reasoning_tokens": 28}, "total_tokens": 6645}`
+- usage: `{"input_tokens": 6580, "input_tokens_details": {"cache_write_tokens": 6577, "cached_tokens": 0}, "output_tokens": 55, "output_tokens_details": {"reasoning_tokens": 20}, "total_tokens": 6635}`
 - reasoning item (content not user-visible)
-- function_call: `send_progress_update` call_id=`call_tuVUVU6YubqynjuWH6sLgP2g`
+- function_call: `send_progress_update` call_id=`call_5xqWXFRZ0CewG4NsQfYNdx8E`
 ```json
 {
-  "text": "בודק את פרטי התזכורת ומכין אותה לאישור."
+  "text": "בודק את פרטי התזכורת לפני בקשת האישור."
 }
 ```
 
@@ -1890,7 +1892,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>14. [2026-09-30 14:45:53] APP → USER — context=progress_update</summary>
+<summary>14. [2026-09-30 14:55:31] APP → USER — context=progress_update</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -1898,7 +1900,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 ```json
 {
   "chat_id": "+972501234567@c.us",
-  "message": "בודק את פרטי התזכורת ומכין אותה לאישור."
+  "message": "בודק את פרטי התזכורת לפני בקשת האישור."
 }
 ```
 
@@ -1910,7 +1912,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 ```json
 {
   "chat_id": "+972501234567@c.us",
-  "message": "בודק את פרטי התזכורת ומכין אותה לאישור."
+  "message": "בודק את פרטי התזכורת לפני בקשת האישור."
 }
 ```
 
@@ -1919,7 +1921,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>15. [2026-09-30 14:45:53] USER ← APP (send result) — context=progress_update</summary>
+<summary>15. [2026-09-30 14:55:31] USER ← APP (send result) — context=progress_update</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -1947,7 +1949,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>16. [2026-09-30 14:45:53] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>16. [2026-09-30 14:55:31] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -1958,7 +1960,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 **input:**
 
-- app's reply to `send_progress_update` (call_id=`call_tuVUVU6YubqynjuWH6sLgP2g`):
+- app's reply to `send_progress_update` (call_id=`call_5xqWXFRZ0CewG4NsQfYNdx8E`):
 ```text
 {
   "sent": true
@@ -1967,7 +1969,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 - tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
 
-- previous_response_id: `'resp_0d38f97036a28e45006abcf66f149c87d19db116926e0e0a5e'`
+- previous_response_id: `'resp_06f355ba791d8d5b006abcf8b23cc487d1b11ba9cbd0072f69'`
 
 - max_output_tokens: `20000`
 
@@ -1986,7 +1988,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 **input:**
 
-- app's reply to `send_progress_update` (call_id=`call_tuVUVU6YubqynjuWH6sLgP2g`):
+- app's reply to `send_progress_update` (call_id=`call_5xqWXFRZ0CewG4NsQfYNdx8E`):
 ```text
 {
   "sent": true
@@ -1995,7 +1997,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 - tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
 
-- previous_response_id: `'resp_0d38f97036a28e45006abcf66f149c87d19db116926e0e0a5e'`
+- previous_response_id: `'resp_06f355ba791d8d5b006abcf8b23cc487d1b11ba9cbd0072f69'`
 
 - max_output_tokens: `20000`
 
@@ -2270,7 +2272,7 @@ flow_create_reminder
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 14:45 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-09-30 14:55 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -2281,15 +2283,15 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>17. [2026-09-30 14:45:55] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>17. [2026-09-30 14:55:33] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0d38f97036a28e45006abcf6721da887d188d88633cc48ffef`
+- response.id: `resp_06f355ba791d8d5b006abcf8b400d887d1a7a9154ae972a5d7`
 - status: `completed`
-- usage: `{"input_tokens": 6662, "input_tokens_details": {"cache_write_tokens": 81, "cached_tokens": 6578}, "output_tokens": 24, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6686}`
-- function_call: `load_capabilities` call_id=`call_qR0v7xrQr8YHWKz0dtGT0nn3`
+- usage: `{"input_tokens": 6652, "input_tokens_details": {"cache_write_tokens": 72, "cached_tokens": 6577}, "output_tokens": 24, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6676}`
+- function_call: `load_capabilities` call_id=`call_cPEQxl5LsVZz2s6cgqqgnxZO`
 ```json
 {
   "capabilities": [
@@ -2303,10 +2305,10 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0d38f97036a28e45006abcf6721da887d188d88633cc48ffef`
+- response.id: `resp_06f355ba791d8d5b006abcf8b400d887d1a7a9154ae972a5d7`
 - status: `completed`
-- usage: `{"input_tokens": 6662, "input_tokens_details": {"cache_write_tokens": 81, "cached_tokens": 6578}, "output_tokens": 24, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6686}`
-- function_call: `load_capabilities` call_id=`call_qR0v7xrQr8YHWKz0dtGT0nn3`
+- usage: `{"input_tokens": 6652, "input_tokens_details": {"cache_write_tokens": 72, "cached_tokens": 6577}, "output_tokens": 24, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6676}`
+- function_call: `load_capabilities` call_id=`call_cPEQxl5LsVZz2s6cgqqgnxZO`
 ```json
 {
   "capabilities": [
@@ -2320,7 +2322,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>18. [2026-09-30 14:45:55] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>18. [2026-09-30 14:55:33] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -2331,14 +2333,14 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 **input:**
 
-- app's reply to `load_capabilities` (call_id=`call_qR0v7xrQr8YHWKz0dtGT0nn3`):
+- app's reply to `load_capabilities` (call_id=`call_cPEQxl5LsVZz2s6cgqqgnxZO`):
 ```text
 loaded capabilitys: cap_reminders_write. Loaded flows now: flow_create_reminder. Loaded capabilities now: cap_reminders_write. Their instructions and tools are attached starting now.
 ```
 
 - tools (12): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder']
 
-- previous_response_id: `'resp_0d38f97036a28e45006abcf6721da887d188d88633cc48ffef'`
+- previous_response_id: `'resp_06f355ba791d8d5b006abcf8b400d887d1a7a9154ae972a5d7'`
 
 - max_output_tokens: `20000`
 
@@ -2357,14 +2359,14 @@ loaded capabilitys: cap_reminders_write. Loaded flows now: flow_create_reminder.
 
 **input:**
 
-- app's reply to `load_capabilities` (call_id=`call_qR0v7xrQr8YHWKz0dtGT0nn3`):
+- app's reply to `load_capabilities` (call_id=`call_cPEQxl5LsVZz2s6cgqqgnxZO`):
 ```text
 loaded capabilitys: cap_reminders_write. Loaded flows now: flow_create_reminder. Loaded capabilities now: cap_reminders_write. Their instructions and tools are attached starting now.
 ```
 
 - tools (12): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder']
 
-- previous_response_id: `'resp_0d38f97036a28e45006abcf6721da887d188d88633cc48ffef'`
+- previous_response_id: `'resp_06f355ba791d8d5b006abcf8b400d887d1a7a9154ae972a5d7'`
 
 - max_output_tokens: `20000`
 
@@ -2690,7 +2692,7 @@ cap_reminders_write
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 14:45 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-09-30 14:55 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -2701,21 +2703,19 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>19. [2026-09-30 14:45:59] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>19. [2026-09-30 14:55:35] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0d38f97036a28e45006abcf6743b8087d1bcb31f0da4a19325`
+- response.id: `resp_06f355ba791d8d5b006abcf8b5aa3887d1b8d978354f89965d`
 - status: `completed`
-- usage: `{"input_tokens": 8785, "input_tokens_details": {"cache_write_tokens": 8782, "cached_tokens": 0}, "output_tokens": 217, "output_tokens_details": {"reasoning_tokens": 73}, "total_tokens": 9002}`
+- usage: `{"input_tokens": 8775, "input_tokens_details": {"cache_write_tokens": 8772, "cached_tokens": 0}, "output_tokens": 60, "output_tokens_details": {"reasoning_tokens": 25}, "total_tokens": 8835}`
 - reasoning item (content not user-visible)
-- function_call: `record_planning_status` call_id=`call_lo17agsv8PFazPNzMg1WTekg`
+- function_call: `send_progress_update` call_id=`call_vgAcnFdxxzP03YUAIQnXzEjN`
 ```json
 {
-  "where_i_was": "במסלול יצירת תזכורת, לאחר קבלת נוסח ותדירות: לשתות מים מדי יום בשעה 09:00. השעה הנוכחית היא 30.09.2026 בשעה 14:45, ולכן המופע הראשון יהיה 01.10.2026 בשעה 09:00.",
-  "this_turns_purpose": "לקבל אישור מפורש לפני יצירת התזכורת.",
-  "expectation": "אטען את יכולת האישור ואציג סיכום מלא עם אפשרות לאישור או דחייה."
+  "text": "הפרטים ברורים; מציג אישור לפני היצירה."
 }
 ```
 
@@ -2724,16 +2724,14 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0d38f97036a28e45006abcf6743b8087d1bcb31f0da4a19325`
+- response.id: `resp_06f355ba791d8d5b006abcf8b5aa3887d1b8d978354f89965d`
 - status: `completed`
-- usage: `{"input_tokens": 8785, "input_tokens_details": {"cache_write_tokens": 8782, "cached_tokens": 0}, "output_tokens": 217, "output_tokens_details": {"reasoning_tokens": 73}, "total_tokens": 9002}`
+- usage: `{"input_tokens": 8775, "input_tokens_details": {"cache_write_tokens": 8772, "cached_tokens": 0}, "output_tokens": 60, "output_tokens_details": {"reasoning_tokens": 25}, "total_tokens": 8835}`
 - reasoning item (content not user-visible)
-- function_call: `record_planning_status` call_id=`call_lo17agsv8PFazPNzMg1WTekg`
+- function_call: `send_progress_update` call_id=`call_vgAcnFdxxzP03YUAIQnXzEjN`
 ```json
 {
-  "where_i_was": "במסלול יצירת תזכורת, לאחר קבלת נוסח ותדירות: לשתות מים מדי יום בשעה 09:00. השעה הנוכחית היא 30.09.2026 בשעה 14:45, ולכן המופע הראשון יהיה 01.10.2026 בשעה 09:00.",
-  "this_turns_purpose": "לקבל אישור מפורש לפני יצירת התזכורת.",
-  "expectation": "אטען את יכולת האישור ואציג סיכום מלא עם אפשרות לאישור או דחייה."
+  "text": "הפרטים ברורים; מציג אישור לפני היצירה."
 }
 ```
 
@@ -2742,423 +2740,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>20. [2026-09-30 14:45:59] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- flows: flow_create_reminder
-
-- capabilities: cap_reminders_write
-
-**input:**
-
-- app's reply to `record_planning_status` (call_id=`call_lo17agsv8PFazPNzMg1WTekg`):
-```text
-recorded
-```
-
-- tools (12): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder']
-
-- previous_response_id: `'resp_0d38f97036a28e45006abcf6743b8087d1bcb31f0da4a19325'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-- instructions: backbone (flows=flow_create_reminder, capabilities=cap_reminders_write)
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- flows: flow_create_reminder
-
-- capabilities: cap_reminders_write
-
-**input:**
-
-- app's reply to `record_planning_status` (call_id=`call_lo17agsv8PFazPNzMg1WTekg`):
-```text
-recorded
-```
-
-- tools (12): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder']
-
-- previous_response_id: `'resp_0d38f97036a28e45006abcf6743b8087d1bcb31f0da4a19325'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-<details>
-<summary>↳↳ instructions (23361 chars)</summary>
-
-```text
-# DeniDin — Backbone
-
-## How You Work
-
-You work with two kinds of building blocks, described at low resolution in the
-catalogs below: **flows** (`flow_...`) - blueprints for a recurring kind of
-request - and **capabilities** (`cap_...`) - the domains that actually do things,
-each with its own prompt and its own real tools. Flows can load other flows and
-capabilities; a flow defines *what to do and in what order*, while each
-capability holds the detail of what it itself does.
-
-Loading tools, usable in any order, any number of times:
-
-- **`load_flows(flows)` / `unload_flows(flows)`** - always an array; one item is
-  fine, and combining flows is allowed when a request spans more than one.
-- **`load_capabilities(capabilities)` / `unload_capabilities(capabilities)`** -
-  always an array. The moment a capability is loaded, its prompt AND its real
-  tools are attached, starting the very next round; call the real tool directly,
-  there is no separate "use" step. A flow's own "Capabilities:" line declares
-  every capability that flow will need - load all of them together, in one
-  `load_capabilities` call, right after loading the flow, rather than loading
-  them one at a time as each step comes up: you already know you'll need them,
-  and batching saves a round-trip per capability.
-- **`reset_to_backbone()`** - unloads every loaded flow and capability at once.
-  Use it once you are genuinely done with the user's request(s), not mid-task.
-
-Loading an already-loaded item, or unloading one that is not loaded, is a
-harmless no-op. Loaded flows and capabilities stay loaded across this and future
-turns in this chat until you unload them (or they auto-clear after a period of
-inactivity); the "Loaded flows" and "Loaded capabilities" lines near the end of
-these instructions always show what is currently loaded. Unload something only
-when nothing you are still working on needs it - another flow may be using it.
-
-## Always-present capabilities
-
-Four capabilities are always available, cannot be unloaded, and each has its own
-prompt right below: `cap_send_to_user` (your actual reply), `cap_react_to_message`
-(a WhatsApp emoji reaction), `cap_send_progress_update` (an interim message
-while you work) and `cap_record_planning_status` (your own running account of
-where you are, which is how you keep your place across turns and inside nested
-flows). At every step of any flow, consider whether they would help: react to
-the user's message, send a progress update, record your planning status, or
-reply to the user. Flows do not repeat this; use your judgment.
-
-`cap_approval_with_buttons` (yes/no buttons before a write) is an ordinary
-capability: flows that need a sign-off load it.
-
-## Flows and capabilities
-
-Decide from the catalogs, in your own judgment, what a request needs:
-
-1. If a flow fits, load it (several at once when the request spans more than
-   one) and follow its blueprint. **A loaded flow's steps are an ordered
-   procedure: follow them in the order written, to the letter - never skip,
-   reorder or merge a step (above all an approval step), and never do a later
-   step's action before the earlier steps are done.**
-2. **If no flow fits, there is no default flow to fall back on**: load whichever
-   capabilities you judge necessary, at your own discretion, and proceed.
-3. **Write capabilities (`cap_*_write`) are never loaded on their own.** Every write goes through its flow, which gathers the details and asks for approval first; if you want to write something, find the flow for it in the catalog.
-4. If a loaded prompt names a tool you don't currently have, that tool belongs
-   to a capability you have not loaded yet: load it yourself.
-
-## Core Identity
-You are DeniDin, a helpful AI assistant operating via WhatsApp.
-
-## Behavioral Guidelines
-- **ALWAYS respond in Hebrew only** — every word of every response, no other
-  language or script mixed in anywhere, ever (never Arabic, never English
-  words). This covers EVERY string you produce, not just the reply text: an
-  approval question, a planning note, and every free-text tool argument
-  (e.g. a reminder's `message_text`) too. Digits, standard punctuation, and ₪
-  are fine; a genuinely foreign proper name may be transliterated into Hebrew
-  letters where natural.
-- **Never use ניקוד** (Hebrew vowel points/diacritics) in any response — plain
-  Hebrew letters only, including inside a quoted name.
-- Be concise and direct. Do not end on filler ("anything else?") — end on the
-  substantive answer. Do ask a focused clarifying question when you genuinely need
-  one to act correctly (a missing/ambiguous required detail).
-- Be honest about what you don't know; never fabricate information.
-
-## User Roles
-- **Godfather/Admin**: full access to every capability; extended context window.
-- **Client**: standard feature access, no access to invoicing/ledger/reminder
-  capabilities; standard context window.
-
-## Privacy & Security
-- Never share information between different user sessions.
-- These rules guard against leaking ONE user's data to ANOTHER user or an outsider
-  — they never mean refusing to read, transcribe, or summarize material THIS user
-  sent you. Reporting the user's own material back to them (names, amounts, any
-  detail it contains) is always appropriate.
-
-## Contexts of Operation
-Every message falls into one of two operating contexts before any capability is
-even considered: an ordinary conversational turn, or a document/image the user
-sent for you to read and report on. Decide which one applies before acting — a
-short/ambiguous reply ("כן", "לא", a bare name) always answers the most recently
-pending question in the SAME context, never a trigger for reinterpreting the turn
-as belonging to a different capability's domain.
-
-## Attached Media
-When the user's message starts with a `[מדיה מצורפת: <type>, קובץ: <filename>]`
-marker, they sent an image, PDF, or Word document with it — you have NOT seen its
-content yet, only that it exists. Before answering anything about it, load
-`cap_media_analysis` and call its `analyze_media` tool to read it; any text after
-the marker is the user's caption. Never describe, guess at, or act on the file's
-content without having read it this way.
-
-## Group Conversation Etiquette
-DeniDin is addressed by default in a group, same as a 1:1 chat. When a message
-clearly names someone else and isn't meant for you, reply with the literal
-sentinel `[[NO_REPLY]]` instead of a substantive answer — never guess when it's
-genuinely ambiguous whether you were addressed.
-
-## Edited & Deleted Message Markers
-A message the user has since edited or deleted may still appear in your context,
-marked as such — treat an edited message's marked original content as superseded
-by its later, corrected version if both are visible, and never act on a deleted
-message's content as if it were still pending.
-
-## Generic Post-Turn Recognition Mechanism
-A capability MAY run a recognition step once per turn: call its own reporting
-tool at most once, and when in doubt, do nothing rather than guess. This shape
-is reusable by any capability that wants one — the domain-specific rules for
-what to recognize and how live in that capability's own prompt file, not here.
-
-
-# Capability: Send to user (always present)
-
-`send_to_user(text)` is your actual reply to the user. Call it whenever you are
-ready to speak, not only at the very end: to answer, to ask a question, to
-report an outcome. A turn that ends without it, or without an approval question,
-leaves the user with nothing.
-
-- Pass the literal text `[[NO_REPLY]]` to deliberately say nothing this turn. Use
-  it in a group when a message clearly names someone else and is not meant for
-  you. When it is genuinely unclear whether you were addressed, do not guess.
-- For a yes/no sign-off, use `cap_approval_with_buttons` instead; it gives the
-  user tappable buttons.
-- Reply in Hebrew only, concisely, without filler. End on the substantive answer.
-  Ask a focused question only when you genuinely need the answer to act correctly.
-
-
-# Capability: React to message (always present)
-
-`react_to_message` puts a native WhatsApp emoji reaction on a message. It is a
-lightweight, reversible signal - never a substitute for a substantive reply,
-and never a mechanical habit reached for out of uncertainty about what else
-to do. Typing an emoji into your reply text is NOT a reaction and does not
-replace calling the tool.
-
-Before reaching for it, ask yourself: does this add a real signal the user
-doesn't already have - that you saw their message, that you're on it, that
-something just succeeded or failed - or would it just be noise on top of a
-reply that already says the same thing?
-
-Evaluate against:
-- Does the user currently have any signal you registered their message and
-  are handling it (or have finished)? If there's a real gap before your
-  substantive reply, a reaction can fill it.
-- Is your actual reply, arriving in this same round or moments later, already
-  going to tell them everything a reaction would? If so, it adds nothing.
-- Is this ambient chatter that doesn't really concern you? Then it isn't
-  worth one.
-
-**Classics** (a menu, not a checklist): 👍 simple ack · 🫡 "on it" · 👀 document
-being looked into · ✅ clean success · 🎉 a bigger win · ⚠️ resolved but needs
-attention · ❌ failed/declined · ❓ unresolved, needs clarification · 🙏
-reciprocating thanks · ❤️ warmth beyond a simple thanks.
-
-When genuinely unsure whether a reaction fits, don't send one - silence is
-the safer default, not noise.
-
-
-# Capability: Send progress update (always present)
-
-`send_progress_update(text)` sends one brief interim WhatsApp message while you
-are still working, before your final reply. Keep it to a short plain sentence.
-
-Users are waiting on the other end and don't like silence - they want to know
-something is happening with their request, not just get one final answer out
-of nowhere.
-
-Call this every single time you interact with any tool or capability -
-loading a flow or capability, calling a real domain tool, an MCP call,
-anything that is not just talking to the user - before or after that step,
-in the same round as whatever else you are doing. Never skip it and never
-wait for a separate round.
-
-- Never a substitute for the final answer.
-
-
-# Capability: Record planning status (always present)
-
-`record_planning_status(where_i_was, this_turns_purpose, expectation)` is your own
-running account of where this turn, and across turns this whole task, stands. It is
-how you keep continuity, since nothing else remembers your reasoning beyond what you
-write here and the real conversation history.
-
-Record it at least at the start and at the end of every flow, and whenever you are
-about to wait on the user (a choice, a missing detail, an approval), in the middle
-of a flow as well. Say which flow you are in and which step, and if you are inside a
-flow that was loaded by another flow, say so, so that you know where to return to.
-Also note what you are waiting for and what you will do with each possible answer.
-
-
-## Flows
-
-- flow_add_client: Adding a brand-new client record to Morning ("תוסיף לקוח חדש", or a shared contact card the user wants saved). Checks for an existing or similar client first so a duplicate is never created by accident, tells the user about similar candidates, and creates the record only with approval. Other flows load it whenever a client turns out not to exist yet.
-- flow_modify_client: Changing an existing client's own details (name, email, phone) in Morning. Resolves which real client is meant, relaying candidates when the match is not exact, and updates it with approval. Not for creating a client and not for documents.
-- flow_issue_invoice_for_payment_due: Issuing a new tax invoice (305) for a client, for money that is still owed ("תפיק חשבונית ללקוח X"). Never for money that has already arrived. Money that has already arrived belongs to flow_issue_invoice_receipt_combo instead.
-- flow_issue_invoice_receipt_combo: Issuing a combined tax invoice/receipt (320) for a payment that has already been received and that no earlier document covers - the most common way to record incoming money, whether reported verbally or shown in a bank slip or payment screenshot. Money that an existing document already covers belongs to flow_issue_payment_received_with_reference_doc.
-- flow_issue_transaction_account: Issuing a transaction account (חשבון עסקה, 300) for a client - only when the user's own wording names this document type. Ordinary requests for an invoice belong to flow_issue_invoice_for_payment_due.
-- flow_issue_receipt_without_invoice: Recording a standalone receipt (400) with no invoice behind it, for example a refundable deposit. A receipt against an existing invoice belongs to flow_issue_payment_received_with_reference_doc.
-- flow_payment_received_by_bank_slip_image: A bank slip or payment screenshot arrived. Reads it, records the payer, and gets the payment recorded in Morning the right way: a new combo document when nothing covers it, or a document against an existing one.
-- flow_issue_payment_received_with_reference_doc: Recording a payment received against an existing Morning document: a receipt (400) for an existing invoice (305), or a combo document (320) closing an existing transaction account (300) ("סמן כשולם"). Money that no document covers belongs to flow_issue_invoice_receipt_combo.
-- flow_cancel_document_with_credit_note: Cancelling an existing Morning document with a credit note (330) ("בטל את החשבונית"). Finds the one real document and shows its real data in the approval before writing.
-- flow_cancel_transaction_account: Cancelling an open transaction account (300) directly. No document of any kind is created. Cancelling any other kind of document belongs to flow_cancel_document_with_credit_note.
-- flow_fee_agreement_provided_by_user: The user reports or forwards a fee agreement (הסכם) - as text or as an image - made with a client. An agreement must never belong to a client Morning does not manage, so this makes sure the client exists first. Recording the agreement in the ledger happens automatically after the turn.
-- flow_deposit_provided_by_user: The user reports or forwards a bank deposit (text or a bank slip image). Makes sure the payer exists as a client in Morning first. Recording the deposit in the ledger happens automatically after the turn.
-- flow_user_question: Answering a question about the user's clients, past agreements, deposits, or amounts owed and paid. Decides where the answer lives (the ledger first, Morning when it may hold it), and never answers that nothing exists before checking Morning where Morning could hold it.
-- flow_invoicing_query: Reading from the invoicing system for a client the user names: resolves the client's exact stored name first, then reads the documents or status. Other flows load it whenever they need to look up documents in Morning.
-- flow_generate_fee_agreement_docx: Generating a fee agreement document (הסכם שכר טרחה) as a .docx file to send to a prospective client. The client does not exist yet, so no client lookup is involved. Recording an agreement the user reports belongs to flow_fee_agreement_provided_by_user.
-- flow_create_reminder: Creating a new reminder, one-time or recurring ("תזכיר לי בעוד שעתיים", "תזכיר לי כל יום ראשון"). Confirms the text and the schedule, and creates the reminder only with approval. Use this flow, not cap_reminders_write directly, whenever a reminder is added.
-- flow_modify_reminder: Changing or cancelling an existing reminder ("תזיז את התזכורת", "תבטל את התזכורת"). Looks up the user's real reminders to identify the exact one before modifying or deleting it, with approval. Adding a brand-new reminder belongs to flow_create_reminder. Use the reminder flows, not cap_reminders_write directly.
-
-## Capabilities
-
-- cap_invoicing_write: Creating a Morning DOCUMENT for a client - an invoice, a receipt, a transaction account, a credit note, or a combo tax-invoice/receipt - or cancelling a transaction account. Writes only: finding the client or the existing document, and getting approval, are the calling flow's job, so load it only through that flow (flow_issue_*, flow_cancel_*, flow_payment_received_*), never directly. Not for creating or updating a client record - see cap_client_write.
-- cap_invoicing_read: Reading from the invoicing system (Morning): a specific document's own status and details, recent documents, a financial summary, a download link. It is given an already-resolved client name or document id. Not for a client's own details - see cap_client_read - and not the first choice for a general owed/paid amount question - see cap_ledger_query.
-- cap_client_write: Creating a new client record, or updating an existing client's own details (name/email/phone) in Morning. Writes only: load it only through flow_add_client or flow_modify_client, never directly. Never for producing any document - see cap_invoicing_write.
-- cap_client_read: Looking up an existing client's own details (name/email/phone/id), listing clients, and resolving a client name to its exact stored Morning spelling. Never for a client's financial history - see cap_ledger_query and cap_invoicing_read.
-- cap_ledger_query: Answering questions about PAST fee agreements or bank deposits already recorded, including how much a client/payer owes or has paid - whether or not a formal Morning invoice exists. The ledger is a fast cache over Morning and covers agreement-level amounts Morning cannot see at all.
-- cap_reminders_write: Creating, changing, or cancelling a reminder (one-time or recurring) for the user. Writes only: load it only through flow_create_reminder or flow_modify_reminder, never directly.
-- cap_reminders_read: Looking up the user's own existing reminders - what's scheduled, for when.
-- cap_media_analysis: Reading/extracting the content of an image or document the user sent. Used inside a larger flow, or on its own to work out what a piece of media is for.
-- cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
-- cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
-
-# Flow: Create reminder
-
-Goal: create a new reminder (one-time or recurring) for the user, exactly as they asked.
-
-Capabilities: `cap_reminders_write`, `cap_approval_with_buttons`.
-
-Follow these steps in order, to the letter.
-
-1. Load `cap_reminders_write`.
-2. Work out what to remind about and when (a one-time moment, or a recurring cadence), resolving relative wording against the current date and time. Anything you don't have from the user, ask for with `cap_send_to_user`, one question at a time; never guess or invent a value.
-3. Approval: creating a reminder MUST be approved by the user BEFORE it is created. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Do NOT call `create_reminder` in this step or before a clear yes. On a no, do nothing, and ask with `cap_send_to_user` what to change.
-4. Only after a clear yes: call `create_reminder`. If it fails, tell the user plainly what happened; retry once only if the reason is fixable, otherwise stop.
-5. If the user drops the request or changes the subject at any point, do nothing further; the flow is complete.
-6. End: report the outcome with `cap_send_to_user`, then unload `cap_reminders_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
-
-
-# Capability: Reminders — Write (godfather/admin only)
-
-**Use this capability from within a flow (flow_create_reminder / flow_modify_reminder), never on its own for a user request.** The flow decides when it is loaded and when approval is required; this capability holds the details of the write itself.
-
-**Creating, modifying or deleting a reminder is a state-changing action, which usually requires the user's explicit approval first.**
-
-Attaches `create_reminder`, `modify_reminder` and `delete_reminder`. Each executes
-immediately and needs the user's approval first. ONLY call `create_reminder` when the
-user's own message explicitly asks to be reminded of something at a future time
-(one-time, or a recurring cadence like "כל יום/שבוע"). ONLY call `modify_reminder` or
-`delete_reminder` when the user explicitly asks to change or cancel an EXISTING
-reminder, with that reminder's real `reminder_id` (never a guess). Never call any of
-these to interpret a confirmation reply ("כן"/"לא") or an ambiguous message.
-
-**Approval data points.** Whoever raises the approval must show the user:
-- create: the reminder's text and its schedule (when, or the recurrence),
-  human-readable.
-- modify: WHICH reminder (its text), the scope (whole series or a single occurrence),
-  and exactly what changes (new text / new time / new recurrence).
-- delete: WHICH reminder (its text) and the scope (whole series or a single
-  occurrence).
-
-`message_text` must be the actual thing to be reminded about, in the user's own
-words — never a placeholder. Any due-date/time field must be a future ISO-8601
-local (Asia/Jerusalem) datetime.
-
-For `create_reminder`: `schedule_type=one_time` needs `one_time_due_at` (and
-`recurrence` null); `schedule_type=recurring` needs a full `recurrence` object
-(interval/freq/weekdays or month_day/month_nth_weekday/first_occurrence_at/
-end_condition) and `one_time_due_at` null — gather everything needed through
-conversation before calling, never guess a missing recurrence field.
-
-For modify/delete, `scope` is `whole_series` for a one-time reminder or a
-whole-series change, and `single_occurrence` (with an `occurrence_date_hint`) to
-change/cancel just one upcoming occurrence of a recurring reminder, leaving the
-rest of the series untouched.
-
-## On a creation/modification failure
-
-A call into this capability can genuinely fail (e.g. the due date/time you
-computed turns out not to be in the future). When that happens you get back
-the REAL reason, not a generic "it failed" — read it. It will point you back
-at the current date/time already stated in THIS call's own instructions
-("THE CURRENT DATE AND TIME IS..."): recompute the due date/recurrence
-relative to that actual value (never a guess, never a date from training
-data) and retry the SAME call once. Only if that second attempt also fails,
-tell the user plainly that the action didn't go through — never silently
-give up after one failure, and never retry more than once without a new,
-different reason to believe it will work.
-
-
-## Loaded flows
-
-flow_create_reminder
-
-## Loaded capabilities
-
-cap_reminders_write
-
----
-
-THE CURRENT DATE AND TIME IS 2026-09-30 14:45 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
-YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
-```
-
-</details>
-
-</details>
-
-</details>
-
-<details>
-<summary>21. [2026-09-30 14:46:01] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- response.id: `resp_0d38f97036a28e45006abcf67822e487d1b13c355f334bcc11`
-- status: `completed`
-- usage: `{"input_tokens": 9017, "input_tokens_details": {"cache_write_tokens": 232, "cached_tokens": 8782}, "output_tokens": 31, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9048}`
-- function_call: `send_progress_update` call_id=`call_UYtDn1T6GCP8bGZKBaOcTag3`
-```json
-{
-  "text": "התזכורת מוכנה לאישור לפני יצירתה."
-}
-```
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- response.id: `resp_0d38f97036a28e45006abcf67822e487d1b13c355f334bcc11`
-- status: `completed`
-- usage: `{"input_tokens": 9017, "input_tokens_details": {"cache_write_tokens": 232, "cached_tokens": 8782}, "output_tokens": 31, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9048}`
-- function_call: `send_progress_update` call_id=`call_UYtDn1T6GCP8bGZKBaOcTag3`
-```json
-{
-  "text": "התזכורת מוכנה לאישור לפני יצירתה."
-}
-```
-
-</details>
-
-</details>
-
-<details>
-<summary>22. [2026-09-30 14:46:01] APP → USER — context=progress_update</summary>
+<summary>20. [2026-09-30 14:55:35] APP → USER — context=progress_update</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -3166,7 +2748,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 ```json
 {
   "chat_id": "+972501234567@c.us",
-  "message": "התזכורת מוכנה לאישור לפני יצירתה."
+  "message": "הפרטים ברורים; מציג אישור לפני היצירה."
 }
 ```
 
@@ -3178,7 +2760,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 ```json
 {
   "chat_id": "+972501234567@c.us",
-  "message": "התזכורת מוכנה לאישור לפני יצירתה."
+  "message": "הפרטים ברורים; מציג אישור לפני היצירה."
 }
 ```
 
@@ -3187,7 +2769,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>23. [2026-09-30 14:46:01] USER ← APP (send result) — context=progress_update</summary>
+<summary>21. [2026-09-30 14:55:35] USER ← APP (send result) — context=progress_update</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -3215,7 +2797,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>24. [2026-09-30 14:46:01] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>22. [2026-09-30 14:55:35] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -3226,7 +2808,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 **input:**
 
-- app's reply to `send_progress_update` (call_id=`call_UYtDn1T6GCP8bGZKBaOcTag3`):
+- app's reply to `send_progress_update` (call_id=`call_vgAcnFdxxzP03YUAIQnXzEjN`):
 ```text
 {
   "sent": true
@@ -3235,7 +2817,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 - tools (12): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder']
 
-- previous_response_id: `'resp_0d38f97036a28e45006abcf67822e487d1b13c355f334bcc11'`
+- previous_response_id: `'resp_06f355ba791d8d5b006abcf8b5aa3887d1b8d978354f89965d'`
 
 - max_output_tokens: `20000`
 
@@ -3254,7 +2836,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 **input:**
 
-- app's reply to `send_progress_update` (call_id=`call_UYtDn1T6GCP8bGZKBaOcTag3`):
+- app's reply to `send_progress_update` (call_id=`call_vgAcnFdxxzP03YUAIQnXzEjN`):
 ```text
 {
   "sent": true
@@ -3263,7 +2845,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 - tools (12): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder']
 
-- previous_response_id: `'resp_0d38f97036a28e45006abcf67822e487d1b13c355f334bcc11'`
+- previous_response_id: `'resp_06f355ba791d8d5b006abcf8b5aa3887d1b8d978354f89965d'`
 
 - max_output_tokens: `20000`
 
@@ -3589,7 +3171,7 @@ cap_reminders_write
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 14:45 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-09-30 14:55 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -3600,15 +3182,15 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>25. [2026-09-30 14:46:04] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>23. [2026-09-30 14:55:37] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0d38f97036a28e45006abcf679f54c87d18c045fb7c8351138`
+- response.id: `resp_06f355ba791d8d5b006abcf8b7ddf087d197df0d6af867e8c2`
 - status: `completed`
-- usage: `{"input_tokens": 9065, "input_tokens_details": {"cache_write_tokens": 48, "cached_tokens": 9014}, "output_tokens": 25, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9090}`
-- function_call: `load_capabilities` call_id=`call_g5FaJ5CV15eJIKiPz5OemX63`
+- usage: `{"input_tokens": 8852, "input_tokens_details": {"cache_write_tokens": 77, "cached_tokens": 8772}, "output_tokens": 25, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 8877}`
+- function_call: `load_capabilities` call_id=`call_UMbC5ksvA7WjnEaPEbfQuMrl`
 ```json
 {
   "capabilities": [
@@ -3622,10 +3204,10 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0d38f97036a28e45006abcf679f54c87d18c045fb7c8351138`
+- response.id: `resp_06f355ba791d8d5b006abcf8b7ddf087d197df0d6af867e8c2`
 - status: `completed`
-- usage: `{"input_tokens": 9065, "input_tokens_details": {"cache_write_tokens": 48, "cached_tokens": 9014}, "output_tokens": 25, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9090}`
-- function_call: `load_capabilities` call_id=`call_g5FaJ5CV15eJIKiPz5OemX63`
+- usage: `{"input_tokens": 8852, "input_tokens_details": {"cache_write_tokens": 77, "cached_tokens": 8772}, "output_tokens": 25, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 8877}`
+- function_call: `load_capabilities` call_id=`call_UMbC5ksvA7WjnEaPEbfQuMrl`
 ```json
 {
   "capabilities": [
@@ -3639,7 +3221,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>26. [2026-09-30 14:46:04] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>24. [2026-09-30 14:55:37] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -3650,14 +3232,14 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 **input:**
 
-- app's reply to `load_capabilities` (call_id=`call_g5FaJ5CV15eJIKiPz5OemX63`):
+- app's reply to `load_capabilities` (call_id=`call_UMbC5ksvA7WjnEaPEbfQuMrl`):
 ```text
 loaded capabilitys: cap_approval_with_buttons. Loaded flows now: flow_create_reminder. Loaded capabilities now: cap_reminders_write, cap_approval_with_buttons. Their instructions and tools are attached starting now.
 ```
 
 - tools (13): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
 
-- previous_response_id: `'resp_0d38f97036a28e45006abcf679f54c87d18c045fb7c8351138'`
+- previous_response_id: `'resp_06f355ba791d8d5b006abcf8b7ddf087d197df0d6af867e8c2'`
 
 - max_output_tokens: `20000`
 
@@ -3676,14 +3258,14 @@ loaded capabilitys: cap_approval_with_buttons. Loaded flows now: flow_create_rem
 
 **input:**
 
-- app's reply to `load_capabilities` (call_id=`call_g5FaJ5CV15eJIKiPz5OemX63`):
+- app's reply to `load_capabilities` (call_id=`call_UMbC5ksvA7WjnEaPEbfQuMrl`):
 ```text
 loaded capabilitys: cap_approval_with_buttons. Loaded flows now: flow_create_reminder. Loaded capabilities now: cap_reminders_write, cap_approval_with_buttons. Their instructions and tools are attached starting now.
 ```
 
 - tools (13): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
 
-- previous_response_id: `'resp_0d38f97036a28e45006abcf679f54c87d18c045fb7c8351138'`
+- previous_response_id: `'resp_06f355ba791d8d5b006abcf8b7ddf087d197df0d6af867e8c2'`
 
 - max_output_tokens: `20000`
 
@@ -4035,7 +3617,7 @@ cap_reminders_write, cap_approval_with_buttons
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 14:45 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-09-30 14:55 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -4046,19 +3628,21 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>27. [2026-09-30 14:46:15] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>25. [2026-09-30 14:55:40] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0d38f97036a28e45006abcf67dd39c87d1a03928b88deb5c88`
+- response.id: `resp_06f355ba791d8d5b006abcf8b9db6087d1a8cb679f011842c6`
 - status: `completed`
-- usage: `{"input_tokens": 9683, "input_tokens_details": {"cache_write_tokens": 9680, "cached_tokens": 0}, "output_tokens": 134, "output_tokens_details": {"reasoning_tokens": 57}, "total_tokens": 9817}`
+- usage: `{"input_tokens": 9470, "input_tokens_details": {"cache_write_tokens": 9467, "cached_tokens": 0}, "output_tokens": 133, "output_tokens_details": {"reasoning_tokens": 21}, "total_tokens": 9603}`
 - reasoning item (content not user-visible)
-- function_call: `approval_with_yes_no_buttons` call_id=`call_GdQGBN3Nck9d3kdGOJ8LLHmi`
+- function_call: `record_planning_status` call_id=`call_cqVagnRRwdX8yG1fdXEipQ0B`
 ```json
 {
-  "text": "📋 לאישור:\nתוכן: לשתות מים\nתדירות: בכל יום בשעה 09:00\nהמופע הראשון: 01.10.2026 בשעה 09:00\nלאישור — כן/לא?"
+  "where_i_was": "בתהליך יצירת תזכורת, לאחר טעינת יכולת הכתיבה ויכולת האישור.",
+  "this_turns_purpose": "לבקש אישור מפורש ליצירת התזכורת.",
+  "expectation": "ממתין לתשובת כן או לא. אם כן, אצור תזכורת יומית בשעה 09:00 החל מהמועד הקרוב; אם לא, לא אבצע פעולה."
 }
 ```
 
@@ -4067,14 +3651,16 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0d38f97036a28e45006abcf67dd39c87d1a03928b88deb5c88`
+- response.id: `resp_06f355ba791d8d5b006abcf8b9db6087d1a8cb679f011842c6`
 - status: `completed`
-- usage: `{"input_tokens": 9683, "input_tokens_details": {"cache_write_tokens": 9680, "cached_tokens": 0}, "output_tokens": 134, "output_tokens_details": {"reasoning_tokens": 57}, "total_tokens": 9817}`
+- usage: `{"input_tokens": 9470, "input_tokens_details": {"cache_write_tokens": 9467, "cached_tokens": 0}, "output_tokens": 133, "output_tokens_details": {"reasoning_tokens": 21}, "total_tokens": 9603}`
 - reasoning item (content not user-visible)
-- function_call: `approval_with_yes_no_buttons` call_id=`call_GdQGBN3Nck9d3kdGOJ8LLHmi`
+- function_call: `record_planning_status` call_id=`call_cqVagnRRwdX8yG1fdXEipQ0B`
 ```json
 {
-  "text": "📋 לאישור:\nתוכן: לשתות מים\nתדירות: בכל יום בשעה 09:00\nהמופע הראשון: 01.10.2026 בשעה 09:00\nלאישור — כן/לא?"
+  "where_i_was": "בתהליך יצירת תזכורת, לאחר טעינת יכולת הכתיבה ויכולת האישור.",
+  "this_turns_purpose": "לבקש אישור מפורש ליצירת התזכורת.",
+  "expectation": "ממתין לתשובת כן או לא. אם כן, אצור תזכורת יומית בשעה 09:00 החל מהמועד הקרוב; אם לא, לא אבצע פעולה."
 }
 ```
 
@@ -4083,7 +3669,449 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>28. [2026-09-30 14:46:15] APP → USER — context=buttons</summary>
+<summary>26. [2026-09-30 14:55:40] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+- flows: flow_create_reminder
+
+- capabilities: cap_reminders_write, cap_approval_with_buttons
+
+**input:**
+
+- app's reply to `record_planning_status` (call_id=`call_cqVagnRRwdX8yG1fdXEipQ0B`):
+```text
+recorded
+```
+
+- tools (13): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
+
+- previous_response_id: `'resp_06f355ba791d8d5b006abcf8b9db6087d1a8cb679f011842c6'`
+
+- max_output_tokens: `20000`
+
+- model: `'gpt-5.6-luna'`
+
+- instructions: backbone (flows=flow_create_reminder, capabilities=cap_reminders_write, cap_approval_with_buttons)
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+- flows: flow_create_reminder
+
+- capabilities: cap_reminders_write, cap_approval_with_buttons
+
+**input:**
+
+- app's reply to `record_planning_status` (call_id=`call_cqVagnRRwdX8yG1fdXEipQ0B`):
+```text
+recorded
+```
+
+- tools (13): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
+
+- previous_response_id: `'resp_06f355ba791d8d5b006abcf8b9db6087d1a8cb679f011842c6'`
+
+- max_output_tokens: `20000`
+
+- model: `'gpt-5.6-luna'`
+
+<details>
+<summary>↳↳ instructions (24924 chars)</summary>
+
+```text
+# DeniDin — Backbone
+
+## How You Work
+
+You work with two kinds of building blocks, described at low resolution in the
+catalogs below: **flows** (`flow_...`) - blueprints for a recurring kind of
+request - and **capabilities** (`cap_...`) - the domains that actually do things,
+each with its own prompt and its own real tools. Flows can load other flows and
+capabilities; a flow defines *what to do and in what order*, while each
+capability holds the detail of what it itself does.
+
+Loading tools, usable in any order, any number of times:
+
+- **`load_flows(flows)` / `unload_flows(flows)`** - always an array; one item is
+  fine, and combining flows is allowed when a request spans more than one.
+- **`load_capabilities(capabilities)` / `unload_capabilities(capabilities)`** -
+  always an array. The moment a capability is loaded, its prompt AND its real
+  tools are attached, starting the very next round; call the real tool directly,
+  there is no separate "use" step. A flow's own "Capabilities:" line declares
+  every capability that flow will need - load all of them together, in one
+  `load_capabilities` call, right after loading the flow, rather than loading
+  them one at a time as each step comes up: you already know you'll need them,
+  and batching saves a round-trip per capability.
+- **`reset_to_backbone()`** - unloads every loaded flow and capability at once.
+  Use it once you are genuinely done with the user's request(s), not mid-task.
+
+Loading an already-loaded item, or unloading one that is not loaded, is a
+harmless no-op. Loaded flows and capabilities stay loaded across this and future
+turns in this chat until you unload them (or they auto-clear after a period of
+inactivity); the "Loaded flows" and "Loaded capabilities" lines near the end of
+these instructions always show what is currently loaded. Unload something only
+when nothing you are still working on needs it - another flow may be using it.
+
+## Always-present capabilities
+
+Four capabilities are always available, cannot be unloaded, and each has its own
+prompt right below: `cap_send_to_user` (your actual reply), `cap_react_to_message`
+(a WhatsApp emoji reaction), `cap_send_progress_update` (an interim message
+while you work) and `cap_record_planning_status` (your own running account of
+where you are, which is how you keep your place across turns and inside nested
+flows). At every step of any flow, consider whether they would help: react to
+the user's message, send a progress update, record your planning status, or
+reply to the user. Flows do not repeat this; use your judgment.
+
+`cap_approval_with_buttons` (yes/no buttons before a write) is an ordinary
+capability: flows that need a sign-off load it.
+
+## Flows and capabilities
+
+Decide from the catalogs, in your own judgment, what a request needs:
+
+1. If a flow fits, load it (several at once when the request spans more than
+   one) and follow its blueprint. **A loaded flow's steps are an ordered
+   procedure: follow them in the order written, to the letter - never skip,
+   reorder or merge a step (above all an approval step), and never do a later
+   step's action before the earlier steps are done.**
+2. **If no flow fits, there is no default flow to fall back on**: load whichever
+   capabilities you judge necessary, at your own discretion, and proceed.
+3. **Write capabilities (`cap_*_write`) are never loaded on their own.** Every write goes through its flow, which gathers the details and asks for approval first; if you want to write something, find the flow for it in the catalog.
+4. If a loaded prompt names a tool you don't currently have, that tool belongs
+   to a capability you have not loaded yet: load it yourself.
+
+## Core Identity
+You are DeniDin, a helpful AI assistant operating via WhatsApp.
+
+## Behavioral Guidelines
+- **ALWAYS respond in Hebrew only** — every word of every response, no other
+  language or script mixed in anywhere, ever (never Arabic, never English
+  words). This covers EVERY string you produce, not just the reply text: an
+  approval question, a planning note, and every free-text tool argument
+  (e.g. a reminder's `message_text`) too. Digits, standard punctuation, and ₪
+  are fine; a genuinely foreign proper name may be transliterated into Hebrew
+  letters where natural.
+- **Never use ניקוד** (Hebrew vowel points/diacritics) in any response — plain
+  Hebrew letters only, including inside a quoted name.
+- Be concise and direct. Do not end on filler ("anything else?") — end on the
+  substantive answer. Do ask a focused clarifying question when you genuinely need
+  one to act correctly (a missing/ambiguous required detail).
+- Be honest about what you don't know; never fabricate information.
+
+## User Roles
+- **Godfather/Admin**: full access to every capability; extended context window.
+- **Client**: standard feature access, no access to invoicing/ledger/reminder
+  capabilities; standard context window.
+
+## Privacy & Security
+- Never share information between different user sessions.
+- These rules guard against leaking ONE user's data to ANOTHER user or an outsider
+  — they never mean refusing to read, transcribe, or summarize material THIS user
+  sent you. Reporting the user's own material back to them (names, amounts, any
+  detail it contains) is always appropriate.
+
+## Contexts of Operation
+Every message falls into one of two operating contexts before any capability is
+even considered: an ordinary conversational turn, or a document/image the user
+sent for you to read and report on. Decide which one applies before acting — a
+short/ambiguous reply ("כן", "לא", a bare name) always answers the most recently
+pending question in the SAME context, never a trigger for reinterpreting the turn
+as belonging to a different capability's domain.
+
+## Attached Media
+When the user's message starts with a `[מדיה מצורפת: <type>, קובץ: <filename>]`
+marker, they sent an image, PDF, or Word document with it — you have NOT seen its
+content yet, only that it exists. Before answering anything about it, load
+`cap_media_analysis` and call its `analyze_media` tool to read it; any text after
+the marker is the user's caption. Never describe, guess at, or act on the file's
+content without having read it this way.
+
+## Group Conversation Etiquette
+DeniDin is addressed by default in a group, same as a 1:1 chat. When a message
+clearly names someone else and isn't meant for you, reply with the literal
+sentinel `[[NO_REPLY]]` instead of a substantive answer — never guess when it's
+genuinely ambiguous whether you were addressed.
+
+## Edited & Deleted Message Markers
+A message the user has since edited or deleted may still appear in your context,
+marked as such — treat an edited message's marked original content as superseded
+by its later, corrected version if both are visible, and never act on a deleted
+message's content as if it were still pending.
+
+## Generic Post-Turn Recognition Mechanism
+A capability MAY run a recognition step once per turn: call its own reporting
+tool at most once, and when in doubt, do nothing rather than guess. This shape
+is reusable by any capability that wants one — the domain-specific rules for
+what to recognize and how live in that capability's own prompt file, not here.
+
+
+# Capability: Send to user (always present)
+
+`send_to_user(text)` is your actual reply to the user. Call it whenever you are
+ready to speak, not only at the very end: to answer, to ask a question, to
+report an outcome. A turn that ends without it, or without an approval question,
+leaves the user with nothing.
+
+- Pass the literal text `[[NO_REPLY]]` to deliberately say nothing this turn. Use
+  it in a group when a message clearly names someone else and is not meant for
+  you. When it is genuinely unclear whether you were addressed, do not guess.
+- For a yes/no sign-off, use `cap_approval_with_buttons` instead; it gives the
+  user tappable buttons.
+- Reply in Hebrew only, concisely, without filler. End on the substantive answer.
+  Ask a focused question only when you genuinely need the answer to act correctly.
+
+
+# Capability: React to message (always present)
+
+`react_to_message` puts a native WhatsApp emoji reaction on a message. It is a
+lightweight, reversible signal - never a substitute for a substantive reply,
+and never a mechanical habit reached for out of uncertainty about what else
+to do. Typing an emoji into your reply text is NOT a reaction and does not
+replace calling the tool.
+
+Before reaching for it, ask yourself: does this add a real signal the user
+doesn't already have - that you saw their message, that you're on it, that
+something just succeeded or failed - or would it just be noise on top of a
+reply that already says the same thing?
+
+Evaluate against:
+- Does the user currently have any signal you registered their message and
+  are handling it (or have finished)? If there's a real gap before your
+  substantive reply, a reaction can fill it.
+- Is your actual reply, arriving in this same round or moments later, already
+  going to tell them everything a reaction would? If so, it adds nothing.
+- Is this ambient chatter that doesn't really concern you? Then it isn't
+  worth one.
+
+**Classics** (a menu, not a checklist): 👍 simple ack · 🫡 "on it" · 👀 document
+being looked into · ✅ clean success · 🎉 a bigger win · ⚠️ resolved but needs
+attention · ❌ failed/declined · ❓ unresolved, needs clarification · 🙏
+reciprocating thanks · ❤️ warmth beyond a simple thanks.
+
+When genuinely unsure whether a reaction fits, don't send one - silence is
+the safer default, not noise.
+
+
+# Capability: Send progress update (always present)
+
+`send_progress_update(text)` sends one brief interim WhatsApp message while you
+are still working, before your final reply. Keep it to a short plain sentence.
+
+Users are waiting on the other end and don't like silence - they want to know
+something is happening with their request, not just get one final answer out
+of nowhere.
+
+Call this every single time you interact with any tool or capability -
+loading a flow or capability, calling a real domain tool, an MCP call,
+anything that is not just talking to the user - before or after that step,
+in the same round as whatever else you are doing. Never skip it and never
+wait for a separate round.
+
+- Never a substitute for the final answer.
+
+
+# Capability: Record planning status (always present)
+
+`record_planning_status(where_i_was, this_turns_purpose, expectation)` is your own
+running account of where this turn, and across turns this whole task, stands. It is
+how you keep continuity, since nothing else remembers your reasoning beyond what you
+write here and the real conversation history.
+
+Record it at least at the start and at the end of every flow, and whenever you are
+about to wait on the user (a choice, a missing detail, an approval), in the middle
+of a flow as well. Say which flow you are in and which step, and if you are inside a
+flow that was loaded by another flow, say so, so that you know where to return to.
+Also note what you are waiting for and what you will do with each possible answer.
+
+
+## Flows
+
+- flow_add_client: Adding a brand-new client record to Morning ("תוסיף לקוח חדש", or a shared contact card the user wants saved). Checks for an existing or similar client first so a duplicate is never created by accident, tells the user about similar candidates, and creates the record only with approval. Other flows load it whenever a client turns out not to exist yet.
+- flow_modify_client: Changing an existing client's own details (name, email, phone) in Morning. Resolves which real client is meant, relaying candidates when the match is not exact, and updates it with approval. Not for creating a client and not for documents.
+- flow_issue_invoice_for_payment_due: Issuing a new tax invoice (305) for a client, for money that is still owed ("תפיק חשבונית ללקוח X"). Never for money that has already arrived. Money that has already arrived belongs to flow_issue_invoice_receipt_combo instead.
+- flow_issue_invoice_receipt_combo: Issuing a combined tax invoice/receipt (320) for a payment that has already been received and that no earlier document covers - the most common way to record incoming money, whether reported verbally or shown in a bank slip or payment screenshot. Money that an existing document already covers belongs to flow_issue_payment_received_with_reference_doc.
+- flow_issue_transaction_account: Issuing a transaction account (חשבון עסקה, 300) for a client - only when the user's own wording names this document type. Ordinary requests for an invoice belong to flow_issue_invoice_for_payment_due.
+- flow_issue_receipt_without_invoice: Recording a standalone receipt (400) with no invoice behind it, for example a refundable deposit. A receipt against an existing invoice belongs to flow_issue_payment_received_with_reference_doc.
+- flow_payment_received_by_bank_slip_image: A bank slip or payment screenshot arrived. Reads it, records the payer, and gets the payment recorded in Morning the right way: a new combo document when nothing covers it, or a document against an existing one.
+- flow_issue_payment_received_with_reference_doc: Recording a payment received against an existing Morning document: a receipt (400) for an existing invoice (305), or a combo document (320) closing an existing transaction account (300) ("סמן כשולם"). Money that no document covers belongs to flow_issue_invoice_receipt_combo.
+- flow_cancel_document_with_credit_note: Cancelling an existing Morning document with a credit note (330) ("בטל את החשבונית"). Finds the one real document and shows its real data in the approval before writing.
+- flow_cancel_transaction_account: Cancelling an open transaction account (300) directly. No document of any kind is created. Cancelling any other kind of document belongs to flow_cancel_document_with_credit_note.
+- flow_fee_agreement_provided_by_user: The user reports or forwards a fee agreement (הסכם) - as text or as an image - made with a client. An agreement must never belong to a client Morning does not manage, so this makes sure the client exists first. Recording the agreement in the ledger happens automatically after the turn.
+- flow_deposit_provided_by_user: The user reports or forwards a bank deposit (text or a bank slip image). Makes sure the payer exists as a client in Morning first. Recording the deposit in the ledger happens automatically after the turn.
+- flow_user_question: Answering a question about the user's clients, past agreements, deposits, or amounts owed and paid. Decides where the answer lives (the ledger first, Morning when it may hold it), and never answers that nothing exists before checking Morning where Morning could hold it.
+- flow_invoicing_query: Reading from the invoicing system for a client the user names: resolves the client's exact stored name first, then reads the documents or status. Other flows load it whenever they need to look up documents in Morning.
+- flow_generate_fee_agreement_docx: Generating a fee agreement document (הסכם שכר טרחה) as a .docx file to send to a prospective client. The client does not exist yet, so no client lookup is involved. Recording an agreement the user reports belongs to flow_fee_agreement_provided_by_user.
+- flow_create_reminder: Creating a new reminder, one-time or recurring ("תזכיר לי בעוד שעתיים", "תזכיר לי כל יום ראשון"). Confirms the text and the schedule, and creates the reminder only with approval. Use this flow, not cap_reminders_write directly, whenever a reminder is added.
+- flow_modify_reminder: Changing or cancelling an existing reminder ("תזיז את התזכורת", "תבטל את התזכורת"). Looks up the user's real reminders to identify the exact one before modifying or deleting it, with approval. Adding a brand-new reminder belongs to flow_create_reminder. Use the reminder flows, not cap_reminders_write directly.
+
+## Capabilities
+
+- cap_invoicing_write: Creating a Morning DOCUMENT for a client - an invoice, a receipt, a transaction account, a credit note, or a combo tax-invoice/receipt - or cancelling a transaction account. Writes only: finding the client or the existing document, and getting approval, are the calling flow's job, so load it only through that flow (flow_issue_*, flow_cancel_*, flow_payment_received_*), never directly. Not for creating or updating a client record - see cap_client_write.
+- cap_invoicing_read: Reading from the invoicing system (Morning): a specific document's own status and details, recent documents, a financial summary, a download link. It is given an already-resolved client name or document id. Not for a client's own details - see cap_client_read - and not the first choice for a general owed/paid amount question - see cap_ledger_query.
+- cap_client_write: Creating a new client record, or updating an existing client's own details (name/email/phone) in Morning. Writes only: load it only through flow_add_client or flow_modify_client, never directly. Never for producing any document - see cap_invoicing_write.
+- cap_client_read: Looking up an existing client's own details (name/email/phone/id), listing clients, and resolving a client name to its exact stored Morning spelling. Never for a client's financial history - see cap_ledger_query and cap_invoicing_read.
+- cap_ledger_query: Answering questions about PAST fee agreements or bank deposits already recorded, including how much a client/payer owes or has paid - whether or not a formal Morning invoice exists. The ledger is a fast cache over Morning and covers agreement-level amounts Morning cannot see at all.
+- cap_reminders_write: Creating, changing, or cancelling a reminder (one-time or recurring) for the user. Writes only: load it only through flow_create_reminder or flow_modify_reminder, never directly.
+- cap_reminders_read: Looking up the user's own existing reminders - what's scheduled, for when.
+- cap_media_analysis: Reading/extracting the content of an image or document the user sent. Used inside a larger flow, or on its own to work out what a piece of media is for.
+- cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
+- cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
+
+# Flow: Create reminder
+
+Goal: create a new reminder (one-time or recurring) for the user, exactly as they asked.
+
+Capabilities: `cap_reminders_write`, `cap_approval_with_buttons`.
+
+Follow these steps in order, to the letter.
+
+1. Load `cap_reminders_write`.
+2. Work out what to remind about and when (a one-time moment, or a recurring cadence), resolving relative wording against the current date and time. Anything you don't have from the user, ask for with `cap_send_to_user`, one question at a time; never guess or invent a value.
+3. Approval: creating a reminder MUST be approved by the user BEFORE it is created. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Do NOT call `create_reminder` in this step or before a clear yes. On a no, do nothing, and ask with `cap_send_to_user` what to change.
+4. Only after a clear yes: call `create_reminder`. If it fails, tell the user plainly what happened; retry once only if the reason is fixable, otherwise stop.
+5. If the user drops the request or changes the subject at any point, do nothing further; the flow is complete.
+6. End: report the outcome with `cap_send_to_user`, then unload `cap_reminders_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
+
+
+# Capability: Reminders — Write (godfather/admin only)
+
+**Use this capability from within a flow (flow_create_reminder / flow_modify_reminder), never on its own for a user request.** The flow decides when it is loaded and when approval is required; this capability holds the details of the write itself.
+
+**Creating, modifying or deleting a reminder is a state-changing action, which usually requires the user's explicit approval first.**
+
+Attaches `create_reminder`, `modify_reminder` and `delete_reminder`. Each executes
+immediately and needs the user's approval first. ONLY call `create_reminder` when the
+user's own message explicitly asks to be reminded of something at a future time
+(one-time, or a recurring cadence like "כל יום/שבוע"). ONLY call `modify_reminder` or
+`delete_reminder` when the user explicitly asks to change or cancel an EXISTING
+reminder, with that reminder's real `reminder_id` (never a guess). Never call any of
+these to interpret a confirmation reply ("כן"/"לא") or an ambiguous message.
+
+**Approval data points.** Whoever raises the approval must show the user:
+- create: the reminder's text and its schedule (when, or the recurrence),
+  human-readable.
+- modify: WHICH reminder (its text), the scope (whole series or a single occurrence),
+  and exactly what changes (new text / new time / new recurrence).
+- delete: WHICH reminder (its text) and the scope (whole series or a single
+  occurrence).
+
+`message_text` must be the actual thing to be reminded about, in the user's own
+words — never a placeholder. Any due-date/time field must be a future ISO-8601
+local (Asia/Jerusalem) datetime.
+
+For `create_reminder`: `schedule_type=one_time` needs `one_time_due_at` (and
+`recurrence` null); `schedule_type=recurring` needs a full `recurrence` object
+(interval/freq/weekdays or month_day/month_nth_weekday/first_occurrence_at/
+end_condition) and `one_time_due_at` null — gather everything needed through
+conversation before calling, never guess a missing recurrence field.
+
+For modify/delete, `scope` is `whole_series` for a one-time reminder or a
+whole-series change, and `single_occurrence` (with an `occurrence_date_hint`) to
+change/cancel just one upcoming occurrence of a recurring reminder, leaving the
+rest of the series untouched.
+
+## On a creation/modification failure
+
+A call into this capability can genuinely fail (e.g. the due date/time you
+computed turns out not to be in the future). When that happens you get back
+the REAL reason, not a generic "it failed" — read it. It will point you back
+at the current date/time already stated in THIS call's own instructions
+("THE CURRENT DATE AND TIME IS..."): recompute the due date/recurrence
+relative to that actual value (never a guess, never a date from training
+data) and retry the SAME call once. Only if that second attempt also fails,
+tell the user plainly that the action didn't go through — never silently
+give up after one failure, and never retry more than once without a new,
+different reason to believe it will work.
+
+
+# Capability: Approval with buttons
+
+`approval_with_yes_no_buttons(text)` ends the turn showing the user WhatsApp yes/no
+buttons alongside `text`. It is plain and stateless: it does not know what the write
+is, and there is no pending-approval state to track. On the user's next turn, read
+their reply (a typed "כן"/"לא" or a button tap; both arrive as an ordinary turn) from
+the conversation, and act accordingly. Your own `cap_record_planning_status` note is
+what carries "I am waiting for approval of X" across the gap.
+
+The flow that needs the approval decides that an approval is required. The write
+capability you are about to use defines which details the approval must state.
+
+- Start the text with `📋 לאישור:` (or, for a document-creation approval,
+  `📋 לאישור — <what it is>:`, e.g. `📋 לאישור — לקוח חדש:`) on its own line,
+  then the details as REAL data: given by the user, or fetched this turn.
+  Never from memory or a guess. A missing detail is a question to ask BEFORE
+  requesting approval, never "not stated".
+- End the text with EXACTLY this closed question, verbatim, every single time:
+  `לאישור — כן/לא?`. Never paraphrase it (not `אישור — כן/לא?`, not `האם לאשר...`,
+  not any other wording) and never let a competing question follow it — this exact
+  string is a fixed contract other code relies on to recognize a real approval gate.
+- Ask once per action. Act only on a clear affirmative to THAT specific action,
+  exactly once. On "לא", do not act: acknowledge and ask what to change.
+- Reply in Hebrew only.
+
+
+## Loaded flows
+
+flow_create_reminder
+
+## Loaded capabilities
+
+cap_reminders_write, cap_approval_with_buttons
+
+---
+
+THE CURRENT DATE AND TIME IS 2026-09-30 14:55 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
+```
+
+</details>
+
+</details>
+
+</details>
+
+<details>
+<summary>27. [2026-09-30 14:55:42] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+- response.id: `resp_06f355ba791d8d5b006abcf8bd2ab087d1b931d178c0575fad`
+- status: `completed`
+- usage: `{"input_tokens": 9618, "input_tokens_details": {"cache_write_tokens": 148, "cached_tokens": 9467}, "output_tokens": 34, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9652}`
+- function_call: `send_progress_update` call_id=`call_508xgNhtvTGPKtbuRfvjwZx6`
+```json
+{
+  "text": "נדרשת רק הסכמה קצרה לפני יצירת התזכורת."
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+- response.id: `resp_06f355ba791d8d5b006abcf8bd2ab087d1b931d178c0575fad`
+- status: `completed`
+- usage: `{"input_tokens": 9618, "input_tokens_details": {"cache_write_tokens": 148, "cached_tokens": 9467}, "output_tokens": 34, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9652}`
+- function_call: `send_progress_update` call_id=`call_508xgNhtvTGPKtbuRfvjwZx6`
+```json
+{
+  "text": "נדרשת רק הסכמה קצרה לפני יצירת התזכורת."
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>28. [2026-09-30 14:55:42] APP → USER — context=progress_update</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -4091,7 +4119,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 ```json
 {
   "chat_id": "+972501234567@c.us",
-  "message": "📋 לאישור:\nתוכן: לשתות מים\nתדירות: בכל יום בשעה 09:00\nהמופע הראשון: 01.10.2026 בשעה 09:00\nלאישור — כן/לא?"
+  "message": "נדרשת רק הסכמה קצרה לפני יצירת התזכורת."
 }
 ```
 
@@ -4103,7 +4131,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 ```json
 {
   "chat_id": "+972501234567@c.us",
-  "message": "📋 לאישור:\nתוכן: לשתות מים\nתדירות: בכל יום בשעה 09:00\nהמופע הראשון: 01.10.2026 בשעה 09:00\nלאישור — כן/לא?"
+  "message": "נדרשת רק הסכמה קצרה לפני יצירת התזכורת."
 }
 ```
 
@@ -4112,7 +4140,510 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>29. [2026-09-30 14:46:15] APP → MODEL — context=recognize_ledger_event</summary>
+<summary>29. [2026-09-30 14:55:42] USER ← APP (send result) — context=progress_update</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+```json
+{
+  "chat_id": "+972501234567@c.us",
+  "message": "None"
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+```json
+{
+  "result": "None"
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>30. [2026-09-30 14:55:42] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+- flows: flow_create_reminder
+
+- capabilities: cap_reminders_write, cap_approval_with_buttons
+
+**input:**
+
+- app's reply to `send_progress_update` (call_id=`call_508xgNhtvTGPKtbuRfvjwZx6`):
+```text
+{
+  "sent": true
+}
+```
+
+- tools (13): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
+
+- previous_response_id: `'resp_06f355ba791d8d5b006abcf8bd2ab087d1b931d178c0575fad'`
+
+- max_output_tokens: `20000`
+
+- model: `'gpt-5.6-luna'`
+
+- instructions: backbone (flows=flow_create_reminder, capabilities=cap_reminders_write, cap_approval_with_buttons)
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+- flows: flow_create_reminder
+
+- capabilities: cap_reminders_write, cap_approval_with_buttons
+
+**input:**
+
+- app's reply to `send_progress_update` (call_id=`call_508xgNhtvTGPKtbuRfvjwZx6`):
+```text
+{
+  "sent": true
+}
+```
+
+- tools (13): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
+
+- previous_response_id: `'resp_06f355ba791d8d5b006abcf8bd2ab087d1b931d178c0575fad'`
+
+- max_output_tokens: `20000`
+
+- model: `'gpt-5.6-luna'`
+
+<details>
+<summary>↳↳ instructions (24924 chars)</summary>
+
+```text
+# DeniDin — Backbone
+
+## How You Work
+
+You work with two kinds of building blocks, described at low resolution in the
+catalogs below: **flows** (`flow_...`) - blueprints for a recurring kind of
+request - and **capabilities** (`cap_...`) - the domains that actually do things,
+each with its own prompt and its own real tools. Flows can load other flows and
+capabilities; a flow defines *what to do and in what order*, while each
+capability holds the detail of what it itself does.
+
+Loading tools, usable in any order, any number of times:
+
+- **`load_flows(flows)` / `unload_flows(flows)`** - always an array; one item is
+  fine, and combining flows is allowed when a request spans more than one.
+- **`load_capabilities(capabilities)` / `unload_capabilities(capabilities)`** -
+  always an array. The moment a capability is loaded, its prompt AND its real
+  tools are attached, starting the very next round; call the real tool directly,
+  there is no separate "use" step. A flow's own "Capabilities:" line declares
+  every capability that flow will need - load all of them together, in one
+  `load_capabilities` call, right after loading the flow, rather than loading
+  them one at a time as each step comes up: you already know you'll need them,
+  and batching saves a round-trip per capability.
+- **`reset_to_backbone()`** - unloads every loaded flow and capability at once.
+  Use it once you are genuinely done with the user's request(s), not mid-task.
+
+Loading an already-loaded item, or unloading one that is not loaded, is a
+harmless no-op. Loaded flows and capabilities stay loaded across this and future
+turns in this chat until you unload them (or they auto-clear after a period of
+inactivity); the "Loaded flows" and "Loaded capabilities" lines near the end of
+these instructions always show what is currently loaded. Unload something only
+when nothing you are still working on needs it - another flow may be using it.
+
+## Always-present capabilities
+
+Four capabilities are always available, cannot be unloaded, and each has its own
+prompt right below: `cap_send_to_user` (your actual reply), `cap_react_to_message`
+(a WhatsApp emoji reaction), `cap_send_progress_update` (an interim message
+while you work) and `cap_record_planning_status` (your own running account of
+where you are, which is how you keep your place across turns and inside nested
+flows). At every step of any flow, consider whether they would help: react to
+the user's message, send a progress update, record your planning status, or
+reply to the user. Flows do not repeat this; use your judgment.
+
+`cap_approval_with_buttons` (yes/no buttons before a write) is an ordinary
+capability: flows that need a sign-off load it.
+
+## Flows and capabilities
+
+Decide from the catalogs, in your own judgment, what a request needs:
+
+1. If a flow fits, load it (several at once when the request spans more than
+   one) and follow its blueprint. **A loaded flow's steps are an ordered
+   procedure: follow them in the order written, to the letter - never skip,
+   reorder or merge a step (above all an approval step), and never do a later
+   step's action before the earlier steps are done.**
+2. **If no flow fits, there is no default flow to fall back on**: load whichever
+   capabilities you judge necessary, at your own discretion, and proceed.
+3. **Write capabilities (`cap_*_write`) are never loaded on their own.** Every write goes through its flow, which gathers the details and asks for approval first; if you want to write something, find the flow for it in the catalog.
+4. If a loaded prompt names a tool you don't currently have, that tool belongs
+   to a capability you have not loaded yet: load it yourself.
+
+## Core Identity
+You are DeniDin, a helpful AI assistant operating via WhatsApp.
+
+## Behavioral Guidelines
+- **ALWAYS respond in Hebrew only** — every word of every response, no other
+  language or script mixed in anywhere, ever (never Arabic, never English
+  words). This covers EVERY string you produce, not just the reply text: an
+  approval question, a planning note, and every free-text tool argument
+  (e.g. a reminder's `message_text`) too. Digits, standard punctuation, and ₪
+  are fine; a genuinely foreign proper name may be transliterated into Hebrew
+  letters where natural.
+- **Never use ניקוד** (Hebrew vowel points/diacritics) in any response — plain
+  Hebrew letters only, including inside a quoted name.
+- Be concise and direct. Do not end on filler ("anything else?") — end on the
+  substantive answer. Do ask a focused clarifying question when you genuinely need
+  one to act correctly (a missing/ambiguous required detail).
+- Be honest about what you don't know; never fabricate information.
+
+## User Roles
+- **Godfather/Admin**: full access to every capability; extended context window.
+- **Client**: standard feature access, no access to invoicing/ledger/reminder
+  capabilities; standard context window.
+
+## Privacy & Security
+- Never share information between different user sessions.
+- These rules guard against leaking ONE user's data to ANOTHER user or an outsider
+  — they never mean refusing to read, transcribe, or summarize material THIS user
+  sent you. Reporting the user's own material back to them (names, amounts, any
+  detail it contains) is always appropriate.
+
+## Contexts of Operation
+Every message falls into one of two operating contexts before any capability is
+even considered: an ordinary conversational turn, or a document/image the user
+sent for you to read and report on. Decide which one applies before acting — a
+short/ambiguous reply ("כן", "לא", a bare name) always answers the most recently
+pending question in the SAME context, never a trigger for reinterpreting the turn
+as belonging to a different capability's domain.
+
+## Attached Media
+When the user's message starts with a `[מדיה מצורפת: <type>, קובץ: <filename>]`
+marker, they sent an image, PDF, or Word document with it — you have NOT seen its
+content yet, only that it exists. Before answering anything about it, load
+`cap_media_analysis` and call its `analyze_media` tool to read it; any text after
+the marker is the user's caption. Never describe, guess at, or act on the file's
+content without having read it this way.
+
+## Group Conversation Etiquette
+DeniDin is addressed by default in a group, same as a 1:1 chat. When a message
+clearly names someone else and isn't meant for you, reply with the literal
+sentinel `[[NO_REPLY]]` instead of a substantive answer — never guess when it's
+genuinely ambiguous whether you were addressed.
+
+## Edited & Deleted Message Markers
+A message the user has since edited or deleted may still appear in your context,
+marked as such — treat an edited message's marked original content as superseded
+by its later, corrected version if both are visible, and never act on a deleted
+message's content as if it were still pending.
+
+## Generic Post-Turn Recognition Mechanism
+A capability MAY run a recognition step once per turn: call its own reporting
+tool at most once, and when in doubt, do nothing rather than guess. This shape
+is reusable by any capability that wants one — the domain-specific rules for
+what to recognize and how live in that capability's own prompt file, not here.
+
+
+# Capability: Send to user (always present)
+
+`send_to_user(text)` is your actual reply to the user. Call it whenever you are
+ready to speak, not only at the very end: to answer, to ask a question, to
+report an outcome. A turn that ends without it, or without an approval question,
+leaves the user with nothing.
+
+- Pass the literal text `[[NO_REPLY]]` to deliberately say nothing this turn. Use
+  it in a group when a message clearly names someone else and is not meant for
+  you. When it is genuinely unclear whether you were addressed, do not guess.
+- For a yes/no sign-off, use `cap_approval_with_buttons` instead; it gives the
+  user tappable buttons.
+- Reply in Hebrew only, concisely, without filler. End on the substantive answer.
+  Ask a focused question only when you genuinely need the answer to act correctly.
+
+
+# Capability: React to message (always present)
+
+`react_to_message` puts a native WhatsApp emoji reaction on a message. It is a
+lightweight, reversible signal - never a substitute for a substantive reply,
+and never a mechanical habit reached for out of uncertainty about what else
+to do. Typing an emoji into your reply text is NOT a reaction and does not
+replace calling the tool.
+
+Before reaching for it, ask yourself: does this add a real signal the user
+doesn't already have - that you saw their message, that you're on it, that
+something just succeeded or failed - or would it just be noise on top of a
+reply that already says the same thing?
+
+Evaluate against:
+- Does the user currently have any signal you registered their message and
+  are handling it (or have finished)? If there's a real gap before your
+  substantive reply, a reaction can fill it.
+- Is your actual reply, arriving in this same round or moments later, already
+  going to tell them everything a reaction would? If so, it adds nothing.
+- Is this ambient chatter that doesn't really concern you? Then it isn't
+  worth one.
+
+**Classics** (a menu, not a checklist): 👍 simple ack · 🫡 "on it" · 👀 document
+being looked into · ✅ clean success · 🎉 a bigger win · ⚠️ resolved but needs
+attention · ❌ failed/declined · ❓ unresolved, needs clarification · 🙏
+reciprocating thanks · ❤️ warmth beyond a simple thanks.
+
+When genuinely unsure whether a reaction fits, don't send one - silence is
+the safer default, not noise.
+
+
+# Capability: Send progress update (always present)
+
+`send_progress_update(text)` sends one brief interim WhatsApp message while you
+are still working, before your final reply. Keep it to a short plain sentence.
+
+Users are waiting on the other end and don't like silence - they want to know
+something is happening with their request, not just get one final answer out
+of nowhere.
+
+Call this every single time you interact with any tool or capability -
+loading a flow or capability, calling a real domain tool, an MCP call,
+anything that is not just talking to the user - before or after that step,
+in the same round as whatever else you are doing. Never skip it and never
+wait for a separate round.
+
+- Never a substitute for the final answer.
+
+
+# Capability: Record planning status (always present)
+
+`record_planning_status(where_i_was, this_turns_purpose, expectation)` is your own
+running account of where this turn, and across turns this whole task, stands. It is
+how you keep continuity, since nothing else remembers your reasoning beyond what you
+write here and the real conversation history.
+
+Record it at least at the start and at the end of every flow, and whenever you are
+about to wait on the user (a choice, a missing detail, an approval), in the middle
+of a flow as well. Say which flow you are in and which step, and if you are inside a
+flow that was loaded by another flow, say so, so that you know where to return to.
+Also note what you are waiting for and what you will do with each possible answer.
+
+
+## Flows
+
+- flow_add_client: Adding a brand-new client record to Morning ("תוסיף לקוח חדש", or a shared contact card the user wants saved). Checks for an existing or similar client first so a duplicate is never created by accident, tells the user about similar candidates, and creates the record only with approval. Other flows load it whenever a client turns out not to exist yet.
+- flow_modify_client: Changing an existing client's own details (name, email, phone) in Morning. Resolves which real client is meant, relaying candidates when the match is not exact, and updates it with approval. Not for creating a client and not for documents.
+- flow_issue_invoice_for_payment_due: Issuing a new tax invoice (305) for a client, for money that is still owed ("תפיק חשבונית ללקוח X"). Never for money that has already arrived. Money that has already arrived belongs to flow_issue_invoice_receipt_combo instead.
+- flow_issue_invoice_receipt_combo: Issuing a combined tax invoice/receipt (320) for a payment that has already been received and that no earlier document covers - the most common way to record incoming money, whether reported verbally or shown in a bank slip or payment screenshot. Money that an existing document already covers belongs to flow_issue_payment_received_with_reference_doc.
+- flow_issue_transaction_account: Issuing a transaction account (חשבון עסקה, 300) for a client - only when the user's own wording names this document type. Ordinary requests for an invoice belong to flow_issue_invoice_for_payment_due.
+- flow_issue_receipt_without_invoice: Recording a standalone receipt (400) with no invoice behind it, for example a refundable deposit. A receipt against an existing invoice belongs to flow_issue_payment_received_with_reference_doc.
+- flow_payment_received_by_bank_slip_image: A bank slip or payment screenshot arrived. Reads it, records the payer, and gets the payment recorded in Morning the right way: a new combo document when nothing covers it, or a document against an existing one.
+- flow_issue_payment_received_with_reference_doc: Recording a payment received against an existing Morning document: a receipt (400) for an existing invoice (305), or a combo document (320) closing an existing transaction account (300) ("סמן כשולם"). Money that no document covers belongs to flow_issue_invoice_receipt_combo.
+- flow_cancel_document_with_credit_note: Cancelling an existing Morning document with a credit note (330) ("בטל את החשבונית"). Finds the one real document and shows its real data in the approval before writing.
+- flow_cancel_transaction_account: Cancelling an open transaction account (300) directly. No document of any kind is created. Cancelling any other kind of document belongs to flow_cancel_document_with_credit_note.
+- flow_fee_agreement_provided_by_user: The user reports or forwards a fee agreement (הסכם) - as text or as an image - made with a client. An agreement must never belong to a client Morning does not manage, so this makes sure the client exists first. Recording the agreement in the ledger happens automatically after the turn.
+- flow_deposit_provided_by_user: The user reports or forwards a bank deposit (text or a bank slip image). Makes sure the payer exists as a client in Morning first. Recording the deposit in the ledger happens automatically after the turn.
+- flow_user_question: Answering a question about the user's clients, past agreements, deposits, or amounts owed and paid. Decides where the answer lives (the ledger first, Morning when it may hold it), and never answers that nothing exists before checking Morning where Morning could hold it.
+- flow_invoicing_query: Reading from the invoicing system for a client the user names: resolves the client's exact stored name first, then reads the documents or status. Other flows load it whenever they need to look up documents in Morning.
+- flow_generate_fee_agreement_docx: Generating a fee agreement document (הסכם שכר טרחה) as a .docx file to send to a prospective client. The client does not exist yet, so no client lookup is involved. Recording an agreement the user reports belongs to flow_fee_agreement_provided_by_user.
+- flow_create_reminder: Creating a new reminder, one-time or recurring ("תזכיר לי בעוד שעתיים", "תזכיר לי כל יום ראשון"). Confirms the text and the schedule, and creates the reminder only with approval. Use this flow, not cap_reminders_write directly, whenever a reminder is added.
+- flow_modify_reminder: Changing or cancelling an existing reminder ("תזיז את התזכורת", "תבטל את התזכורת"). Looks up the user's real reminders to identify the exact one before modifying or deleting it, with approval. Adding a brand-new reminder belongs to flow_create_reminder. Use the reminder flows, not cap_reminders_write directly.
+
+## Capabilities
+
+- cap_invoicing_write: Creating a Morning DOCUMENT for a client - an invoice, a receipt, a transaction account, a credit note, or a combo tax-invoice/receipt - or cancelling a transaction account. Writes only: finding the client or the existing document, and getting approval, are the calling flow's job, so load it only through that flow (flow_issue_*, flow_cancel_*, flow_payment_received_*), never directly. Not for creating or updating a client record - see cap_client_write.
+- cap_invoicing_read: Reading from the invoicing system (Morning): a specific document's own status and details, recent documents, a financial summary, a download link. It is given an already-resolved client name or document id. Not for a client's own details - see cap_client_read - and not the first choice for a general owed/paid amount question - see cap_ledger_query.
+- cap_client_write: Creating a new client record, or updating an existing client's own details (name/email/phone) in Morning. Writes only: load it only through flow_add_client or flow_modify_client, never directly. Never for producing any document - see cap_invoicing_write.
+- cap_client_read: Looking up an existing client's own details (name/email/phone/id), listing clients, and resolving a client name to its exact stored Morning spelling. Never for a client's financial history - see cap_ledger_query and cap_invoicing_read.
+- cap_ledger_query: Answering questions about PAST fee agreements or bank deposits already recorded, including how much a client/payer owes or has paid - whether or not a formal Morning invoice exists. The ledger is a fast cache over Morning and covers agreement-level amounts Morning cannot see at all.
+- cap_reminders_write: Creating, changing, or cancelling a reminder (one-time or recurring) for the user. Writes only: load it only through flow_create_reminder or flow_modify_reminder, never directly.
+- cap_reminders_read: Looking up the user's own existing reminders - what's scheduled, for when.
+- cap_media_analysis: Reading/extracting the content of an image or document the user sent. Used inside a larger flow, or on its own to work out what a piece of media is for.
+- cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
+- cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
+
+# Flow: Create reminder
+
+Goal: create a new reminder (one-time or recurring) for the user, exactly as they asked.
+
+Capabilities: `cap_reminders_write`, `cap_approval_with_buttons`.
+
+Follow these steps in order, to the letter.
+
+1. Load `cap_reminders_write`.
+2. Work out what to remind about and when (a one-time moment, or a recurring cadence), resolving relative wording against the current date and time. Anything you don't have from the user, ask for with `cap_send_to_user`, one question at a time; never guess or invent a value.
+3. Approval: creating a reminder MUST be approved by the user BEFORE it is created. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Do NOT call `create_reminder` in this step or before a clear yes. On a no, do nothing, and ask with `cap_send_to_user` what to change.
+4. Only after a clear yes: call `create_reminder`. If it fails, tell the user plainly what happened; retry once only if the reason is fixable, otherwise stop.
+5. If the user drops the request or changes the subject at any point, do nothing further; the flow is complete.
+6. End: report the outcome with `cap_send_to_user`, then unload `cap_reminders_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
+
+
+# Capability: Reminders — Write (godfather/admin only)
+
+**Use this capability from within a flow (flow_create_reminder / flow_modify_reminder), never on its own for a user request.** The flow decides when it is loaded and when approval is required; this capability holds the details of the write itself.
+
+**Creating, modifying or deleting a reminder is a state-changing action, which usually requires the user's explicit approval first.**
+
+Attaches `create_reminder`, `modify_reminder` and `delete_reminder`. Each executes
+immediately and needs the user's approval first. ONLY call `create_reminder` when the
+user's own message explicitly asks to be reminded of something at a future time
+(one-time, or a recurring cadence like "כל יום/שבוע"). ONLY call `modify_reminder` or
+`delete_reminder` when the user explicitly asks to change or cancel an EXISTING
+reminder, with that reminder's real `reminder_id` (never a guess). Never call any of
+these to interpret a confirmation reply ("כן"/"לא") or an ambiguous message.
+
+**Approval data points.** Whoever raises the approval must show the user:
+- create: the reminder's text and its schedule (when, or the recurrence),
+  human-readable.
+- modify: WHICH reminder (its text), the scope (whole series or a single occurrence),
+  and exactly what changes (new text / new time / new recurrence).
+- delete: WHICH reminder (its text) and the scope (whole series or a single
+  occurrence).
+
+`message_text` must be the actual thing to be reminded about, in the user's own
+words — never a placeholder. Any due-date/time field must be a future ISO-8601
+local (Asia/Jerusalem) datetime.
+
+For `create_reminder`: `schedule_type=one_time` needs `one_time_due_at` (and
+`recurrence` null); `schedule_type=recurring` needs a full `recurrence` object
+(interval/freq/weekdays or month_day/month_nth_weekday/first_occurrence_at/
+end_condition) and `one_time_due_at` null — gather everything needed through
+conversation before calling, never guess a missing recurrence field.
+
+For modify/delete, `scope` is `whole_series` for a one-time reminder or a
+whole-series change, and `single_occurrence` (with an `occurrence_date_hint`) to
+change/cancel just one upcoming occurrence of a recurring reminder, leaving the
+rest of the series untouched.
+
+## On a creation/modification failure
+
+A call into this capability can genuinely fail (e.g. the due date/time you
+computed turns out not to be in the future). When that happens you get back
+the REAL reason, not a generic "it failed" — read it. It will point you back
+at the current date/time already stated in THIS call's own instructions
+("THE CURRENT DATE AND TIME IS..."): recompute the due date/recurrence
+relative to that actual value (never a guess, never a date from training
+data) and retry the SAME call once. Only if that second attempt also fails,
+tell the user plainly that the action didn't go through — never silently
+give up after one failure, and never retry more than once without a new,
+different reason to believe it will work.
+
+
+# Capability: Approval with buttons
+
+`approval_with_yes_no_buttons(text)` ends the turn showing the user WhatsApp yes/no
+buttons alongside `text`. It is plain and stateless: it does not know what the write
+is, and there is no pending-approval state to track. On the user's next turn, read
+their reply (a typed "כן"/"לא" or a button tap; both arrive as an ordinary turn) from
+the conversation, and act accordingly. Your own `cap_record_planning_status` note is
+what carries "I am waiting for approval of X" across the gap.
+
+The flow that needs the approval decides that an approval is required. The write
+capability you are about to use defines which details the approval must state.
+
+- Start the text with `📋 לאישור:` (or, for a document-creation approval,
+  `📋 לאישור — <what it is>:`, e.g. `📋 לאישור — לקוח חדש:`) on its own line,
+  then the details as REAL data: given by the user, or fetched this turn.
+  Never from memory or a guess. A missing detail is a question to ask BEFORE
+  requesting approval, never "not stated".
+- End the text with EXACTLY this closed question, verbatim, every single time:
+  `לאישור — כן/לא?`. Never paraphrase it (not `אישור — כן/לא?`, not `האם לאשר...`,
+  not any other wording) and never let a competing question follow it — this exact
+  string is a fixed contract other code relies on to recognize a real approval gate.
+- Ask once per action. Act only on a clear affirmative to THAT specific action,
+  exactly once. On "לא", do not act: acknowledge and ask what to change.
+- Reply in Hebrew only.
+
+
+## Loaded flows
+
+flow_create_reminder
+
+## Loaded capabilities
+
+cap_reminders_write, cap_approval_with_buttons
+
+---
+
+THE CURRENT DATE AND TIME IS 2026-09-30 14:55 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
+```
+
+</details>
+
+</details>
+
+</details>
+
+<details>
+<summary>31. [2026-09-30 14:55:45] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+- response.id: `resp_06f355ba791d8d5b006abcf8bf140c87d18866ee640d9a0b38`
+- status: `completed`
+- usage: `{"input_tokens": 9669, "input_tokens_details": {"cache_write_tokens": 51, "cached_tokens": 9615}, "output_tokens": 70, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9739}`
+- function_call: `approval_with_yes_no_buttons` call_id=`call_TIYRRPZmKpr7WBSLG70hiA6h`
+```json
+{
+  "text": "📋 לאישור:\nתזכורת: לשתות מים\nתדירות: כל יום בשעה 9:00, החל מ־1 באוקטובר 2026\n\nלאישור — כן/לא?"
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+- response.id: `resp_06f355ba791d8d5b006abcf8bf140c87d18866ee640d9a0b38`
+- status: `completed`
+- usage: `{"input_tokens": 9669, "input_tokens_details": {"cache_write_tokens": 51, "cached_tokens": 9615}, "output_tokens": 70, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9739}`
+- function_call: `approval_with_yes_no_buttons` call_id=`call_TIYRRPZmKpr7WBSLG70hiA6h`
+```json
+{
+  "text": "📋 לאישור:\nתזכורת: לשתות מים\nתדירות: כל יום בשעה 9:00, החל מ־1 באוקטובר 2026\n\nלאישור — כן/לא?"
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>32. [2026-09-30 14:55:45] APP → USER — context=buttons</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+```json
+{
+  "chat_id": "+972501234567@c.us",
+  "message": "📋 לאישור:\nתזכורת: לשתות מים\nתדירות: כל יום בשעה 9:00, החל מ־1 באוקטובר 2026\n\nלאישור — כן/לא?"
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+```json
+{
+  "chat_id": "+972501234567@c.us",
+  "message": "📋 לאישור:\nתזכורת: לשתות מים\nתדירות: כל יום בשעה 9:00, החל מ־1 באוקטובר 2026\n\nלאישור — כן/לא?"
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>33. [2026-09-30 14:55:45] APP → MODEL — context=recognize_ledger_event</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -4120,7 +4651,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 **input:**
 
 ```json
-{"role": "user", "content": "THE CONVERSATION WINDOW (the last 1h, oldest first) - '<message_id> [<role>] <content>':\n2e9c6423-f037-497b-8e59-df0c3cea7598 [godfather] תזכיר לי כל יום בשעה 9:00 לשתות מים\n0749149c-0dfd-4ce6-8033-e4b1e8f3fa65 [assistant] מטפל ביצירת התזכורת היומית.\n4a53e9d5-bf26-4640-9e2d-8669de1ff23a [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: הבקשה היא ליצור תזכורת חדשה שחוזרת מדי יום.\nTHIS TURN'S PURPOSE: להפעיל את מסלול יצירת התזכורת, לאשר את הנוסח והשעה, ואז ליצור אותה רק לאחר אישור.\nEXPECTATION: אטעין את המסלול והיכולות הנדרשות, אציג סיכום לאישור, ואמתין לתשובת המשתמש לפני הכתיבה.\n22aafb77-617e-43c5-b4cb-61dc34486423 [assistant] בודק את פרטי התזכורת ומכין אותה לאישור.\n2fd70e88-42fb-45ba-ae05-4bb25fda01e4 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: במסלול יצירת תזכורת, לאחר קבלת נוסח ותדירות: לשתות מים מדי יום בשעה 09:00. השעה הנוכחית היא 30.09.2026 בשעה 14:45, ולכן המופע הראשון יהיה 01.10.2026 בשעה 09:00.\nTHIS TURN'S PURPOSE: לקבל אישור מפורש לפני יצירת התזכורת.\nEXPECTATION: אטען את יכולת האישור ואציג סיכום מלא עם אפשרות לאישור או דחייה.\ndd5635ee-1868-47da-9132-34e44f4460ee [assistant] התזכורת מוכנה לאישור לפני יצירתה.\naebffcf6-d2b8-4492-b3a6-a26ca36f3586 [assistant] 📋 לאישור:\nתוכן: לשתות מים\nתדירות: בכל יום בשעה 09:00\nהמופע הראשון: 01.10.2026 בשעה 09:00\nלאישור — כן/לא?\n\nTHE REPLY JUST SENT TO THE OPERATOR THIS ROUND:\n📋 לאישור:\nתוכן: לשתות מים\nתדירות: בכל יום בשעה 09:00\nהמופע הראשון: 01.10.2026 בשעה 09:00\nלאישור — כן/לא?\n\nNO Morning MCP tools were called this turn.\n\nFollow the recognition prompt above: query the client's ledger history first when the round concerns a client, then call report_ledger_recognition exactly once with the verdict for THIS round."}
+{"role": "user", "content": "THE CONVERSATION WINDOW (the last 1h, oldest first) - '<message_id> [<role>] <content>':\n9e260e0b-2bf1-49b2-a2d5-59d957144fa6 [godfather] תזכיר לי כל יום בשעה 9:00 לשתות מים\n811b1d9c-3b14-44f3-b967-14e5c22f273b [assistant] מגדיר תזכורת יומית לשתיית מים בשעה 9:00.\ne84d4695-c5fa-4ea0-afa2-12407cb28af8 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש ביקש ליצור תזכורת חוזרת יומית.\nTHIS TURN'S PURPOSE: לטעון את תהליך יצירת התזכורת, לאשר את הנוסח והשעה, ואז ליצור אותה לאחר אישור.\nEXPECTATION: אציג אישור ממוקד עם תזכורת יומית בשעה 9:00 לשתות מים; לאחר אישור אצור אותה.\ne237d526-97c4-4745-b340-ee7b090e6f44 [assistant] בודק את פרטי התזכורת לפני בקשת האישור.\n5424134d-060b-453b-a1c5-7aff83207052 [assistant] הפרטים ברורים; מציג אישור לפני היצירה.\nf6918dc8-e859-47e0-97e1-e1e4473d15a9 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך יצירת תזכורת, לאחר טעינת יכולת הכתיבה ויכולת האישור.\nTHIS TURN'S PURPOSE: לבקש אישור מפורש ליצירת התזכורת.\nEXPECTATION: ממתין לתשובת כן או לא. אם כן, אצור תזכורת יומית בשעה 09:00 החל מהמועד הקרוב; אם לא, לא אבצע פעולה.\n39ed2192-293d-4400-b4a1-c99bc9817cb9 [assistant] נדרשת רק הסכמה קצרה לפני יצירת התזכורת.\nef0ff4ff-6109-4b1d-9076-e9e0115bb85e [assistant] 📋 לאישור:\nתזכורת: לשתות מים\nתדירות: כל יום בשעה 9:00, החל מ־1 באוקטובר 2026\n\nלאישור — כן/לא?\n\nTHE REPLY JUST SENT TO THE OPERATOR THIS ROUND:\n📋 לאישור:\nתזכורת: לשתות מים\nתדירות: כל יום בשעה 9:00, החל מ־1 באוקטובר 2026\n\nלאישור — כן/לא?\n\nNO Morning MCP tools were called this turn.\n\nFollow the recognition prompt above: query the client's ledger history first when the round concerns a client, then call report_ledger_recognition exactly once with the verdict for THIS round."}
 ```
 
 - tools (2): ['report_ledger_recognition', 'query_ledger_events']
@@ -4139,7 +4670,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 **input:**
 
 ```json
-{"role": "user", "content": "THE CONVERSATION WINDOW (the last 1h, oldest first) - '<message_id> [<role>] <content>':\n2e9c6423-f037-497b-8e59-df0c3cea7598 [godfather] תזכיר לי כל יום בשעה 9:00 לשתות מים\n0749149c-0dfd-4ce6-8033-e4b1e8f3fa65 [assistant] מטפל ביצירת התזכורת היומית.\n4a53e9d5-bf26-4640-9e2d-8669de1ff23a [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: הבקשה היא ליצור תזכורת חדשה שחוזרת מדי יום.\nTHIS TURN'S PURPOSE: להפעיל את מסלול יצירת התזכורת, לאשר את הנוסח והשעה, ואז ליצור אותה רק לאחר אישור.\nEXPECTATION: אטעין את המסלול והיכולות הנדרשות, אציג סיכום לאישור, ואמתין לתשובת המשתמש לפני הכתיבה.\n22aafb77-617e-43c5-b4cb-61dc34486423 [assistant] בודק את פרטי התזכורת ומכין אותה לאישור.\n2fd70e88-42fb-45ba-ae05-4bb25fda01e4 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: במסלול יצירת תזכורת, לאחר קבלת נוסח ותדירות: לשתות מים מדי יום בשעה 09:00. השעה הנוכחית היא 30.09.2026 בשעה 14:45, ולכן המופע הראשון יהיה 01.10.2026 בשעה 09:00.\nTHIS TURN'S PURPOSE: לקבל אישור מפורש לפני יצירת התזכורת.\nEXPECTATION: אטען את יכולת האישור ואציג סיכום מלא עם אפשרות לאישור או דחייה.\ndd5635ee-1868-47da-9132-34e44f4460ee [assistant] התזכורת מוכנה לאישור לפני יצירתה.\naebffcf6-d2b8-4492-b3a6-a26ca36f3586 [assistant] 📋 לאישור:\nתוכן: לשתות מים\nתדירות: בכל יום בשעה 09:00\nהמופע הראשון: 01.10.2026 בשעה 09:00\nלאישור — כן/לא?\n\nTHE REPLY JUST SENT TO THE OPERATOR THIS ROUND:\n📋 לאישור:\nתוכן: לשתות מים\nתדירות: בכל יום בשעה 09:00\nהמופע הראשון: 01.10.2026 בשעה 09:00\nלאישור — כן/לא?\n\nNO Morning MCP tools were called this turn.\n\nFollow the recognition prompt above: query the client's ledger history first when the round concerns a client, then call report_ledger_recognition exactly once with the verdict for THIS round."}
+{"role": "user", "content": "THE CONVERSATION WINDOW (the last 1h, oldest first) - '<message_id> [<role>] <content>':\n9e260e0b-2bf1-49b2-a2d5-59d957144fa6 [godfather] תזכיר לי כל יום בשעה 9:00 לשתות מים\n811b1d9c-3b14-44f3-b967-14e5c22f273b [assistant] מגדיר תזכורת יומית לשתיית מים בשעה 9:00.\ne84d4695-c5fa-4ea0-afa2-12407cb28af8 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש ביקש ליצור תזכורת חוזרת יומית.\nTHIS TURN'S PURPOSE: לטעון את תהליך יצירת התזכורת, לאשר את הנוסח והשעה, ואז ליצור אותה לאחר אישור.\nEXPECTATION: אציג אישור ממוקד עם תזכורת יומית בשעה 9:00 לשתות מים; לאחר אישור אצור אותה.\ne237d526-97c4-4745-b340-ee7b090e6f44 [assistant] בודק את פרטי התזכורת לפני בקשת האישור.\n5424134d-060b-453b-a1c5-7aff83207052 [assistant] הפרטים ברורים; מציג אישור לפני היצירה.\nf6918dc8-e859-47e0-97e1-e1e4473d15a9 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך יצירת תזכורת, לאחר טעינת יכולת הכתיבה ויכולת האישור.\nTHIS TURN'S PURPOSE: לבקש אישור מפורש ליצירת התזכורת.\nEXPECTATION: ממתין לתשובת כן או לא. אם כן, אצור תזכורת יומית בשעה 09:00 החל מהמועד הקרוב; אם לא, לא אבצע פעולה.\n39ed2192-293d-4400-b4a1-c99bc9817cb9 [assistant] נדרשת רק הסכמה קצרה לפני יצירת התזכורת.\nef0ff4ff-6109-4b1d-9076-e9e0115bb85e [assistant] 📋 לאישור:\nתזכורת: לשתות מים\nתדירות: כל יום בשעה 9:00, החל מ־1 באוקטובר 2026\n\nלאישור — כן/לא?\n\nTHE REPLY JUST SENT TO THE OPERATOR THIS ROUND:\n📋 לאישור:\nתזכורת: לשתות מים\nתדירות: כל יום בשעה 9:00, החל מ־1 באוקטובר 2026\n\nלאישור — כן/לא?\n\nNO Morning MCP tools were called this turn.\n\nFollow the recognition prompt above: query the client's ledger history first when the round concerns a client, then call report_ledger_recognition exactly once with the verdict for THIS round."}
 ```
 
 - tools (2): ['report_ledger_recognition', 'query_ledger_events']
@@ -4398,20 +4929,20 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 </details>
 
 <details>
-<summary>30. [2026-09-30 14:46:17] MODEL → APP — context=recognize_ledger_event</summary>
+<summary>34. [2026-09-30 14:55:50] MODEL → APP — context=recognize_ledger_event</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0b96ee0573334dea006abcf688159c87d18eddbfaf840bd371`
+- response.id: `resp_050168e2d544cbed006abcf8c4c7f087d19394b736e0b8e58b`
 - status: `completed`
-- usage: `{"input_tokens": 8602, "input_tokens_details": {"cache_write_tokens": 663, "cached_tokens": 7936}, "output_tokens": 51, "output_tokens_details": {"reasoning_tokens": 17}, "total_tokens": 8653}`
+- usage: `{"input_tokens": 8604, "input_tokens_details": {"cache_write_tokens": 665, "cached_tokens": 7936}, "output_tokens": 53, "output_tokens_details": {"reasoning_tokens": 18}, "total_tokens": 8657}`
 - reasoning item (content not user-visible)
-- function_call: `report_ledger_recognition` call_id=`call_Uu10d6D0IqmM97K7RAhPXdjD`
+- function_call: `report_ledger_recognition` call_id=`call_APgpSmsrnv0yokRu0hARyMwR`
 ```json
 {
   "verdict": "none",
-  "none_reason": "ordinary conversation - reminder pending approval"
+  "none_reason": "ordinary reminder conversation with no ledger event"
 }
 ```
 
@@ -4420,15 +4951,15 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0b96ee0573334dea006abcf688159c87d18eddbfaf840bd371`
+- response.id: `resp_050168e2d544cbed006abcf8c4c7f087d19394b736e0b8e58b`
 - status: `completed`
-- usage: `{"input_tokens": 8602, "input_tokens_details": {"cache_write_tokens": 663, "cached_tokens": 7936}, "output_tokens": 51, "output_tokens_details": {"reasoning_tokens": 17}, "total_tokens": 8653}`
+- usage: `{"input_tokens": 8604, "input_tokens_details": {"cache_write_tokens": 665, "cached_tokens": 7936}, "output_tokens": 53, "output_tokens_details": {"reasoning_tokens": 18}, "total_tokens": 8657}`
 - reasoning item (content not user-visible)
-- function_call: `report_ledger_recognition` call_id=`call_Uu10d6D0IqmM97K7RAhPXdjD`
+- function_call: `report_ledger_recognition` call_id=`call_APgpSmsrnv0yokRu0hARyMwR`
 ```json
 {
   "verdict": "none",
-  "none_reason": "ordinary conversation - reminder pending approval"
+  "none_reason": "ordinary reminder conversation with no ledger event"
 }
 ```
 
@@ -4437,7 +4968,7 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 </details>
 
 <details>
-<summary>31. [2026-09-30 14:46:17] USER → APP — context=webhook</summary>
+<summary>35. [2026-09-30 14:55:50] USER → APP — context=webhook</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -4445,8 +4976,8 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 ```json
 {
   "typeWebhook": "incomingMessageReceived",
-  "idMessage": "billed_modify_single_setup_approve_0b28e9b9",
-  "timestamp": 1790768777,
+  "idMessage": "billed_modify_single_setup_approve_9b6880d4",
+  "timestamp": 1790769350,
   "senderData": {
     "chatId": "+972501234567@c.us",
     "sender": "+972501234567",
@@ -4469,8 +5000,8 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 ```json
 {
   "typeWebhook": "incomingMessageReceived",
-  "idMessage": "billed_modify_single_setup_approve_0b28e9b9",
-  "timestamp": 1790768777,
+  "idMessage": "billed_modify_single_setup_approve_9b6880d4",
+  "timestamp": 1790769350,
   "senderData": {
     "chatId": "+972501234567@c.us",
     "sender": "+972501234567",
@@ -4490,7 +5021,7 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 </details>
 
 <details>
-<summary>32. [2026-09-30 14:46:17] APP → MODEL — context=_run_resolution_loop (first round)</summary>
+<summary>36. [2026-09-30 14:55:50] APP → MODEL — context=_run_resolution_loop (first round)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -4505,22 +5036,25 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 {"role": "user", "content": "תזכיר לי כל יום בשעה 9:00 לשתות מים"}
 ```
 ```json
-{"role": "assistant", "content": "מטפל ביצירת התזכורת היומית."}
+{"role": "assistant", "content": "מגדיר תזכורת יומית לשתיית מים בשעה 9:00."}
 ```
 ```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: הבקשה היא ליצור תזכורת חדשה שחוזרת מדי יום.\nTHIS TURN'S PURPOSE: להפעיל את מסלול יצירת התזכורת, לאשר את הנוסח והשעה, ואז ליצור אותה רק לאחר אישור.\nEXPECTATION: אטעין את המסלול והיכולות הנדרשות, אציג סיכום לאישור, ואמתין לתשובת המשתמש לפני הכתיבה."}
+{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש ביקש ליצור תזכורת חוזרת יומית.\nTHIS TURN'S PURPOSE: לטעון את תהליך יצירת התזכורת, לאשר את הנוסח והשעה, ואז ליצור אותה לאחר אישור.\nEXPECTATION: אציג אישור ממוקד עם תזכורת יומית בשעה 9:00 לשתות מים; לאחר אישור אצור אותה."}
 ```
 ```json
-{"role": "assistant", "content": "בודק את פרטי התזכורת ומכין אותה לאישור."}
+{"role": "assistant", "content": "בודק את פרטי התזכורת לפני בקשת האישור."}
 ```
 ```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: במסלול יצירת תזכורת, לאחר קבלת נוסח ותדירות: לשתות מים מדי יום בשעה 09:00. השעה הנוכחית היא 30.09.2026 בשעה 14:45, ולכן המופע הראשון יהיה 01.10.2026 בשעה 09:00.\nTHIS TURN'S PURPOSE: לקבל אישור מפורש לפני יצירת התזכורת.\nEXPECTATION: אטען את יכולת האישור ואציג סיכום מלא עם אפשרות לאישור או דחייה."}
+{"role": "assistant", "content": "הפרטים ברורים; מציג אישור לפני היצירה."}
 ```
 ```json
-{"role": "assistant", "content": "התזכורת מוכנה לאישור לפני יצירתה."}
+{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך יצירת תזכורת, לאחר טעינת יכולת הכתיבה ויכולת האישור.\nTHIS TURN'S PURPOSE: לבקש אישור מפורש ליצירת התזכורת.\nEXPECTATION: ממתין לתשובת כן או לא. אם כן, אצור תזכורת יומית בשעה 09:00 החל מהמועד הקרוב; אם לא, לא אבצע פעולה."}
 ```
 ```json
-{"role": "assistant", "content": "📋 לאישור:\nתוכן: לשתות מים\nתדירות: בכל יום בשעה 09:00\nהמופע הראשון: 01.10.2026 בשעה 09:00\nלאישור — כן/לא?"}
+{"role": "assistant", "content": "נדרשת רק הסכמה קצרה לפני יצירת התזכורת."}
+```
+```json
+{"role": "assistant", "content": "📋 לאישור:\nתזכורת: לשתות מים\nתדירות: כל יום בשעה 9:00, החל מ־1 באוקטובר 2026\n\nלאישור — כן/לא?"}
 ```
 ```json
 {"role": "user", "content": "כן"}
@@ -4536,11 +5070,6 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 
 </details>
 
-</details>
-
-<details>
-<summary>33. [2026-09-30 14:46:18] APP → MODEL — context=_run_resolution_loop (first round)</summary>
-
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
@@ -4554,22 +5083,25 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 {"role": "user", "content": "תזכיר לי כל יום בשעה 9:00 לשתות מים"}
 ```
 ```json
-{"role": "assistant", "content": "מטפל ביצירת התזכורת היומית."}
+{"role": "assistant", "content": "מגדיר תזכורת יומית לשתיית מים בשעה 9:00."}
 ```
 ```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: הבקשה היא ליצור תזכורת חדשה שחוזרת מדי יום.\nTHIS TURN'S PURPOSE: להפעיל את מסלול יצירת התזכורת, לאשר את הנוסח והשעה, ואז ליצור אותה רק לאחר אישור.\nEXPECTATION: אטעין את המסלול והיכולות הנדרשות, אציג סיכום לאישור, ואמתין לתשובת המשתמש לפני הכתיבה."}
+{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש ביקש ליצור תזכורת חוזרת יומית.\nTHIS TURN'S PURPOSE: לטעון את תהליך יצירת התזכורת, לאשר את הנוסח והשעה, ואז ליצור אותה לאחר אישור.\nEXPECTATION: אציג אישור ממוקד עם תזכורת יומית בשעה 9:00 לשתות מים; לאחר אישור אצור אותה."}
 ```
 ```json
-{"role": "assistant", "content": "בודק את פרטי התזכורת ומכין אותה לאישור."}
+{"role": "assistant", "content": "בודק את פרטי התזכורת לפני בקשת האישור."}
 ```
 ```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: במסלול יצירת תזכורת, לאחר קבלת נוסח ותדירות: לשתות מים מדי יום בשעה 09:00. השעה הנוכחית היא 30.09.2026 בשעה 14:45, ולכן המופע הראשון יהיה 01.10.2026 בשעה 09:00.\nTHIS TURN'S PURPOSE: לקבל אישור מפורש לפני יצירת התזכורת.\nEXPECTATION: אטען את יכולת האישור ואציג סיכום מלא עם אפשרות לאישור או דחייה."}
+{"role": "assistant", "content": "הפרטים ברורים; מציג אישור לפני היצירה."}
 ```
 ```json
-{"role": "assistant", "content": "התזכורת מוכנה לאישור לפני יצירתה."}
+{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך יצירת תזכורת, לאחר טעינת יכולת הכתיבה ויכולת האישור.\nTHIS TURN'S PURPOSE: לבקש אישור מפורש ליצירת התזכורת.\nEXPECTATION: ממתין לתשובת כן או לא. אם כן, אצור תזכורת יומית בשעה 09:00 החל מהמועד הקרוב; אם לא, לא אבצע פעולה."}
 ```
 ```json
-{"role": "assistant", "content": "📋 לאישור:\nתוכן: לשתות מים\nתדירות: בכל יום בשעה 09:00\nהמופע הראשון: 01.10.2026 בשעה 09:00\nלאישור — כן/לא?"}
+{"role": "assistant", "content": "נדרשת רק הסכמה קצרה לפני יצירת התזכורת."}
+```
+```json
+{"role": "assistant", "content": "📋 לאישור:\nתזכורת: לשתות מים\nתדירות: כל יום בשעה 9:00, החל מ־1 באוקטובר 2026\n\nלאישור — כן/לא?"}
 ```
 ```json
 {"role": "user", "content": "כן"}
@@ -4927,7 +5459,7 @@ cap_reminders_write, cap_approval_with_buttons
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 14:46 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-09-30 14:55 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -4938,16 +5470,16 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>34. [2026-09-30 14:46:21] MODEL → APP — context=_run_resolution_loop (first round)</summary>
+<summary>37. [2026-09-30 14:55:54] MODEL → APP — context=_run_resolution_loop (first round)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0b6e875e1d175fec006abcf68a4f8c87d1a56a4cab7b3d8372`
+- response.id: `resp_09f91c76a360cc48006abcf8c715f087d1bba8c7d42afb0483`
 - status: `completed`
-- usage: `{"input_tokens": 9193, "input_tokens_details": {"cache_write_tokens": 9190, "cached_tokens": 0}, "output_tokens": 123, "output_tokens_details": {"reasoning_tokens": 97}, "total_tokens": 9316}`
+- usage: `{"input_tokens": 9185, "input_tokens_details": {"cache_write_tokens": 380, "cached_tokens": 8802}, "output_tokens": 93, "output_tokens_details": {"reasoning_tokens": 67}, "total_tokens": 9278}`
 - reasoning item (content not user-visible)
-- function_call: `react_to_message` call_id=`call_7sr5bLTVlVqkqKJp4I179HtB`
+- function_call: `react_to_message` call_id=`call_KNxEFkGg1TjE2zvnZFRZW9G7`
 ```json
 {
   "emoji": "👍",
@@ -4960,11 +5492,11 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0b6e875e1d175fec006abcf68a4f8c87d1a56a4cab7b3d8372`
+- response.id: `resp_09f91c76a360cc48006abcf8c715f087d1bba8c7d42afb0483`
 - status: `completed`
-- usage: `{"input_tokens": 9193, "input_tokens_details": {"cache_write_tokens": 9190, "cached_tokens": 0}, "output_tokens": 123, "output_tokens_details": {"reasoning_tokens": 97}, "total_tokens": 9316}`
+- usage: `{"input_tokens": 9185, "input_tokens_details": {"cache_write_tokens": 380, "cached_tokens": 8802}, "output_tokens": 93, "output_tokens_details": {"reasoning_tokens": 67}, "total_tokens": 9278}`
 - reasoning item (content not user-visible)
-- function_call: `react_to_message` call_id=`call_7sr5bLTVlVqkqKJp4I179HtB`
+- function_call: `react_to_message` call_id=`call_KNxEFkGg1TjE2zvnZFRZW9G7`
 ```json
 {
   "emoji": "👍",
@@ -4977,7 +5509,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>35. [2026-09-30 14:46:21] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>38. [2026-09-30 14:55:54] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -4988,7 +5520,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 **input:**
 
-- app's reply to `react_to_message` (call_id=`call_7sr5bLTVlVqkqKJp4I179HtB`):
+- app's reply to `react_to_message` (call_id=`call_KNxEFkGg1TjE2zvnZFRZW9G7`):
 ```text
 {
   "status": "failed"
@@ -4997,7 +5529,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 - tools (13): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
 
-- previous_response_id: `'resp_0b6e875e1d175fec006abcf68a4f8c87d1a56a4cab7b3d8372'`
+- previous_response_id: `'resp_09f91c76a360cc48006abcf8c715f087d1bba8c7d42afb0483'`
 
 - max_output_tokens: `20000`
 
@@ -5016,7 +5548,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 **input:**
 
-- app's reply to `react_to_message` (call_id=`call_7sr5bLTVlVqkqKJp4I179HtB`):
+- app's reply to `react_to_message` (call_id=`call_KNxEFkGg1TjE2zvnZFRZW9G7`):
 ```text
 {
   "status": "failed"
@@ -5025,7 +5557,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 - tools (13): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
 
-- previous_response_id: `'resp_0b6e875e1d175fec006abcf68a4f8c87d1a56a4cab7b3d8372'`
+- previous_response_id: `'resp_09f91c76a360cc48006abcf8c715f087d1bba8c7d42afb0483'`
 
 - max_output_tokens: `20000`
 
@@ -5377,7 +5909,7 @@ cap_reminders_write, cap_approval_with_buttons
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 14:46 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-09-30 14:55 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -5388,16 +5920,15 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>36. [2026-09-30 14:46:24] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>39. [2026-09-30 14:55:56] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0b6e875e1d175fec006abcf68dae9c87d19fe036ccd5cbbb77`
+- response.id: `resp_09f91c76a360cc48006abcf8cb122087d1a8faa1701ff6e874`
 - status: `completed`
-- usage: `{"input_tokens": 9334, "input_tokens_details": {"cache_write_tokens": 141, "cached_tokens": 9190}, "output_tokens": 44, "output_tokens_details": {"reasoning_tokens": 13}, "total_tokens": 9378}`
-- reasoning item (content not user-visible)
-- function_call: `send_progress_update` call_id=`call_cQM2C6p3LvKjwtcZLPA9wTjg`
+- usage: `{"input_tokens": 9296, "input_tokens_details": {"cache_write_tokens": 111, "cached_tokens": 9182}, "output_tokens": 29, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9325}`
+- function_call: `send_progress_update` call_id=`call_kA82wPKOWxbQazxihMfj9qar`
 ```json
 {
   "text": "יוצר עכשיו את התזכורת היומית."
@@ -5409,11 +5940,10 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0b6e875e1d175fec006abcf68dae9c87d19fe036ccd5cbbb77`
+- response.id: `resp_09f91c76a360cc48006abcf8cb122087d1a8faa1701ff6e874`
 - status: `completed`
-- usage: `{"input_tokens": 9334, "input_tokens_details": {"cache_write_tokens": 141, "cached_tokens": 9190}, "output_tokens": 44, "output_tokens_details": {"reasoning_tokens": 13}, "total_tokens": 9378}`
-- reasoning item (content not user-visible)
-- function_call: `send_progress_update` call_id=`call_cQM2C6p3LvKjwtcZLPA9wTjg`
+- usage: `{"input_tokens": 9296, "input_tokens_details": {"cache_write_tokens": 111, "cached_tokens": 9182}, "output_tokens": 29, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9325}`
+- function_call: `send_progress_update` call_id=`call_kA82wPKOWxbQazxihMfj9qar`
 ```json
 {
   "text": "יוצר עכשיו את התזכורת היומית."
@@ -5425,7 +5955,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>37. [2026-09-30 14:46:24] APP → USER — context=progress_update</summary>
+<summary>40. [2026-09-30 14:55:56] APP → USER — context=progress_update</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -5454,7 +5984,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>38. [2026-09-30 14:46:24] USER ← APP (send result) — context=progress_update</summary>
+<summary>41. [2026-09-30 14:55:56] USER ← APP (send result) — context=progress_update</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -5482,7 +6012,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>39. [2026-09-30 14:46:24] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>42. [2026-09-30 14:55:56] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -5493,7 +6023,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 **input:**
 
-- app's reply to `send_progress_update` (call_id=`call_cQM2C6p3LvKjwtcZLPA9wTjg`):
+- app's reply to `send_progress_update` (call_id=`call_kA82wPKOWxbQazxihMfj9qar`):
 ```text
 {
   "sent": true
@@ -5502,7 +6032,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 - tools (13): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
 
-- previous_response_id: `'resp_0b6e875e1d175fec006abcf68dae9c87d19fe036ccd5cbbb77'`
+- previous_response_id: `'resp_09f91c76a360cc48006abcf8cb122087d1a8faa1701ff6e874'`
 
 - max_output_tokens: `20000`
 
@@ -5521,7 +6051,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 **input:**
 
-- app's reply to `send_progress_update` (call_id=`call_cQM2C6p3LvKjwtcZLPA9wTjg`):
+- app's reply to `send_progress_update` (call_id=`call_kA82wPKOWxbQazxihMfj9qar`):
 ```text
 {
   "sent": true
@@ -5530,7 +6060,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 - tools (13): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
 
-- previous_response_id: `'resp_0b6e875e1d175fec006abcf68dae9c87d19fe036ccd5cbbb77'`
+- previous_response_id: `'resp_09f91c76a360cc48006abcf8cb122087d1a8faa1701ff6e874'`
 
 - max_output_tokens: `20000`
 
@@ -5882,7 +6412,7 @@ cap_reminders_write, cap_approval_with_buttons
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 14:46 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-09-30 14:55 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -5893,20 +6423,20 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>40. [2026-09-30 14:46:27] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>43. [2026-09-30 14:56:00] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0b6e875e1d175fec006abcf690939487d193edbc9c66bb9c64`
+- response.id: `resp_09f91c76a360cc48006abcf8ce88d887d18ebf9ac03570cf87`
 - status: `completed`
-- usage: `{"input_tokens": 9395, "input_tokens_details": {"cache_write_tokens": 61, "cached_tokens": 9331}, "output_tokens": 131, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9526}`
-- function_call: `record_planning_status` call_id=`call_pusmUOftX33uFBTQUoBuxIQ8`
+- usage: `{"input_tokens": 9342, "input_tokens_details": {"cache_write_tokens": 46, "cached_tokens": 9293}, "output_tokens": 106, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9448}`
+- function_call: `record_planning_status` call_id=`call_p6fFWxaO2uyM7hfGe47ZOnWx`
 ```json
 {
-  "where_i_was": "המשתמש אישר את יצירת התזכורת היומית לשתות מים בשעה 09:00. האישור התקבל לאחר הצגת המופע הראשון ב-01.10.2026 בשעה 09:00.",
-  "this_turns_purpose": "ליצור את התזכורת המאושרת במערכת.",
-  "expectation": "אקרא לכלי יצירת התזכורת עם כלל יומי מלא; לאחר מכן אדווח על הצלחה או כשלון, ואסיים את המסלול."
+  "where_i_was": "בתהליך יצירת תזכורת, לאחר שהמשתמש אישר יצירה של תזכורת יומית לשתיית מים בשעה 9:00.",
+  "this_turns_purpose": "ליצור את התזכורת המאושרת.",
+  "expectation": "אנסה ליצור תזכורת יומית החל מ-1 באוקטובר 2026; לאחר מכן אדווח על התוצאה."
 }
 ```
 
@@ -5915,15 +6445,15 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0b6e875e1d175fec006abcf690939487d193edbc9c66bb9c64`
+- response.id: `resp_09f91c76a360cc48006abcf8ce88d887d18ebf9ac03570cf87`
 - status: `completed`
-- usage: `{"input_tokens": 9395, "input_tokens_details": {"cache_write_tokens": 61, "cached_tokens": 9331}, "output_tokens": 131, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9526}`
-- function_call: `record_planning_status` call_id=`call_pusmUOftX33uFBTQUoBuxIQ8`
+- usage: `{"input_tokens": 9342, "input_tokens_details": {"cache_write_tokens": 46, "cached_tokens": 9293}, "output_tokens": 106, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9448}`
+- function_call: `record_planning_status` call_id=`call_p6fFWxaO2uyM7hfGe47ZOnWx`
 ```json
 {
-  "where_i_was": "המשתמש אישר את יצירת התזכורת היומית לשתות מים בשעה 09:00. האישור התקבל לאחר הצגת המופע הראשון ב-01.10.2026 בשעה 09:00.",
-  "this_turns_purpose": "ליצור את התזכורת המאושרת במערכת.",
-  "expectation": "אקרא לכלי יצירת התזכורת עם כלל יומי מלא; לאחר מכן אדווח על הצלחה או כשלון, ואסיים את המסלול."
+  "where_i_was": "בתהליך יצירת תזכורת, לאחר שהמשתמש אישר יצירה של תזכורת יומית לשתיית מים בשעה 9:00.",
+  "this_turns_purpose": "ליצור את התזכורת המאושרת.",
+  "expectation": "אנסה ליצור תזכורת יומית החל מ-1 באוקטובר 2026; לאחר מכן אדווח על התוצאה."
 }
 ```
 
@@ -5932,7 +6462,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>41. [2026-09-30 14:46:27] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>44. [2026-09-30 14:56:00] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -5943,14 +6473,14 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 **input:**
 
-- app's reply to `record_planning_status` (call_id=`call_pusmUOftX33uFBTQUoBuxIQ8`):
+- app's reply to `record_planning_status` (call_id=`call_p6fFWxaO2uyM7hfGe47ZOnWx`):
 ```text
 recorded
 ```
 
 - tools (13): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
 
-- previous_response_id: `'resp_0b6e875e1d175fec006abcf690939487d193edbc9c66bb9c64'`
+- previous_response_id: `'resp_09f91c76a360cc48006abcf8ce88d887d18ebf9ac03570cf87'`
 
 - max_output_tokens: `20000`
 
@@ -5969,14 +6499,14 @@ recorded
 
 **input:**
 
-- app's reply to `record_planning_status` (call_id=`call_pusmUOftX33uFBTQUoBuxIQ8`):
+- app's reply to `record_planning_status` (call_id=`call_p6fFWxaO2uyM7hfGe47ZOnWx`):
 ```text
 recorded
 ```
 
 - tools (13): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
 
-- previous_response_id: `'resp_0b6e875e1d175fec006abcf690939487d193edbc9c66bb9c64'`
+- previous_response_id: `'resp_09f91c76a360cc48006abcf8ce88d887d18ebf9ac03570cf87'`
 
 - max_output_tokens: `20000`
 
@@ -6328,7 +6858,7 @@ cap_reminders_write, cap_approval_with_buttons
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 14:46 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-09-30 14:55 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -6339,16 +6869,15 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>42. [2026-09-30 14:46:30] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>45. [2026-09-30 14:56:03] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0b6e875e1d175fec006abcf693cd6887d18d371f0732a46451`
+- response.id: `resp_09f91c76a360cc48006abcf8d1099c87d18575be94b0778fee`
 - status: `completed`
-- usage: `{"input_tokens": 9541, "input_tokens_details": {"cache_write_tokens": 146, "cached_tokens": 9392}, "output_tokens": 143, "output_tokens_details": {"reasoning_tokens": 43}, "total_tokens": 9684}`
-- reasoning item (content not user-visible)
-- function_call: `create_reminder` call_id=`call_BfD1BPZcpZtGrOdB5UmKzBcn`
+- usage: `{"input_tokens": 9463, "input_tokens_details": {"cache_write_tokens": 121, "cached_tokens": 9339}, "output_tokens": 102, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9565}`
+- function_call: `create_reminder` call_id=`call_TYFPmV3P69Lqlv5zMSnBUw56`
 ```json
 {
   "message_text": "לשתות מים",
@@ -6360,7 +6889,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
     "weekdays": null,
     "month_day": null,
     "month_nth_weekday": null,
-    "first_occurrence_at": "2026-10-01T09:00:00",
+    "first_occurrence_at": "2026-10-01T09:00:00+03:00",
     "end_condition": "never",
     "end_count": null,
     "end_until": null
@@ -6373,11 +6902,10 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0b6e875e1d175fec006abcf693cd6887d18d371f0732a46451`
+- response.id: `resp_09f91c76a360cc48006abcf8d1099c87d18575be94b0778fee`
 - status: `completed`
-- usage: `{"input_tokens": 9541, "input_tokens_details": {"cache_write_tokens": 146, "cached_tokens": 9392}, "output_tokens": 143, "output_tokens_details": {"reasoning_tokens": 43}, "total_tokens": 9684}`
-- reasoning item (content not user-visible)
-- function_call: `create_reminder` call_id=`call_BfD1BPZcpZtGrOdB5UmKzBcn`
+- usage: `{"input_tokens": 9463, "input_tokens_details": {"cache_write_tokens": 121, "cached_tokens": 9339}, "output_tokens": 102, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9565}`
+- function_call: `create_reminder` call_id=`call_TYFPmV3P69Lqlv5zMSnBUw56`
 ```json
 {
   "message_text": "לשתות מים",
@@ -6389,7 +6917,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
     "weekdays": null,
     "month_day": null,
     "month_nth_weekday": null,
-    "first_occurrence_at": "2026-10-01T09:00:00",
+    "first_occurrence_at": "2026-10-01T09:00:00+03:00",
     "end_condition": "never",
     "end_count": null,
     "end_until": null
@@ -6402,16 +6930,16 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>43. [2026-09-30 14:46:30] APP-INTERNAL: use_capability dispatch outcome</summary>
+<summary>46. [2026-09-30 14:56:03] APP-INTERNAL: use_capability dispatch outcome</summary>
 
 ```text
-[CAPABILITY-AUDIT] capability='cap_reminders_write' outcome='success' note="create_reminder({'message_text': 'לשתות מים', 'schedule_type': 'recurring', 'one_time_due_at': None, 'recurrence': {'interval': 1, 'freq': 'daily', 'weekdays': None, 'month_day': None, 'month_nth_weekday': None, 'first_occurrence_at': '2026-10-01T09:00:00', 'end_condition': 'never', 'end_count': None, 'end_until': None}})" detail='✅ נוצרה תזכורת (מזהה 1bb07206-9031-46c2-baaa-897559410f9a), מועד: 2026-10-01T09:00:00+03:00'
+[CAPABILITY-AUDIT] capability='cap_reminders_write' outcome='success' note="create_reminder({'message_text': 'לשתות מים', 'schedule_type': 'recurring', 'one_time_due_at': None, 'recurrence': {'interval': 1, 'freq': 'daily', 'weekdays': None, 'month_day': None, 'month_nth_weekday': None, 'first_occurrence_at': '2026-10-01T09:00:00+03:00', 'end_condition': 'never', 'end_count': None, 'end_until': None}})" detail='✅ נוצרה תזכורת (מזהה 4efa168c-5ca8-4b2b-9109-4bae04e02c34), מועד: 2026-10-01T09:00:00+03:00'
 ```
 
 </details>
 
 <details>
-<summary>44. [2026-09-30 14:46:30] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>47. [2026-09-30 14:56:03] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -6422,14 +6950,14 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 **input:**
 
-- app's reply to `create_reminder` (call_id=`call_BfD1BPZcpZtGrOdB5UmKzBcn`):
+- app's reply to `create_reminder` (call_id=`call_TYFPmV3P69Lqlv5zMSnBUw56`):
 ```text
-✅ נוצרה תזכורת (מזהה 1bb07206-9031-46c2-baaa-897559410f9a), מועד: 2026-10-01T09:00:00+03:00
+✅ נוצרה תזכורת (מזהה 4efa168c-5ca8-4b2b-9109-4bae04e02c34), מועד: 2026-10-01T09:00:00+03:00
 ```
 
 - tools (13): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
 
-- previous_response_id: `'resp_0b6e875e1d175fec006abcf693cd6887d18d371f0732a46451'`
+- previous_response_id: `'resp_09f91c76a360cc48006abcf8d1099c87d18575be94b0778fee'`
 
 - max_output_tokens: `20000`
 
@@ -6448,14 +6976,14 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 **input:**
 
-- app's reply to `create_reminder` (call_id=`call_BfD1BPZcpZtGrOdB5UmKzBcn`):
+- app's reply to `create_reminder` (call_id=`call_TYFPmV3P69Lqlv5zMSnBUw56`):
 ```text
-✅ נוצרה תזכורת (מזהה 1bb07206-9031-46c2-baaa-897559410f9a), מועד: 2026-10-01T09:00:00+03:00
+✅ נוצרה תזכורת (מזהה 4efa168c-5ca8-4b2b-9109-4bae04e02c34), מועד: 2026-10-01T09:00:00+03:00
 ```
 
 - tools (13): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
 
-- previous_response_id: `'resp_0b6e875e1d175fec006abcf693cd6887d18d371f0732a46451'`
+- previous_response_id: `'resp_09f91c76a360cc48006abcf8d1099c87d18575be94b0778fee'`
 
 - max_output_tokens: `20000`
 
@@ -6807,7 +7335,7 @@ cap_reminders_write, cap_approval_with_buttons
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 14:46 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-09-30 14:55 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -6818,556 +7346,37 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>45. [2026-09-30 14:46:33] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>48. [2026-09-30 14:56:05] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0b6e875e1d175fec006abcf696f54c87d1acf0be828437ce77`
+- response.id: `resp_09f91c76a360cc48006abcf8d39f3887d19f31ce6e42c5d010`
 - status: `completed`
-- usage: `{"input_tokens": 9750, "input_tokens_details": {"cache_write_tokens": 209, "cached_tokens": 9538}, "output_tokens": 110, "output_tokens_details": {"reasoning_tokens": 80}, "total_tokens": 9860}`
+- usage: `{"input_tokens": 9635, "input_tokens_details": {"cache_write_tokens": 172, "cached_tokens": 9460}, "output_tokens": 44, "output_tokens_details": {"reasoning_tokens": 18}, "total_tokens": 9679}`
 - reasoning item (content not user-visible)
-- function_call: `send_progress_update` call_id=`call_tgBaDCWtp2RAlbv1BjwF2yi1`
-```json
-{
-  "text": "התזכורת נוצרה בהצלחה."
-}
-```
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- response.id: `resp_0b6e875e1d175fec006abcf696f54c87d1acf0be828437ce77`
-- status: `completed`
-- usage: `{"input_tokens": 9750, "input_tokens_details": {"cache_write_tokens": 209, "cached_tokens": 9538}, "output_tokens": 110, "output_tokens_details": {"reasoning_tokens": 80}, "total_tokens": 9860}`
-- reasoning item (content not user-visible)
-- function_call: `send_progress_update` call_id=`call_tgBaDCWtp2RAlbv1BjwF2yi1`
-```json
-{
-  "text": "התזכורת נוצרה בהצלחה."
-}
-```
-
-</details>
-
-</details>
-
-<details>
-<summary>46. [2026-09-30 14:46:33] APP → USER — context=progress_update</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-```json
-{
-  "chat_id": "+972501234567@c.us",
-  "message": "התזכורת נוצרה בהצלחה."
-}
-```
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-```json
-{
-  "chat_id": "+972501234567@c.us",
-  "message": "התזכורת נוצרה בהצלחה."
-}
-```
-
-</details>
-
-</details>
-
-<details>
-<summary>47. [2026-09-30 14:46:33] USER ← APP (send result) — context=progress_update</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-```json
-{
-  "chat_id": "+972501234567@c.us",
-  "message": "None"
-}
-```
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-```json
-{
-  "result": "None"
-}
-```
-
-</details>
-
-</details>
-
-<details>
-<summary>48. [2026-09-30 14:46:33] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- flows: flow_create_reminder
-
-- capabilities: cap_reminders_write, cap_approval_with_buttons
-
-**input:**
-
-- app's reply to `send_progress_update` (call_id=`call_tgBaDCWtp2RAlbv1BjwF2yi1`):
-```text
-{
-  "sent": true
-}
-```
-
-- tools (13): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
-
-- previous_response_id: `'resp_0b6e875e1d175fec006abcf696f54c87d1acf0be828437ce77'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-- instructions: backbone (flows=flow_create_reminder, capabilities=cap_reminders_write, cap_approval_with_buttons)
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- flows: flow_create_reminder
-
-- capabilities: cap_reminders_write, cap_approval_with_buttons
-
-**input:**
-
-- app's reply to `send_progress_update` (call_id=`call_tgBaDCWtp2RAlbv1BjwF2yi1`):
-```text
-{
-  "sent": true
-}
-```
-
-- tools (13): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
-
-- previous_response_id: `'resp_0b6e875e1d175fec006abcf696f54c87d1acf0be828437ce77'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-<details>
-<summary>↳↳ instructions (24924 chars)</summary>
-
-```text
-# DeniDin — Backbone
-
-## How You Work
-
-You work with two kinds of building blocks, described at low resolution in the
-catalogs below: **flows** (`flow_...`) - blueprints for a recurring kind of
-request - and **capabilities** (`cap_...`) - the domains that actually do things,
-each with its own prompt and its own real tools. Flows can load other flows and
-capabilities; a flow defines *what to do and in what order*, while each
-capability holds the detail of what it itself does.
-
-Loading tools, usable in any order, any number of times:
-
-- **`load_flows(flows)` / `unload_flows(flows)`** - always an array; one item is
-  fine, and combining flows is allowed when a request spans more than one.
-- **`load_capabilities(capabilities)` / `unload_capabilities(capabilities)`** -
-  always an array. The moment a capability is loaded, its prompt AND its real
-  tools are attached, starting the very next round; call the real tool directly,
-  there is no separate "use" step. A flow's own "Capabilities:" line declares
-  every capability that flow will need - load all of them together, in one
-  `load_capabilities` call, right after loading the flow, rather than loading
-  them one at a time as each step comes up: you already know you'll need them,
-  and batching saves a round-trip per capability.
-- **`reset_to_backbone()`** - unloads every loaded flow and capability at once.
-  Use it once you are genuinely done with the user's request(s), not mid-task.
-
-Loading an already-loaded item, or unloading one that is not loaded, is a
-harmless no-op. Loaded flows and capabilities stay loaded across this and future
-turns in this chat until you unload them (or they auto-clear after a period of
-inactivity); the "Loaded flows" and "Loaded capabilities" lines near the end of
-these instructions always show what is currently loaded. Unload something only
-when nothing you are still working on needs it - another flow may be using it.
-
-## Always-present capabilities
-
-Four capabilities are always available, cannot be unloaded, and each has its own
-prompt right below: `cap_send_to_user` (your actual reply), `cap_react_to_message`
-(a WhatsApp emoji reaction), `cap_send_progress_update` (an interim message
-while you work) and `cap_record_planning_status` (your own running account of
-where you are, which is how you keep your place across turns and inside nested
-flows). At every step of any flow, consider whether they would help: react to
-the user's message, send a progress update, record your planning status, or
-reply to the user. Flows do not repeat this; use your judgment.
-
-`cap_approval_with_buttons` (yes/no buttons before a write) is an ordinary
-capability: flows that need a sign-off load it.
-
-## Flows and capabilities
-
-Decide from the catalogs, in your own judgment, what a request needs:
-
-1. If a flow fits, load it (several at once when the request spans more than
-   one) and follow its blueprint. **A loaded flow's steps are an ordered
-   procedure: follow them in the order written, to the letter - never skip,
-   reorder or merge a step (above all an approval step), and never do a later
-   step's action before the earlier steps are done.**
-2. **If no flow fits, there is no default flow to fall back on**: load whichever
-   capabilities you judge necessary, at your own discretion, and proceed.
-3. **Write capabilities (`cap_*_write`) are never loaded on their own.** Every write goes through its flow, which gathers the details and asks for approval first; if you want to write something, find the flow for it in the catalog.
-4. If a loaded prompt names a tool you don't currently have, that tool belongs
-   to a capability you have not loaded yet: load it yourself.
-
-## Core Identity
-You are DeniDin, a helpful AI assistant operating via WhatsApp.
-
-## Behavioral Guidelines
-- **ALWAYS respond in Hebrew only** — every word of every response, no other
-  language or script mixed in anywhere, ever (never Arabic, never English
-  words). This covers EVERY string you produce, not just the reply text: an
-  approval question, a planning note, and every free-text tool argument
-  (e.g. a reminder's `message_text`) too. Digits, standard punctuation, and ₪
-  are fine; a genuinely foreign proper name may be transliterated into Hebrew
-  letters where natural.
-- **Never use ניקוד** (Hebrew vowel points/diacritics) in any response — plain
-  Hebrew letters only, including inside a quoted name.
-- Be concise and direct. Do not end on filler ("anything else?") — end on the
-  substantive answer. Do ask a focused clarifying question when you genuinely need
-  one to act correctly (a missing/ambiguous required detail).
-- Be honest about what you don't know; never fabricate information.
-
-## User Roles
-- **Godfather/Admin**: full access to every capability; extended context window.
-- **Client**: standard feature access, no access to invoicing/ledger/reminder
-  capabilities; standard context window.
-
-## Privacy & Security
-- Never share information between different user sessions.
-- These rules guard against leaking ONE user's data to ANOTHER user or an outsider
-  — they never mean refusing to read, transcribe, or summarize material THIS user
-  sent you. Reporting the user's own material back to them (names, amounts, any
-  detail it contains) is always appropriate.
-
-## Contexts of Operation
-Every message falls into one of two operating contexts before any capability is
-even considered: an ordinary conversational turn, or a document/image the user
-sent for you to read and report on. Decide which one applies before acting — a
-short/ambiguous reply ("כן", "לא", a bare name) always answers the most recently
-pending question in the SAME context, never a trigger for reinterpreting the turn
-as belonging to a different capability's domain.
-
-## Attached Media
-When the user's message starts with a `[מדיה מצורפת: <type>, קובץ: <filename>]`
-marker, they sent an image, PDF, or Word document with it — you have NOT seen its
-content yet, only that it exists. Before answering anything about it, load
-`cap_media_analysis` and call its `analyze_media` tool to read it; any text after
-the marker is the user's caption. Never describe, guess at, or act on the file's
-content without having read it this way.
-
-## Group Conversation Etiquette
-DeniDin is addressed by default in a group, same as a 1:1 chat. When a message
-clearly names someone else and isn't meant for you, reply with the literal
-sentinel `[[NO_REPLY]]` instead of a substantive answer — never guess when it's
-genuinely ambiguous whether you were addressed.
-
-## Edited & Deleted Message Markers
-A message the user has since edited or deleted may still appear in your context,
-marked as such — treat an edited message's marked original content as superseded
-by its later, corrected version if both are visible, and never act on a deleted
-message's content as if it were still pending.
-
-## Generic Post-Turn Recognition Mechanism
-A capability MAY run a recognition step once per turn: call its own reporting
-tool at most once, and when in doubt, do nothing rather than guess. This shape
-is reusable by any capability that wants one — the domain-specific rules for
-what to recognize and how live in that capability's own prompt file, not here.
-
-
-# Capability: Send to user (always present)
-
-`send_to_user(text)` is your actual reply to the user. Call it whenever you are
-ready to speak, not only at the very end: to answer, to ask a question, to
-report an outcome. A turn that ends without it, or without an approval question,
-leaves the user with nothing.
-
-- Pass the literal text `[[NO_REPLY]]` to deliberately say nothing this turn. Use
-  it in a group when a message clearly names someone else and is not meant for
-  you. When it is genuinely unclear whether you were addressed, do not guess.
-- For a yes/no sign-off, use `cap_approval_with_buttons` instead; it gives the
-  user tappable buttons.
-- Reply in Hebrew only, concisely, without filler. End on the substantive answer.
-  Ask a focused question only when you genuinely need the answer to act correctly.
-
-
-# Capability: React to message (always present)
-
-`react_to_message` puts a native WhatsApp emoji reaction on a message. It is a
-lightweight, reversible signal - never a substitute for a substantive reply,
-and never a mechanical habit reached for out of uncertainty about what else
-to do. Typing an emoji into your reply text is NOT a reaction and does not
-replace calling the tool.
-
-Before reaching for it, ask yourself: does this add a real signal the user
-doesn't already have - that you saw their message, that you're on it, that
-something just succeeded or failed - or would it just be noise on top of a
-reply that already says the same thing?
-
-Evaluate against:
-- Does the user currently have any signal you registered their message and
-  are handling it (or have finished)? If there's a real gap before your
-  substantive reply, a reaction can fill it.
-- Is your actual reply, arriving in this same round or moments later, already
-  going to tell them everything a reaction would? If so, it adds nothing.
-- Is this ambient chatter that doesn't really concern you? Then it isn't
-  worth one.
-
-**Classics** (a menu, not a checklist): 👍 simple ack · 🫡 "on it" · 👀 document
-being looked into · ✅ clean success · 🎉 a bigger win · ⚠️ resolved but needs
-attention · ❌ failed/declined · ❓ unresolved, needs clarification · 🙏
-reciprocating thanks · ❤️ warmth beyond a simple thanks.
-
-When genuinely unsure whether a reaction fits, don't send one - silence is
-the safer default, not noise.
-
-
-# Capability: Send progress update (always present)
-
-`send_progress_update(text)` sends one brief interim WhatsApp message while you
-are still working, before your final reply. Keep it to a short plain sentence.
-
-Users are waiting on the other end and don't like silence - they want to know
-something is happening with their request, not just get one final answer out
-of nowhere.
-
-Call this every single time you interact with any tool or capability -
-loading a flow or capability, calling a real domain tool, an MCP call,
-anything that is not just talking to the user - before or after that step,
-in the same round as whatever else you are doing. Never skip it and never
-wait for a separate round.
-
-- Never a substitute for the final answer.
-
-
-# Capability: Record planning status (always present)
-
-`record_planning_status(where_i_was, this_turns_purpose, expectation)` is your own
-running account of where this turn, and across turns this whole task, stands. It is
-how you keep continuity, since nothing else remembers your reasoning beyond what you
-write here and the real conversation history.
-
-Record it at least at the start and at the end of every flow, and whenever you are
-about to wait on the user (a choice, a missing detail, an approval), in the middle
-of a flow as well. Say which flow you are in and which step, and if you are inside a
-flow that was loaded by another flow, say so, so that you know where to return to.
-Also note what you are waiting for and what you will do with each possible answer.
-
-
-## Flows
-
-- flow_add_client: Adding a brand-new client record to Morning ("תוסיף לקוח חדש", or a shared contact card the user wants saved). Checks for an existing or similar client first so a duplicate is never created by accident, tells the user about similar candidates, and creates the record only with approval. Other flows load it whenever a client turns out not to exist yet.
-- flow_modify_client: Changing an existing client's own details (name, email, phone) in Morning. Resolves which real client is meant, relaying candidates when the match is not exact, and updates it with approval. Not for creating a client and not for documents.
-- flow_issue_invoice_for_payment_due: Issuing a new tax invoice (305) for a client, for money that is still owed ("תפיק חשבונית ללקוח X"). Never for money that has already arrived. Money that has already arrived belongs to flow_issue_invoice_receipt_combo instead.
-- flow_issue_invoice_receipt_combo: Issuing a combined tax invoice/receipt (320) for a payment that has already been received and that no earlier document covers - the most common way to record incoming money, whether reported verbally or shown in a bank slip or payment screenshot. Money that an existing document already covers belongs to flow_issue_payment_received_with_reference_doc.
-- flow_issue_transaction_account: Issuing a transaction account (חשבון עסקה, 300) for a client - only when the user's own wording names this document type. Ordinary requests for an invoice belong to flow_issue_invoice_for_payment_due.
-- flow_issue_receipt_without_invoice: Recording a standalone receipt (400) with no invoice behind it, for example a refundable deposit. A receipt against an existing invoice belongs to flow_issue_payment_received_with_reference_doc.
-- flow_payment_received_by_bank_slip_image: A bank slip or payment screenshot arrived. Reads it, records the payer, and gets the payment recorded in Morning the right way: a new combo document when nothing covers it, or a document against an existing one.
-- flow_issue_payment_received_with_reference_doc: Recording a payment received against an existing Morning document: a receipt (400) for an existing invoice (305), or a combo document (320) closing an existing transaction account (300) ("סמן כשולם"). Money that no document covers belongs to flow_issue_invoice_receipt_combo.
-- flow_cancel_document_with_credit_note: Cancelling an existing Morning document with a credit note (330) ("בטל את החשבונית"). Finds the one real document and shows its real data in the approval before writing.
-- flow_cancel_transaction_account: Cancelling an open transaction account (300) directly. No document of any kind is created. Cancelling any other kind of document belongs to flow_cancel_document_with_credit_note.
-- flow_fee_agreement_provided_by_user: The user reports or forwards a fee agreement (הסכם) - as text or as an image - made with a client. An agreement must never belong to a client Morning does not manage, so this makes sure the client exists first. Recording the agreement in the ledger happens automatically after the turn.
-- flow_deposit_provided_by_user: The user reports or forwards a bank deposit (text or a bank slip image). Makes sure the payer exists as a client in Morning first. Recording the deposit in the ledger happens automatically after the turn.
-- flow_user_question: Answering a question about the user's clients, past agreements, deposits, or amounts owed and paid. Decides where the answer lives (the ledger first, Morning when it may hold it), and never answers that nothing exists before checking Morning where Morning could hold it.
-- flow_invoicing_query: Reading from the invoicing system for a client the user names: resolves the client's exact stored name first, then reads the documents or status. Other flows load it whenever they need to look up documents in Morning.
-- flow_generate_fee_agreement_docx: Generating a fee agreement document (הסכם שכר טרחה) as a .docx file to send to a prospective client. The client does not exist yet, so no client lookup is involved. Recording an agreement the user reports belongs to flow_fee_agreement_provided_by_user.
-- flow_create_reminder: Creating a new reminder, one-time or recurring ("תזכיר לי בעוד שעתיים", "תזכיר לי כל יום ראשון"). Confirms the text and the schedule, and creates the reminder only with approval. Use this flow, not cap_reminders_write directly, whenever a reminder is added.
-- flow_modify_reminder: Changing or cancelling an existing reminder ("תזיז את התזכורת", "תבטל את התזכורת"). Looks up the user's real reminders to identify the exact one before modifying or deleting it, with approval. Adding a brand-new reminder belongs to flow_create_reminder. Use the reminder flows, not cap_reminders_write directly.
-
-## Capabilities
-
-- cap_invoicing_write: Creating a Morning DOCUMENT for a client - an invoice, a receipt, a transaction account, a credit note, or a combo tax-invoice/receipt - or cancelling a transaction account. Writes only: finding the client or the existing document, and getting approval, are the calling flow's job, so load it only through that flow (flow_issue_*, flow_cancel_*, flow_payment_received_*), never directly. Not for creating or updating a client record - see cap_client_write.
-- cap_invoicing_read: Reading from the invoicing system (Morning): a specific document's own status and details, recent documents, a financial summary, a download link. It is given an already-resolved client name or document id. Not for a client's own details - see cap_client_read - and not the first choice for a general owed/paid amount question - see cap_ledger_query.
-- cap_client_write: Creating a new client record, or updating an existing client's own details (name/email/phone) in Morning. Writes only: load it only through flow_add_client or flow_modify_client, never directly. Never for producing any document - see cap_invoicing_write.
-- cap_client_read: Looking up an existing client's own details (name/email/phone/id), listing clients, and resolving a client name to its exact stored Morning spelling. Never for a client's financial history - see cap_ledger_query and cap_invoicing_read.
-- cap_ledger_query: Answering questions about PAST fee agreements or bank deposits already recorded, including how much a client/payer owes or has paid - whether or not a formal Morning invoice exists. The ledger is a fast cache over Morning and covers agreement-level amounts Morning cannot see at all.
-- cap_reminders_write: Creating, changing, or cancelling a reminder (one-time or recurring) for the user. Writes only: load it only through flow_create_reminder or flow_modify_reminder, never directly.
-- cap_reminders_read: Looking up the user's own existing reminders - what's scheduled, for when.
-- cap_media_analysis: Reading/extracting the content of an image or document the user sent. Used inside a larger flow, or on its own to work out what a piece of media is for.
-- cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
-- cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
-
-# Flow: Create reminder
-
-Goal: create a new reminder (one-time or recurring) for the user, exactly as they asked.
-
-Capabilities: `cap_reminders_write`, `cap_approval_with_buttons`.
-
-Follow these steps in order, to the letter.
-
-1. Load `cap_reminders_write`.
-2. Work out what to remind about and when (a one-time moment, or a recurring cadence), resolving relative wording against the current date and time. Anything you don't have from the user, ask for with `cap_send_to_user`, one question at a time; never guess or invent a value.
-3. Approval: creating a reminder MUST be approved by the user BEFORE it is created. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Do NOT call `create_reminder` in this step or before a clear yes. On a no, do nothing, and ask with `cap_send_to_user` what to change.
-4. Only after a clear yes: call `create_reminder`. If it fails, tell the user plainly what happened; retry once only if the reason is fixable, otherwise stop.
-5. If the user drops the request or changes the subject at any point, do nothing further; the flow is complete.
-6. End: report the outcome with `cap_send_to_user`, then unload `cap_reminders_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
-
-
-# Capability: Reminders — Write (godfather/admin only)
-
-**Use this capability from within a flow (flow_create_reminder / flow_modify_reminder), never on its own for a user request.** The flow decides when it is loaded and when approval is required; this capability holds the details of the write itself.
-
-**Creating, modifying or deleting a reminder is a state-changing action, which usually requires the user's explicit approval first.**
-
-Attaches `create_reminder`, `modify_reminder` and `delete_reminder`. Each executes
-immediately and needs the user's approval first. ONLY call `create_reminder` when the
-user's own message explicitly asks to be reminded of something at a future time
-(one-time, or a recurring cadence like "כל יום/שבוע"). ONLY call `modify_reminder` or
-`delete_reminder` when the user explicitly asks to change or cancel an EXISTING
-reminder, with that reminder's real `reminder_id` (never a guess). Never call any of
-these to interpret a confirmation reply ("כן"/"לא") or an ambiguous message.
-
-**Approval data points.** Whoever raises the approval must show the user:
-- create: the reminder's text and its schedule (when, or the recurrence),
-  human-readable.
-- modify: WHICH reminder (its text), the scope (whole series or a single occurrence),
-  and exactly what changes (new text / new time / new recurrence).
-- delete: WHICH reminder (its text) and the scope (whole series or a single
-  occurrence).
-
-`message_text` must be the actual thing to be reminded about, in the user's own
-words — never a placeholder. Any due-date/time field must be a future ISO-8601
-local (Asia/Jerusalem) datetime.
-
-For `create_reminder`: `schedule_type=one_time` needs `one_time_due_at` (and
-`recurrence` null); `schedule_type=recurring` needs a full `recurrence` object
-(interval/freq/weekdays or month_day/month_nth_weekday/first_occurrence_at/
-end_condition) and `one_time_due_at` null — gather everything needed through
-conversation before calling, never guess a missing recurrence field.
-
-For modify/delete, `scope` is `whole_series` for a one-time reminder or a
-whole-series change, and `single_occurrence` (with an `occurrence_date_hint`) to
-change/cancel just one upcoming occurrence of a recurring reminder, leaving the
-rest of the series untouched.
-
-## On a creation/modification failure
-
-A call into this capability can genuinely fail (e.g. the due date/time you
-computed turns out not to be in the future). When that happens you get back
-the REAL reason, not a generic "it failed" — read it. It will point you back
-at the current date/time already stated in THIS call's own instructions
-("THE CURRENT DATE AND TIME IS..."): recompute the due date/recurrence
-relative to that actual value (never a guess, never a date from training
-data) and retry the SAME call once. Only if that second attempt also fails,
-tell the user plainly that the action didn't go through — never silently
-give up after one failure, and never retry more than once without a new,
-different reason to believe it will work.
-
-
-# Capability: Approval with buttons
-
-`approval_with_yes_no_buttons(text)` ends the turn showing the user WhatsApp yes/no
-buttons alongside `text`. It is plain and stateless: it does not know what the write
-is, and there is no pending-approval state to track. On the user's next turn, read
-their reply (a typed "כן"/"לא" or a button tap; both arrive as an ordinary turn) from
-the conversation, and act accordingly. Your own `cap_record_planning_status` note is
-what carries "I am waiting for approval of X" across the gap.
-
-The flow that needs the approval decides that an approval is required. The write
-capability you are about to use defines which details the approval must state.
-
-- Start the text with `📋 לאישור:` (or, for a document-creation approval,
-  `📋 לאישור — <what it is>:`, e.g. `📋 לאישור — לקוח חדש:`) on its own line,
-  then the details as REAL data: given by the user, or fetched this turn.
-  Never from memory or a guess. A missing detail is a question to ask BEFORE
-  requesting approval, never "not stated".
-- End the text with EXACTLY this closed question, verbatim, every single time:
-  `לאישור — כן/לא?`. Never paraphrase it (not `אישור — כן/לא?`, not `האם לאשר...`,
-  not any other wording) and never let a competing question follow it — this exact
-  string is a fixed contract other code relies on to recognize a real approval gate.
-- Ask once per action. Act only on a clear affirmative to THAT specific action,
-  exactly once. On "לא", do not act: acknowledge and ask what to change.
-- Reply in Hebrew only.
-
-
-## Loaded flows
-
-flow_create_reminder
-
-## Loaded capabilities
-
-cap_reminders_write, cap_approval_with_buttons
-
----
-
-THE CURRENT DATE AND TIME IS 2026-09-30 14:46 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
-YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
-```
-
-</details>
-
-</details>
-
-</details>
-
-<details>
-<summary>49. [2026-09-30 14:46:36] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- response.id: `resp_0b6e875e1d175fec006abcf699e50c87d18b97298abb0442f4`
-- status: `completed`
-- usage: `{"input_tokens": 9877, "input_tokens_details": {"cache_write_tokens": 127, "cached_tokens": 9747}, "output_tokens": 130, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 10007}`
-- function_call: `react_to_message` call_id=`call_CnjTRsvO0LiW2r3TQsPjOCvp`
+- function_call: `react_to_message` call_id=`call_rDDxSbhSTbwo0Q9C12nOD8Bb`
 ```json
 {
   "emoji": "✅",
   "message_id": null
 }
 ```
-- function_call: `record_planning_status` call_id=`call_VEX2uZqeku2Qod3KhPb4mtXx`
-```json
-{
-  "where_i_was": "התזכורת נוצרה בהצלחה: לשתות מים, בכל יום בשעה 09:00, החל מ-01.10.2026.",
-  "this_turns_purpose": "לדווח למשתמש על השלמת יצירת התזכורת.",
-  "expectation": "הפעולה הושלמה ואין צורך בצעדים נוספים."
-}
-```
 
 </details>
 
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0b6e875e1d175fec006abcf699e50c87d18b97298abb0442f4`
+- response.id: `resp_09f91c76a360cc48006abcf8d39f3887d19f31ce6e42c5d010`
 - status: `completed`
-- usage: `{"input_tokens": 9877, "input_tokens_details": {"cache_write_tokens": 127, "cached_tokens": 9747}, "output_tokens": 130, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 10007}`
-- function_call: `react_to_message` call_id=`call_CnjTRsvO0LiW2r3TQsPjOCvp`
+- usage: `{"input_tokens": 9635, "input_tokens_details": {"cache_write_tokens": 172, "cached_tokens": 9460}, "output_tokens": 44, "output_tokens_details": {"reasoning_tokens": 18}, "total_tokens": 9679}`
+- reasoning item (content not user-visible)
+- function_call: `react_to_message` call_id=`call_rDDxSbhSTbwo0Q9C12nOD8Bb`
 ```json
 {
   "emoji": "✅",
   "message_id": null
-}
-```
-- function_call: `record_planning_status` call_id=`call_VEX2uZqeku2Qod3KhPb4mtXx`
-```json
-{
-  "where_i_was": "התזכורת נוצרה בהצלחה: לשתות מים, בכל יום בשעה 09:00, החל מ-01.10.2026.",
-  "this_turns_purpose": "לדווח למשתמש על השלמת יצירת התזכורת.",
-  "expectation": "הפעולה הושלמה ואין צורך בצעדים נוספים."
 }
 ```
 
@@ -7376,7 +7385,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>50. [2026-09-30 14:46:36] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>49. [2026-09-30 14:56:05] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -7387,11 +7396,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 **input:**
 
-- app's reply to `record_planning_status` (call_id=`call_VEX2uZqeku2Qod3KhPb4mtXx`):
-```text
-recorded
-```
-- app's reply to `react_to_message` (call_id=`call_CnjTRsvO0LiW2r3TQsPjOCvp`):
+- app's reply to `react_to_message` (call_id=`call_rDDxSbhSTbwo0Q9C12nOD8Bb`):
 ```text
 {
   "status": "failed"
@@ -7400,7 +7405,7 @@ recorded
 
 - tools (13): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
 
-- previous_response_id: `'resp_0b6e875e1d175fec006abcf699e50c87d18b97298abb0442f4'`
+- previous_response_id: `'resp_09f91c76a360cc48006abcf8d39f3887d19f31ce6e42c5d010'`
 
 - max_output_tokens: `20000`
 
@@ -7419,11 +7424,7 @@ recorded
 
 **input:**
 
-- app's reply to `record_planning_status` (call_id=`call_VEX2uZqeku2Qod3KhPb4mtXx`):
-```text
-recorded
-```
-- app's reply to `react_to_message` (call_id=`call_CnjTRsvO0LiW2r3TQsPjOCvp`):
+- app's reply to `react_to_message` (call_id=`call_rDDxSbhSTbwo0Q9C12nOD8Bb`):
 ```text
 {
   "status": "failed"
@@ -7432,7 +7433,7 @@ recorded
 
 - tools (13): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
 
-- previous_response_id: `'resp_0b6e875e1d175fec006abcf699e50c87d18b97298abb0442f4'`
+- previous_response_id: `'resp_09f91c76a360cc48006abcf8d39f3887d19f31ce6e42c5d010'`
 
 - max_output_tokens: `20000`
 
@@ -7784,7 +7785,7 @@ cap_reminders_write, cap_approval_with_buttons
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 14:46 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-09-30 14:55 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -7795,19 +7796,20 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>51. [2026-09-30 14:46:38] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>50. [2026-09-30 14:56:07] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0b6e875e1d175fec006abcf69c9a0c87d198309f6d9eb15a21`
+- response.id: `resp_09f91c76a360cc48006abcf8d5693487d190993d7021492181`
 - status: `completed`
-- usage: `{"input_tokens": 10038, "input_tokens_details": {"cache_write_tokens": 161, "cached_tokens": 9874}, "output_tokens": 51, "output_tokens_details": {"reasoning_tokens": 22}, "total_tokens": 10089}`
-- reasoning item (content not user-visible)
-- function_call: `send_progress_update` call_id=`call_NtO8OiEgA3TP4JHZp9GezMXx`
+- usage: `{"input_tokens": 9697, "input_tokens_details": {"cache_write_tokens": 62, "cached_tokens": 9632}, "output_tokens": 84, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9781}`
+- function_call: `record_planning_status` call_id=`call_IvytTthc4mTsr9ZFJ45fIC7a`
 ```json
 {
-  "text": "מסיים את הטיפול בבקשה."
+  "where_i_was": "התזכורת נוצרה בהצלחה במערכת.",
+  "this_turns_purpose": "לדווח למשתמש על יצירת התזכורת.",
+  "expectation": "המשתמש יקבל אישור שהתזכורת היומית לשתיית מים נקבעה לשעה 9:00."
 }
 ```
 
@@ -7816,14 +7818,15 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0b6e875e1d175fec006abcf69c9a0c87d198309f6d9eb15a21`
+- response.id: `resp_09f91c76a360cc48006abcf8d5693487d190993d7021492181`
 - status: `completed`
-- usage: `{"input_tokens": 10038, "input_tokens_details": {"cache_write_tokens": 161, "cached_tokens": 9874}, "output_tokens": 51, "output_tokens_details": {"reasoning_tokens": 22}, "total_tokens": 10089}`
-- reasoning item (content not user-visible)
-- function_call: `send_progress_update` call_id=`call_NtO8OiEgA3TP4JHZp9GezMXx`
+- usage: `{"input_tokens": 9697, "input_tokens_details": {"cache_write_tokens": 62, "cached_tokens": 9632}, "output_tokens": 84, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9781}`
+- function_call: `record_planning_status` call_id=`call_IvytTthc4mTsr9ZFJ45fIC7a`
 ```json
 {
-  "text": "מסיים את הטיפול בבקשה."
+  "where_i_was": "התזכורת נוצרה בהצלחה במערכת.",
+  "this_turns_purpose": "לדווח למשתמש על יצירת התזכורת.",
+  "expectation": "המשתמש יקבל אישור שהתזכורת היומית לשתיית מים נקבעה לשעה 9:00."
 }
 ```
 
@@ -7832,64 +7835,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>52. [2026-09-30 14:46:38] APP → USER — context=progress_update</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-```json
-{
-  "chat_id": "+972501234567@c.us",
-  "message": "מסיים את הטיפול בבקשה."
-}
-```
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-```json
-{
-  "chat_id": "+972501234567@c.us",
-  "message": "מסיים את הטיפול בבקשה."
-}
-```
-
-</details>
-
-</details>
-
-<details>
-<summary>53. [2026-09-30 14:46:38] USER ← APP (send result) — context=progress_update</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-```json
-{
-  "chat_id": "+972501234567@c.us",
-  "message": "None"
-}
-```
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-```json
-{
-  "result": "None"
-}
-```
-
-</details>
-
-</details>
-
-<details>
-<summary>54. [2026-09-30 14:46:38] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>51. [2026-09-30 14:56:07] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -7900,16 +7846,14 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 **input:**
 
-- app's reply to `send_progress_update` (call_id=`call_NtO8OiEgA3TP4JHZp9GezMXx`):
+- app's reply to `record_planning_status` (call_id=`call_IvytTthc4mTsr9ZFJ45fIC7a`):
 ```text
-{
-  "sent": true
-}
+recorded
 ```
 
 - tools (13): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
 
-- previous_response_id: `'resp_0b6e875e1d175fec006abcf69c9a0c87d198309f6d9eb15a21'`
+- previous_response_id: `'resp_09f91c76a360cc48006abcf8d5693487d190993d7021492181'`
 
 - max_output_tokens: `20000`
 
@@ -7928,16 +7872,14 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 **input:**
 
-- app's reply to `send_progress_update` (call_id=`call_NtO8OiEgA3TP4JHZp9GezMXx`):
+- app's reply to `record_planning_status` (call_id=`call_IvytTthc4mTsr9ZFJ45fIC7a`):
 ```text
-{
-  "sent": true
-}
+recorded
 ```
 
 - tools (13): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
 
-- previous_response_id: `'resp_0b6e875e1d175fec006abcf69c9a0c87d198309f6d9eb15a21'`
+- previous_response_id: `'resp_09f91c76a360cc48006abcf8d5693487d190993d7021492181'`
 
 - max_output_tokens: `20000`
 
@@ -8289,7 +8231,7 @@ cap_reminders_write, cap_approval_with_buttons
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 14:46 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-09-30 14:55 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -8300,364 +8242,18 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>55. [2026-09-30 14:46:40] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>52. [2026-09-30 14:56:09] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0b6e875e1d175fec006abcf69eabe487d1ae61e615f9a24eb2`
+- response.id: `resp_09f91c76a360cc48006abcf8d7cfd487d1a955411ec14e6fb9`
 - status: `completed`
-- usage: `{"input_tokens": 10106, "input_tokens_details": {"cache_write_tokens": 68, "cached_tokens": 10035}, "output_tokens": 16, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 10122}`
-- function_call: `reset_to_backbone` call_id=`call_6TI1aDJ8VRieMC3GDAanOx6E`
-```json
-{}
-```
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- response.id: `resp_0b6e875e1d175fec006abcf69eabe487d1ae61e615f9a24eb2`
-- status: `completed`
-- usage: `{"input_tokens": 10106, "input_tokens_details": {"cache_write_tokens": 68, "cached_tokens": 10035}, "output_tokens": 16, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 10122}`
-- function_call: `reset_to_backbone` call_id=`call_6TI1aDJ8VRieMC3GDAanOx6E`
-```json
-{}
-```
-
-</details>
-
-</details>
-
-<details>
-<summary>56. [2026-09-30 14:46:40] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- flows: (none)
-
-- capabilities: (none - plain backbone)
-
-**input:**
-
-- app's reply to `reset_to_backbone` (call_id=`call_6TI1aDJ8VRieMC3GDAanOx6E`):
-```text
-reset - every flow and capability unloaded; you are back to the plain backbone.
-```
-
-- tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
-
-- previous_response_id: `'resp_0b6e875e1d175fec006abcf69eabe487d1ae61e615f9a24eb2'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-- instructions: backbone (flows=(none), capabilities=(none - plain backbone))
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- flows: (none)
-
-- capabilities: (none - plain backbone)
-
-**input:**
-
-- app's reply to `reset_to_backbone` (call_id=`call_6TI1aDJ8VRieMC3GDAanOx6E`):
-```text
-reset - every flow and capability unloaded; you are back to the plain backbone.
-```
-
-- tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
-
-- previous_response_id: `'resp_0b6e875e1d175fec006abcf69eabe487d1ae61e615f9a24eb2'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-<details>
-<summary>↳↳ instructions (19015 chars)</summary>
-
-```text
-# DeniDin — Backbone
-
-## How You Work
-
-You work with two kinds of building blocks, described at low resolution in the
-catalogs below: **flows** (`flow_...`) - blueprints for a recurring kind of
-request - and **capabilities** (`cap_...`) - the domains that actually do things,
-each with its own prompt and its own real tools. Flows can load other flows and
-capabilities; a flow defines *what to do and in what order*, while each
-capability holds the detail of what it itself does.
-
-Loading tools, usable in any order, any number of times:
-
-- **`load_flows(flows)` / `unload_flows(flows)`** - always an array; one item is
-  fine, and combining flows is allowed when a request spans more than one.
-- **`load_capabilities(capabilities)` / `unload_capabilities(capabilities)`** -
-  always an array. The moment a capability is loaded, its prompt AND its real
-  tools are attached, starting the very next round; call the real tool directly,
-  there is no separate "use" step. A flow's own "Capabilities:" line declares
-  every capability that flow will need - load all of them together, in one
-  `load_capabilities` call, right after loading the flow, rather than loading
-  them one at a time as each step comes up: you already know you'll need them,
-  and batching saves a round-trip per capability.
-- **`reset_to_backbone()`** - unloads every loaded flow and capability at once.
-  Use it once you are genuinely done with the user's request(s), not mid-task.
-
-Loading an already-loaded item, or unloading one that is not loaded, is a
-harmless no-op. Loaded flows and capabilities stay loaded across this and future
-turns in this chat until you unload them (or they auto-clear after a period of
-inactivity); the "Loaded flows" and "Loaded capabilities" lines near the end of
-these instructions always show what is currently loaded. Unload something only
-when nothing you are still working on needs it - another flow may be using it.
-
-## Always-present capabilities
-
-Four capabilities are always available, cannot be unloaded, and each has its own
-prompt right below: `cap_send_to_user` (your actual reply), `cap_react_to_message`
-(a WhatsApp emoji reaction), `cap_send_progress_update` (an interim message
-while you work) and `cap_record_planning_status` (your own running account of
-where you are, which is how you keep your place across turns and inside nested
-flows). At every step of any flow, consider whether they would help: react to
-the user's message, send a progress update, record your planning status, or
-reply to the user. Flows do not repeat this; use your judgment.
-
-`cap_approval_with_buttons` (yes/no buttons before a write) is an ordinary
-capability: flows that need a sign-off load it.
-
-## Flows and capabilities
-
-Decide from the catalogs, in your own judgment, what a request needs:
-
-1. If a flow fits, load it (several at once when the request spans more than
-   one) and follow its blueprint. **A loaded flow's steps are an ordered
-   procedure: follow them in the order written, to the letter - never skip,
-   reorder or merge a step (above all an approval step), and never do a later
-   step's action before the earlier steps are done.**
-2. **If no flow fits, there is no default flow to fall back on**: load whichever
-   capabilities you judge necessary, at your own discretion, and proceed.
-3. **Write capabilities (`cap_*_write`) are never loaded on their own.** Every write goes through its flow, which gathers the details and asks for approval first; if you want to write something, find the flow for it in the catalog.
-4. If a loaded prompt names a tool you don't currently have, that tool belongs
-   to a capability you have not loaded yet: load it yourself.
-
-## Core Identity
-You are DeniDin, a helpful AI assistant operating via WhatsApp.
-
-## Behavioral Guidelines
-- **ALWAYS respond in Hebrew only** — every word of every response, no other
-  language or script mixed in anywhere, ever (never Arabic, never English
-  words). This covers EVERY string you produce, not just the reply text: an
-  approval question, a planning note, and every free-text tool argument
-  (e.g. a reminder's `message_text`) too. Digits, standard punctuation, and ₪
-  are fine; a genuinely foreign proper name may be transliterated into Hebrew
-  letters where natural.
-- **Never use ניקוד** (Hebrew vowel points/diacritics) in any response — plain
-  Hebrew letters only, including inside a quoted name.
-- Be concise and direct. Do not end on filler ("anything else?") — end on the
-  substantive answer. Do ask a focused clarifying question when you genuinely need
-  one to act correctly (a missing/ambiguous required detail).
-- Be honest about what you don't know; never fabricate information.
-
-## User Roles
-- **Godfather/Admin**: full access to every capability; extended context window.
-- **Client**: standard feature access, no access to invoicing/ledger/reminder
-  capabilities; standard context window.
-
-## Privacy & Security
-- Never share information between different user sessions.
-- These rules guard against leaking ONE user's data to ANOTHER user or an outsider
-  — they never mean refusing to read, transcribe, or summarize material THIS user
-  sent you. Reporting the user's own material back to them (names, amounts, any
-  detail it contains) is always appropriate.
-
-## Contexts of Operation
-Every message falls into one of two operating contexts before any capability is
-even considered: an ordinary conversational turn, or a document/image the user
-sent for you to read and report on. Decide which one applies before acting — a
-short/ambiguous reply ("כן", "לא", a bare name) always answers the most recently
-pending question in the SAME context, never a trigger for reinterpreting the turn
-as belonging to a different capability's domain.
-
-## Attached Media
-When the user's message starts with a `[מדיה מצורפת: <type>, קובץ: <filename>]`
-marker, they sent an image, PDF, or Word document with it — you have NOT seen its
-content yet, only that it exists. Before answering anything about it, load
-`cap_media_analysis` and call its `analyze_media` tool to read it; any text after
-the marker is the user's caption. Never describe, guess at, or act on the file's
-content without having read it this way.
-
-## Group Conversation Etiquette
-DeniDin is addressed by default in a group, same as a 1:1 chat. When a message
-clearly names someone else and isn't meant for you, reply with the literal
-sentinel `[[NO_REPLY]]` instead of a substantive answer — never guess when it's
-genuinely ambiguous whether you were addressed.
-
-## Edited & Deleted Message Markers
-A message the user has since edited or deleted may still appear in your context,
-marked as such — treat an edited message's marked original content as superseded
-by its later, corrected version if both are visible, and never act on a deleted
-message's content as if it were still pending.
-
-## Generic Post-Turn Recognition Mechanism
-A capability MAY run a recognition step once per turn: call its own reporting
-tool at most once, and when in doubt, do nothing rather than guess. This shape
-is reusable by any capability that wants one — the domain-specific rules for
-what to recognize and how live in that capability's own prompt file, not here.
-
-
-# Capability: Send to user (always present)
-
-`send_to_user(text)` is your actual reply to the user. Call it whenever you are
-ready to speak, not only at the very end: to answer, to ask a question, to
-report an outcome. A turn that ends without it, or without an approval question,
-leaves the user with nothing.
-
-- Pass the literal text `[[NO_REPLY]]` to deliberately say nothing this turn. Use
-  it in a group when a message clearly names someone else and is not meant for
-  you. When it is genuinely unclear whether you were addressed, do not guess.
-- For a yes/no sign-off, use `cap_approval_with_buttons` instead; it gives the
-  user tappable buttons.
-- Reply in Hebrew only, concisely, without filler. End on the substantive answer.
-  Ask a focused question only when you genuinely need the answer to act correctly.
-
-
-# Capability: React to message (always present)
-
-`react_to_message` puts a native WhatsApp emoji reaction on a message. It is a
-lightweight, reversible signal - never a substitute for a substantive reply,
-and never a mechanical habit reached for out of uncertainty about what else
-to do. Typing an emoji into your reply text is NOT a reaction and does not
-replace calling the tool.
-
-Before reaching for it, ask yourself: does this add a real signal the user
-doesn't already have - that you saw their message, that you're on it, that
-something just succeeded or failed - or would it just be noise on top of a
-reply that already says the same thing?
-
-Evaluate against:
-- Does the user currently have any signal you registered their message and
-  are handling it (or have finished)? If there's a real gap before your
-  substantive reply, a reaction can fill it.
-- Is your actual reply, arriving in this same round or moments later, already
-  going to tell them everything a reaction would? If so, it adds nothing.
-- Is this ambient chatter that doesn't really concern you? Then it isn't
-  worth one.
-
-**Classics** (a menu, not a checklist): 👍 simple ack · 🫡 "on it" · 👀 document
-being looked into · ✅ clean success · 🎉 a bigger win · ⚠️ resolved but needs
-attention · ❌ failed/declined · ❓ unresolved, needs clarification · 🙏
-reciprocating thanks · ❤️ warmth beyond a simple thanks.
-
-When genuinely unsure whether a reaction fits, don't send one - silence is
-the safer default, not noise.
-
-
-# Capability: Send progress update (always present)
-
-`send_progress_update(text)` sends one brief interim WhatsApp message while you
-are still working, before your final reply. Keep it to a short plain sentence.
-
-Users are waiting on the other end and don't like silence - they want to know
-something is happening with their request, not just get one final answer out
-of nowhere.
-
-Call this every single time you interact with any tool or capability -
-loading a flow or capability, calling a real domain tool, an MCP call,
-anything that is not just talking to the user - before or after that step,
-in the same round as whatever else you are doing. Never skip it and never
-wait for a separate round.
-
-- Never a substitute for the final answer.
-
-
-# Capability: Record planning status (always present)
-
-`record_planning_status(where_i_was, this_turns_purpose, expectation)` is your own
-running account of where this turn, and across turns this whole task, stands. It is
-how you keep continuity, since nothing else remembers your reasoning beyond what you
-write here and the real conversation history.
-
-Record it at least at the start and at the end of every flow, and whenever you are
-about to wait on the user (a choice, a missing detail, an approval), in the middle
-of a flow as well. Say which flow you are in and which step, and if you are inside a
-flow that was loaded by another flow, say so, so that you know where to return to.
-Also note what you are waiting for and what you will do with each possible answer.
-
-
-## Flows
-
-- flow_add_client: Adding a brand-new client record to Morning ("תוסיף לקוח חדש", or a shared contact card the user wants saved). Checks for an existing or similar client first so a duplicate is never created by accident, tells the user about similar candidates, and creates the record only with approval. Other flows load it whenever a client turns out not to exist yet.
-- flow_modify_client: Changing an existing client's own details (name, email, phone) in Morning. Resolves which real client is meant, relaying candidates when the match is not exact, and updates it with approval. Not for creating a client and not for documents.
-- flow_issue_invoice_for_payment_due: Issuing a new tax invoice (305) for a client, for money that is still owed ("תפיק חשבונית ללקוח X"). Never for money that has already arrived. Money that has already arrived belongs to flow_issue_invoice_receipt_combo instead.
-- flow_issue_invoice_receipt_combo: Issuing a combined tax invoice/receipt (320) for a payment that has already been received and that no earlier document covers - the most common way to record incoming money, whether reported verbally or shown in a bank slip or payment screenshot. Money that an existing document already covers belongs to flow_issue_payment_received_with_reference_doc.
-- flow_issue_transaction_account: Issuing a transaction account (חשבון עסקה, 300) for a client - only when the user's own wording names this document type. Ordinary requests for an invoice belong to flow_issue_invoice_for_payment_due.
-- flow_issue_receipt_without_invoice: Recording a standalone receipt (400) with no invoice behind it, for example a refundable deposit. A receipt against an existing invoice belongs to flow_issue_payment_received_with_reference_doc.
-- flow_payment_received_by_bank_slip_image: A bank slip or payment screenshot arrived. Reads it, records the payer, and gets the payment recorded in Morning the right way: a new combo document when nothing covers it, or a document against an existing one.
-- flow_issue_payment_received_with_reference_doc: Recording a payment received against an existing Morning document: a receipt (400) for an existing invoice (305), or a combo document (320) closing an existing transaction account (300) ("סמן כשולם"). Money that no document covers belongs to flow_issue_invoice_receipt_combo.
-- flow_cancel_document_with_credit_note: Cancelling an existing Morning document with a credit note (330) ("בטל את החשבונית"). Finds the one real document and shows its real data in the approval before writing.
-- flow_cancel_transaction_account: Cancelling an open transaction account (300) directly. No document of any kind is created. Cancelling any other kind of document belongs to flow_cancel_document_with_credit_note.
-- flow_fee_agreement_provided_by_user: The user reports or forwards a fee agreement (הסכם) - as text or as an image - made with a client. An agreement must never belong to a client Morning does not manage, so this makes sure the client exists first. Recording the agreement in the ledger happens automatically after the turn.
-- flow_deposit_provided_by_user: The user reports or forwards a bank deposit (text or a bank slip image). Makes sure the payer exists as a client in Morning first. Recording the deposit in the ledger happens automatically after the turn.
-- flow_user_question: Answering a question about the user's clients, past agreements, deposits, or amounts owed and paid. Decides where the answer lives (the ledger first, Morning when it may hold it), and never answers that nothing exists before checking Morning where Morning could hold it.
-- flow_invoicing_query: Reading from the invoicing system for a client the user names: resolves the client's exact stored name first, then reads the documents or status. Other flows load it whenever they need to look up documents in Morning.
-- flow_generate_fee_agreement_docx: Generating a fee agreement document (הסכם שכר טרחה) as a .docx file to send to a prospective client. The client does not exist yet, so no client lookup is involved. Recording an agreement the user reports belongs to flow_fee_agreement_provided_by_user.
-- flow_create_reminder: Creating a new reminder, one-time or recurring ("תזכיר לי בעוד שעתיים", "תזכיר לי כל יום ראשון"). Confirms the text and the schedule, and creates the reminder only with approval. Use this flow, not cap_reminders_write directly, whenever a reminder is added.
-- flow_modify_reminder: Changing or cancelling an existing reminder ("תזיז את התזכורת", "תבטל את התזכורת"). Looks up the user's real reminders to identify the exact one before modifying or deleting it, with approval. Adding a brand-new reminder belongs to flow_create_reminder. Use the reminder flows, not cap_reminders_write directly.
-
-## Capabilities
-
-- cap_invoicing_write: Creating a Morning DOCUMENT for a client - an invoice, a receipt, a transaction account, a credit note, or a combo tax-invoice/receipt - or cancelling a transaction account. Writes only: finding the client or the existing document, and getting approval, are the calling flow's job, so load it only through that flow (flow_issue_*, flow_cancel_*, flow_payment_received_*), never directly. Not for creating or updating a client record - see cap_client_write.
-- cap_invoicing_read: Reading from the invoicing system (Morning): a specific document's own status and details, recent documents, a financial summary, a download link. It is given an already-resolved client name or document id. Not for a client's own details - see cap_client_read - and not the first choice for a general owed/paid amount question - see cap_ledger_query.
-- cap_client_write: Creating a new client record, or updating an existing client's own details (name/email/phone) in Morning. Writes only: load it only through flow_add_client or flow_modify_client, never directly. Never for producing any document - see cap_invoicing_write.
-- cap_client_read: Looking up an existing client's own details (name/email/phone/id), listing clients, and resolving a client name to its exact stored Morning spelling. Never for a client's financial history - see cap_ledger_query and cap_invoicing_read.
-- cap_ledger_query: Answering questions about PAST fee agreements or bank deposits already recorded, including how much a client/payer owes or has paid - whether or not a formal Morning invoice exists. The ledger is a fast cache over Morning and covers agreement-level amounts Morning cannot see at all.
-- cap_reminders_write: Creating, changing, or cancelling a reminder (one-time or recurring) for the user. Writes only: load it only through flow_create_reminder or flow_modify_reminder, never directly.
-- cap_reminders_read: Looking up the user's own existing reminders - what's scheduled, for when.
-- cap_media_analysis: Reading/extracting the content of an image or document the user sent. Used inside a larger flow, or on its own to work out what a piece of media is for.
-- cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
-- cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
-
-## Loaded flows
-
-(none)
-
-## Loaded capabilities
-
-(none - plain backbone)
-
----
-
-THE CURRENT DATE AND TIME IS 2026-09-30 14:46 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
-YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
-```
-
-</details>
-
-</details>
-
-</details>
-
-<details>
-<summary>57. [2026-09-30 14:46:42] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- response.id: `resp_0b6e875e1d175fec006abcf6a04d8887d188ea331aae7a67c3`
-- status: `completed`
-- usage: `{"input_tokens": 7253, "input_tokens_details": {"cache_write_tokens": 7250, "cached_tokens": 0}, "output_tokens": 79, "output_tokens_details": {"reasoning_tokens": 11}, "total_tokens": 7332}`
-- reasoning item (content not user-visible)
-- function_call: `send_to_user` call_id=`call_4iblJYwf5vngPV9yCQWO8uTe`
+- usage: `{"input_tokens": 9796, "input_tokens_details": {"cache_write_tokens": 99, "cached_tokens": 9694}, "output_tokens": 53, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9849}`
+- function_call: `send_to_user` call_id=`call_vrJpkHH9ZLuTaB04toGRNy6T`
 ```json
 {
-  "text": "התזכורת נוצרה בהצלחה ✅\n\nלשתות מים — בכל יום בשעה 09:00.\nהתזכורת הראשונה: 01.10.2026 בשעה 09:00."
+  "text": "התזכורת נוצרה בהצלחה: לשתות מים, כל יום בשעה 9:00, החל מ־1 באוקטובר 2026."
 }
 ```
 
@@ -8666,14 +8262,13 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0b6e875e1d175fec006abcf6a04d8887d188ea331aae7a67c3`
+- response.id: `resp_09f91c76a360cc48006abcf8d7cfd487d1a955411ec14e6fb9`
 - status: `completed`
-- usage: `{"input_tokens": 7253, "input_tokens_details": {"cache_write_tokens": 7250, "cached_tokens": 0}, "output_tokens": 79, "output_tokens_details": {"reasoning_tokens": 11}, "total_tokens": 7332}`
-- reasoning item (content not user-visible)
-- function_call: `send_to_user` call_id=`call_4iblJYwf5vngPV9yCQWO8uTe`
+- usage: `{"input_tokens": 9796, "input_tokens_details": {"cache_write_tokens": 99, "cached_tokens": 9694}, "output_tokens": 53, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9849}`
+- function_call: `send_to_user` call_id=`call_vrJpkHH9ZLuTaB04toGRNy6T`
 ```json
 {
-  "text": "התזכורת נוצרה בהצלחה ✅\n\nלשתות מים — בכל יום בשעה 09:00.\nהתזכורת הראשונה: 01.10.2026 בשעה 09:00."
+  "text": "התזכורת נוצרה בהצלחה: לשתות מים, כל יום בשעה 9:00, החל מ־1 באוקטובר 2026."
 }
 ```
 
@@ -8682,7 +8277,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>58. [2026-09-30 14:46:42] APP → USER — context=text</summary>
+<summary>53. [2026-09-30 14:56:09] APP → USER — context=text</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -8690,7 +8285,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 ```json
 {
   "chat_id": "+972501234567@c.us",
-  "message": "התזכורת נוצרה בהצלחה ✅\n\nלשתות מים — בכל יום בשעה 09:00.\nהתזכורת הראשונה: 01.10.2026 בשעה 09:00."
+  "message": "התזכורת נוצרה בהצלחה: לשתות מים, כל יום בשעה 9:00, החל מ־1 באוקטובר 2026."
 }
 ```
 
@@ -8702,7 +8297,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 ```json
 {
   "chat_id": "+972501234567@c.us",
-  "message": "התזכורת נוצרה בהצלחה ✅\n\nלשתות מים — בכל יום בשעה 09:00.\nהתזכורת הראשונה: 01.10.2026 בשעה 09:00."
+  "message": "התזכורת נוצרה בהצלחה: לשתות מים, כל יום בשעה 9:00, החל מ־1 באוקטובר 2026."
 }
 ```
 
@@ -8711,7 +8306,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>59. [2026-09-30 14:46:42] APP → MODEL — context=recognize_ledger_event</summary>
+<summary>54. [2026-09-30 14:56:09] APP → MODEL — context=recognize_ledger_event</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -8719,7 +8314,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 **input:**
 
 ```json
-{"role": "user", "content": "THE CONVERSATION WINDOW (the last 1h, oldest first) - '<message_id> [<role>] <content>':\n2e9c6423-f037-497b-8e59-df0c3cea7598 [godfather] תזכיר לי כל יום בשעה 9:00 לשתות מים\n0749149c-0dfd-4ce6-8033-e4b1e8f3fa65 [assistant] מטפל ביצירת התזכורת היומית.\n4a53e9d5-bf26-4640-9e2d-8669de1ff23a [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: הבקשה היא ליצור תזכורת חדשה שחוזרת מדי יום.\nTHIS TURN'S PURPOSE: להפעיל את מסלול יצירת התזכורת, לאשר את הנוסח והשעה, ואז ליצור אותה רק לאחר אישור.\nEXPECTATION: אטעין את המסלול והיכולות הנדרשות, אציג סיכום לאישור, ואמתין לתשובת המשתמש לפני הכתיבה.\n22aafb77-617e-43c5-b4cb-61dc34486423 [assistant] בודק את פרטי התזכורת ומכין אותה לאישור.\n2fd70e88-42fb-45ba-ae05-4bb25fda01e4 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: במסלול יצירת תזכורת, לאחר קבלת נוסח ותדירות: לשתות מים מדי יום בשעה 09:00. השעה הנוכחית היא 30.09.2026 בשעה 14:45, ולכן המופע הראשון יהיה 01.10.2026 בשעה 09:00.\nTHIS TURN'S PURPOSE: לקבל אישור מפורש לפני יצירת התזכורת.\nEXPECTATION: אטען את יכולת האישור ואציג סיכום מלא עם אפשרות לאישור או דחייה.\ndd5635ee-1868-47da-9132-34e44f4460ee [assistant] התזכורת מוכנה לאישור לפני יצירתה.\naebffcf6-d2b8-4492-b3a6-a26ca36f3586 [assistant] 📋 לאישור:\nתוכן: לשתות מים\nתדירות: בכל יום בשעה 09:00\nהמופע הראשון: 01.10.2026 בשעה 09:00\nלאישור — כן/לא?\n00c84626-43d8-4baf-9ffd-6114c647208b [godfather] כן\ndf4a66b9-5285-4130-bbad-f09cf4375d43 [assistant] יוצר עכשיו את התזכורת היומית.\n49fb0dcf-cdb6-4190-a811-aacd03a3659b [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש אישר את יצירת התזכורת היומית לשתות מים בשעה 09:00. האישור התקבל לאחר הצגת המופע הראשון ב-01.10.2026 בשעה 09:00.\nTHIS TURN'S PURPOSE: ליצור את התזכורת המאושרת במערכת.\nEXPECTATION: אקרא לכלי יצירת התזכורת עם כלל יומי מלא; לאחר מכן אדווח על הצלחה או כשלון, ואסיים את המסלול.\n59548203-c82a-4042-a9d3-aa83c605f09d [assistant] התזכורת נוצרה בהצלחה.\n6d38425d-9d4c-40c3-b311-3e5a8b36a991 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: התזכורת נוצרה בהצלחה: לשתות מים, בכל יום בשעה 09:00, החל מ-01.10.2026.\nTHIS TURN'S PURPOSE: לדווח למשתמש על השלמת יצירת התזכורת.\nEXPECTATION: הפעולה הושלמה ואין צורך בצעדים נוספים.\nf90646e2-0801-49d4-ae3e-27f14e03015e [assistant] מסיים את הטיפול בבקשה.\n1789bc96-788f-457a-a117-45ebd4629d80 [assistant] התזכורת נוצרה בהצלחה ✅\n\nלשתות מים — בכל יום בשעה 09:00.\nהתזכורת הראשונה: 01.10.2026 בשעה 09:00.\n\nTHE REPLY JUST SENT TO THE OPERATOR THIS ROUND:\nהתזכורת נוצרה בהצלחה ✅\n\nלשתות מים — בכל יום בשעה 09:00.\nהתזכורת הראשונה: 01.10.2026 בשעה 09:00.\n\nNO Morning MCP tools were called this turn.\n\nFollow the recognition prompt above: query the client's ledger history first when the round concerns a client, then call report_ledger_recognition exactly once with the verdict for THIS round."}
+{"role": "user", "content": "THE CONVERSATION WINDOW (the last 1h, oldest first) - '<message_id> [<role>] <content>':\n9e260e0b-2bf1-49b2-a2d5-59d957144fa6 [godfather] תזכיר לי כל יום בשעה 9:00 לשתות מים\n811b1d9c-3b14-44f3-b967-14e5c22f273b [assistant] מגדיר תזכורת יומית לשתיית מים בשעה 9:00.\ne84d4695-c5fa-4ea0-afa2-12407cb28af8 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש ביקש ליצור תזכורת חוזרת יומית.\nTHIS TURN'S PURPOSE: לטעון את תהליך יצירת התזכורת, לאשר את הנוסח והשעה, ואז ליצור אותה לאחר אישור.\nEXPECTATION: אציג אישור ממוקד עם תזכורת יומית בשעה 9:00 לשתות מים; לאחר אישור אצור אותה.\ne237d526-97c4-4745-b340-ee7b090e6f44 [assistant] בודק את פרטי התזכורת לפני בקשת האישור.\n5424134d-060b-453b-a1c5-7aff83207052 [assistant] הפרטים ברורים; מציג אישור לפני היצירה.\nf6918dc8-e859-47e0-97e1-e1e4473d15a9 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך יצירת תזכורת, לאחר טעינת יכולת הכתיבה ויכולת האישור.\nTHIS TURN'S PURPOSE: לבקש אישור מפורש ליצירת התזכורת.\nEXPECTATION: ממתין לתשובת כן או לא. אם כן, אצור תזכורת יומית בשעה 09:00 החל מהמועד הקרוב; אם לא, לא אבצע פעולה.\n39ed2192-293d-4400-b4a1-c99bc9817cb9 [assistant] נדרשת רק הסכמה קצרה לפני יצירת התזכורת.\nef0ff4ff-6109-4b1d-9076-e9e0115bb85e [assistant] 📋 לאישור:\nתזכורת: לשתות מים\nתדירות: כל יום בשעה 9:00, החל מ־1 באוקטובר 2026\n\nלאישור — כן/לא?\n91771ab8-081d-46eb-ae94-165a4b87667d [godfather] כן\n191f0fc6-4f7e-405d-8dad-170f36ad4474 [assistant] יוצר עכשיו את התזכורת היומית.\n9a940ddb-ce52-4682-90e9-72825ad578c5 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך יצירת תזכורת, לאחר שהמשתמש אישר יצירה של תזכורת יומית לשתיית מים בשעה 9:00.\nTHIS TURN'S PURPOSE: ליצור את התזכורת המאושרת.\nEXPECTATION: אנסה ליצור תזכורת יומית החל מ-1 באוקטובר 2026; לאחר מכן אדווח על התוצאה.\n28d522b0-5417-4488-a9b4-769940938c68 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: התזכורת נוצרה בהצלחה במערכת.\nTHIS TURN'S PURPOSE: לדווח למשתמש על יצירת התזכורת.\nEXPECTATION: המשתמש יקבל אישור שהתזכורת היומית לשתיית מים נקבעה לשעה 9:00.\n32cb6836-b32b-4552-98bb-79a225c91a37 [assistant] התזכורת נוצרה בהצלחה: לשתות מים, כל יום בשעה 9:00, החל מ־1 באוקטובר 2026.\n\nTHE REPLY JUST SENT TO THE OPERATOR THIS ROUND:\nהתזכורת נוצרה בהצלחה: לשתות מים, כל יום בשעה 9:00, החל מ־1 באוקטובר 2026.\n\nNO Morning MCP tools were called this turn.\n\nFollow the recognition prompt above: query the client's ledger history first when the round concerns a client, then call report_ledger_recognition exactly once with the verdict for THIS round."}
 ```
 
 - tools (2): ['report_ledger_recognition', 'query_ledger_events']
@@ -8738,7 +8333,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 **input:**
 
 ```json
-{"role": "user", "content": "THE CONVERSATION WINDOW (the last 1h, oldest first) - '<message_id> [<role>] <content>':\n2e9c6423-f037-497b-8e59-df0c3cea7598 [godfather] תזכיר לי כל יום בשעה 9:00 לשתות מים\n0749149c-0dfd-4ce6-8033-e4b1e8f3fa65 [assistant] מטפל ביצירת התזכורת היומית.\n4a53e9d5-bf26-4640-9e2d-8669de1ff23a [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: הבקשה היא ליצור תזכורת חדשה שחוזרת מדי יום.\nTHIS TURN'S PURPOSE: להפעיל את מסלול יצירת התזכורת, לאשר את הנוסח והשעה, ואז ליצור אותה רק לאחר אישור.\nEXPECTATION: אטעין את המסלול והיכולות הנדרשות, אציג סיכום לאישור, ואמתין לתשובת המשתמש לפני הכתיבה.\n22aafb77-617e-43c5-b4cb-61dc34486423 [assistant] בודק את פרטי התזכורת ומכין אותה לאישור.\n2fd70e88-42fb-45ba-ae05-4bb25fda01e4 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: במסלול יצירת תזכורת, לאחר קבלת נוסח ותדירות: לשתות מים מדי יום בשעה 09:00. השעה הנוכחית היא 30.09.2026 בשעה 14:45, ולכן המופע הראשון יהיה 01.10.2026 בשעה 09:00.\nTHIS TURN'S PURPOSE: לקבל אישור מפורש לפני יצירת התזכורת.\nEXPECTATION: אטען את יכולת האישור ואציג סיכום מלא עם אפשרות לאישור או דחייה.\ndd5635ee-1868-47da-9132-34e44f4460ee [assistant] התזכורת מוכנה לאישור לפני יצירתה.\naebffcf6-d2b8-4492-b3a6-a26ca36f3586 [assistant] 📋 לאישור:\nתוכן: לשתות מים\nתדירות: בכל יום בשעה 09:00\nהמופע הראשון: 01.10.2026 בשעה 09:00\nלאישור — כן/לא?\n00c84626-43d8-4baf-9ffd-6114c647208b [godfather] כן\ndf4a66b9-5285-4130-bbad-f09cf4375d43 [assistant] יוצר עכשיו את התזכורת היומית.\n49fb0dcf-cdb6-4190-a811-aacd03a3659b [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש אישר את יצירת התזכורת היומית לשתות מים בשעה 09:00. האישור התקבל לאחר הצגת המופע הראשון ב-01.10.2026 בשעה 09:00.\nTHIS TURN'S PURPOSE: ליצור את התזכורת המאושרת במערכת.\nEXPECTATION: אקרא לכלי יצירת התזכורת עם כלל יומי מלא; לאחר מכן אדווח על הצלחה או כשלון, ואסיים את המסלול.\n59548203-c82a-4042-a9d3-aa83c605f09d [assistant] התזכורת נוצרה בהצלחה.\n6d38425d-9d4c-40c3-b311-3e5a8b36a991 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: התזכורת נוצרה בהצלחה: לשתות מים, בכל יום בשעה 09:00, החל מ-01.10.2026.\nTHIS TURN'S PURPOSE: לדווח למשתמש על השלמת יצירת התזכורת.\nEXPECTATION: הפעולה הושלמה ואין צורך בצעדים נוספים.\nf90646e2-0801-49d4-ae3e-27f14e03015e [assistant] מסיים את הטיפול בבקשה.\n1789bc96-788f-457a-a117-45ebd4629d80 [assistant] התזכורת נוצרה בהצלחה ✅\n\nלשתות מים — בכל יום בשעה 09:00.\nהתזכורת הראשונה: 01.10.2026 בשעה 09:00.\n\nTHE REPLY JUST SENT TO THE OPERATOR THIS ROUND:\nהתזכורת נוצרה בהצלחה ✅\n\nלשתות מים — בכל יום בשעה 09:00.\nהתזכורת הראשונה: 01.10.2026 בשעה 09:00.\n\nNO Morning MCP tools were called this turn.\n\nFollow the recognition prompt above: query the client's ledger history first when the round concerns a client, then call report_ledger_recognition exactly once with the verdict for THIS round."}
+{"role": "user", "content": "THE CONVERSATION WINDOW (the last 1h, oldest first) - '<message_id> [<role>] <content>':\n9e260e0b-2bf1-49b2-a2d5-59d957144fa6 [godfather] תזכיר לי כל יום בשעה 9:00 לשתות מים\n811b1d9c-3b14-44f3-b967-14e5c22f273b [assistant] מגדיר תזכורת יומית לשתיית מים בשעה 9:00.\ne84d4695-c5fa-4ea0-afa2-12407cb28af8 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש ביקש ליצור תזכורת חוזרת יומית.\nTHIS TURN'S PURPOSE: לטעון את תהליך יצירת התזכורת, לאשר את הנוסח והשעה, ואז ליצור אותה לאחר אישור.\nEXPECTATION: אציג אישור ממוקד עם תזכורת יומית בשעה 9:00 לשתות מים; לאחר אישור אצור אותה.\ne237d526-97c4-4745-b340-ee7b090e6f44 [assistant] בודק את פרטי התזכורת לפני בקשת האישור.\n5424134d-060b-453b-a1c5-7aff83207052 [assistant] הפרטים ברורים; מציג אישור לפני היצירה.\nf6918dc8-e859-47e0-97e1-e1e4473d15a9 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך יצירת תזכורת, לאחר טעינת יכולת הכתיבה ויכולת האישור.\nTHIS TURN'S PURPOSE: לבקש אישור מפורש ליצירת התזכורת.\nEXPECTATION: ממתין לתשובת כן או לא. אם כן, אצור תזכורת יומית בשעה 09:00 החל מהמועד הקרוב; אם לא, לא אבצע פעולה.\n39ed2192-293d-4400-b4a1-c99bc9817cb9 [assistant] נדרשת רק הסכמה קצרה לפני יצירת התזכורת.\nef0ff4ff-6109-4b1d-9076-e9e0115bb85e [assistant] 📋 לאישור:\nתזכורת: לשתות מים\nתדירות: כל יום בשעה 9:00, החל מ־1 באוקטובר 2026\n\nלאישור — כן/לא?\n91771ab8-081d-46eb-ae94-165a4b87667d [godfather] כן\n191f0fc6-4f7e-405d-8dad-170f36ad4474 [assistant] יוצר עכשיו את התזכורת היומית.\n9a940ddb-ce52-4682-90e9-72825ad578c5 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך יצירת תזכורת, לאחר שהמשתמש אישר יצירה של תזכורת יומית לשתיית מים בשעה 9:00.\nTHIS TURN'S PURPOSE: ליצור את התזכורת המאושרת.\nEXPECTATION: אנסה ליצור תזכורת יומית החל מ-1 באוקטובר 2026; לאחר מכן אדווח על התוצאה.\n28d522b0-5417-4488-a9b4-769940938c68 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: התזכורת נוצרה בהצלחה במערכת.\nTHIS TURN'S PURPOSE: לדווח למשתמש על יצירת התזכורת.\nEXPECTATION: המשתמש יקבל אישור שהתזכורת היומית לשתיית מים נקבעה לשעה 9:00.\n32cb6836-b32b-4552-98bb-79a225c91a37 [assistant] התזכורת נוצרה בהצלחה: לשתות מים, כל יום בשעה 9:00, החל מ־1 באוקטובר 2026.\n\nTHE REPLY JUST SENT TO THE OPERATOR THIS ROUND:\nהתזכורת נוצרה בהצלחה: לשתות מים, כל יום בשעה 9:00, החל מ־1 באוקטובר 2026.\n\nNO Morning MCP tools were called this turn.\n\nFollow the recognition prompt above: query the client's ledger history first when the round concerns a client, then call report_ledger_recognition exactly once with the verdict for THIS round."}
 ```
 
 - tools (2): ['report_ledger_recognition', 'query_ledger_events']
@@ -8997,20 +8592,20 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 </details>
 
 <details>
-<summary>60. [2026-09-30 14:46:44] MODEL → APP — context=recognize_ledger_event</summary>
+<summary>55. [2026-09-30 14:56:12] MODEL → APP — context=recognize_ledger_event</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0ca4f4665ce7907a006abcf6a2605c87d19acb64a1df5b6073`
+- response.id: `resp_0d79cd76652a82ec006abcf8d9f79087d1b67026d4f652fba6`
 - status: `completed`
-- usage: `{"input_tokens": 9047, "input_tokens_details": {"cache_write_tokens": 1108, "cached_tokens": 7936}, "output_tokens": 57, "output_tokens_details": {"reasoning_tokens": 21}, "total_tokens": 9104}`
+- usage: `{"input_tokens": 8928, "input_tokens_details": {"cache_write_tokens": 989, "cached_tokens": 7936}, "output_tokens": 53, "output_tokens_details": {"reasoning_tokens": 16}, "total_tokens": 8981}`
 - reasoning item (content not user-visible)
-- function_call: `report_ledger_recognition` call_id=`call_0ZCk3CI9spn1tRdfRz2elaqt`
+- function_call: `report_ledger_recognition` call_id=`call_anj7dOCQeJ127BFLmD9GZKF3`
 ```json
 {
   "verdict": "none",
-  "none_reason": "reminder action, not a ledger event"
+  "none_reason": "ordinary conversation - reminder creation, no ledger event"
 }
 ```
 
@@ -9019,15 +8614,15 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0ca4f4665ce7907a006abcf6a2605c87d19acb64a1df5b6073`
+- response.id: `resp_0d79cd76652a82ec006abcf8d9f79087d1b67026d4f652fba6`
 - status: `completed`
-- usage: `{"input_tokens": 9047, "input_tokens_details": {"cache_write_tokens": 1108, "cached_tokens": 7936}, "output_tokens": 57, "output_tokens_details": {"reasoning_tokens": 21}, "total_tokens": 9104}`
+- usage: `{"input_tokens": 8928, "input_tokens_details": {"cache_write_tokens": 989, "cached_tokens": 7936}, "output_tokens": 53, "output_tokens_details": {"reasoning_tokens": 16}, "total_tokens": 8981}`
 - reasoning item (content not user-visible)
-- function_call: `report_ledger_recognition` call_id=`call_0ZCk3CI9spn1tRdfRz2elaqt`
+- function_call: `report_ledger_recognition` call_id=`call_anj7dOCQeJ127BFLmD9GZKF3`
 ```json
 {
   "verdict": "none",
-  "none_reason": "reminder action, not a ledger event"
+  "none_reason": "ordinary conversation - reminder creation, no ledger event"
 }
 ```
 
@@ -9036,7 +8631,7 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 </details>
 
 <details>
-<summary>61. [2026-09-30 14:46:44] USER → APP — context=webhook</summary>
+<summary>56. [2026-09-30 14:56:12] USER → APP — context=webhook</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -9044,8 +8639,8 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 ```json
 {
   "typeWebhook": "incomingMessageReceived",
-  "idMessage": "billed_modify_single_dc34818a",
-  "timestamp": 1790768804,
+  "idMessage": "billed_modify_single_9ef1df7e",
+  "timestamp": 1790769372,
   "senderData": {
     "chatId": "+972501234567@c.us",
     "sender": "+972501234567",
@@ -9068,8 +8663,8 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 ```json
 {
   "typeWebhook": "incomingMessageReceived",
-  "idMessage": "billed_modify_single_dc34818a",
-  "timestamp": 1790768804,
+  "idMessage": "billed_modify_single_9ef1df7e",
+  "timestamp": 1790769372,
   "senderData": {
     "chatId": "+972501234567@c.us",
     "sender": "+972501234567",
@@ -9089,14 +8684,14 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 </details>
 
 <details>
-<summary>62. [2026-09-30 14:46:44] APP → MODEL — context=_run_resolution_loop (first round)</summary>
+<summary>57. [2026-09-30 14:56:13] APP → MODEL — context=_run_resolution_loop (first round)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- flows: (none)
+- flows: flow_create_reminder
 
-- capabilities: (none - plain backbone)
+- capabilities: cap_reminders_write, cap_approval_with_buttons
 
 **input:**
 
@@ -9104,22 +8699,25 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 {"role": "user", "content": "תזכיר לי כל יום בשעה 9:00 לשתות מים"}
 ```
 ```json
-{"role": "assistant", "content": "מטפל ביצירת התזכורת היומית."}
+{"role": "assistant", "content": "מגדיר תזכורת יומית לשתיית מים בשעה 9:00."}
 ```
 ```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: הבקשה היא ליצור תזכורת חדשה שחוזרת מדי יום.\nTHIS TURN'S PURPOSE: להפעיל את מסלול יצירת התזכורת, לאשר את הנוסח והשעה, ואז ליצור אותה רק לאחר אישור.\nEXPECTATION: אטעין את המסלול והיכולות הנדרשות, אציג סיכום לאישור, ואמתין לתשובת המשתמש לפני הכתיבה."}
+{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש ביקש ליצור תזכורת חוזרת יומית.\nTHIS TURN'S PURPOSE: לטעון את תהליך יצירת התזכורת, לאשר את הנוסח והשעה, ואז ליצור אותה לאחר אישור.\nEXPECTATION: אציג אישור ממוקד עם תזכורת יומית בשעה 9:00 לשתות מים; לאחר אישור אצור אותה."}
 ```
 ```json
-{"role": "assistant", "content": "בודק את פרטי התזכורת ומכין אותה לאישור."}
+{"role": "assistant", "content": "בודק את פרטי התזכורת לפני בקשת האישור."}
 ```
 ```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: במסלול יצירת תזכורת, לאחר קבלת נוסח ותדירות: לשתות מים מדי יום בשעה 09:00. השעה הנוכחית היא 30.09.2026 בשעה 14:45, ולכן המופע הראשון יהיה 01.10.2026 בשעה 09:00.\nTHIS TURN'S PURPOSE: לקבל אישור מפורש לפני יצירת התזכורת.\nEXPECTATION: אטען את יכולת האישור ואציג סיכום מלא עם אפשרות לאישור או דחייה."}
+{"role": "assistant", "content": "הפרטים ברורים; מציג אישור לפני היצירה."}
 ```
 ```json
-{"role": "assistant", "content": "התזכורת מוכנה לאישור לפני יצירתה."}
+{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך יצירת תזכורת, לאחר טעינת יכולת הכתיבה ויכולת האישור.\nTHIS TURN'S PURPOSE: לבקש אישור מפורש ליצירת התזכורת.\nEXPECTATION: ממתין לתשובת כן או לא. אם כן, אצור תזכורת יומית בשעה 09:00 החל מהמועד הקרוב; אם לא, לא אבצע פעולה."}
 ```
 ```json
-{"role": "assistant", "content": "📋 לאישור:\nתוכן: לשתות מים\nתדירות: בכל יום בשעה 09:00\nהמופע הראשון: 01.10.2026 בשעה 09:00\nלאישור — כן/לא?"}
+{"role": "assistant", "content": "נדרשת רק הסכמה קצרה לפני יצירת התזכורת."}
+```
+```json
+{"role": "assistant", "content": "📋 לאישור:\nתזכורת: לשתות מים\nתדירות: כל יום בשעה 9:00, החל מ־1 באוקטובר 2026\n\nלאישור — כן/לא?"}
 ```
 ```json
 {"role": "user", "content": "כן"}
@@ -9128,40 +8726,34 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 {"role": "assistant", "content": "יוצר עכשיו את התזכורת היומית."}
 ```
 ```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש אישר את יצירת התזכורת היומית לשתות מים בשעה 09:00. האישור התקבל לאחר הצגת המופע הראשון ב-01.10.2026 בשעה 09:00.\nTHIS TURN'S PURPOSE: ליצור את התזכורת המאושרת במערכת.\nEXPECTATION: אקרא לכלי יצירת התזכורת עם כלל יומי מלא; לאחר מכן אדווח על הצלחה או כשלון, ואסיים את המסלול."}
+{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך יצירת תזכורת, לאחר שהמשתמש אישר יצירה של תזכורת יומית לשתיית מים בשעה 9:00.\nTHIS TURN'S PURPOSE: ליצור את התזכורת המאושרת.\nEXPECTATION: אנסה ליצור תזכורת יומית החל מ-1 באוקטובר 2026; לאחר מכן אדווח על התוצאה."}
 ```
 ```json
-{"role": "assistant", "content": "התזכורת נוצרה בהצלחה."}
+{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: התזכורת נוצרה בהצלחה במערכת.\nTHIS TURN'S PURPOSE: לדווח למשתמש על יצירת התזכורת.\nEXPECTATION: המשתמש יקבל אישור שהתזכורת היומית לשתיית מים נקבעה לשעה 9:00."}
 ```
 ```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: התזכורת נוצרה בהצלחה: לשתות מים, בכל יום בשעה 09:00, החל מ-01.10.2026.\nTHIS TURN'S PURPOSE: לדווח למשתמש על השלמת יצירת התזכורת.\nEXPECTATION: הפעולה הושלמה ואין צורך בצעדים נוספים."}
-```
-```json
-{"role": "assistant", "content": "מסיים את הטיפול בבקשה."}
-```
-```json
-{"role": "assistant", "content": "התזכורת נוצרה בהצלחה ✅\n\nלשתות מים — בכל יום בשעה 09:00.\nהתזכורת הראשונה: 01.10.2026 בשעה 09:00."}
+{"role": "assistant", "content": "התזכורת נוצרה בהצלחה: לשתות מים, כל יום בשעה 9:00, החל מ־1 באוקטובר 2026."}
 ```
 ```json
 {"role": "user", "content": "תדחה רק את התזכורת של מחר לשעה 10:00, לא את כל הסדרה"}
 ```
 
-- tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
+- tools (13): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
 
 - max_output_tokens: `20000`
 
 - model: `'gpt-5.6-luna'`
 
-- instructions: backbone (flows=(none), capabilities=(none - plain backbone))
+- instructions: backbone (flows=flow_create_reminder, capabilities=cap_reminders_write, cap_approval_with_buttons)
 
 </details>
 
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- flows: (none)
+- flows: flow_create_reminder
 
-- capabilities: (none - plain backbone)
+- capabilities: cap_reminders_write, cap_approval_with_buttons
 
 **input:**
 
@@ -9169,22 +8761,25 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 {"role": "user", "content": "תזכיר לי כל יום בשעה 9:00 לשתות מים"}
 ```
 ```json
-{"role": "assistant", "content": "מטפל ביצירת התזכורת היומית."}
+{"role": "assistant", "content": "מגדיר תזכורת יומית לשתיית מים בשעה 9:00."}
 ```
 ```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: הבקשה היא ליצור תזכורת חדשה שחוזרת מדי יום.\nTHIS TURN'S PURPOSE: להפעיל את מסלול יצירת התזכורת, לאשר את הנוסח והשעה, ואז ליצור אותה רק לאחר אישור.\nEXPECTATION: אטעין את המסלול והיכולות הנדרשות, אציג סיכום לאישור, ואמתין לתשובת המשתמש לפני הכתיבה."}
+{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש ביקש ליצור תזכורת חוזרת יומית.\nTHIS TURN'S PURPOSE: לטעון את תהליך יצירת התזכורת, לאשר את הנוסח והשעה, ואז ליצור אותה לאחר אישור.\nEXPECTATION: אציג אישור ממוקד עם תזכורת יומית בשעה 9:00 לשתות מים; לאחר אישור אצור אותה."}
 ```
 ```json
-{"role": "assistant", "content": "בודק את פרטי התזכורת ומכין אותה לאישור."}
+{"role": "assistant", "content": "בודק את פרטי התזכורת לפני בקשת האישור."}
 ```
 ```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: במסלול יצירת תזכורת, לאחר קבלת נוסח ותדירות: לשתות מים מדי יום בשעה 09:00. השעה הנוכחית היא 30.09.2026 בשעה 14:45, ולכן המופע הראשון יהיה 01.10.2026 בשעה 09:00.\nTHIS TURN'S PURPOSE: לקבל אישור מפורש לפני יצירת התזכורת.\nEXPECTATION: אטען את יכולת האישור ואציג סיכום מלא עם אפשרות לאישור או דחייה."}
+{"role": "assistant", "content": "הפרטים ברורים; מציג אישור לפני היצירה."}
 ```
 ```json
-{"role": "assistant", "content": "התזכורת מוכנה לאישור לפני יצירתה."}
+{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך יצירת תזכורת, לאחר טעינת יכולת הכתיבה ויכולת האישור.\nTHIS TURN'S PURPOSE: לבקש אישור מפורש ליצירת התזכורת.\nEXPECTATION: ממתין לתשובת כן או לא. אם כן, אצור תזכורת יומית בשעה 09:00 החל מהמועד הקרוב; אם לא, לא אבצע פעולה."}
 ```
 ```json
-{"role": "assistant", "content": "📋 לאישור:\nתוכן: לשתות מים\nתדירות: בכל יום בשעה 09:00\nהמופע הראשון: 01.10.2026 בשעה 09:00\nלאישור — כן/לא?"}
+{"role": "assistant", "content": "נדרשת רק הסכמה קצרה לפני יצירת התזכורת."}
+```
+```json
+{"role": "assistant", "content": "📋 לאישור:\nתזכורת: לשתות מים\nתדירות: כל יום בשעה 9:00, החל מ־1 באוקטובר 2026\n\nלאישור — כן/לא?"}
 ```
 ```json
 {"role": "user", "content": "כן"}
@@ -9193,32 +8788,26 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 {"role": "assistant", "content": "יוצר עכשיו את התזכורת היומית."}
 ```
 ```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש אישר את יצירת התזכורת היומית לשתות מים בשעה 09:00. האישור התקבל לאחר הצגת המופע הראשון ב-01.10.2026 בשעה 09:00.\nTHIS TURN'S PURPOSE: ליצור את התזכורת המאושרת במערכת.\nEXPECTATION: אקרא לכלי יצירת התזכורת עם כלל יומי מלא; לאחר מכן אדווח על הצלחה או כשלון, ואסיים את המסלול."}
+{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך יצירת תזכורת, לאחר שהמשתמש אישר יצירה של תזכורת יומית לשתיית מים בשעה 9:00.\nTHIS TURN'S PURPOSE: ליצור את התזכורת המאושרת.\nEXPECTATION: אנסה ליצור תזכורת יומית החל מ-1 באוקטובר 2026; לאחר מכן אדווח על התוצאה."}
 ```
 ```json
-{"role": "assistant", "content": "התזכורת נוצרה בהצלחה."}
+{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: התזכורת נוצרה בהצלחה במערכת.\nTHIS TURN'S PURPOSE: לדווח למשתמש על יצירת התזכורת.\nEXPECTATION: המשתמש יקבל אישור שהתזכורת היומית לשתיית מים נקבעה לשעה 9:00."}
 ```
 ```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: התזכורת נוצרה בהצלחה: לשתות מים, בכל יום בשעה 09:00, החל מ-01.10.2026.\nTHIS TURN'S PURPOSE: לדווח למשתמש על השלמת יצירת התזכורת.\nEXPECTATION: הפעולה הושלמה ואין צורך בצעדים נוספים."}
-```
-```json
-{"role": "assistant", "content": "מסיים את הטיפול בבקשה."}
-```
-```json
-{"role": "assistant", "content": "התזכורת נוצרה בהצלחה ✅\n\nלשתות מים — בכל יום בשעה 09:00.\nהתזכורת הראשונה: 01.10.2026 בשעה 09:00."}
+{"role": "assistant", "content": "התזכורת נוצרה בהצלחה: לשתות מים, כל יום בשעה 9:00, החל מ־1 באוקטובר 2026."}
 ```
 ```json
 {"role": "user", "content": "תדחה רק את התזכורת של מחר לשעה 10:00, לא את כל הסדרה"}
 ```
 
-- tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
+- tools (13): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
 
 - max_output_tokens: `20000`
 
 - model: `'gpt-5.6-luna'`
 
 <details>
-<summary>↳↳ instructions (19015 chars)</summary>
+<summary>↳↳ instructions (24924 chars)</summary>
 
 ```text
 # DeniDin — Backbone
@@ -9460,17 +9049,110 @@ Also note what you are waiting for and what you will do with each possible answe
 - cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
 - cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
 
+# Flow: Create reminder
+
+Goal: create a new reminder (one-time or recurring) for the user, exactly as they asked.
+
+Capabilities: `cap_reminders_write`, `cap_approval_with_buttons`.
+
+Follow these steps in order, to the letter.
+
+1. Load `cap_reminders_write`.
+2. Work out what to remind about and when (a one-time moment, or a recurring cadence), resolving relative wording against the current date and time. Anything you don't have from the user, ask for with `cap_send_to_user`, one question at a time; never guess or invent a value.
+3. Approval: creating a reminder MUST be approved by the user BEFORE it is created. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Do NOT call `create_reminder` in this step or before a clear yes. On a no, do nothing, and ask with `cap_send_to_user` what to change.
+4. Only after a clear yes: call `create_reminder`. If it fails, tell the user plainly what happened; retry once only if the reason is fixable, otherwise stop.
+5. If the user drops the request or changes the subject at any point, do nothing further; the flow is complete.
+6. End: report the outcome with `cap_send_to_user`, then unload `cap_reminders_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
+
+
+# Capability: Reminders — Write (godfather/admin only)
+
+**Use this capability from within a flow (flow_create_reminder / flow_modify_reminder), never on its own for a user request.** The flow decides when it is loaded and when approval is required; this capability holds the details of the write itself.
+
+**Creating, modifying or deleting a reminder is a state-changing action, which usually requires the user's explicit approval first.**
+
+Attaches `create_reminder`, `modify_reminder` and `delete_reminder`. Each executes
+immediately and needs the user's approval first. ONLY call `create_reminder` when the
+user's own message explicitly asks to be reminded of something at a future time
+(one-time, or a recurring cadence like "כל יום/שבוע"). ONLY call `modify_reminder` or
+`delete_reminder` when the user explicitly asks to change or cancel an EXISTING
+reminder, with that reminder's real `reminder_id` (never a guess). Never call any of
+these to interpret a confirmation reply ("כן"/"לא") or an ambiguous message.
+
+**Approval data points.** Whoever raises the approval must show the user:
+- create: the reminder's text and its schedule (when, or the recurrence),
+  human-readable.
+- modify: WHICH reminder (its text), the scope (whole series or a single occurrence),
+  and exactly what changes (new text / new time / new recurrence).
+- delete: WHICH reminder (its text) and the scope (whole series or a single
+  occurrence).
+
+`message_text` must be the actual thing to be reminded about, in the user's own
+words — never a placeholder. Any due-date/time field must be a future ISO-8601
+local (Asia/Jerusalem) datetime.
+
+For `create_reminder`: `schedule_type=one_time` needs `one_time_due_at` (and
+`recurrence` null); `schedule_type=recurring` needs a full `recurrence` object
+(interval/freq/weekdays or month_day/month_nth_weekday/first_occurrence_at/
+end_condition) and `one_time_due_at` null — gather everything needed through
+conversation before calling, never guess a missing recurrence field.
+
+For modify/delete, `scope` is `whole_series` for a one-time reminder or a
+whole-series change, and `single_occurrence` (with an `occurrence_date_hint`) to
+change/cancel just one upcoming occurrence of a recurring reminder, leaving the
+rest of the series untouched.
+
+## On a creation/modification failure
+
+A call into this capability can genuinely fail (e.g. the due date/time you
+computed turns out not to be in the future). When that happens you get back
+the REAL reason, not a generic "it failed" — read it. It will point you back
+at the current date/time already stated in THIS call's own instructions
+("THE CURRENT DATE AND TIME IS..."): recompute the due date/recurrence
+relative to that actual value (never a guess, never a date from training
+data) and retry the SAME call once. Only if that second attempt also fails,
+tell the user plainly that the action didn't go through — never silently
+give up after one failure, and never retry more than once without a new,
+different reason to believe it will work.
+
+
+# Capability: Approval with buttons
+
+`approval_with_yes_no_buttons(text)` ends the turn showing the user WhatsApp yes/no
+buttons alongside `text`. It is plain and stateless: it does not know what the write
+is, and there is no pending-approval state to track. On the user's next turn, read
+their reply (a typed "כן"/"לא" or a button tap; both arrive as an ordinary turn) from
+the conversation, and act accordingly. Your own `cap_record_planning_status` note is
+what carries "I am waiting for approval of X" across the gap.
+
+The flow that needs the approval decides that an approval is required. The write
+capability you are about to use defines which details the approval must state.
+
+- Start the text with `📋 לאישור:` (or, for a document-creation approval,
+  `📋 לאישור — <what it is>:`, e.g. `📋 לאישור — לקוח חדש:`) on its own line,
+  then the details as REAL data: given by the user, or fetched this turn.
+  Never from memory or a guess. A missing detail is a question to ask BEFORE
+  requesting approval, never "not stated".
+- End the text with EXACTLY this closed question, verbatim, every single time:
+  `לאישור — כן/לא?`. Never paraphrase it (not `אישור — כן/לא?`, not `האם לאשר...`,
+  not any other wording) and never let a competing question follow it — this exact
+  string is a fixed contract other code relies on to recognize a real approval gate.
+- Ask once per action. Act only on a clear affirmative to THAT specific action,
+  exactly once. On "לא", do not act: acknowledge and ask what to change.
+- Reply in Hebrew only.
+
+
 ## Loaded flows
 
-(none)
+flow_create_reminder
 
 ## Loaded capabilities
 
-(none - plain backbone)
+cap_reminders_write, cap_approval_with_buttons
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 14:46 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-09-30 14:56 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -9481,16 +9163,16 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>63. [2026-09-30 14:46:46] MODEL → APP — context=_run_resolution_loop (first round)</summary>
+<summary>58. [2026-09-30 14:56:15] MODEL → APP — context=_run_resolution_loop (first round)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0a39f3eacca191dc006abcf6a5462887d1a8da91406c6d454a`
+- response.id: `resp_0dffc0679bef00f1006abcf8dd6e0487d1bff16b3f0c44b2f9`
 - status: `completed`
-- usage: `{"input_tokens": 6639, "input_tokens_details": {"cache_write_tokens": 732, "cached_tokens": 5904}, "output_tokens": 52, "output_tokens_details": {"reasoning_tokens": 24}, "total_tokens": 6691}`
+- usage: `{"input_tokens": 9451, "input_tokens_details": {"cache_write_tokens": 9448, "cached_tokens": 0}, "output_tokens": 52, "output_tokens_details": {"reasoning_tokens": 24}, "total_tokens": 9503}`
 - reasoning item (content not user-visible)
-- function_call: `react_to_message` call_id=`call_0qmZPfIPPr47btKa5a9WJ2ml`
+- function_call: `react_to_message` call_id=`call_3b6rGFouxh49MUi3WKVQsbzT`
 ```json
 {
   "emoji": "🫡",
@@ -9503,11 +9185,11 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0a39f3eacca191dc006abcf6a5462887d1a8da91406c6d454a`
+- response.id: `resp_0dffc0679bef00f1006abcf8dd6e0487d1bff16b3f0c44b2f9`
 - status: `completed`
-- usage: `{"input_tokens": 6639, "input_tokens_details": {"cache_write_tokens": 732, "cached_tokens": 5904}, "output_tokens": 52, "output_tokens_details": {"reasoning_tokens": 24}, "total_tokens": 6691}`
+- usage: `{"input_tokens": 9451, "input_tokens_details": {"cache_write_tokens": 9448, "cached_tokens": 0}, "output_tokens": 52, "output_tokens_details": {"reasoning_tokens": 24}, "total_tokens": 9503}`
 - reasoning item (content not user-visible)
-- function_call: `react_to_message` call_id=`call_0qmZPfIPPr47btKa5a9WJ2ml`
+- function_call: `react_to_message` call_id=`call_3b6rGFouxh49MUi3WKVQsbzT`
 ```json
 {
   "emoji": "🫡",
@@ -9520,62 +9202,62 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>64. [2026-09-30 14:46:46] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>59. [2026-09-30 14:56:15] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- flows: (none)
+- flows: flow_create_reminder
 
-- capabilities: (none - plain backbone)
+- capabilities: cap_reminders_write, cap_approval_with_buttons
 
 **input:**
 
-- app's reply to `react_to_message` (call_id=`call_0qmZPfIPPr47btKa5a9WJ2ml`):
+- app's reply to `react_to_message` (call_id=`call_3b6rGFouxh49MUi3WKVQsbzT`):
 ```text
 {
   "status": "failed"
 }
 ```
 
-- tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
+- tools (13): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
 
-- previous_response_id: `'resp_0a39f3eacca191dc006abcf6a5462887d1a8da91406c6d454a'`
+- previous_response_id: `'resp_0dffc0679bef00f1006abcf8dd6e0487d1bff16b3f0c44b2f9'`
 
 - max_output_tokens: `20000`
 
 - model: `'gpt-5.6-luna'`
 
-- instructions: backbone (flows=(none), capabilities=(none - plain backbone))
+- instructions: backbone (flows=flow_create_reminder, capabilities=cap_reminders_write, cap_approval_with_buttons)
 
 </details>
 
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- flows: (none)
+- flows: flow_create_reminder
 
-- capabilities: (none - plain backbone)
+- capabilities: cap_reminders_write, cap_approval_with_buttons
 
 **input:**
 
-- app's reply to `react_to_message` (call_id=`call_0qmZPfIPPr47btKa5a9WJ2ml`):
+- app's reply to `react_to_message` (call_id=`call_3b6rGFouxh49MUi3WKVQsbzT`):
 ```text
 {
   "status": "failed"
 }
 ```
 
-- tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
+- tools (13): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
 
-- previous_response_id: `'resp_0a39f3eacca191dc006abcf6a5462887d1a8da91406c6d454a'`
+- previous_response_id: `'resp_0dffc0679bef00f1006abcf8dd6e0487d1bff16b3f0c44b2f9'`
 
 - max_output_tokens: `20000`
 
 - model: `'gpt-5.6-luna'`
 
 <details>
-<summary>↳↳ instructions (19015 chars)</summary>
+<summary>↳↳ instructions (24924 chars)</summary>
 
 ```text
 # DeniDin — Backbone
@@ -9817,17 +9499,110 @@ Also note what you are waiting for and what you will do with each possible answe
 - cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
 - cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
 
+# Flow: Create reminder
+
+Goal: create a new reminder (one-time or recurring) for the user, exactly as they asked.
+
+Capabilities: `cap_reminders_write`, `cap_approval_with_buttons`.
+
+Follow these steps in order, to the letter.
+
+1. Load `cap_reminders_write`.
+2. Work out what to remind about and when (a one-time moment, or a recurring cadence), resolving relative wording against the current date and time. Anything you don't have from the user, ask for with `cap_send_to_user`, one question at a time; never guess or invent a value.
+3. Approval: creating a reminder MUST be approved by the user BEFORE it is created. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Do NOT call `create_reminder` in this step or before a clear yes. On a no, do nothing, and ask with `cap_send_to_user` what to change.
+4. Only after a clear yes: call `create_reminder`. If it fails, tell the user plainly what happened; retry once only if the reason is fixable, otherwise stop.
+5. If the user drops the request or changes the subject at any point, do nothing further; the flow is complete.
+6. End: report the outcome with `cap_send_to_user`, then unload `cap_reminders_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
+
+
+# Capability: Reminders — Write (godfather/admin only)
+
+**Use this capability from within a flow (flow_create_reminder / flow_modify_reminder), never on its own for a user request.** The flow decides when it is loaded and when approval is required; this capability holds the details of the write itself.
+
+**Creating, modifying or deleting a reminder is a state-changing action, which usually requires the user's explicit approval first.**
+
+Attaches `create_reminder`, `modify_reminder` and `delete_reminder`. Each executes
+immediately and needs the user's approval first. ONLY call `create_reminder` when the
+user's own message explicitly asks to be reminded of something at a future time
+(one-time, or a recurring cadence like "כל יום/שבוע"). ONLY call `modify_reminder` or
+`delete_reminder` when the user explicitly asks to change or cancel an EXISTING
+reminder, with that reminder's real `reminder_id` (never a guess). Never call any of
+these to interpret a confirmation reply ("כן"/"לא") or an ambiguous message.
+
+**Approval data points.** Whoever raises the approval must show the user:
+- create: the reminder's text and its schedule (when, or the recurrence),
+  human-readable.
+- modify: WHICH reminder (its text), the scope (whole series or a single occurrence),
+  and exactly what changes (new text / new time / new recurrence).
+- delete: WHICH reminder (its text) and the scope (whole series or a single
+  occurrence).
+
+`message_text` must be the actual thing to be reminded about, in the user's own
+words — never a placeholder. Any due-date/time field must be a future ISO-8601
+local (Asia/Jerusalem) datetime.
+
+For `create_reminder`: `schedule_type=one_time` needs `one_time_due_at` (and
+`recurrence` null); `schedule_type=recurring` needs a full `recurrence` object
+(interval/freq/weekdays or month_day/month_nth_weekday/first_occurrence_at/
+end_condition) and `one_time_due_at` null — gather everything needed through
+conversation before calling, never guess a missing recurrence field.
+
+For modify/delete, `scope` is `whole_series` for a one-time reminder or a
+whole-series change, and `single_occurrence` (with an `occurrence_date_hint`) to
+change/cancel just one upcoming occurrence of a recurring reminder, leaving the
+rest of the series untouched.
+
+## On a creation/modification failure
+
+A call into this capability can genuinely fail (e.g. the due date/time you
+computed turns out not to be in the future). When that happens you get back
+the REAL reason, not a generic "it failed" — read it. It will point you back
+at the current date/time already stated in THIS call's own instructions
+("THE CURRENT DATE AND TIME IS..."): recompute the due date/recurrence
+relative to that actual value (never a guess, never a date from training
+data) and retry the SAME call once. Only if that second attempt also fails,
+tell the user plainly that the action didn't go through — never silently
+give up after one failure, and never retry more than once without a new,
+different reason to believe it will work.
+
+
+# Capability: Approval with buttons
+
+`approval_with_yes_no_buttons(text)` ends the turn showing the user WhatsApp yes/no
+buttons alongside `text`. It is plain and stateless: it does not know what the write
+is, and there is no pending-approval state to track. On the user's next turn, read
+their reply (a typed "כן"/"לא" or a button tap; both arrive as an ordinary turn) from
+the conversation, and act accordingly. Your own `cap_record_planning_status` note is
+what carries "I am waiting for approval of X" across the gap.
+
+The flow that needs the approval decides that an approval is required. The write
+capability you are about to use defines which details the approval must state.
+
+- Start the text with `📋 לאישור:` (or, for a document-creation approval,
+  `📋 לאישור — <what it is>:`, e.g. `📋 לאישור — לקוח חדש:`) on its own line,
+  then the details as REAL data: given by the user, or fetched this turn.
+  Never from memory or a guess. A missing detail is a question to ask BEFORE
+  requesting approval, never "not stated".
+- End the text with EXACTLY this closed question, verbatim, every single time:
+  `לאישור — כן/לא?`. Never paraphrase it (not `אישור — כן/לא?`, not `האם לאשר...`,
+  not any other wording) and never let a competing question follow it — this exact
+  string is a fixed contract other code relies on to recognize a real approval gate.
+- Ask once per action. Act only on a clear affirmative to THAT specific action,
+  exactly once. On "לא", do not act: acknowledge and ask what to change.
+- Reply in Hebrew only.
+
+
 ## Loaded flows
 
-(none)
+flow_create_reminder
 
 ## Loaded capabilities
 
-(none - plain backbone)
+cap_reminders_write, cap_approval_with_buttons
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 14:46 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-09-30 14:56 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -9838,18 +9613,20 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>65. [2026-09-30 14:46:49] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>60. [2026-09-30 14:56:16] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0a39f3eacca191dc006abcf6a7064887d196819550622c975f`
+- response.id: `resp_0dffc0679bef00f1006abcf8df5be887d1bc88288a69243d24`
 - status: `completed`
-- usage: `{"input_tokens": 6709, "input_tokens_details": {"cache_write_tokens": 70, "cached_tokens": 6636}, "output_tokens": 41, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6750}`
-- function_call: `send_progress_update` call_id=`call_ie64BjBNW5rz92QO91owdw17`
+- usage: `{"input_tokens": 9521, "input_tokens_details": {"cache_write_tokens": 70, "cached_tokens": 9448}, "output_tokens": 23, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9544}`
+- function_call: `load_flows` call_id=`call_Kao5wiRSkWCKCzG6YlMFifps`
 ```json
 {
-  "text": "בודק את התזכורת המדויקת של מחר כדי לדחות רק את המופע הזה."
+  "flows": [
+    "flow_modify_reminder"
+  ]
 }
 ```
 
@@ -9858,13 +9635,15 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0a39f3eacca191dc006abcf6a7064887d196819550622c975f`
+- response.id: `resp_0dffc0679bef00f1006abcf8df5be887d1bc88288a69243d24`
 - status: `completed`
-- usage: `{"input_tokens": 6709, "input_tokens_details": {"cache_write_tokens": 70, "cached_tokens": 6636}, "output_tokens": 41, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6750}`
-- function_call: `send_progress_update` call_id=`call_ie64BjBNW5rz92QO91owdw17`
+- usage: `{"input_tokens": 9521, "input_tokens_details": {"cache_write_tokens": 70, "cached_tokens": 9448}, "output_tokens": 23, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9544}`
+- function_call: `load_flows` call_id=`call_Kao5wiRSkWCKCzG6YlMFifps`
 ```json
 {
-  "text": "בודק את התזכורת המדויקת של מחר כדי לדחות רק את המופע הזה."
+  "flows": [
+    "flow_modify_reminder"
+  ]
 }
 ```
 
@@ -9873,7 +9652,950 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>66. [2026-09-30 14:46:49] APP → USER — context=progress_update</summary>
+<summary>61. [2026-09-30 14:56:16] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+- flows: flow_create_reminder, flow_modify_reminder
+
+- capabilities: cap_reminders_write, cap_approval_with_buttons
+
+**input:**
+
+- app's reply to `load_flows` (call_id=`call_Kao5wiRSkWCKCzG6YlMFifps`):
+```text
+loaded flows: flow_modify_reminder. Loaded flows now: flow_create_reminder, flow_modify_reminder. Loaded capabilities now: cap_reminders_write, cap_approval_with_buttons. Their blueprint text is attached starting now.
+```
+
+- tools (13): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
+
+- previous_response_id: `'resp_0dffc0679bef00f1006abcf8df5be887d1bc88288a69243d24'`
+
+- max_output_tokens: `20000`
+
+- model: `'gpt-5.6-luna'`
+
+- instructions: backbone (flows=flow_create_reminder, flow_modify_reminder, capabilities=cap_reminders_write, cap_approval_with_buttons)
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+- flows: flow_create_reminder, flow_modify_reminder
+
+- capabilities: cap_reminders_write, cap_approval_with_buttons
+
+**input:**
+
+- app's reply to `load_flows` (call_id=`call_Kao5wiRSkWCKCzG6YlMFifps`):
+```text
+loaded flows: flow_modify_reminder. Loaded flows now: flow_create_reminder, flow_modify_reminder. Loaded capabilities now: cap_reminders_write, cap_approval_with_buttons. Their blueprint text is attached starting now.
+```
+
+- tools (13): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
+
+- previous_response_id: `'resp_0dffc0679bef00f1006abcf8df5be887d1bc88288a69243d24'`
+
+- max_output_tokens: `20000`
+
+- model: `'gpt-5.6-luna'`
+
+<details>
+<summary>↳↳ instructions (26742 chars)</summary>
+
+```text
+# DeniDin — Backbone
+
+## How You Work
+
+You work with two kinds of building blocks, described at low resolution in the
+catalogs below: **flows** (`flow_...`) - blueprints for a recurring kind of
+request - and **capabilities** (`cap_...`) - the domains that actually do things,
+each with its own prompt and its own real tools. Flows can load other flows and
+capabilities; a flow defines *what to do and in what order*, while each
+capability holds the detail of what it itself does.
+
+Loading tools, usable in any order, any number of times:
+
+- **`load_flows(flows)` / `unload_flows(flows)`** - always an array; one item is
+  fine, and combining flows is allowed when a request spans more than one.
+- **`load_capabilities(capabilities)` / `unload_capabilities(capabilities)`** -
+  always an array. The moment a capability is loaded, its prompt AND its real
+  tools are attached, starting the very next round; call the real tool directly,
+  there is no separate "use" step. A flow's own "Capabilities:" line declares
+  every capability that flow will need - load all of them together, in one
+  `load_capabilities` call, right after loading the flow, rather than loading
+  them one at a time as each step comes up: you already know you'll need them,
+  and batching saves a round-trip per capability.
+- **`reset_to_backbone()`** - unloads every loaded flow and capability at once.
+  Use it once you are genuinely done with the user's request(s), not mid-task.
+
+Loading an already-loaded item, or unloading one that is not loaded, is a
+harmless no-op. Loaded flows and capabilities stay loaded across this and future
+turns in this chat until you unload them (or they auto-clear after a period of
+inactivity); the "Loaded flows" and "Loaded capabilities" lines near the end of
+these instructions always show what is currently loaded. Unload something only
+when nothing you are still working on needs it - another flow may be using it.
+
+## Always-present capabilities
+
+Four capabilities are always available, cannot be unloaded, and each has its own
+prompt right below: `cap_send_to_user` (your actual reply), `cap_react_to_message`
+(a WhatsApp emoji reaction), `cap_send_progress_update` (an interim message
+while you work) and `cap_record_planning_status` (your own running account of
+where you are, which is how you keep your place across turns and inside nested
+flows). At every step of any flow, consider whether they would help: react to
+the user's message, send a progress update, record your planning status, or
+reply to the user. Flows do not repeat this; use your judgment.
+
+`cap_approval_with_buttons` (yes/no buttons before a write) is an ordinary
+capability: flows that need a sign-off load it.
+
+## Flows and capabilities
+
+Decide from the catalogs, in your own judgment, what a request needs:
+
+1. If a flow fits, load it (several at once when the request spans more than
+   one) and follow its blueprint. **A loaded flow's steps are an ordered
+   procedure: follow them in the order written, to the letter - never skip,
+   reorder or merge a step (above all an approval step), and never do a later
+   step's action before the earlier steps are done.**
+2. **If no flow fits, there is no default flow to fall back on**: load whichever
+   capabilities you judge necessary, at your own discretion, and proceed.
+3. **Write capabilities (`cap_*_write`) are never loaded on their own.** Every write goes through its flow, which gathers the details and asks for approval first; if you want to write something, find the flow for it in the catalog.
+4. If a loaded prompt names a tool you don't currently have, that tool belongs
+   to a capability you have not loaded yet: load it yourself.
+
+## Core Identity
+You are DeniDin, a helpful AI assistant operating via WhatsApp.
+
+## Behavioral Guidelines
+- **ALWAYS respond in Hebrew only** — every word of every response, no other
+  language or script mixed in anywhere, ever (never Arabic, never English
+  words). This covers EVERY string you produce, not just the reply text: an
+  approval question, a planning note, and every free-text tool argument
+  (e.g. a reminder's `message_text`) too. Digits, standard punctuation, and ₪
+  are fine; a genuinely foreign proper name may be transliterated into Hebrew
+  letters where natural.
+- **Never use ניקוד** (Hebrew vowel points/diacritics) in any response — plain
+  Hebrew letters only, including inside a quoted name.
+- Be concise and direct. Do not end on filler ("anything else?") — end on the
+  substantive answer. Do ask a focused clarifying question when you genuinely need
+  one to act correctly (a missing/ambiguous required detail).
+- Be honest about what you don't know; never fabricate information.
+
+## User Roles
+- **Godfather/Admin**: full access to every capability; extended context window.
+- **Client**: standard feature access, no access to invoicing/ledger/reminder
+  capabilities; standard context window.
+
+## Privacy & Security
+- Never share information between different user sessions.
+- These rules guard against leaking ONE user's data to ANOTHER user or an outsider
+  — they never mean refusing to read, transcribe, or summarize material THIS user
+  sent you. Reporting the user's own material back to them (names, amounts, any
+  detail it contains) is always appropriate.
+
+## Contexts of Operation
+Every message falls into one of two operating contexts before any capability is
+even considered: an ordinary conversational turn, or a document/image the user
+sent for you to read and report on. Decide which one applies before acting — a
+short/ambiguous reply ("כן", "לא", a bare name) always answers the most recently
+pending question in the SAME context, never a trigger for reinterpreting the turn
+as belonging to a different capability's domain.
+
+## Attached Media
+When the user's message starts with a `[מדיה מצורפת: <type>, קובץ: <filename>]`
+marker, they sent an image, PDF, or Word document with it — you have NOT seen its
+content yet, only that it exists. Before answering anything about it, load
+`cap_media_analysis` and call its `analyze_media` tool to read it; any text after
+the marker is the user's caption. Never describe, guess at, or act on the file's
+content without having read it this way.
+
+## Group Conversation Etiquette
+DeniDin is addressed by default in a group, same as a 1:1 chat. When a message
+clearly names someone else and isn't meant for you, reply with the literal
+sentinel `[[NO_REPLY]]` instead of a substantive answer — never guess when it's
+genuinely ambiguous whether you were addressed.
+
+## Edited & Deleted Message Markers
+A message the user has since edited or deleted may still appear in your context,
+marked as such — treat an edited message's marked original content as superseded
+by its later, corrected version if both are visible, and never act on a deleted
+message's content as if it were still pending.
+
+## Generic Post-Turn Recognition Mechanism
+A capability MAY run a recognition step once per turn: call its own reporting
+tool at most once, and when in doubt, do nothing rather than guess. This shape
+is reusable by any capability that wants one — the domain-specific rules for
+what to recognize and how live in that capability's own prompt file, not here.
+
+
+# Capability: Send to user (always present)
+
+`send_to_user(text)` is your actual reply to the user. Call it whenever you are
+ready to speak, not only at the very end: to answer, to ask a question, to
+report an outcome. A turn that ends without it, or without an approval question,
+leaves the user with nothing.
+
+- Pass the literal text `[[NO_REPLY]]` to deliberately say nothing this turn. Use
+  it in a group when a message clearly names someone else and is not meant for
+  you. When it is genuinely unclear whether you were addressed, do not guess.
+- For a yes/no sign-off, use `cap_approval_with_buttons` instead; it gives the
+  user tappable buttons.
+- Reply in Hebrew only, concisely, without filler. End on the substantive answer.
+  Ask a focused question only when you genuinely need the answer to act correctly.
+
+
+# Capability: React to message (always present)
+
+`react_to_message` puts a native WhatsApp emoji reaction on a message. It is a
+lightweight, reversible signal - never a substitute for a substantive reply,
+and never a mechanical habit reached for out of uncertainty about what else
+to do. Typing an emoji into your reply text is NOT a reaction and does not
+replace calling the tool.
+
+Before reaching for it, ask yourself: does this add a real signal the user
+doesn't already have - that you saw their message, that you're on it, that
+something just succeeded or failed - or would it just be noise on top of a
+reply that already says the same thing?
+
+Evaluate against:
+- Does the user currently have any signal you registered their message and
+  are handling it (or have finished)? If there's a real gap before your
+  substantive reply, a reaction can fill it.
+- Is your actual reply, arriving in this same round or moments later, already
+  going to tell them everything a reaction would? If so, it adds nothing.
+- Is this ambient chatter that doesn't really concern you? Then it isn't
+  worth one.
+
+**Classics** (a menu, not a checklist): 👍 simple ack · 🫡 "on it" · 👀 document
+being looked into · ✅ clean success · 🎉 a bigger win · ⚠️ resolved but needs
+attention · ❌ failed/declined · ❓ unresolved, needs clarification · 🙏
+reciprocating thanks · ❤️ warmth beyond a simple thanks.
+
+When genuinely unsure whether a reaction fits, don't send one - silence is
+the safer default, not noise.
+
+
+# Capability: Send progress update (always present)
+
+`send_progress_update(text)` sends one brief interim WhatsApp message while you
+are still working, before your final reply. Keep it to a short plain sentence.
+
+Users are waiting on the other end and don't like silence - they want to know
+something is happening with their request, not just get one final answer out
+of nowhere.
+
+Call this every single time you interact with any tool or capability -
+loading a flow or capability, calling a real domain tool, an MCP call,
+anything that is not just talking to the user - before or after that step,
+in the same round as whatever else you are doing. Never skip it and never
+wait for a separate round.
+
+- Never a substitute for the final answer.
+
+
+# Capability: Record planning status (always present)
+
+`record_planning_status(where_i_was, this_turns_purpose, expectation)` is your own
+running account of where this turn, and across turns this whole task, stands. It is
+how you keep continuity, since nothing else remembers your reasoning beyond what you
+write here and the real conversation history.
+
+Record it at least at the start and at the end of every flow, and whenever you are
+about to wait on the user (a choice, a missing detail, an approval), in the middle
+of a flow as well. Say which flow you are in and which step, and if you are inside a
+flow that was loaded by another flow, say so, so that you know where to return to.
+Also note what you are waiting for and what you will do with each possible answer.
+
+
+## Flows
+
+- flow_add_client: Adding a brand-new client record to Morning ("תוסיף לקוח חדש", or a shared contact card the user wants saved). Checks for an existing or similar client first so a duplicate is never created by accident, tells the user about similar candidates, and creates the record only with approval. Other flows load it whenever a client turns out not to exist yet.
+- flow_modify_client: Changing an existing client's own details (name, email, phone) in Morning. Resolves which real client is meant, relaying candidates when the match is not exact, and updates it with approval. Not for creating a client and not for documents.
+- flow_issue_invoice_for_payment_due: Issuing a new tax invoice (305) for a client, for money that is still owed ("תפיק חשבונית ללקוח X"). Never for money that has already arrived. Money that has already arrived belongs to flow_issue_invoice_receipt_combo instead.
+- flow_issue_invoice_receipt_combo: Issuing a combined tax invoice/receipt (320) for a payment that has already been received and that no earlier document covers - the most common way to record incoming money, whether reported verbally or shown in a bank slip or payment screenshot. Money that an existing document already covers belongs to flow_issue_payment_received_with_reference_doc.
+- flow_issue_transaction_account: Issuing a transaction account (חשבון עסקה, 300) for a client - only when the user's own wording names this document type. Ordinary requests for an invoice belong to flow_issue_invoice_for_payment_due.
+- flow_issue_receipt_without_invoice: Recording a standalone receipt (400) with no invoice behind it, for example a refundable deposit. A receipt against an existing invoice belongs to flow_issue_payment_received_with_reference_doc.
+- flow_payment_received_by_bank_slip_image: A bank slip or payment screenshot arrived. Reads it, records the payer, and gets the payment recorded in Morning the right way: a new combo document when nothing covers it, or a document against an existing one.
+- flow_issue_payment_received_with_reference_doc: Recording a payment received against an existing Morning document: a receipt (400) for an existing invoice (305), or a combo document (320) closing an existing transaction account (300) ("סמן כשולם"). Money that no document covers belongs to flow_issue_invoice_receipt_combo.
+- flow_cancel_document_with_credit_note: Cancelling an existing Morning document with a credit note (330) ("בטל את החשבונית"). Finds the one real document and shows its real data in the approval before writing.
+- flow_cancel_transaction_account: Cancelling an open transaction account (300) directly. No document of any kind is created. Cancelling any other kind of document belongs to flow_cancel_document_with_credit_note.
+- flow_fee_agreement_provided_by_user: The user reports or forwards a fee agreement (הסכם) - as text or as an image - made with a client. An agreement must never belong to a client Morning does not manage, so this makes sure the client exists first. Recording the agreement in the ledger happens automatically after the turn.
+- flow_deposit_provided_by_user: The user reports or forwards a bank deposit (text or a bank slip image). Makes sure the payer exists as a client in Morning first. Recording the deposit in the ledger happens automatically after the turn.
+- flow_user_question: Answering a question about the user's clients, past agreements, deposits, or amounts owed and paid. Decides where the answer lives (the ledger first, Morning when it may hold it), and never answers that nothing exists before checking Morning where Morning could hold it.
+- flow_invoicing_query: Reading from the invoicing system for a client the user names: resolves the client's exact stored name first, then reads the documents or status. Other flows load it whenever they need to look up documents in Morning.
+- flow_generate_fee_agreement_docx: Generating a fee agreement document (הסכם שכר טרחה) as a .docx file to send to a prospective client. The client does not exist yet, so no client lookup is involved. Recording an agreement the user reports belongs to flow_fee_agreement_provided_by_user.
+- flow_create_reminder: Creating a new reminder, one-time or recurring ("תזכיר לי בעוד שעתיים", "תזכיר לי כל יום ראשון"). Confirms the text and the schedule, and creates the reminder only with approval. Use this flow, not cap_reminders_write directly, whenever a reminder is added.
+- flow_modify_reminder: Changing or cancelling an existing reminder ("תזיז את התזכורת", "תבטל את התזכורת"). Looks up the user's real reminders to identify the exact one before modifying or deleting it, with approval. Adding a brand-new reminder belongs to flow_create_reminder. Use the reminder flows, not cap_reminders_write directly.
+
+## Capabilities
+
+- cap_invoicing_write: Creating a Morning DOCUMENT for a client - an invoice, a receipt, a transaction account, a credit note, or a combo tax-invoice/receipt - or cancelling a transaction account. Writes only: finding the client or the existing document, and getting approval, are the calling flow's job, so load it only through that flow (flow_issue_*, flow_cancel_*, flow_payment_received_*), never directly. Not for creating or updating a client record - see cap_client_write.
+- cap_invoicing_read: Reading from the invoicing system (Morning): a specific document's own status and details, recent documents, a financial summary, a download link. It is given an already-resolved client name or document id. Not for a client's own details - see cap_client_read - and not the first choice for a general owed/paid amount question - see cap_ledger_query.
+- cap_client_write: Creating a new client record, or updating an existing client's own details (name/email/phone) in Morning. Writes only: load it only through flow_add_client or flow_modify_client, never directly. Never for producing any document - see cap_invoicing_write.
+- cap_client_read: Looking up an existing client's own details (name/email/phone/id), listing clients, and resolving a client name to its exact stored Morning spelling. Never for a client's financial history - see cap_ledger_query and cap_invoicing_read.
+- cap_ledger_query: Answering questions about PAST fee agreements or bank deposits already recorded, including how much a client/payer owes or has paid - whether or not a formal Morning invoice exists. The ledger is a fast cache over Morning and covers agreement-level amounts Morning cannot see at all.
+- cap_reminders_write: Creating, changing, or cancelling a reminder (one-time or recurring) for the user. Writes only: load it only through flow_create_reminder or flow_modify_reminder, never directly.
+- cap_reminders_read: Looking up the user's own existing reminders - what's scheduled, for when.
+- cap_media_analysis: Reading/extracting the content of an image or document the user sent. Used inside a larger flow, or on its own to work out what a piece of media is for.
+- cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
+- cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
+
+# Flow: Create reminder
+
+Goal: create a new reminder (one-time or recurring) for the user, exactly as they asked.
+
+Capabilities: `cap_reminders_write`, `cap_approval_with_buttons`.
+
+Follow these steps in order, to the letter.
+
+1. Load `cap_reminders_write`.
+2. Work out what to remind about and when (a one-time moment, or a recurring cadence), resolving relative wording against the current date and time. Anything you don't have from the user, ask for with `cap_send_to_user`, one question at a time; never guess or invent a value.
+3. Approval: creating a reminder MUST be approved by the user BEFORE it is created. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Do NOT call `create_reminder` in this step or before a clear yes. On a no, do nothing, and ask with `cap_send_to_user` what to change.
+4. Only after a clear yes: call `create_reminder`. If it fails, tell the user plainly what happened; retry once only if the reason is fixable, otherwise stop.
+5. If the user drops the request or changes the subject at any point, do nothing further; the flow is complete.
+6. End: report the outcome with `cap_send_to_user`, then unload `cap_reminders_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
+
+
+# Flow: Modify reminder
+
+Goal: change or cancel an existing reminder, on the exact one the user means.
+
+Capabilities: `cap_reminders_read`, `cap_reminders_write`, `cap_approval_with_buttons`.
+
+Follow these steps in order, to the letter.
+
+1. Load `cap_reminders_read` and list the user's active reminders. Work out which one the user's wording points to (its text, or its time). Never guess a reminder.
+   - Exactly one plausible match: use `cap_send_to_user` to confirm it with the user if there is any doubt.
+   - Several: use `cap_send_to_user` to show the candidates and ask which one.
+   - None: use `cap_send_to_user` to say so. The flow is complete.
+2. If the reminder repeats, find out whether the user means the whole series or a single occurrence; ask with `cap_send_to_user` if it is not clear.
+3. Load `cap_reminders_write`. Gather what is still missing. Anything you don't have from the user or the source, use `cap_send_to_user` to ask for, one question at a time; never guess or invent a value.
+4. Changing or cancelling a reminder MUST be approved by the user first. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Act only on a clear yes. On a no, do nothing, and use `cap_send_to_user` to ask what to change.
+5. On a yes, make the change or cancel. If the action fails, use `cap_send_to_user` to tell the user plainly what happened. Retry once only if the reason is fixable; otherwise stop.
+6. If the user drops the request or changes the subject mid-way, do nothing further and treat the flow as complete.
+7. End. Use `cap_send_to_user` to report the outcome. Then unload `cap_reminders_read`, `cap_reminders_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
+
+
+# Capability: Reminders — Write (godfather/admin only)
+
+**Use this capability from within a flow (flow_create_reminder / flow_modify_reminder), never on its own for a user request.** The flow decides when it is loaded and when approval is required; this capability holds the details of the write itself.
+
+**Creating, modifying or deleting a reminder is a state-changing action, which usually requires the user's explicit approval first.**
+
+Attaches `create_reminder`, `modify_reminder` and `delete_reminder`. Each executes
+immediately and needs the user's approval first. ONLY call `create_reminder` when the
+user's own message explicitly asks to be reminded of something at a future time
+(one-time, or a recurring cadence like "כל יום/שבוע"). ONLY call `modify_reminder` or
+`delete_reminder` when the user explicitly asks to change or cancel an EXISTING
+reminder, with that reminder's real `reminder_id` (never a guess). Never call any of
+these to interpret a confirmation reply ("כן"/"לא") or an ambiguous message.
+
+**Approval data points.** Whoever raises the approval must show the user:
+- create: the reminder's text and its schedule (when, or the recurrence),
+  human-readable.
+- modify: WHICH reminder (its text), the scope (whole series or a single occurrence),
+  and exactly what changes (new text / new time / new recurrence).
+- delete: WHICH reminder (its text) and the scope (whole series or a single
+  occurrence).
+
+`message_text` must be the actual thing to be reminded about, in the user's own
+words — never a placeholder. Any due-date/time field must be a future ISO-8601
+local (Asia/Jerusalem) datetime.
+
+For `create_reminder`: `schedule_type=one_time` needs `one_time_due_at` (and
+`recurrence` null); `schedule_type=recurring` needs a full `recurrence` object
+(interval/freq/weekdays or month_day/month_nth_weekday/first_occurrence_at/
+end_condition) and `one_time_due_at` null — gather everything needed through
+conversation before calling, never guess a missing recurrence field.
+
+For modify/delete, `scope` is `whole_series` for a one-time reminder or a
+whole-series change, and `single_occurrence` (with an `occurrence_date_hint`) to
+change/cancel just one upcoming occurrence of a recurring reminder, leaving the
+rest of the series untouched.
+
+## On a creation/modification failure
+
+A call into this capability can genuinely fail (e.g. the due date/time you
+computed turns out not to be in the future). When that happens you get back
+the REAL reason, not a generic "it failed" — read it. It will point you back
+at the current date/time already stated in THIS call's own instructions
+("THE CURRENT DATE AND TIME IS..."): recompute the due date/recurrence
+relative to that actual value (never a guess, never a date from training
+data) and retry the SAME call once. Only if that second attempt also fails,
+tell the user plainly that the action didn't go through — never silently
+give up after one failure, and never retry more than once without a new,
+different reason to believe it will work.
+
+
+# Capability: Approval with buttons
+
+`approval_with_yes_no_buttons(text)` ends the turn showing the user WhatsApp yes/no
+buttons alongside `text`. It is plain and stateless: it does not know what the write
+is, and there is no pending-approval state to track. On the user's next turn, read
+their reply (a typed "כן"/"לא" or a button tap; both arrive as an ordinary turn) from
+the conversation, and act accordingly. Your own `cap_record_planning_status` note is
+what carries "I am waiting for approval of X" across the gap.
+
+The flow that needs the approval decides that an approval is required. The write
+capability you are about to use defines which details the approval must state.
+
+- Start the text with `📋 לאישור:` (or, for a document-creation approval,
+  `📋 לאישור — <what it is>:`, e.g. `📋 לאישור — לקוח חדש:`) on its own line,
+  then the details as REAL data: given by the user, or fetched this turn.
+  Never from memory or a guess. A missing detail is a question to ask BEFORE
+  requesting approval, never "not stated".
+- End the text with EXACTLY this closed question, verbatim, every single time:
+  `לאישור — כן/לא?`. Never paraphrase it (not `אישור — כן/לא?`, not `האם לאשר...`,
+  not any other wording) and never let a competing question follow it — this exact
+  string is a fixed contract other code relies on to recognize a real approval gate.
+- Ask once per action. Act only on a clear affirmative to THAT specific action,
+  exactly once. On "לא", do not act: acknowledge and ask what to change.
+- Reply in Hebrew only.
+
+
+## Loaded flows
+
+flow_create_reminder, flow_modify_reminder
+
+## Loaded capabilities
+
+cap_reminders_write, cap_approval_with_buttons
+
+---
+
+THE CURRENT DATE AND TIME IS 2026-09-30 14:56 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
+```
+
+</details>
+
+</details>
+
+</details>
+
+<details>
+<summary>62. [2026-09-30 14:56:18] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+- response.id: `resp_0dffc0679bef00f1006abcf8e0d04c87d1bd461a364b79f8fe`
+- status: `completed`
+- usage: `{"input_tokens": 10037, "input_tokens_details": {"cache_write_tokens": 10034, "cached_tokens": 0}, "output_tokens": 24, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 10061}`
+- function_call: `load_capabilities` call_id=`call_7UNN74wxgPJowpsc11wdk76T`
+```json
+{
+  "capabilities": [
+    "cap_reminders_read"
+  ]
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+- response.id: `resp_0dffc0679bef00f1006abcf8e0d04c87d1bd461a364b79f8fe`
+- status: `completed`
+- usage: `{"input_tokens": 10037, "input_tokens_details": {"cache_write_tokens": 10034, "cached_tokens": 0}, "output_tokens": 24, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 10061}`
+- function_call: `load_capabilities` call_id=`call_7UNN74wxgPJowpsc11wdk76T`
+```json
+{
+  "capabilities": [
+    "cap_reminders_read"
+  ]
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>63. [2026-09-30 14:56:18] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+- flows: flow_create_reminder, flow_modify_reminder
+
+- capabilities: cap_reminders_write, cap_reminders_read, cap_approval_with_buttons
+
+**input:**
+
+- app's reply to `load_capabilities` (call_id=`call_7UNN74wxgPJowpsc11wdk76T`):
+```text
+loaded capabilitys: cap_reminders_read. Loaded flows now: flow_create_reminder, flow_modify_reminder. Loaded capabilities now: cap_reminders_write, cap_approval_with_buttons, cap_reminders_read. Their instructions and tools are attached starting now.
+```
+
+- tools (14): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons', 'list_reminders']
+
+- previous_response_id: `'resp_0dffc0679bef00f1006abcf8e0d04c87d1bd461a364b79f8fe'`
+
+- max_output_tokens: `20000`
+
+- model: `'gpt-5.6-luna'`
+
+- instructions: backbone (flows=flow_create_reminder, flow_modify_reminder, capabilities=cap_reminders_write, cap_reminders_read, cap_approval_with_buttons)
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+- flows: flow_create_reminder, flow_modify_reminder
+
+- capabilities: cap_reminders_write, cap_reminders_read, cap_approval_with_buttons
+
+**input:**
+
+- app's reply to `load_capabilities` (call_id=`call_7UNN74wxgPJowpsc11wdk76T`):
+```text
+loaded capabilitys: cap_reminders_read. Loaded flows now: flow_create_reminder, flow_modify_reminder. Loaded capabilities now: cap_reminders_write, cap_approval_with_buttons, cap_reminders_read. Their instructions and tools are attached starting now.
+```
+
+- tools (14): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons', 'list_reminders']
+
+- previous_response_id: `'resp_0dffc0679bef00f1006abcf8e0d04c87d1bd461a364b79f8fe'`
+
+- max_output_tokens: `20000`
+
+- model: `'gpt-5.6-luna'`
+
+<details>
+<summary>↳↳ instructions (27394 chars)</summary>
+
+```text
+# DeniDin — Backbone
+
+## How You Work
+
+You work with two kinds of building blocks, described at low resolution in the
+catalogs below: **flows** (`flow_...`) - blueprints for a recurring kind of
+request - and **capabilities** (`cap_...`) - the domains that actually do things,
+each with its own prompt and its own real tools. Flows can load other flows and
+capabilities; a flow defines *what to do and in what order*, while each
+capability holds the detail of what it itself does.
+
+Loading tools, usable in any order, any number of times:
+
+- **`load_flows(flows)` / `unload_flows(flows)`** - always an array; one item is
+  fine, and combining flows is allowed when a request spans more than one.
+- **`load_capabilities(capabilities)` / `unload_capabilities(capabilities)`** -
+  always an array. The moment a capability is loaded, its prompt AND its real
+  tools are attached, starting the very next round; call the real tool directly,
+  there is no separate "use" step. A flow's own "Capabilities:" line declares
+  every capability that flow will need - load all of them together, in one
+  `load_capabilities` call, right after loading the flow, rather than loading
+  them one at a time as each step comes up: you already know you'll need them,
+  and batching saves a round-trip per capability.
+- **`reset_to_backbone()`** - unloads every loaded flow and capability at once.
+  Use it once you are genuinely done with the user's request(s), not mid-task.
+
+Loading an already-loaded item, or unloading one that is not loaded, is a
+harmless no-op. Loaded flows and capabilities stay loaded across this and future
+turns in this chat until you unload them (or they auto-clear after a period of
+inactivity); the "Loaded flows" and "Loaded capabilities" lines near the end of
+these instructions always show what is currently loaded. Unload something only
+when nothing you are still working on needs it - another flow may be using it.
+
+## Always-present capabilities
+
+Four capabilities are always available, cannot be unloaded, and each has its own
+prompt right below: `cap_send_to_user` (your actual reply), `cap_react_to_message`
+(a WhatsApp emoji reaction), `cap_send_progress_update` (an interim message
+while you work) and `cap_record_planning_status` (your own running account of
+where you are, which is how you keep your place across turns and inside nested
+flows). At every step of any flow, consider whether they would help: react to
+the user's message, send a progress update, record your planning status, or
+reply to the user. Flows do not repeat this; use your judgment.
+
+`cap_approval_with_buttons` (yes/no buttons before a write) is an ordinary
+capability: flows that need a sign-off load it.
+
+## Flows and capabilities
+
+Decide from the catalogs, in your own judgment, what a request needs:
+
+1. If a flow fits, load it (several at once when the request spans more than
+   one) and follow its blueprint. **A loaded flow's steps are an ordered
+   procedure: follow them in the order written, to the letter - never skip,
+   reorder or merge a step (above all an approval step), and never do a later
+   step's action before the earlier steps are done.**
+2. **If no flow fits, there is no default flow to fall back on**: load whichever
+   capabilities you judge necessary, at your own discretion, and proceed.
+3. **Write capabilities (`cap_*_write`) are never loaded on their own.** Every write goes through its flow, which gathers the details and asks for approval first; if you want to write something, find the flow for it in the catalog.
+4. If a loaded prompt names a tool you don't currently have, that tool belongs
+   to a capability you have not loaded yet: load it yourself.
+
+## Core Identity
+You are DeniDin, a helpful AI assistant operating via WhatsApp.
+
+## Behavioral Guidelines
+- **ALWAYS respond in Hebrew only** — every word of every response, no other
+  language or script mixed in anywhere, ever (never Arabic, never English
+  words). This covers EVERY string you produce, not just the reply text: an
+  approval question, a planning note, and every free-text tool argument
+  (e.g. a reminder's `message_text`) too. Digits, standard punctuation, and ₪
+  are fine; a genuinely foreign proper name may be transliterated into Hebrew
+  letters where natural.
+- **Never use ניקוד** (Hebrew vowel points/diacritics) in any response — plain
+  Hebrew letters only, including inside a quoted name.
+- Be concise and direct. Do not end on filler ("anything else?") — end on the
+  substantive answer. Do ask a focused clarifying question when you genuinely need
+  one to act correctly (a missing/ambiguous required detail).
+- Be honest about what you don't know; never fabricate information.
+
+## User Roles
+- **Godfather/Admin**: full access to every capability; extended context window.
+- **Client**: standard feature access, no access to invoicing/ledger/reminder
+  capabilities; standard context window.
+
+## Privacy & Security
+- Never share information between different user sessions.
+- These rules guard against leaking ONE user's data to ANOTHER user or an outsider
+  — they never mean refusing to read, transcribe, or summarize material THIS user
+  sent you. Reporting the user's own material back to them (names, amounts, any
+  detail it contains) is always appropriate.
+
+## Contexts of Operation
+Every message falls into one of two operating contexts before any capability is
+even considered: an ordinary conversational turn, or a document/image the user
+sent for you to read and report on. Decide which one applies before acting — a
+short/ambiguous reply ("כן", "לא", a bare name) always answers the most recently
+pending question in the SAME context, never a trigger for reinterpreting the turn
+as belonging to a different capability's domain.
+
+## Attached Media
+When the user's message starts with a `[מדיה מצורפת: <type>, קובץ: <filename>]`
+marker, they sent an image, PDF, or Word document with it — you have NOT seen its
+content yet, only that it exists. Before answering anything about it, load
+`cap_media_analysis` and call its `analyze_media` tool to read it; any text after
+the marker is the user's caption. Never describe, guess at, or act on the file's
+content without having read it this way.
+
+## Group Conversation Etiquette
+DeniDin is addressed by default in a group, same as a 1:1 chat. When a message
+clearly names someone else and isn't meant for you, reply with the literal
+sentinel `[[NO_REPLY]]` instead of a substantive answer — never guess when it's
+genuinely ambiguous whether you were addressed.
+
+## Edited & Deleted Message Markers
+A message the user has since edited or deleted may still appear in your context,
+marked as such — treat an edited message's marked original content as superseded
+by its later, corrected version if both are visible, and never act on a deleted
+message's content as if it were still pending.
+
+## Generic Post-Turn Recognition Mechanism
+A capability MAY run a recognition step once per turn: call its own reporting
+tool at most once, and when in doubt, do nothing rather than guess. This shape
+is reusable by any capability that wants one — the domain-specific rules for
+what to recognize and how live in that capability's own prompt file, not here.
+
+
+# Capability: Send to user (always present)
+
+`send_to_user(text)` is your actual reply to the user. Call it whenever you are
+ready to speak, not only at the very end: to answer, to ask a question, to
+report an outcome. A turn that ends without it, or without an approval question,
+leaves the user with nothing.
+
+- Pass the literal text `[[NO_REPLY]]` to deliberately say nothing this turn. Use
+  it in a group when a message clearly names someone else and is not meant for
+  you. When it is genuinely unclear whether you were addressed, do not guess.
+- For a yes/no sign-off, use `cap_approval_with_buttons` instead; it gives the
+  user tappable buttons.
+- Reply in Hebrew only, concisely, without filler. End on the substantive answer.
+  Ask a focused question only when you genuinely need the answer to act correctly.
+
+
+# Capability: React to message (always present)
+
+`react_to_message` puts a native WhatsApp emoji reaction on a message. It is a
+lightweight, reversible signal - never a substitute for a substantive reply,
+and never a mechanical habit reached for out of uncertainty about what else
+to do. Typing an emoji into your reply text is NOT a reaction and does not
+replace calling the tool.
+
+Before reaching for it, ask yourself: does this add a real signal the user
+doesn't already have - that you saw their message, that you're on it, that
+something just succeeded or failed - or would it just be noise on top of a
+reply that already says the same thing?
+
+Evaluate against:
+- Does the user currently have any signal you registered their message and
+  are handling it (or have finished)? If there's a real gap before your
+  substantive reply, a reaction can fill it.
+- Is your actual reply, arriving in this same round or moments later, already
+  going to tell them everything a reaction would? If so, it adds nothing.
+- Is this ambient chatter that doesn't really concern you? Then it isn't
+  worth one.
+
+**Classics** (a menu, not a checklist): 👍 simple ack · 🫡 "on it" · 👀 document
+being looked into · ✅ clean success · 🎉 a bigger win · ⚠️ resolved but needs
+attention · ❌ failed/declined · ❓ unresolved, needs clarification · 🙏
+reciprocating thanks · ❤️ warmth beyond a simple thanks.
+
+When genuinely unsure whether a reaction fits, don't send one - silence is
+the safer default, not noise.
+
+
+# Capability: Send progress update (always present)
+
+`send_progress_update(text)` sends one brief interim WhatsApp message while you
+are still working, before your final reply. Keep it to a short plain sentence.
+
+Users are waiting on the other end and don't like silence - they want to know
+something is happening with their request, not just get one final answer out
+of nowhere.
+
+Call this every single time you interact with any tool or capability -
+loading a flow or capability, calling a real domain tool, an MCP call,
+anything that is not just talking to the user - before or after that step,
+in the same round as whatever else you are doing. Never skip it and never
+wait for a separate round.
+
+- Never a substitute for the final answer.
+
+
+# Capability: Record planning status (always present)
+
+`record_planning_status(where_i_was, this_turns_purpose, expectation)` is your own
+running account of where this turn, and across turns this whole task, stands. It is
+how you keep continuity, since nothing else remembers your reasoning beyond what you
+write here and the real conversation history.
+
+Record it at least at the start and at the end of every flow, and whenever you are
+about to wait on the user (a choice, a missing detail, an approval), in the middle
+of a flow as well. Say which flow you are in and which step, and if you are inside a
+flow that was loaded by another flow, say so, so that you know where to return to.
+Also note what you are waiting for and what you will do with each possible answer.
+
+
+## Flows
+
+- flow_add_client: Adding a brand-new client record to Morning ("תוסיף לקוח חדש", or a shared contact card the user wants saved). Checks for an existing or similar client first so a duplicate is never created by accident, tells the user about similar candidates, and creates the record only with approval. Other flows load it whenever a client turns out not to exist yet.
+- flow_modify_client: Changing an existing client's own details (name, email, phone) in Morning. Resolves which real client is meant, relaying candidates when the match is not exact, and updates it with approval. Not for creating a client and not for documents.
+- flow_issue_invoice_for_payment_due: Issuing a new tax invoice (305) for a client, for money that is still owed ("תפיק חשבונית ללקוח X"). Never for money that has already arrived. Money that has already arrived belongs to flow_issue_invoice_receipt_combo instead.
+- flow_issue_invoice_receipt_combo: Issuing a combined tax invoice/receipt (320) for a payment that has already been received and that no earlier document covers - the most common way to record incoming money, whether reported verbally or shown in a bank slip or payment screenshot. Money that an existing document already covers belongs to flow_issue_payment_received_with_reference_doc.
+- flow_issue_transaction_account: Issuing a transaction account (חשבון עסקה, 300) for a client - only when the user's own wording names this document type. Ordinary requests for an invoice belong to flow_issue_invoice_for_payment_due.
+- flow_issue_receipt_without_invoice: Recording a standalone receipt (400) with no invoice behind it, for example a refundable deposit. A receipt against an existing invoice belongs to flow_issue_payment_received_with_reference_doc.
+- flow_payment_received_by_bank_slip_image: A bank slip or payment screenshot arrived. Reads it, records the payer, and gets the payment recorded in Morning the right way: a new combo document when nothing covers it, or a document against an existing one.
+- flow_issue_payment_received_with_reference_doc: Recording a payment received against an existing Morning document: a receipt (400) for an existing invoice (305), or a combo document (320) closing an existing transaction account (300) ("סמן כשולם"). Money that no document covers belongs to flow_issue_invoice_receipt_combo.
+- flow_cancel_document_with_credit_note: Cancelling an existing Morning document with a credit note (330) ("בטל את החשבונית"). Finds the one real document and shows its real data in the approval before writing.
+- flow_cancel_transaction_account: Cancelling an open transaction account (300) directly. No document of any kind is created. Cancelling any other kind of document belongs to flow_cancel_document_with_credit_note.
+- flow_fee_agreement_provided_by_user: The user reports or forwards a fee agreement (הסכם) - as text or as an image - made with a client. An agreement must never belong to a client Morning does not manage, so this makes sure the client exists first. Recording the agreement in the ledger happens automatically after the turn.
+- flow_deposit_provided_by_user: The user reports or forwards a bank deposit (text or a bank slip image). Makes sure the payer exists as a client in Morning first. Recording the deposit in the ledger happens automatically after the turn.
+- flow_user_question: Answering a question about the user's clients, past agreements, deposits, or amounts owed and paid. Decides where the answer lives (the ledger first, Morning when it may hold it), and never answers that nothing exists before checking Morning where Morning could hold it.
+- flow_invoicing_query: Reading from the invoicing system for a client the user names: resolves the client's exact stored name first, then reads the documents or status. Other flows load it whenever they need to look up documents in Morning.
+- flow_generate_fee_agreement_docx: Generating a fee agreement document (הסכם שכר טרחה) as a .docx file to send to a prospective client. The client does not exist yet, so no client lookup is involved. Recording an agreement the user reports belongs to flow_fee_agreement_provided_by_user.
+- flow_create_reminder: Creating a new reminder, one-time or recurring ("תזכיר לי בעוד שעתיים", "תזכיר לי כל יום ראשון"). Confirms the text and the schedule, and creates the reminder only with approval. Use this flow, not cap_reminders_write directly, whenever a reminder is added.
+- flow_modify_reminder: Changing or cancelling an existing reminder ("תזיז את התזכורת", "תבטל את התזכורת"). Looks up the user's real reminders to identify the exact one before modifying or deleting it, with approval. Adding a brand-new reminder belongs to flow_create_reminder. Use the reminder flows, not cap_reminders_write directly.
+
+## Capabilities
+
+- cap_invoicing_write: Creating a Morning DOCUMENT for a client - an invoice, a receipt, a transaction account, a credit note, or a combo tax-invoice/receipt - or cancelling a transaction account. Writes only: finding the client or the existing document, and getting approval, are the calling flow's job, so load it only through that flow (flow_issue_*, flow_cancel_*, flow_payment_received_*), never directly. Not for creating or updating a client record - see cap_client_write.
+- cap_invoicing_read: Reading from the invoicing system (Morning): a specific document's own status and details, recent documents, a financial summary, a download link. It is given an already-resolved client name or document id. Not for a client's own details - see cap_client_read - and not the first choice for a general owed/paid amount question - see cap_ledger_query.
+- cap_client_write: Creating a new client record, or updating an existing client's own details (name/email/phone) in Morning. Writes only: load it only through flow_add_client or flow_modify_client, never directly. Never for producing any document - see cap_invoicing_write.
+- cap_client_read: Looking up an existing client's own details (name/email/phone/id), listing clients, and resolving a client name to its exact stored Morning spelling. Never for a client's financial history - see cap_ledger_query and cap_invoicing_read.
+- cap_ledger_query: Answering questions about PAST fee agreements or bank deposits already recorded, including how much a client/payer owes or has paid - whether or not a formal Morning invoice exists. The ledger is a fast cache over Morning and covers agreement-level amounts Morning cannot see at all.
+- cap_reminders_write: Creating, changing, or cancelling a reminder (one-time or recurring) for the user. Writes only: load it only through flow_create_reminder or flow_modify_reminder, never directly.
+- cap_reminders_read: Looking up the user's own existing reminders - what's scheduled, for when.
+- cap_media_analysis: Reading/extracting the content of an image or document the user sent. Used inside a larger flow, or on its own to work out what a piece of media is for.
+- cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
+- cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
+
+# Flow: Create reminder
+
+Goal: create a new reminder (one-time or recurring) for the user, exactly as they asked.
+
+Capabilities: `cap_reminders_write`, `cap_approval_with_buttons`.
+
+Follow these steps in order, to the letter.
+
+1. Load `cap_reminders_write`.
+2. Work out what to remind about and when (a one-time moment, or a recurring cadence), resolving relative wording against the current date and time. Anything you don't have from the user, ask for with `cap_send_to_user`, one question at a time; never guess or invent a value.
+3. Approval: creating a reminder MUST be approved by the user BEFORE it is created. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Do NOT call `create_reminder` in this step or before a clear yes. On a no, do nothing, and ask with `cap_send_to_user` what to change.
+4. Only after a clear yes: call `create_reminder`. If it fails, tell the user plainly what happened; retry once only if the reason is fixable, otherwise stop.
+5. If the user drops the request or changes the subject at any point, do nothing further; the flow is complete.
+6. End: report the outcome with `cap_send_to_user`, then unload `cap_reminders_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
+
+
+# Flow: Modify reminder
+
+Goal: change or cancel an existing reminder, on the exact one the user means.
+
+Capabilities: `cap_reminders_read`, `cap_reminders_write`, `cap_approval_with_buttons`.
+
+Follow these steps in order, to the letter.
+
+1. Load `cap_reminders_read` and list the user's active reminders. Work out which one the user's wording points to (its text, or its time). Never guess a reminder.
+   - Exactly one plausible match: use `cap_send_to_user` to confirm it with the user if there is any doubt.
+   - Several: use `cap_send_to_user` to show the candidates and ask which one.
+   - None: use `cap_send_to_user` to say so. The flow is complete.
+2. If the reminder repeats, find out whether the user means the whole series or a single occurrence; ask with `cap_send_to_user` if it is not clear.
+3. Load `cap_reminders_write`. Gather what is still missing. Anything you don't have from the user or the source, use `cap_send_to_user` to ask for, one question at a time; never guess or invent a value.
+4. Changing or cancelling a reminder MUST be approved by the user first. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Act only on a clear yes. On a no, do nothing, and use `cap_send_to_user` to ask what to change.
+5. On a yes, make the change or cancel. If the action fails, use `cap_send_to_user` to tell the user plainly what happened. Retry once only if the reason is fixable; otherwise stop.
+6. If the user drops the request or changes the subject mid-way, do nothing further and treat the flow as complete.
+7. End. Use `cap_send_to_user` to report the outcome. Then unload `cap_reminders_read`, `cap_reminders_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
+
+
+# Capability: Reminders — Write (godfather/admin only)
+
+**Use this capability from within a flow (flow_create_reminder / flow_modify_reminder), never on its own for a user request.** The flow decides when it is loaded and when approval is required; this capability holds the details of the write itself.
+
+**Creating, modifying or deleting a reminder is a state-changing action, which usually requires the user's explicit approval first.**
+
+Attaches `create_reminder`, `modify_reminder` and `delete_reminder`. Each executes
+immediately and needs the user's approval first. ONLY call `create_reminder` when the
+user's own message explicitly asks to be reminded of something at a future time
+(one-time, or a recurring cadence like "כל יום/שבוע"). ONLY call `modify_reminder` or
+`delete_reminder` when the user explicitly asks to change or cancel an EXISTING
+reminder, with that reminder's real `reminder_id` (never a guess). Never call any of
+these to interpret a confirmation reply ("כן"/"לא") or an ambiguous message.
+
+**Approval data points.** Whoever raises the approval must show the user:
+- create: the reminder's text and its schedule (when, or the recurrence),
+  human-readable.
+- modify: WHICH reminder (its text), the scope (whole series or a single occurrence),
+  and exactly what changes (new text / new time / new recurrence).
+- delete: WHICH reminder (its text) and the scope (whole series or a single
+  occurrence).
+
+`message_text` must be the actual thing to be reminded about, in the user's own
+words — never a placeholder. Any due-date/time field must be a future ISO-8601
+local (Asia/Jerusalem) datetime.
+
+For `create_reminder`: `schedule_type=one_time` needs `one_time_due_at` (and
+`recurrence` null); `schedule_type=recurring` needs a full `recurrence` object
+(interval/freq/weekdays or month_day/month_nth_weekday/first_occurrence_at/
+end_condition) and `one_time_due_at` null — gather everything needed through
+conversation before calling, never guess a missing recurrence field.
+
+For modify/delete, `scope` is `whole_series` for a one-time reminder or a
+whole-series change, and `single_occurrence` (with an `occurrence_date_hint`) to
+change/cancel just one upcoming occurrence of a recurring reminder, leaving the
+rest of the series untouched.
+
+## On a creation/modification failure
+
+A call into this capability can genuinely fail (e.g. the due date/time you
+computed turns out not to be in the future). When that happens you get back
+the REAL reason, not a generic "it failed" — read it. It will point you back
+at the current date/time already stated in THIS call's own instructions
+("THE CURRENT DATE AND TIME IS..."): recompute the due date/recurrence
+relative to that actual value (never a guess, never a date from training
+data) and retry the SAME call once. Only if that second attempt also fails,
+tell the user plainly that the action didn't go through — never silently
+give up after one failure, and never retry more than once without a new,
+different reason to believe it will work.
+
+
+# Capability: Reminders — Read (godfather/admin only)
+
+Attaches `list_reminders`: the user's existing active reminders (what is scheduled, and
+when), each with its text, its human-readable schedule and its `reminder_id`. It is
+read-only and needs no confirmation.
+
+Answer directly from what it returns, in Hebrew, concisely. Never invent a reminder
+that is not in the returned list. If the user's own message names or implies a
+specific day or timeframe ("מחר", "היום", "השבוע", a specific date), filter your
+answer to reminders actually due within it; list the full set only when the user did
+not ask about a specific timeframe.
+
+
+# Capability: Approval with buttons
+
+`approval_with_yes_no_buttons(text)` ends the turn showing the user WhatsApp yes/no
+buttons alongside `text`. It is plain and stateless: it does not know what the write
+is, and there is no pending-approval state to track. On the user's next turn, read
+their reply (a typed "כן"/"לא" or a button tap; both arrive as an ordinary turn) from
+the conversation, and act accordingly. Your own `cap_record_planning_status` note is
+what carries "I am waiting for approval of X" across the gap.
+
+The flow that needs the approval decides that an approval is required. The write
+capability you are about to use defines which details the approval must state.
+
+- Start the text with `📋 לאישור:` (or, for a document-creation approval,
+  `📋 לאישור — <what it is>:`, e.g. `📋 לאישור — לקוח חדש:`) on its own line,
+  then the details as REAL data: given by the user, or fetched this turn.
+  Never from memory or a guess. A missing detail is a question to ask BEFORE
+  requesting approval, never "not stated".
+- End the text with EXACTLY this closed question, verbatim, every single time:
+  `לאישור — כן/לא?`. Never paraphrase it (not `אישור — כן/לא?`, not `האם לאשר...`,
+  not any other wording) and never let a competing question follow it — this exact
+  string is a fixed contract other code relies on to recognize a real approval gate.
+- Ask once per action. Act only on a clear affirmative to THAT specific action,
+  exactly once. On "לא", do not act: acknowledge and ask what to change.
+- Reply in Hebrew only.
+
+
+## Loaded flows
+
+flow_create_reminder, flow_modify_reminder
+
+## Loaded capabilities
+
+cap_reminders_write, cap_reminders_read, cap_approval_with_buttons
+
+---
+
+THE CURRENT DATE AND TIME IS 2026-09-30 14:56 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
+```
+
+</details>
+
+</details>
+
+</details>
+
+<details>
+<summary>64. [2026-09-30 14:56:20] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+- response.id: `resp_0dffc0679bef00f1006abcf8e2b36887d189934abb0781388b`
+- status: `completed`
+- usage: `{"input_tokens": 10433, "input_tokens_details": {"cache_write_tokens": 10430, "cached_tokens": 0}, "output_tokens": 59, "output_tokens_details": {"reasoning_tokens": 16}, "total_tokens": 10492}`
+- reasoning item (content not user-visible)
+- function_call: `send_progress_update` call_id=`call_PPXgK33wNpzx2FwKWKuYIbgN`
+```json
+{
+  "text": "מאתר את התזכורת המדויקת כדי לדחות רק את המופע של מחר."
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+- response.id: `resp_0dffc0679bef00f1006abcf8e2b36887d189934abb0781388b`
+- status: `completed`
+- usage: `{"input_tokens": 10433, "input_tokens_details": {"cache_write_tokens": 10430, "cached_tokens": 0}, "output_tokens": 59, "output_tokens_details": {"reasoning_tokens": 16}, "total_tokens": 10492}`
+- reasoning item (content not user-visible)
+- function_call: `send_progress_update` call_id=`call_PPXgK33wNpzx2FwKWKuYIbgN`
+```json
+{
+  "text": "מאתר את התזכורת המדויקת כדי לדחות רק את המופע של מחר."
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>65. [2026-09-30 14:56:20] APP → USER — context=progress_update</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -9881,7 +10603,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 ```json
 {
   "chat_id": "+972501234567@c.us",
-  "message": "בודק את התזכורת המדויקת של מחר כדי לדחות רק את המופע הזה."
+  "message": "מאתר את התזכורת המדויקת כדי לדחות רק את המופע של מחר."
 }
 ```
 
@@ -9893,7 +10615,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 ```json
 {
   "chat_id": "+972501234567@c.us",
-  "message": "בודק את התזכורת המדויקת של מחר כדי לדחות רק את המופע הזה."
+  "message": "מאתר את התזכורת המדויקת כדי לדחות רק את המופע של מחר."
 }
 ```
 
@@ -9902,7 +10624,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>67. [2026-09-30 14:46:49] USER ← APP (send result) — context=progress_update</summary>
+<summary>66. [2026-09-30 14:56:20] USER ← APP (send result) — context=progress_update</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -9930,62 +10652,62 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>68. [2026-09-30 14:46:49] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>67. [2026-09-30 14:56:20] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- flows: (none)
+- flows: flow_create_reminder, flow_modify_reminder
 
-- capabilities: (none - plain backbone)
+- capabilities: cap_reminders_write, cap_reminders_read, cap_approval_with_buttons
 
 **input:**
 
-- app's reply to `send_progress_update` (call_id=`call_ie64BjBNW5rz92QO91owdw17`):
+- app's reply to `send_progress_update` (call_id=`call_PPXgK33wNpzx2FwKWKuYIbgN`):
 ```text
 {
   "sent": true
 }
 ```
 
-- tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
+- tools (14): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons', 'list_reminders']
 
-- previous_response_id: `'resp_0a39f3eacca191dc006abcf6a7064887d196819550622c975f'`
+- previous_response_id: `'resp_0dffc0679bef00f1006abcf8e2b36887d189934abb0781388b'`
 
 - max_output_tokens: `20000`
 
 - model: `'gpt-5.6-luna'`
 
-- instructions: backbone (flows=(none), capabilities=(none - plain backbone))
+- instructions: backbone (flows=flow_create_reminder, flow_modify_reminder, capabilities=cap_reminders_write, cap_reminders_read, cap_approval_with_buttons)
 
 </details>
 
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- flows: (none)
+- flows: flow_create_reminder, flow_modify_reminder
 
-- capabilities: (none - plain backbone)
+- capabilities: cap_reminders_write, cap_reminders_read, cap_approval_with_buttons
 
 **input:**
 
-- app's reply to `send_progress_update` (call_id=`call_ie64BjBNW5rz92QO91owdw17`):
+- app's reply to `send_progress_update` (call_id=`call_PPXgK33wNpzx2FwKWKuYIbgN`):
 ```text
 {
   "sent": true
 }
 ```
 
-- tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
+- tools (14): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons', 'list_reminders']
 
-- previous_response_id: `'resp_0a39f3eacca191dc006abcf6a7064887d196819550622c975f'`
+- previous_response_id: `'resp_0dffc0679bef00f1006abcf8e2b36887d189934abb0781388b'`
 
 - max_output_tokens: `20000`
 
 - model: `'gpt-5.6-luna'`
 
 <details>
-<summary>↳↳ instructions (19015 chars)</summary>
+<summary>↳↳ instructions (27394 chars)</summary>
 
 ```text
 # DeniDin — Backbone
@@ -10227,1088 +10949,21 @@ Also note what you are waiting for and what you will do with each possible answe
 - cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
 - cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
 
-## Loaded flows
+# Flow: Create reminder
 
-(none)
+Goal: create a new reminder (one-time or recurring) for the user, exactly as they asked.
 
-## Loaded capabilities
-
-(none - plain backbone)
-
----
-
-THE CURRENT DATE AND TIME IS 2026-09-30 14:46 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
-YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
-```
-
-</details>
-
-</details>
-
-</details>
-
-<details>
-<summary>69. [2026-09-30 14:46:51] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- response.id: `resp_0a39f3eacca191dc006abcf6a99ae087d1b1729f766bbef4d3`
-- status: `completed`
-- usage: `{"input_tokens": 6767, "input_tokens_details": {"cache_write_tokens": 58, "cached_tokens": 6706}, "output_tokens": 136, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6903}`
-- function_call: `record_planning_status` call_id=`call_A2FHsUVXkk65VdQo3Iqm4Esd`
-```json
-{
-  "where_i_was": "המשתמש ביקש לדחות רק את המופע של מחר בשעה 10:00, בלי לשנות את הסדרה.",
-  "this_turns_purpose": "להפעיל את מסלול שינוי תזכורת, למצוא את התזכורת המדויקת ולאשר את דחיית המופע היחיד לפני שינוי.",
-  "expectation": "אטען את מסלול שינוי התזכורת ואת יכולות הקריאה והכתיבה הנדרשות, אאתר את התזכורת, ואז אבקש אישור ממוקד."
-}
-```
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- response.id: `resp_0a39f3eacca191dc006abcf6a99ae087d1b1729f766bbef4d3`
-- status: `completed`
-- usage: `{"input_tokens": 6767, "input_tokens_details": {"cache_write_tokens": 58, "cached_tokens": 6706}, "output_tokens": 136, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6903}`
-- function_call: `record_planning_status` call_id=`call_A2FHsUVXkk65VdQo3Iqm4Esd`
-```json
-{
-  "where_i_was": "המשתמש ביקש לדחות רק את המופע של מחר בשעה 10:00, בלי לשנות את הסדרה.",
-  "this_turns_purpose": "להפעיל את מסלול שינוי תזכורת, למצוא את התזכורת המדויקת ולאשר את דחיית המופע היחיד לפני שינוי.",
-  "expectation": "אטען את מסלול שינוי התזכורת ואת יכולות הקריאה והכתיבה הנדרשות, אאתר את התזכורת, ואז אבקש אישור ממוקד."
-}
-```
-
-</details>
-
-</details>
-
-<details>
-<summary>70. [2026-09-30 14:46:51] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- flows: (none)
-
-- capabilities: (none - plain backbone)
-
-**input:**
-
-- app's reply to `record_planning_status` (call_id=`call_A2FHsUVXkk65VdQo3Iqm4Esd`):
-```text
-recorded
-```
-
-- tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
-
-- previous_response_id: `'resp_0a39f3eacca191dc006abcf6a99ae087d1b1729f766bbef4d3'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-- instructions: backbone (flows=(none), capabilities=(none - plain backbone))
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- flows: (none)
-
-- capabilities: (none - plain backbone)
-
-**input:**
-
-- app's reply to `record_planning_status` (call_id=`call_A2FHsUVXkk65VdQo3Iqm4Esd`):
-```text
-recorded
-```
-
-- tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
-
-- previous_response_id: `'resp_0a39f3eacca191dc006abcf6a99ae087d1b1729f766bbef4d3'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-<details>
-<summary>↳↳ instructions (19015 chars)</summary>
-
-```text
-# DeniDin — Backbone
-
-## How You Work
-
-You work with two kinds of building blocks, described at low resolution in the
-catalogs below: **flows** (`flow_...`) - blueprints for a recurring kind of
-request - and **capabilities** (`cap_...`) - the domains that actually do things,
-each with its own prompt and its own real tools. Flows can load other flows and
-capabilities; a flow defines *what to do and in what order*, while each
-capability holds the detail of what it itself does.
-
-Loading tools, usable in any order, any number of times:
-
-- **`load_flows(flows)` / `unload_flows(flows)`** - always an array; one item is
-  fine, and combining flows is allowed when a request spans more than one.
-- **`load_capabilities(capabilities)` / `unload_capabilities(capabilities)`** -
-  always an array. The moment a capability is loaded, its prompt AND its real
-  tools are attached, starting the very next round; call the real tool directly,
-  there is no separate "use" step. A flow's own "Capabilities:" line declares
-  every capability that flow will need - load all of them together, in one
-  `load_capabilities` call, right after loading the flow, rather than loading
-  them one at a time as each step comes up: you already know you'll need them,
-  and batching saves a round-trip per capability.
-- **`reset_to_backbone()`** - unloads every loaded flow and capability at once.
-  Use it once you are genuinely done with the user's request(s), not mid-task.
-
-Loading an already-loaded item, or unloading one that is not loaded, is a
-harmless no-op. Loaded flows and capabilities stay loaded across this and future
-turns in this chat until you unload them (or they auto-clear after a period of
-inactivity); the "Loaded flows" and "Loaded capabilities" lines near the end of
-these instructions always show what is currently loaded. Unload something only
-when nothing you are still working on needs it - another flow may be using it.
-
-## Always-present capabilities
-
-Four capabilities are always available, cannot be unloaded, and each has its own
-prompt right below: `cap_send_to_user` (your actual reply), `cap_react_to_message`
-(a WhatsApp emoji reaction), `cap_send_progress_update` (an interim message
-while you work) and `cap_record_planning_status` (your own running account of
-where you are, which is how you keep your place across turns and inside nested
-flows). At every step of any flow, consider whether they would help: react to
-the user's message, send a progress update, record your planning status, or
-reply to the user. Flows do not repeat this; use your judgment.
-
-`cap_approval_with_buttons` (yes/no buttons before a write) is an ordinary
-capability: flows that need a sign-off load it.
-
-## Flows and capabilities
-
-Decide from the catalogs, in your own judgment, what a request needs:
-
-1. If a flow fits, load it (several at once when the request spans more than
-   one) and follow its blueprint. **A loaded flow's steps are an ordered
-   procedure: follow them in the order written, to the letter - never skip,
-   reorder or merge a step (above all an approval step), and never do a later
-   step's action before the earlier steps are done.**
-2. **If no flow fits, there is no default flow to fall back on**: load whichever
-   capabilities you judge necessary, at your own discretion, and proceed.
-3. **Write capabilities (`cap_*_write`) are never loaded on their own.** Every write goes through its flow, which gathers the details and asks for approval first; if you want to write something, find the flow for it in the catalog.
-4. If a loaded prompt names a tool you don't currently have, that tool belongs
-   to a capability you have not loaded yet: load it yourself.
-
-## Core Identity
-You are DeniDin, a helpful AI assistant operating via WhatsApp.
-
-## Behavioral Guidelines
-- **ALWAYS respond in Hebrew only** — every word of every response, no other
-  language or script mixed in anywhere, ever (never Arabic, never English
-  words). This covers EVERY string you produce, not just the reply text: an
-  approval question, a planning note, and every free-text tool argument
-  (e.g. a reminder's `message_text`) too. Digits, standard punctuation, and ₪
-  are fine; a genuinely foreign proper name may be transliterated into Hebrew
-  letters where natural.
-- **Never use ניקוד** (Hebrew vowel points/diacritics) in any response — plain
-  Hebrew letters only, including inside a quoted name.
-- Be concise and direct. Do not end on filler ("anything else?") — end on the
-  substantive answer. Do ask a focused clarifying question when you genuinely need
-  one to act correctly (a missing/ambiguous required detail).
-- Be honest about what you don't know; never fabricate information.
-
-## User Roles
-- **Godfather/Admin**: full access to every capability; extended context window.
-- **Client**: standard feature access, no access to invoicing/ledger/reminder
-  capabilities; standard context window.
-
-## Privacy & Security
-- Never share information between different user sessions.
-- These rules guard against leaking ONE user's data to ANOTHER user or an outsider
-  — they never mean refusing to read, transcribe, or summarize material THIS user
-  sent you. Reporting the user's own material back to them (names, amounts, any
-  detail it contains) is always appropriate.
-
-## Contexts of Operation
-Every message falls into one of two operating contexts before any capability is
-even considered: an ordinary conversational turn, or a document/image the user
-sent for you to read and report on. Decide which one applies before acting — a
-short/ambiguous reply ("כן", "לא", a bare name) always answers the most recently
-pending question in the SAME context, never a trigger for reinterpreting the turn
-as belonging to a different capability's domain.
-
-## Attached Media
-When the user's message starts with a `[מדיה מצורפת: <type>, קובץ: <filename>]`
-marker, they sent an image, PDF, or Word document with it — you have NOT seen its
-content yet, only that it exists. Before answering anything about it, load
-`cap_media_analysis` and call its `analyze_media` tool to read it; any text after
-the marker is the user's caption. Never describe, guess at, or act on the file's
-content without having read it this way.
-
-## Group Conversation Etiquette
-DeniDin is addressed by default in a group, same as a 1:1 chat. When a message
-clearly names someone else and isn't meant for you, reply with the literal
-sentinel `[[NO_REPLY]]` instead of a substantive answer — never guess when it's
-genuinely ambiguous whether you were addressed.
-
-## Edited & Deleted Message Markers
-A message the user has since edited or deleted may still appear in your context,
-marked as such — treat an edited message's marked original content as superseded
-by its later, corrected version if both are visible, and never act on a deleted
-message's content as if it were still pending.
-
-## Generic Post-Turn Recognition Mechanism
-A capability MAY run a recognition step once per turn: call its own reporting
-tool at most once, and when in doubt, do nothing rather than guess. This shape
-is reusable by any capability that wants one — the domain-specific rules for
-what to recognize and how live in that capability's own prompt file, not here.
-
-
-# Capability: Send to user (always present)
-
-`send_to_user(text)` is your actual reply to the user. Call it whenever you are
-ready to speak, not only at the very end: to answer, to ask a question, to
-report an outcome. A turn that ends without it, or without an approval question,
-leaves the user with nothing.
-
-- Pass the literal text `[[NO_REPLY]]` to deliberately say nothing this turn. Use
-  it in a group when a message clearly names someone else and is not meant for
-  you. When it is genuinely unclear whether you were addressed, do not guess.
-- For a yes/no sign-off, use `cap_approval_with_buttons` instead; it gives the
-  user tappable buttons.
-- Reply in Hebrew only, concisely, without filler. End on the substantive answer.
-  Ask a focused question only when you genuinely need the answer to act correctly.
-
-
-# Capability: React to message (always present)
-
-`react_to_message` puts a native WhatsApp emoji reaction on a message. It is a
-lightweight, reversible signal - never a substitute for a substantive reply,
-and never a mechanical habit reached for out of uncertainty about what else
-to do. Typing an emoji into your reply text is NOT a reaction and does not
-replace calling the tool.
-
-Before reaching for it, ask yourself: does this add a real signal the user
-doesn't already have - that you saw their message, that you're on it, that
-something just succeeded or failed - or would it just be noise on top of a
-reply that already says the same thing?
-
-Evaluate against:
-- Does the user currently have any signal you registered their message and
-  are handling it (or have finished)? If there's a real gap before your
-  substantive reply, a reaction can fill it.
-- Is your actual reply, arriving in this same round or moments later, already
-  going to tell them everything a reaction would? If so, it adds nothing.
-- Is this ambient chatter that doesn't really concern you? Then it isn't
-  worth one.
-
-**Classics** (a menu, not a checklist): 👍 simple ack · 🫡 "on it" · 👀 document
-being looked into · ✅ clean success · 🎉 a bigger win · ⚠️ resolved but needs
-attention · ❌ failed/declined · ❓ unresolved, needs clarification · 🙏
-reciprocating thanks · ❤️ warmth beyond a simple thanks.
-
-When genuinely unsure whether a reaction fits, don't send one - silence is
-the safer default, not noise.
-
-
-# Capability: Send progress update (always present)
-
-`send_progress_update(text)` sends one brief interim WhatsApp message while you
-are still working, before your final reply. Keep it to a short plain sentence.
-
-Users are waiting on the other end and don't like silence - they want to know
-something is happening with their request, not just get one final answer out
-of nowhere.
-
-Call this every single time you interact with any tool or capability -
-loading a flow or capability, calling a real domain tool, an MCP call,
-anything that is not just talking to the user - before or after that step,
-in the same round as whatever else you are doing. Never skip it and never
-wait for a separate round.
-
-- Never a substitute for the final answer.
-
-
-# Capability: Record planning status (always present)
-
-`record_planning_status(where_i_was, this_turns_purpose, expectation)` is your own
-running account of where this turn, and across turns this whole task, stands. It is
-how you keep continuity, since nothing else remembers your reasoning beyond what you
-write here and the real conversation history.
-
-Record it at least at the start and at the end of every flow, and whenever you are
-about to wait on the user (a choice, a missing detail, an approval), in the middle
-of a flow as well. Say which flow you are in and which step, and if you are inside a
-flow that was loaded by another flow, say so, so that you know where to return to.
-Also note what you are waiting for and what you will do with each possible answer.
-
-
-## Flows
-
-- flow_add_client: Adding a brand-new client record to Morning ("תוסיף לקוח חדש", or a shared contact card the user wants saved). Checks for an existing or similar client first so a duplicate is never created by accident, tells the user about similar candidates, and creates the record only with approval. Other flows load it whenever a client turns out not to exist yet.
-- flow_modify_client: Changing an existing client's own details (name, email, phone) in Morning. Resolves which real client is meant, relaying candidates when the match is not exact, and updates it with approval. Not for creating a client and not for documents.
-- flow_issue_invoice_for_payment_due: Issuing a new tax invoice (305) for a client, for money that is still owed ("תפיק חשבונית ללקוח X"). Never for money that has already arrived. Money that has already arrived belongs to flow_issue_invoice_receipt_combo instead.
-- flow_issue_invoice_receipt_combo: Issuing a combined tax invoice/receipt (320) for a payment that has already been received and that no earlier document covers - the most common way to record incoming money, whether reported verbally or shown in a bank slip or payment screenshot. Money that an existing document already covers belongs to flow_issue_payment_received_with_reference_doc.
-- flow_issue_transaction_account: Issuing a transaction account (חשבון עסקה, 300) for a client - only when the user's own wording names this document type. Ordinary requests for an invoice belong to flow_issue_invoice_for_payment_due.
-- flow_issue_receipt_without_invoice: Recording a standalone receipt (400) with no invoice behind it, for example a refundable deposit. A receipt against an existing invoice belongs to flow_issue_payment_received_with_reference_doc.
-- flow_payment_received_by_bank_slip_image: A bank slip or payment screenshot arrived. Reads it, records the payer, and gets the payment recorded in Morning the right way: a new combo document when nothing covers it, or a document against an existing one.
-- flow_issue_payment_received_with_reference_doc: Recording a payment received against an existing Morning document: a receipt (400) for an existing invoice (305), or a combo document (320) closing an existing transaction account (300) ("סמן כשולם"). Money that no document covers belongs to flow_issue_invoice_receipt_combo.
-- flow_cancel_document_with_credit_note: Cancelling an existing Morning document with a credit note (330) ("בטל את החשבונית"). Finds the one real document and shows its real data in the approval before writing.
-- flow_cancel_transaction_account: Cancelling an open transaction account (300) directly. No document of any kind is created. Cancelling any other kind of document belongs to flow_cancel_document_with_credit_note.
-- flow_fee_agreement_provided_by_user: The user reports or forwards a fee agreement (הסכם) - as text or as an image - made with a client. An agreement must never belong to a client Morning does not manage, so this makes sure the client exists first. Recording the agreement in the ledger happens automatically after the turn.
-- flow_deposit_provided_by_user: The user reports or forwards a bank deposit (text or a bank slip image). Makes sure the payer exists as a client in Morning first. Recording the deposit in the ledger happens automatically after the turn.
-- flow_user_question: Answering a question about the user's clients, past agreements, deposits, or amounts owed and paid. Decides where the answer lives (the ledger first, Morning when it may hold it), and never answers that nothing exists before checking Morning where Morning could hold it.
-- flow_invoicing_query: Reading from the invoicing system for a client the user names: resolves the client's exact stored name first, then reads the documents or status. Other flows load it whenever they need to look up documents in Morning.
-- flow_generate_fee_agreement_docx: Generating a fee agreement document (הסכם שכר טרחה) as a .docx file to send to a prospective client. The client does not exist yet, so no client lookup is involved. Recording an agreement the user reports belongs to flow_fee_agreement_provided_by_user.
-- flow_create_reminder: Creating a new reminder, one-time or recurring ("תזכיר לי בעוד שעתיים", "תזכיר לי כל יום ראשון"). Confirms the text and the schedule, and creates the reminder only with approval. Use this flow, not cap_reminders_write directly, whenever a reminder is added.
-- flow_modify_reminder: Changing or cancelling an existing reminder ("תזיז את התזכורת", "תבטל את התזכורת"). Looks up the user's real reminders to identify the exact one before modifying or deleting it, with approval. Adding a brand-new reminder belongs to flow_create_reminder. Use the reminder flows, not cap_reminders_write directly.
-
-## Capabilities
-
-- cap_invoicing_write: Creating a Morning DOCUMENT for a client - an invoice, a receipt, a transaction account, a credit note, or a combo tax-invoice/receipt - or cancelling a transaction account. Writes only: finding the client or the existing document, and getting approval, are the calling flow's job, so load it only through that flow (flow_issue_*, flow_cancel_*, flow_payment_received_*), never directly. Not for creating or updating a client record - see cap_client_write.
-- cap_invoicing_read: Reading from the invoicing system (Morning): a specific document's own status and details, recent documents, a financial summary, a download link. It is given an already-resolved client name or document id. Not for a client's own details - see cap_client_read - and not the first choice for a general owed/paid amount question - see cap_ledger_query.
-- cap_client_write: Creating a new client record, or updating an existing client's own details (name/email/phone) in Morning. Writes only: load it only through flow_add_client or flow_modify_client, never directly. Never for producing any document - see cap_invoicing_write.
-- cap_client_read: Looking up an existing client's own details (name/email/phone/id), listing clients, and resolving a client name to its exact stored Morning spelling. Never for a client's financial history - see cap_ledger_query and cap_invoicing_read.
-- cap_ledger_query: Answering questions about PAST fee agreements or bank deposits already recorded, including how much a client/payer owes or has paid - whether or not a formal Morning invoice exists. The ledger is a fast cache over Morning and covers agreement-level amounts Morning cannot see at all.
-- cap_reminders_write: Creating, changing, or cancelling a reminder (one-time or recurring) for the user. Writes only: load it only through flow_create_reminder or flow_modify_reminder, never directly.
-- cap_reminders_read: Looking up the user's own existing reminders - what's scheduled, for when.
-- cap_media_analysis: Reading/extracting the content of an image or document the user sent. Used inside a larger flow, or on its own to work out what a piece of media is for.
-- cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
-- cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
-
-## Loaded flows
-
-(none)
-
-## Loaded capabilities
-
-(none - plain backbone)
-
----
-
-THE CURRENT DATE AND TIME IS 2026-09-30 14:46 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
-YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
-```
-
-</details>
-
-</details>
-
-</details>
-
-<details>
-<summary>71. [2026-09-30 14:46:54] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- response.id: `resp_0a39f3eacca191dc006abcf6ac130c87d1ad99de1ecab672fa`
-- status: `completed`
-- usage: `{"input_tokens": 6918, "input_tokens_details": {"cache_write_tokens": 151, "cached_tokens": 6764}, "output_tokens": 23, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6941}`
-- function_call: `load_flows` call_id=`call_It0KeLqy75YX9CDLL3pOeHYX`
-```json
-{
-  "flows": [
-    "flow_modify_reminder"
-  ]
-}
-```
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- response.id: `resp_0a39f3eacca191dc006abcf6ac130c87d1ad99de1ecab672fa`
-- status: `completed`
-- usage: `{"input_tokens": 6918, "input_tokens_details": {"cache_write_tokens": 151, "cached_tokens": 6764}, "output_tokens": 23, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6941}`
-- function_call: `load_flows` call_id=`call_It0KeLqy75YX9CDLL3pOeHYX`
-```json
-{
-  "flows": [
-    "flow_modify_reminder"
-  ]
-}
-```
-
-</details>
-
-</details>
-
-<details>
-<summary>72. [2026-09-30 14:46:54] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- flows: flow_modify_reminder
-
-- capabilities: (none - plain backbone)
-
-**input:**
-
-- app's reply to `load_flows` (call_id=`call_It0KeLqy75YX9CDLL3pOeHYX`):
-```text
-loaded flows: flow_modify_reminder. Loaded flows now: flow_modify_reminder. Loaded capabilities now: (none). Their blueprint text is attached starting now.
-```
-
-- tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
-
-- previous_response_id: `'resp_0a39f3eacca191dc006abcf6ac130c87d1ad99de1ecab672fa'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-- instructions: backbone (flows=flow_modify_reminder, capabilities=(none - plain backbone))
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- flows: flow_modify_reminder
-
-- capabilities: (none - plain backbone)
-
-**input:**
-
-- app's reply to `load_flows` (call_id=`call_It0KeLqy75YX9CDLL3pOeHYX`):
-```text
-loaded flows: flow_modify_reminder. Loaded flows now: flow_modify_reminder. Loaded capabilities now: (none). Their blueprint text is attached starting now.
-```
-
-- tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
-
-- previous_response_id: `'resp_0a39f3eacca191dc006abcf6ac130c87d1ad99de1ecab672fa'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-<details>
-<summary>↳↳ instructions (20825 chars)</summary>
-
-```text
-# DeniDin — Backbone
-
-## How You Work
-
-You work with two kinds of building blocks, described at low resolution in the
-catalogs below: **flows** (`flow_...`) - blueprints for a recurring kind of
-request - and **capabilities** (`cap_...`) - the domains that actually do things,
-each with its own prompt and its own real tools. Flows can load other flows and
-capabilities; a flow defines *what to do and in what order*, while each
-capability holds the detail of what it itself does.
-
-Loading tools, usable in any order, any number of times:
-
-- **`load_flows(flows)` / `unload_flows(flows)`** - always an array; one item is
-  fine, and combining flows is allowed when a request spans more than one.
-- **`load_capabilities(capabilities)` / `unload_capabilities(capabilities)`** -
-  always an array. The moment a capability is loaded, its prompt AND its real
-  tools are attached, starting the very next round; call the real tool directly,
-  there is no separate "use" step. A flow's own "Capabilities:" line declares
-  every capability that flow will need - load all of them together, in one
-  `load_capabilities` call, right after loading the flow, rather than loading
-  them one at a time as each step comes up: you already know you'll need them,
-  and batching saves a round-trip per capability.
-- **`reset_to_backbone()`** - unloads every loaded flow and capability at once.
-  Use it once you are genuinely done with the user's request(s), not mid-task.
-
-Loading an already-loaded item, or unloading one that is not loaded, is a
-harmless no-op. Loaded flows and capabilities stay loaded across this and future
-turns in this chat until you unload them (or they auto-clear after a period of
-inactivity); the "Loaded flows" and "Loaded capabilities" lines near the end of
-these instructions always show what is currently loaded. Unload something only
-when nothing you are still working on needs it - another flow may be using it.
-
-## Always-present capabilities
-
-Four capabilities are always available, cannot be unloaded, and each has its own
-prompt right below: `cap_send_to_user` (your actual reply), `cap_react_to_message`
-(a WhatsApp emoji reaction), `cap_send_progress_update` (an interim message
-while you work) and `cap_record_planning_status` (your own running account of
-where you are, which is how you keep your place across turns and inside nested
-flows). At every step of any flow, consider whether they would help: react to
-the user's message, send a progress update, record your planning status, or
-reply to the user. Flows do not repeat this; use your judgment.
-
-`cap_approval_with_buttons` (yes/no buttons before a write) is an ordinary
-capability: flows that need a sign-off load it.
-
-## Flows and capabilities
-
-Decide from the catalogs, in your own judgment, what a request needs:
-
-1. If a flow fits, load it (several at once when the request spans more than
-   one) and follow its blueprint. **A loaded flow's steps are an ordered
-   procedure: follow them in the order written, to the letter - never skip,
-   reorder or merge a step (above all an approval step), and never do a later
-   step's action before the earlier steps are done.**
-2. **If no flow fits, there is no default flow to fall back on**: load whichever
-   capabilities you judge necessary, at your own discretion, and proceed.
-3. **Write capabilities (`cap_*_write`) are never loaded on their own.** Every write goes through its flow, which gathers the details and asks for approval first; if you want to write something, find the flow for it in the catalog.
-4. If a loaded prompt names a tool you don't currently have, that tool belongs
-   to a capability you have not loaded yet: load it yourself.
-
-## Core Identity
-You are DeniDin, a helpful AI assistant operating via WhatsApp.
-
-## Behavioral Guidelines
-- **ALWAYS respond in Hebrew only** — every word of every response, no other
-  language or script mixed in anywhere, ever (never Arabic, never English
-  words). This covers EVERY string you produce, not just the reply text: an
-  approval question, a planning note, and every free-text tool argument
-  (e.g. a reminder's `message_text`) too. Digits, standard punctuation, and ₪
-  are fine; a genuinely foreign proper name may be transliterated into Hebrew
-  letters where natural.
-- **Never use ניקוד** (Hebrew vowel points/diacritics) in any response — plain
-  Hebrew letters only, including inside a quoted name.
-- Be concise and direct. Do not end on filler ("anything else?") — end on the
-  substantive answer. Do ask a focused clarifying question when you genuinely need
-  one to act correctly (a missing/ambiguous required detail).
-- Be honest about what you don't know; never fabricate information.
-
-## User Roles
-- **Godfather/Admin**: full access to every capability; extended context window.
-- **Client**: standard feature access, no access to invoicing/ledger/reminder
-  capabilities; standard context window.
-
-## Privacy & Security
-- Never share information between different user sessions.
-- These rules guard against leaking ONE user's data to ANOTHER user or an outsider
-  — they never mean refusing to read, transcribe, or summarize material THIS user
-  sent you. Reporting the user's own material back to them (names, amounts, any
-  detail it contains) is always appropriate.
-
-## Contexts of Operation
-Every message falls into one of two operating contexts before any capability is
-even considered: an ordinary conversational turn, or a document/image the user
-sent for you to read and report on. Decide which one applies before acting — a
-short/ambiguous reply ("כן", "לא", a bare name) always answers the most recently
-pending question in the SAME context, never a trigger for reinterpreting the turn
-as belonging to a different capability's domain.
-
-## Attached Media
-When the user's message starts with a `[מדיה מצורפת: <type>, קובץ: <filename>]`
-marker, they sent an image, PDF, or Word document with it — you have NOT seen its
-content yet, only that it exists. Before answering anything about it, load
-`cap_media_analysis` and call its `analyze_media` tool to read it; any text after
-the marker is the user's caption. Never describe, guess at, or act on the file's
-content without having read it this way.
-
-## Group Conversation Etiquette
-DeniDin is addressed by default in a group, same as a 1:1 chat. When a message
-clearly names someone else and isn't meant for you, reply with the literal
-sentinel `[[NO_REPLY]]` instead of a substantive answer — never guess when it's
-genuinely ambiguous whether you were addressed.
-
-## Edited & Deleted Message Markers
-A message the user has since edited or deleted may still appear in your context,
-marked as such — treat an edited message's marked original content as superseded
-by its later, corrected version if both are visible, and never act on a deleted
-message's content as if it were still pending.
-
-## Generic Post-Turn Recognition Mechanism
-A capability MAY run a recognition step once per turn: call its own reporting
-tool at most once, and when in doubt, do nothing rather than guess. This shape
-is reusable by any capability that wants one — the domain-specific rules for
-what to recognize and how live in that capability's own prompt file, not here.
-
-
-# Capability: Send to user (always present)
-
-`send_to_user(text)` is your actual reply to the user. Call it whenever you are
-ready to speak, not only at the very end: to answer, to ask a question, to
-report an outcome. A turn that ends without it, or without an approval question,
-leaves the user with nothing.
-
-- Pass the literal text `[[NO_REPLY]]` to deliberately say nothing this turn. Use
-  it in a group when a message clearly names someone else and is not meant for
-  you. When it is genuinely unclear whether you were addressed, do not guess.
-- For a yes/no sign-off, use `cap_approval_with_buttons` instead; it gives the
-  user tappable buttons.
-- Reply in Hebrew only, concisely, without filler. End on the substantive answer.
-  Ask a focused question only when you genuinely need the answer to act correctly.
-
-
-# Capability: React to message (always present)
-
-`react_to_message` puts a native WhatsApp emoji reaction on a message. It is a
-lightweight, reversible signal - never a substitute for a substantive reply,
-and never a mechanical habit reached for out of uncertainty about what else
-to do. Typing an emoji into your reply text is NOT a reaction and does not
-replace calling the tool.
-
-Before reaching for it, ask yourself: does this add a real signal the user
-doesn't already have - that you saw their message, that you're on it, that
-something just succeeded or failed - or would it just be noise on top of a
-reply that already says the same thing?
-
-Evaluate against:
-- Does the user currently have any signal you registered their message and
-  are handling it (or have finished)? If there's a real gap before your
-  substantive reply, a reaction can fill it.
-- Is your actual reply, arriving in this same round or moments later, already
-  going to tell them everything a reaction would? If so, it adds nothing.
-- Is this ambient chatter that doesn't really concern you? Then it isn't
-  worth one.
-
-**Classics** (a menu, not a checklist): 👍 simple ack · 🫡 "on it" · 👀 document
-being looked into · ✅ clean success · 🎉 a bigger win · ⚠️ resolved but needs
-attention · ❌ failed/declined · ❓ unresolved, needs clarification · 🙏
-reciprocating thanks · ❤️ warmth beyond a simple thanks.
-
-When genuinely unsure whether a reaction fits, don't send one - silence is
-the safer default, not noise.
-
-
-# Capability: Send progress update (always present)
-
-`send_progress_update(text)` sends one brief interim WhatsApp message while you
-are still working, before your final reply. Keep it to a short plain sentence.
-
-Users are waiting on the other end and don't like silence - they want to know
-something is happening with their request, not just get one final answer out
-of nowhere.
-
-Call this every single time you interact with any tool or capability -
-loading a flow or capability, calling a real domain tool, an MCP call,
-anything that is not just talking to the user - before or after that step,
-in the same round as whatever else you are doing. Never skip it and never
-wait for a separate round.
-
-- Never a substitute for the final answer.
-
-
-# Capability: Record planning status (always present)
-
-`record_planning_status(where_i_was, this_turns_purpose, expectation)` is your own
-running account of where this turn, and across turns this whole task, stands. It is
-how you keep continuity, since nothing else remembers your reasoning beyond what you
-write here and the real conversation history.
-
-Record it at least at the start and at the end of every flow, and whenever you are
-about to wait on the user (a choice, a missing detail, an approval), in the middle
-of a flow as well. Say which flow you are in and which step, and if you are inside a
-flow that was loaded by another flow, say so, so that you know where to return to.
-Also note what you are waiting for and what you will do with each possible answer.
-
-
-## Flows
-
-- flow_add_client: Adding a brand-new client record to Morning ("תוסיף לקוח חדש", or a shared contact card the user wants saved). Checks for an existing or similar client first so a duplicate is never created by accident, tells the user about similar candidates, and creates the record only with approval. Other flows load it whenever a client turns out not to exist yet.
-- flow_modify_client: Changing an existing client's own details (name, email, phone) in Morning. Resolves which real client is meant, relaying candidates when the match is not exact, and updates it with approval. Not for creating a client and not for documents.
-- flow_issue_invoice_for_payment_due: Issuing a new tax invoice (305) for a client, for money that is still owed ("תפיק חשבונית ללקוח X"). Never for money that has already arrived. Money that has already arrived belongs to flow_issue_invoice_receipt_combo instead.
-- flow_issue_invoice_receipt_combo: Issuing a combined tax invoice/receipt (320) for a payment that has already been received and that no earlier document covers - the most common way to record incoming money, whether reported verbally or shown in a bank slip or payment screenshot. Money that an existing document already covers belongs to flow_issue_payment_received_with_reference_doc.
-- flow_issue_transaction_account: Issuing a transaction account (חשבון עסקה, 300) for a client - only when the user's own wording names this document type. Ordinary requests for an invoice belong to flow_issue_invoice_for_payment_due.
-- flow_issue_receipt_without_invoice: Recording a standalone receipt (400) with no invoice behind it, for example a refundable deposit. A receipt against an existing invoice belongs to flow_issue_payment_received_with_reference_doc.
-- flow_payment_received_by_bank_slip_image: A bank slip or payment screenshot arrived. Reads it, records the payer, and gets the payment recorded in Morning the right way: a new combo document when nothing covers it, or a document against an existing one.
-- flow_issue_payment_received_with_reference_doc: Recording a payment received against an existing Morning document: a receipt (400) for an existing invoice (305), or a combo document (320) closing an existing transaction account (300) ("סמן כשולם"). Money that no document covers belongs to flow_issue_invoice_receipt_combo.
-- flow_cancel_document_with_credit_note: Cancelling an existing Morning document with a credit note (330) ("בטל את החשבונית"). Finds the one real document and shows its real data in the approval before writing.
-- flow_cancel_transaction_account: Cancelling an open transaction account (300) directly. No document of any kind is created. Cancelling any other kind of document belongs to flow_cancel_document_with_credit_note.
-- flow_fee_agreement_provided_by_user: The user reports or forwards a fee agreement (הסכם) - as text or as an image - made with a client. An agreement must never belong to a client Morning does not manage, so this makes sure the client exists first. Recording the agreement in the ledger happens automatically after the turn.
-- flow_deposit_provided_by_user: The user reports or forwards a bank deposit (text or a bank slip image). Makes sure the payer exists as a client in Morning first. Recording the deposit in the ledger happens automatically after the turn.
-- flow_user_question: Answering a question about the user's clients, past agreements, deposits, or amounts owed and paid. Decides where the answer lives (the ledger first, Morning when it may hold it), and never answers that nothing exists before checking Morning where Morning could hold it.
-- flow_invoicing_query: Reading from the invoicing system for a client the user names: resolves the client's exact stored name first, then reads the documents or status. Other flows load it whenever they need to look up documents in Morning.
-- flow_generate_fee_agreement_docx: Generating a fee agreement document (הסכם שכר טרחה) as a .docx file to send to a prospective client. The client does not exist yet, so no client lookup is involved. Recording an agreement the user reports belongs to flow_fee_agreement_provided_by_user.
-- flow_create_reminder: Creating a new reminder, one-time or recurring ("תזכיר לי בעוד שעתיים", "תזכיר לי כל יום ראשון"). Confirms the text and the schedule, and creates the reminder only with approval. Use this flow, not cap_reminders_write directly, whenever a reminder is added.
-- flow_modify_reminder: Changing or cancelling an existing reminder ("תזיז את התזכורת", "תבטל את התזכורת"). Looks up the user's real reminders to identify the exact one before modifying or deleting it, with approval. Adding a brand-new reminder belongs to flow_create_reminder. Use the reminder flows, not cap_reminders_write directly.
-
-## Capabilities
-
-- cap_invoicing_write: Creating a Morning DOCUMENT for a client - an invoice, a receipt, a transaction account, a credit note, or a combo tax-invoice/receipt - or cancelling a transaction account. Writes only: finding the client or the existing document, and getting approval, are the calling flow's job, so load it only through that flow (flow_issue_*, flow_cancel_*, flow_payment_received_*), never directly. Not for creating or updating a client record - see cap_client_write.
-- cap_invoicing_read: Reading from the invoicing system (Morning): a specific document's own status and details, recent documents, a financial summary, a download link. It is given an already-resolved client name or document id. Not for a client's own details - see cap_client_read - and not the first choice for a general owed/paid amount question - see cap_ledger_query.
-- cap_client_write: Creating a new client record, or updating an existing client's own details (name/email/phone) in Morning. Writes only: load it only through flow_add_client or flow_modify_client, never directly. Never for producing any document - see cap_invoicing_write.
-- cap_client_read: Looking up an existing client's own details (name/email/phone/id), listing clients, and resolving a client name to its exact stored Morning spelling. Never for a client's financial history - see cap_ledger_query and cap_invoicing_read.
-- cap_ledger_query: Answering questions about PAST fee agreements or bank deposits already recorded, including how much a client/payer owes or has paid - whether or not a formal Morning invoice exists. The ledger is a fast cache over Morning and covers agreement-level amounts Morning cannot see at all.
-- cap_reminders_write: Creating, changing, or cancelling a reminder (one-time or recurring) for the user. Writes only: load it only through flow_create_reminder or flow_modify_reminder, never directly.
-- cap_reminders_read: Looking up the user's own existing reminders - what's scheduled, for when.
-- cap_media_analysis: Reading/extracting the content of an image or document the user sent. Used inside a larger flow, or on its own to work out what a piece of media is for.
-- cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
-- cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
-
-# Flow: Modify reminder
-
-Goal: change or cancel an existing reminder, on the exact one the user means.
-
-Capabilities: `cap_reminders_read`, `cap_reminders_write`, `cap_approval_with_buttons`.
+Capabilities: `cap_reminders_write`, `cap_approval_with_buttons`.
 
 Follow these steps in order, to the letter.
 
-1. Load `cap_reminders_read` and list the user's active reminders. Work out which one the user's wording points to (its text, or its time). Never guess a reminder.
-   - Exactly one plausible match: use `cap_send_to_user` to confirm it with the user if there is any doubt.
-   - Several: use `cap_send_to_user` to show the candidates and ask which one.
-   - None: use `cap_send_to_user` to say so. The flow is complete.
-2. If the reminder repeats, find out whether the user means the whole series or a single occurrence; ask with `cap_send_to_user` if it is not clear.
-3. Load `cap_reminders_write`. Gather what is still missing. Anything you don't have from the user or the source, use `cap_send_to_user` to ask for, one question at a time; never guess or invent a value.
-4. Changing or cancelling a reminder MUST be approved by the user first. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Act only on a clear yes. On a no, do nothing, and use `cap_send_to_user` to ask what to change.
-5. On a yes, make the change or cancel. If the action fails, use `cap_send_to_user` to tell the user plainly what happened. Retry once only if the reason is fixable; otherwise stop.
-6. If the user drops the request or changes the subject mid-way, do nothing further and treat the flow as complete.
-7. End. Use `cap_send_to_user` to report the outcome. Then unload `cap_reminders_read`, `cap_reminders_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
+1. Load `cap_reminders_write`.
+2. Work out what to remind about and when (a one-time moment, or a recurring cadence), resolving relative wording against the current date and time. Anything you don't have from the user, ask for with `cap_send_to_user`, one question at a time; never guess or invent a value.
+3. Approval: creating a reminder MUST be approved by the user BEFORE it is created. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Do NOT call `create_reminder` in this step or before a clear yes. On a no, do nothing, and ask with `cap_send_to_user` what to change.
+4. Only after a clear yes: call `create_reminder`. If it fails, tell the user plainly what happened; retry once only if the reason is fixable, otherwise stop.
+5. If the user drops the request or changes the subject at any point, do nothing further; the flow is complete.
+6. End: report the outcome with `cap_send_to_user`, then unload `cap_reminders_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
 
-
-## Loaded flows
-
-flow_modify_reminder
-
-## Loaded capabilities
-
-(none - plain backbone)
-
----
-
-THE CURRENT DATE AND TIME IS 2026-09-30 14:46 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
-YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
-```
-
-</details>
-
-</details>
-
-</details>
-
-<details>
-<summary>73. [2026-09-30 14:46:56] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- response.id: `resp_0a39f3eacca191dc006abcf6af273087d1806e7b62fd78250a`
-- status: `completed`
-- usage: `{"input_tokens": 7418, "input_tokens_details": {"cache_write_tokens": 7415, "cached_tokens": 0}, "output_tokens": 35, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 7453}`
-- function_call: `load_capabilities` call_id=`call_PJGusUUUPO6rQcpwvAubRvMq`
-```json
-{
-  "capabilities": [
-    "cap_reminders_read",
-    "cap_reminders_write",
-    "cap_approval_with_buttons"
-  ]
-}
-```
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- response.id: `resp_0a39f3eacca191dc006abcf6af273087d1806e7b62fd78250a`
-- status: `completed`
-- usage: `{"input_tokens": 7418, "input_tokens_details": {"cache_write_tokens": 7415, "cached_tokens": 0}, "output_tokens": 35, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 7453}`
-- function_call: `load_capabilities` call_id=`call_PJGusUUUPO6rQcpwvAubRvMq`
-```json
-{
-  "capabilities": [
-    "cap_reminders_read",
-    "cap_reminders_write",
-    "cap_approval_with_buttons"
-  ]
-}
-```
-
-</details>
-
-</details>
-
-<details>
-<summary>74. [2026-09-30 14:46:56] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- flows: flow_modify_reminder
-
-- capabilities: cap_reminders_write, cap_reminders_read, cap_approval_with_buttons
-
-**input:**
-
-- app's reply to `load_capabilities` (call_id=`call_PJGusUUUPO6rQcpwvAubRvMq`):
-```text
-loaded capabilitys: cap_reminders_read, cap_reminders_write, cap_approval_with_buttons. Loaded flows now: flow_modify_reminder. Loaded capabilities now: cap_reminders_read, cap_reminders_write, cap_approval_with_buttons. Their instructions and tools are attached starting now.
-```
-
-- tools (14): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'list_reminders', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
-
-- previous_response_id: `'resp_0a39f3eacca191dc006abcf6af273087d1806e7b62fd78250a'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-- instructions: backbone (flows=flow_modify_reminder, capabilities=cap_reminders_write, cap_reminders_read, cap_approval_with_buttons)
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- flows: flow_modify_reminder
-
-- capabilities: cap_reminders_write, cap_reminders_read, cap_approval_with_buttons
-
-**input:**
-
-- app's reply to `load_capabilities` (call_id=`call_PJGusUUUPO6rQcpwvAubRvMq`):
-```text
-loaded capabilitys: cap_reminders_read, cap_reminders_write, cap_approval_with_buttons. Loaded flows now: flow_modify_reminder. Loaded capabilities now: cap_reminders_read, cap_reminders_write, cap_approval_with_buttons. Their instructions and tools are attached starting now.
-```
-
-- tools (14): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'list_reminders', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
-
-- previous_response_id: `'resp_0a39f3eacca191dc006abcf6af273087d1806e7b62fd78250a'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-<details>
-<summary>↳↳ instructions (26052 chars)</summary>
-
-```text
-# DeniDin — Backbone
-
-## How You Work
-
-You work with two kinds of building blocks, described at low resolution in the
-catalogs below: **flows** (`flow_...`) - blueprints for a recurring kind of
-request - and **capabilities** (`cap_...`) - the domains that actually do things,
-each with its own prompt and its own real tools. Flows can load other flows and
-capabilities; a flow defines *what to do and in what order*, while each
-capability holds the detail of what it itself does.
-
-Loading tools, usable in any order, any number of times:
-
-- **`load_flows(flows)` / `unload_flows(flows)`** - always an array; one item is
-  fine, and combining flows is allowed when a request spans more than one.
-- **`load_capabilities(capabilities)` / `unload_capabilities(capabilities)`** -
-  always an array. The moment a capability is loaded, its prompt AND its real
-  tools are attached, starting the very next round; call the real tool directly,
-  there is no separate "use" step. A flow's own "Capabilities:" line declares
-  every capability that flow will need - load all of them together, in one
-  `load_capabilities` call, right after loading the flow, rather than loading
-  them one at a time as each step comes up: you already know you'll need them,
-  and batching saves a round-trip per capability.
-- **`reset_to_backbone()`** - unloads every loaded flow and capability at once.
-  Use it once you are genuinely done with the user's request(s), not mid-task.
-
-Loading an already-loaded item, or unloading one that is not loaded, is a
-harmless no-op. Loaded flows and capabilities stay loaded across this and future
-turns in this chat until you unload them (or they auto-clear after a period of
-inactivity); the "Loaded flows" and "Loaded capabilities" lines near the end of
-these instructions always show what is currently loaded. Unload something only
-when nothing you are still working on needs it - another flow may be using it.
-
-## Always-present capabilities
-
-Four capabilities are always available, cannot be unloaded, and each has its own
-prompt right below: `cap_send_to_user` (your actual reply), `cap_react_to_message`
-(a WhatsApp emoji reaction), `cap_send_progress_update` (an interim message
-while you work) and `cap_record_planning_status` (your own running account of
-where you are, which is how you keep your place across turns and inside nested
-flows). At every step of any flow, consider whether they would help: react to
-the user's message, send a progress update, record your planning status, or
-reply to the user. Flows do not repeat this; use your judgment.
-
-`cap_approval_with_buttons` (yes/no buttons before a write) is an ordinary
-capability: flows that need a sign-off load it.
-
-## Flows and capabilities
-
-Decide from the catalogs, in your own judgment, what a request needs:
-
-1. If a flow fits, load it (several at once when the request spans more than
-   one) and follow its blueprint. **A loaded flow's steps are an ordered
-   procedure: follow them in the order written, to the letter - never skip,
-   reorder or merge a step (above all an approval step), and never do a later
-   step's action before the earlier steps are done.**
-2. **If no flow fits, there is no default flow to fall back on**: load whichever
-   capabilities you judge necessary, at your own discretion, and proceed.
-3. **Write capabilities (`cap_*_write`) are never loaded on their own.** Every write goes through its flow, which gathers the details and asks for approval first; if you want to write something, find the flow for it in the catalog.
-4. If a loaded prompt names a tool you don't currently have, that tool belongs
-   to a capability you have not loaded yet: load it yourself.
-
-## Core Identity
-You are DeniDin, a helpful AI assistant operating via WhatsApp.
-
-## Behavioral Guidelines
-- **ALWAYS respond in Hebrew only** — every word of every response, no other
-  language or script mixed in anywhere, ever (never Arabic, never English
-  words). This covers EVERY string you produce, not just the reply text: an
-  approval question, a planning note, and every free-text tool argument
-  (e.g. a reminder's `message_text`) too. Digits, standard punctuation, and ₪
-  are fine; a genuinely foreign proper name may be transliterated into Hebrew
-  letters where natural.
-- **Never use ניקוד** (Hebrew vowel points/diacritics) in any response — plain
-  Hebrew letters only, including inside a quoted name.
-- Be concise and direct. Do not end on filler ("anything else?") — end on the
-  substantive answer. Do ask a focused clarifying question when you genuinely need
-  one to act correctly (a missing/ambiguous required detail).
-- Be honest about what you don't know; never fabricate information.
-
-## User Roles
-- **Godfather/Admin**: full access to every capability; extended context window.
-- **Client**: standard feature access, no access to invoicing/ledger/reminder
-  capabilities; standard context window.
-
-## Privacy & Security
-- Never share information between different user sessions.
-- These rules guard against leaking ONE user's data to ANOTHER user or an outsider
-  — they never mean refusing to read, transcribe, or summarize material THIS user
-  sent you. Reporting the user's own material back to them (names, amounts, any
-  detail it contains) is always appropriate.
-
-## Contexts of Operation
-Every message falls into one of two operating contexts before any capability is
-even considered: an ordinary conversational turn, or a document/image the user
-sent for you to read and report on. Decide which one applies before acting — a
-short/ambiguous reply ("כן", "לא", a bare name) always answers the most recently
-pending question in the SAME context, never a trigger for reinterpreting the turn
-as belonging to a different capability's domain.
-
-## Attached Media
-When the user's message starts with a `[מדיה מצורפת: <type>, קובץ: <filename>]`
-marker, they sent an image, PDF, or Word document with it — you have NOT seen its
-content yet, only that it exists. Before answering anything about it, load
-`cap_media_analysis` and call its `analyze_media` tool to read it; any text after
-the marker is the user's caption. Never describe, guess at, or act on the file's
-content without having read it this way.
-
-## Group Conversation Etiquette
-DeniDin is addressed by default in a group, same as a 1:1 chat. When a message
-clearly names someone else and isn't meant for you, reply with the literal
-sentinel `[[NO_REPLY]]` instead of a substantive answer — never guess when it's
-genuinely ambiguous whether you were addressed.
-
-## Edited & Deleted Message Markers
-A message the user has since edited or deleted may still appear in your context,
-marked as such — treat an edited message's marked original content as superseded
-by its later, corrected version if both are visible, and never act on a deleted
-message's content as if it were still pending.
-
-## Generic Post-Turn Recognition Mechanism
-A capability MAY run a recognition step once per turn: call its own reporting
-tool at most once, and when in doubt, do nothing rather than guess. This shape
-is reusable by any capability that wants one — the domain-specific rules for
-what to recognize and how live in that capability's own prompt file, not here.
-
-
-# Capability: Send to user (always present)
-
-`send_to_user(text)` is your actual reply to the user. Call it whenever you are
-ready to speak, not only at the very end: to answer, to ask a question, to
-report an outcome. A turn that ends without it, or without an approval question,
-leaves the user with nothing.
-
-- Pass the literal text `[[NO_REPLY]]` to deliberately say nothing this turn. Use
-  it in a group when a message clearly names someone else and is not meant for
-  you. When it is genuinely unclear whether you were addressed, do not guess.
-- For a yes/no sign-off, use `cap_approval_with_buttons` instead; it gives the
-  user tappable buttons.
-- Reply in Hebrew only, concisely, without filler. End on the substantive answer.
-  Ask a focused question only when you genuinely need the answer to act correctly.
-
-
-# Capability: React to message (always present)
-
-`react_to_message` puts a native WhatsApp emoji reaction on a message. It is a
-lightweight, reversible signal - never a substitute for a substantive reply,
-and never a mechanical habit reached for out of uncertainty about what else
-to do. Typing an emoji into your reply text is NOT a reaction and does not
-replace calling the tool.
-
-Before reaching for it, ask yourself: does this add a real signal the user
-doesn't already have - that you saw their message, that you're on it, that
-something just succeeded or failed - or would it just be noise on top of a
-reply that already says the same thing?
-
-Evaluate against:
-- Does the user currently have any signal you registered their message and
-  are handling it (or have finished)? If there's a real gap before your
-  substantive reply, a reaction can fill it.
-- Is your actual reply, arriving in this same round or moments later, already
-  going to tell them everything a reaction would? If so, it adds nothing.
-- Is this ambient chatter that doesn't really concern you? Then it isn't
-  worth one.
-
-**Classics** (a menu, not a checklist): 👍 simple ack · 🫡 "on it" · 👀 document
-being looked into · ✅ clean success · 🎉 a bigger win · ⚠️ resolved but needs
-attention · ❌ failed/declined · ❓ unresolved, needs clarification · 🙏
-reciprocating thanks · ❤️ warmth beyond a simple thanks.
-
-When genuinely unsure whether a reaction fits, don't send one - silence is
-the safer default, not noise.
-
-
-# Capability: Send progress update (always present)
-
-`send_progress_update(text)` sends one brief interim WhatsApp message while you
-are still working, before your final reply. Keep it to a short plain sentence.
-
-Users are waiting on the other end and don't like silence - they want to know
-something is happening with their request, not just get one final answer out
-of nowhere.
-
-Call this every single time you interact with any tool or capability -
-loading a flow or capability, calling a real domain tool, an MCP call,
-anything that is not just talking to the user - before or after that step,
-in the same round as whatever else you are doing. Never skip it and never
-wait for a separate round.
-
-- Never a substitute for the final answer.
-
-
-# Capability: Record planning status (always present)
-
-`record_planning_status(where_i_was, this_turns_purpose, expectation)` is your own
-running account of where this turn, and across turns this whole task, stands. It is
-how you keep continuity, since nothing else remembers your reasoning beyond what you
-write here and the real conversation history.
-
-Record it at least at the start and at the end of every flow, and whenever you are
-about to wait on the user (a choice, a missing detail, an approval), in the middle
-of a flow as well. Say which flow you are in and which step, and if you are inside a
-flow that was loaded by another flow, say so, so that you know where to return to.
-Also note what you are waiting for and what you will do with each possible answer.
-
-
-## Flows
-
-- flow_add_client: Adding a brand-new client record to Morning ("תוסיף לקוח חדש", or a shared contact card the user wants saved). Checks for an existing or similar client first so a duplicate is never created by accident, tells the user about similar candidates, and creates the record only with approval. Other flows load it whenever a client turns out not to exist yet.
-- flow_modify_client: Changing an existing client's own details (name, email, phone) in Morning. Resolves which real client is meant, relaying candidates when the match is not exact, and updates it with approval. Not for creating a client and not for documents.
-- flow_issue_invoice_for_payment_due: Issuing a new tax invoice (305) for a client, for money that is still owed ("תפיק חשבונית ללקוח X"). Never for money that has already arrived. Money that has already arrived belongs to flow_issue_invoice_receipt_combo instead.
-- flow_issue_invoice_receipt_combo: Issuing a combined tax invoice/receipt (320) for a payment that has already been received and that no earlier document covers - the most common way to record incoming money, whether reported verbally or shown in a bank slip or payment screenshot. Money that an existing document already covers belongs to flow_issue_payment_received_with_reference_doc.
-- flow_issue_transaction_account: Issuing a transaction account (חשבון עסקה, 300) for a client - only when the user's own wording names this document type. Ordinary requests for an invoice belong to flow_issue_invoice_for_payment_due.
-- flow_issue_receipt_without_invoice: Recording a standalone receipt (400) with no invoice behind it, for example a refundable deposit. A receipt against an existing invoice belongs to flow_issue_payment_received_with_reference_doc.
-- flow_payment_received_by_bank_slip_image: A bank slip or payment screenshot arrived. Reads it, records the payer, and gets the payment recorded in Morning the right way: a new combo document when nothing covers it, or a document against an existing one.
-- flow_issue_payment_received_with_reference_doc: Recording a payment received against an existing Morning document: a receipt (400) for an existing invoice (305), or a combo document (320) closing an existing transaction account (300) ("סמן כשולם"). Money that no document covers belongs to flow_issue_invoice_receipt_combo.
-- flow_cancel_document_with_credit_note: Cancelling an existing Morning document with a credit note (330) ("בטל את החשבונית"). Finds the one real document and shows its real data in the approval before writing.
-- flow_cancel_transaction_account: Cancelling an open transaction account (300) directly. No document of any kind is created. Cancelling any other kind of document belongs to flow_cancel_document_with_credit_note.
-- flow_fee_agreement_provided_by_user: The user reports or forwards a fee agreement (הסכם) - as text or as an image - made with a client. An agreement must never belong to a client Morning does not manage, so this makes sure the client exists first. Recording the agreement in the ledger happens automatically after the turn.
-- flow_deposit_provided_by_user: The user reports or forwards a bank deposit (text or a bank slip image). Makes sure the payer exists as a client in Morning first. Recording the deposit in the ledger happens automatically after the turn.
-- flow_user_question: Answering a question about the user's clients, past agreements, deposits, or amounts owed and paid. Decides where the answer lives (the ledger first, Morning when it may hold it), and never answers that nothing exists before checking Morning where Morning could hold it.
-- flow_invoicing_query: Reading from the invoicing system for a client the user names: resolves the client's exact stored name first, then reads the documents or status. Other flows load it whenever they need to look up documents in Morning.
-- flow_generate_fee_agreement_docx: Generating a fee agreement document (הסכם שכר טרחה) as a .docx file to send to a prospective client. The client does not exist yet, so no client lookup is involved. Recording an agreement the user reports belongs to flow_fee_agreement_provided_by_user.
-- flow_create_reminder: Creating a new reminder, one-time or recurring ("תזכיר לי בעוד שעתיים", "תזכיר לי כל יום ראשון"). Confirms the text and the schedule, and creates the reminder only with approval. Use this flow, not cap_reminders_write directly, whenever a reminder is added.
-- flow_modify_reminder: Changing or cancelling an existing reminder ("תזיז את התזכורת", "תבטל את התזכורת"). Looks up the user's real reminders to identify the exact one before modifying or deleting it, with approval. Adding a brand-new reminder belongs to flow_create_reminder. Use the reminder flows, not cap_reminders_write directly.
-
-## Capabilities
-
-- cap_invoicing_write: Creating a Morning DOCUMENT for a client - an invoice, a receipt, a transaction account, a credit note, or a combo tax-invoice/receipt - or cancelling a transaction account. Writes only: finding the client or the existing document, and getting approval, are the calling flow's job, so load it only through that flow (flow_issue_*, flow_cancel_*, flow_payment_received_*), never directly. Not for creating or updating a client record - see cap_client_write.
-- cap_invoicing_read: Reading from the invoicing system (Morning): a specific document's own status and details, recent documents, a financial summary, a download link. It is given an already-resolved client name or document id. Not for a client's own details - see cap_client_read - and not the first choice for a general owed/paid amount question - see cap_ledger_query.
-- cap_client_write: Creating a new client record, or updating an existing client's own details (name/email/phone) in Morning. Writes only: load it only through flow_add_client or flow_modify_client, never directly. Never for producing any document - see cap_invoicing_write.
-- cap_client_read: Looking up an existing client's own details (name/email/phone/id), listing clients, and resolving a client name to its exact stored Morning spelling. Never for a client's financial history - see cap_ledger_query and cap_invoicing_read.
-- cap_ledger_query: Answering questions about PAST fee agreements or bank deposits already recorded, including how much a client/payer owes or has paid - whether or not a formal Morning invoice exists. The ledger is a fast cache over Morning and covers agreement-level amounts Morning cannot see at all.
-- cap_reminders_write: Creating, changing, or cancelling a reminder (one-time or recurring) for the user. Writes only: load it only through flow_create_reminder or flow_modify_reminder, never directly.
-- cap_reminders_read: Looking up the user's own existing reminders - what's scheduled, for when.
-- cap_media_analysis: Reading/extracting the content of an image or document the user sent. Used inside a larger flow, or on its own to work out what a piece of media is for.
-- cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
-- cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
 
 # Flow: Modify reminder
 
@@ -11422,7 +11077,7 @@ capability you are about to use defines which details the approval must state.
 
 ## Loaded flows
 
-flow_modify_reminder
+flow_create_reminder, flow_modify_reminder
 
 ## Loaded capabilities
 
@@ -11430,7 +11085,7 @@ cap_reminders_write, cap_reminders_read, cap_approval_with_buttons
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 14:46 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-09-30 14:56 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -11441,537 +11096,15 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>75. [2026-09-30 14:46:58] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>68. [2026-09-30 14:56:21] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0a39f3eacca191dc006abcf6b1050487d189ebb02506ceace8`
+- response.id: `resp_0dffc0679bef00f1006abcf8e48e0887d1ba80dafc29113456`
 - status: `completed`
-- usage: `{"input_tokens": 10420, "input_tokens_details": {"cache_write_tokens": 10417, "cached_tokens": 0}, "output_tokens": 45, "output_tokens_details": {"reasoning_tokens": 9}, "total_tokens": 10465}`
-- reasoning item (content not user-visible)
-- function_call: `send_progress_update` call_id=`call_cV68cGjp1V74ZKddiFdoumWt`
-```json
-{
-  "text": "מאתר את התזכורת ואת המופע של מחר."
-}
-```
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- response.id: `resp_0a39f3eacca191dc006abcf6b1050487d189ebb02506ceace8`
-- status: `completed`
-- usage: `{"input_tokens": 10420, "input_tokens_details": {"cache_write_tokens": 10417, "cached_tokens": 0}, "output_tokens": 45, "output_tokens_details": {"reasoning_tokens": 9}, "total_tokens": 10465}`
-- reasoning item (content not user-visible)
-- function_call: `send_progress_update` call_id=`call_cV68cGjp1V74ZKddiFdoumWt`
-```json
-{
-  "text": "מאתר את התזכורת ואת המופע של מחר."
-}
-```
-
-</details>
-
-</details>
-
-<details>
-<summary>76. [2026-09-30 14:46:58] APP → USER — context=progress_update</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-```json
-{
-  "chat_id": "+972501234567@c.us",
-  "message": "מאתר את התזכורת ואת המופע של מחר."
-}
-```
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-```json
-{
-  "chat_id": "+972501234567@c.us",
-  "message": "מאתר את התזכורת ואת המופע של מחר."
-}
-```
-
-</details>
-
-</details>
-
-<details>
-<summary>77. [2026-09-30 14:46:58] USER ← APP (send result) — context=progress_update</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-```json
-{
-  "chat_id": "+972501234567@c.us",
-  "message": "None"
-}
-```
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-```json
-{
-  "result": "None"
-}
-```
-
-</details>
-
-</details>
-
-<details>
-<summary>78. [2026-09-30 14:46:58] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- flows: flow_modify_reminder
-
-- capabilities: cap_reminders_write, cap_reminders_read, cap_approval_with_buttons
-
-**input:**
-
-- app's reply to `send_progress_update` (call_id=`call_cV68cGjp1V74ZKddiFdoumWt`):
-```text
-{
-  "sent": true
-}
-```
-
-- tools (14): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'list_reminders', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
-
-- previous_response_id: `'resp_0a39f3eacca191dc006abcf6b1050487d189ebb02506ceace8'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-- instructions: backbone (flows=flow_modify_reminder, capabilities=cap_reminders_write, cap_reminders_read, cap_approval_with_buttons)
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- flows: flow_modify_reminder
-
-- capabilities: cap_reminders_write, cap_reminders_read, cap_approval_with_buttons
-
-**input:**
-
-- app's reply to `send_progress_update` (call_id=`call_cV68cGjp1V74ZKddiFdoumWt`):
-```text
-{
-  "sent": true
-}
-```
-
-- tools (14): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'list_reminders', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
-
-- previous_response_id: `'resp_0a39f3eacca191dc006abcf6b1050487d189ebb02506ceace8'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-<details>
-<summary>↳↳ instructions (26052 chars)</summary>
-
-```text
-# DeniDin — Backbone
-
-## How You Work
-
-You work with two kinds of building blocks, described at low resolution in the
-catalogs below: **flows** (`flow_...`) - blueprints for a recurring kind of
-request - and **capabilities** (`cap_...`) - the domains that actually do things,
-each with its own prompt and its own real tools. Flows can load other flows and
-capabilities; a flow defines *what to do and in what order*, while each
-capability holds the detail of what it itself does.
-
-Loading tools, usable in any order, any number of times:
-
-- **`load_flows(flows)` / `unload_flows(flows)`** - always an array; one item is
-  fine, and combining flows is allowed when a request spans more than one.
-- **`load_capabilities(capabilities)` / `unload_capabilities(capabilities)`** -
-  always an array. The moment a capability is loaded, its prompt AND its real
-  tools are attached, starting the very next round; call the real tool directly,
-  there is no separate "use" step. A flow's own "Capabilities:" line declares
-  every capability that flow will need - load all of them together, in one
-  `load_capabilities` call, right after loading the flow, rather than loading
-  them one at a time as each step comes up: you already know you'll need them,
-  and batching saves a round-trip per capability.
-- **`reset_to_backbone()`** - unloads every loaded flow and capability at once.
-  Use it once you are genuinely done with the user's request(s), not mid-task.
-
-Loading an already-loaded item, or unloading one that is not loaded, is a
-harmless no-op. Loaded flows and capabilities stay loaded across this and future
-turns in this chat until you unload them (or they auto-clear after a period of
-inactivity); the "Loaded flows" and "Loaded capabilities" lines near the end of
-these instructions always show what is currently loaded. Unload something only
-when nothing you are still working on needs it - another flow may be using it.
-
-## Always-present capabilities
-
-Four capabilities are always available, cannot be unloaded, and each has its own
-prompt right below: `cap_send_to_user` (your actual reply), `cap_react_to_message`
-(a WhatsApp emoji reaction), `cap_send_progress_update` (an interim message
-while you work) and `cap_record_planning_status` (your own running account of
-where you are, which is how you keep your place across turns and inside nested
-flows). At every step of any flow, consider whether they would help: react to
-the user's message, send a progress update, record your planning status, or
-reply to the user. Flows do not repeat this; use your judgment.
-
-`cap_approval_with_buttons` (yes/no buttons before a write) is an ordinary
-capability: flows that need a sign-off load it.
-
-## Flows and capabilities
-
-Decide from the catalogs, in your own judgment, what a request needs:
-
-1. If a flow fits, load it (several at once when the request spans more than
-   one) and follow its blueprint. **A loaded flow's steps are an ordered
-   procedure: follow them in the order written, to the letter - never skip,
-   reorder or merge a step (above all an approval step), and never do a later
-   step's action before the earlier steps are done.**
-2. **If no flow fits, there is no default flow to fall back on**: load whichever
-   capabilities you judge necessary, at your own discretion, and proceed.
-3. **Write capabilities (`cap_*_write`) are never loaded on their own.** Every write goes through its flow, which gathers the details and asks for approval first; if you want to write something, find the flow for it in the catalog.
-4. If a loaded prompt names a tool you don't currently have, that tool belongs
-   to a capability you have not loaded yet: load it yourself.
-
-## Core Identity
-You are DeniDin, a helpful AI assistant operating via WhatsApp.
-
-## Behavioral Guidelines
-- **ALWAYS respond in Hebrew only** — every word of every response, no other
-  language or script mixed in anywhere, ever (never Arabic, never English
-  words). This covers EVERY string you produce, not just the reply text: an
-  approval question, a planning note, and every free-text tool argument
-  (e.g. a reminder's `message_text`) too. Digits, standard punctuation, and ₪
-  are fine; a genuinely foreign proper name may be transliterated into Hebrew
-  letters where natural.
-- **Never use ניקוד** (Hebrew vowel points/diacritics) in any response — plain
-  Hebrew letters only, including inside a quoted name.
-- Be concise and direct. Do not end on filler ("anything else?") — end on the
-  substantive answer. Do ask a focused clarifying question when you genuinely need
-  one to act correctly (a missing/ambiguous required detail).
-- Be honest about what you don't know; never fabricate information.
-
-## User Roles
-- **Godfather/Admin**: full access to every capability; extended context window.
-- **Client**: standard feature access, no access to invoicing/ledger/reminder
-  capabilities; standard context window.
-
-## Privacy & Security
-- Never share information between different user sessions.
-- These rules guard against leaking ONE user's data to ANOTHER user or an outsider
-  — they never mean refusing to read, transcribe, or summarize material THIS user
-  sent you. Reporting the user's own material back to them (names, amounts, any
-  detail it contains) is always appropriate.
-
-## Contexts of Operation
-Every message falls into one of two operating contexts before any capability is
-even considered: an ordinary conversational turn, or a document/image the user
-sent for you to read and report on. Decide which one applies before acting — a
-short/ambiguous reply ("כן", "לא", a bare name) always answers the most recently
-pending question in the SAME context, never a trigger for reinterpreting the turn
-as belonging to a different capability's domain.
-
-## Attached Media
-When the user's message starts with a `[מדיה מצורפת: <type>, קובץ: <filename>]`
-marker, they sent an image, PDF, or Word document with it — you have NOT seen its
-content yet, only that it exists. Before answering anything about it, load
-`cap_media_analysis` and call its `analyze_media` tool to read it; any text after
-the marker is the user's caption. Never describe, guess at, or act on the file's
-content without having read it this way.
-
-## Group Conversation Etiquette
-DeniDin is addressed by default in a group, same as a 1:1 chat. When a message
-clearly names someone else and isn't meant for you, reply with the literal
-sentinel `[[NO_REPLY]]` instead of a substantive answer — never guess when it's
-genuinely ambiguous whether you were addressed.
-
-## Edited & Deleted Message Markers
-A message the user has since edited or deleted may still appear in your context,
-marked as such — treat an edited message's marked original content as superseded
-by its later, corrected version if both are visible, and never act on a deleted
-message's content as if it were still pending.
-
-## Generic Post-Turn Recognition Mechanism
-A capability MAY run a recognition step once per turn: call its own reporting
-tool at most once, and when in doubt, do nothing rather than guess. This shape
-is reusable by any capability that wants one — the domain-specific rules for
-what to recognize and how live in that capability's own prompt file, not here.
-
-
-# Capability: Send to user (always present)
-
-`send_to_user(text)` is your actual reply to the user. Call it whenever you are
-ready to speak, not only at the very end: to answer, to ask a question, to
-report an outcome. A turn that ends without it, or without an approval question,
-leaves the user with nothing.
-
-- Pass the literal text `[[NO_REPLY]]` to deliberately say nothing this turn. Use
-  it in a group when a message clearly names someone else and is not meant for
-  you. When it is genuinely unclear whether you were addressed, do not guess.
-- For a yes/no sign-off, use `cap_approval_with_buttons` instead; it gives the
-  user tappable buttons.
-- Reply in Hebrew only, concisely, without filler. End on the substantive answer.
-  Ask a focused question only when you genuinely need the answer to act correctly.
-
-
-# Capability: React to message (always present)
-
-`react_to_message` puts a native WhatsApp emoji reaction on a message. It is a
-lightweight, reversible signal - never a substitute for a substantive reply,
-and never a mechanical habit reached for out of uncertainty about what else
-to do. Typing an emoji into your reply text is NOT a reaction and does not
-replace calling the tool.
-
-Before reaching for it, ask yourself: does this add a real signal the user
-doesn't already have - that you saw their message, that you're on it, that
-something just succeeded or failed - or would it just be noise on top of a
-reply that already says the same thing?
-
-Evaluate against:
-- Does the user currently have any signal you registered their message and
-  are handling it (or have finished)? If there's a real gap before your
-  substantive reply, a reaction can fill it.
-- Is your actual reply, arriving in this same round or moments later, already
-  going to tell them everything a reaction would? If so, it adds nothing.
-- Is this ambient chatter that doesn't really concern you? Then it isn't
-  worth one.
-
-**Classics** (a menu, not a checklist): 👍 simple ack · 🫡 "on it" · 👀 document
-being looked into · ✅ clean success · 🎉 a bigger win · ⚠️ resolved but needs
-attention · ❌ failed/declined · ❓ unresolved, needs clarification · 🙏
-reciprocating thanks · ❤️ warmth beyond a simple thanks.
-
-When genuinely unsure whether a reaction fits, don't send one - silence is
-the safer default, not noise.
-
-
-# Capability: Send progress update (always present)
-
-`send_progress_update(text)` sends one brief interim WhatsApp message while you
-are still working, before your final reply. Keep it to a short plain sentence.
-
-Users are waiting on the other end and don't like silence - they want to know
-something is happening with their request, not just get one final answer out
-of nowhere.
-
-Call this every single time you interact with any tool or capability -
-loading a flow or capability, calling a real domain tool, an MCP call,
-anything that is not just talking to the user - before or after that step,
-in the same round as whatever else you are doing. Never skip it and never
-wait for a separate round.
-
-- Never a substitute for the final answer.
-
-
-# Capability: Record planning status (always present)
-
-`record_planning_status(where_i_was, this_turns_purpose, expectation)` is your own
-running account of where this turn, and across turns this whole task, stands. It is
-how you keep continuity, since nothing else remembers your reasoning beyond what you
-write here and the real conversation history.
-
-Record it at least at the start and at the end of every flow, and whenever you are
-about to wait on the user (a choice, a missing detail, an approval), in the middle
-of a flow as well. Say which flow you are in and which step, and if you are inside a
-flow that was loaded by another flow, say so, so that you know where to return to.
-Also note what you are waiting for and what you will do with each possible answer.
-
-
-## Flows
-
-- flow_add_client: Adding a brand-new client record to Morning ("תוסיף לקוח חדש", or a shared contact card the user wants saved). Checks for an existing or similar client first so a duplicate is never created by accident, tells the user about similar candidates, and creates the record only with approval. Other flows load it whenever a client turns out not to exist yet.
-- flow_modify_client: Changing an existing client's own details (name, email, phone) in Morning. Resolves which real client is meant, relaying candidates when the match is not exact, and updates it with approval. Not for creating a client and not for documents.
-- flow_issue_invoice_for_payment_due: Issuing a new tax invoice (305) for a client, for money that is still owed ("תפיק חשבונית ללקוח X"). Never for money that has already arrived. Money that has already arrived belongs to flow_issue_invoice_receipt_combo instead.
-- flow_issue_invoice_receipt_combo: Issuing a combined tax invoice/receipt (320) for a payment that has already been received and that no earlier document covers - the most common way to record incoming money, whether reported verbally or shown in a bank slip or payment screenshot. Money that an existing document already covers belongs to flow_issue_payment_received_with_reference_doc.
-- flow_issue_transaction_account: Issuing a transaction account (חשבון עסקה, 300) for a client - only when the user's own wording names this document type. Ordinary requests for an invoice belong to flow_issue_invoice_for_payment_due.
-- flow_issue_receipt_without_invoice: Recording a standalone receipt (400) with no invoice behind it, for example a refundable deposit. A receipt against an existing invoice belongs to flow_issue_payment_received_with_reference_doc.
-- flow_payment_received_by_bank_slip_image: A bank slip or payment screenshot arrived. Reads it, records the payer, and gets the payment recorded in Morning the right way: a new combo document when nothing covers it, or a document against an existing one.
-- flow_issue_payment_received_with_reference_doc: Recording a payment received against an existing Morning document: a receipt (400) for an existing invoice (305), or a combo document (320) closing an existing transaction account (300) ("סמן כשולם"). Money that no document covers belongs to flow_issue_invoice_receipt_combo.
-- flow_cancel_document_with_credit_note: Cancelling an existing Morning document with a credit note (330) ("בטל את החשבונית"). Finds the one real document and shows its real data in the approval before writing.
-- flow_cancel_transaction_account: Cancelling an open transaction account (300) directly. No document of any kind is created. Cancelling any other kind of document belongs to flow_cancel_document_with_credit_note.
-- flow_fee_agreement_provided_by_user: The user reports or forwards a fee agreement (הסכם) - as text or as an image - made with a client. An agreement must never belong to a client Morning does not manage, so this makes sure the client exists first. Recording the agreement in the ledger happens automatically after the turn.
-- flow_deposit_provided_by_user: The user reports or forwards a bank deposit (text or a bank slip image). Makes sure the payer exists as a client in Morning first. Recording the deposit in the ledger happens automatically after the turn.
-- flow_user_question: Answering a question about the user's clients, past agreements, deposits, or amounts owed and paid. Decides where the answer lives (the ledger first, Morning when it may hold it), and never answers that nothing exists before checking Morning where Morning could hold it.
-- flow_invoicing_query: Reading from the invoicing system for a client the user names: resolves the client's exact stored name first, then reads the documents or status. Other flows load it whenever they need to look up documents in Morning.
-- flow_generate_fee_agreement_docx: Generating a fee agreement document (הסכם שכר טרחה) as a .docx file to send to a prospective client. The client does not exist yet, so no client lookup is involved. Recording an agreement the user reports belongs to flow_fee_agreement_provided_by_user.
-- flow_create_reminder: Creating a new reminder, one-time or recurring ("תזכיר לי בעוד שעתיים", "תזכיר לי כל יום ראשון"). Confirms the text and the schedule, and creates the reminder only with approval. Use this flow, not cap_reminders_write directly, whenever a reminder is added.
-- flow_modify_reminder: Changing or cancelling an existing reminder ("תזיז את התזכורת", "תבטל את התזכורת"). Looks up the user's real reminders to identify the exact one before modifying or deleting it, with approval. Adding a brand-new reminder belongs to flow_create_reminder. Use the reminder flows, not cap_reminders_write directly.
-
-## Capabilities
-
-- cap_invoicing_write: Creating a Morning DOCUMENT for a client - an invoice, a receipt, a transaction account, a credit note, or a combo tax-invoice/receipt - or cancelling a transaction account. Writes only: finding the client or the existing document, and getting approval, are the calling flow's job, so load it only through that flow (flow_issue_*, flow_cancel_*, flow_payment_received_*), never directly. Not for creating or updating a client record - see cap_client_write.
-- cap_invoicing_read: Reading from the invoicing system (Morning): a specific document's own status and details, recent documents, a financial summary, a download link. It is given an already-resolved client name or document id. Not for a client's own details - see cap_client_read - and not the first choice for a general owed/paid amount question - see cap_ledger_query.
-- cap_client_write: Creating a new client record, or updating an existing client's own details (name/email/phone) in Morning. Writes only: load it only through flow_add_client or flow_modify_client, never directly. Never for producing any document - see cap_invoicing_write.
-- cap_client_read: Looking up an existing client's own details (name/email/phone/id), listing clients, and resolving a client name to its exact stored Morning spelling. Never for a client's financial history - see cap_ledger_query and cap_invoicing_read.
-- cap_ledger_query: Answering questions about PAST fee agreements or bank deposits already recorded, including how much a client/payer owes or has paid - whether or not a formal Morning invoice exists. The ledger is a fast cache over Morning and covers agreement-level amounts Morning cannot see at all.
-- cap_reminders_write: Creating, changing, or cancelling a reminder (one-time or recurring) for the user. Writes only: load it only through flow_create_reminder or flow_modify_reminder, never directly.
-- cap_reminders_read: Looking up the user's own existing reminders - what's scheduled, for when.
-- cap_media_analysis: Reading/extracting the content of an image or document the user sent. Used inside a larger flow, or on its own to work out what a piece of media is for.
-- cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
-- cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
-
-# Flow: Modify reminder
-
-Goal: change or cancel an existing reminder, on the exact one the user means.
-
-Capabilities: `cap_reminders_read`, `cap_reminders_write`, `cap_approval_with_buttons`.
-
-Follow these steps in order, to the letter.
-
-1. Load `cap_reminders_read` and list the user's active reminders. Work out which one the user's wording points to (its text, or its time). Never guess a reminder.
-   - Exactly one plausible match: use `cap_send_to_user` to confirm it with the user if there is any doubt.
-   - Several: use `cap_send_to_user` to show the candidates and ask which one.
-   - None: use `cap_send_to_user` to say so. The flow is complete.
-2. If the reminder repeats, find out whether the user means the whole series or a single occurrence; ask with `cap_send_to_user` if it is not clear.
-3. Load `cap_reminders_write`. Gather what is still missing. Anything you don't have from the user or the source, use `cap_send_to_user` to ask for, one question at a time; never guess or invent a value.
-4. Changing or cancelling a reminder MUST be approved by the user first. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Act only on a clear yes. On a no, do nothing, and use `cap_send_to_user` to ask what to change.
-5. On a yes, make the change or cancel. If the action fails, use `cap_send_to_user` to tell the user plainly what happened. Retry once only if the reason is fixable; otherwise stop.
-6. If the user drops the request or changes the subject mid-way, do nothing further and treat the flow as complete.
-7. End. Use `cap_send_to_user` to report the outcome. Then unload `cap_reminders_read`, `cap_reminders_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
-
-
-# Capability: Reminders — Write (godfather/admin only)
-
-**Use this capability from within a flow (flow_create_reminder / flow_modify_reminder), never on its own for a user request.** The flow decides when it is loaded and when approval is required; this capability holds the details of the write itself.
-
-**Creating, modifying or deleting a reminder is a state-changing action, which usually requires the user's explicit approval first.**
-
-Attaches `create_reminder`, `modify_reminder` and `delete_reminder`. Each executes
-immediately and needs the user's approval first. ONLY call `create_reminder` when the
-user's own message explicitly asks to be reminded of something at a future time
-(one-time, or a recurring cadence like "כל יום/שבוע"). ONLY call `modify_reminder` or
-`delete_reminder` when the user explicitly asks to change or cancel an EXISTING
-reminder, with that reminder's real `reminder_id` (never a guess). Never call any of
-these to interpret a confirmation reply ("כן"/"לא") or an ambiguous message.
-
-**Approval data points.** Whoever raises the approval must show the user:
-- create: the reminder's text and its schedule (when, or the recurrence),
-  human-readable.
-- modify: WHICH reminder (its text), the scope (whole series or a single occurrence),
-  and exactly what changes (new text / new time / new recurrence).
-- delete: WHICH reminder (its text) and the scope (whole series or a single
-  occurrence).
-
-`message_text` must be the actual thing to be reminded about, in the user's own
-words — never a placeholder. Any due-date/time field must be a future ISO-8601
-local (Asia/Jerusalem) datetime.
-
-For `create_reminder`: `schedule_type=one_time` needs `one_time_due_at` (and
-`recurrence` null); `schedule_type=recurring` needs a full `recurrence` object
-(interval/freq/weekdays or month_day/month_nth_weekday/first_occurrence_at/
-end_condition) and `one_time_due_at` null — gather everything needed through
-conversation before calling, never guess a missing recurrence field.
-
-For modify/delete, `scope` is `whole_series` for a one-time reminder or a
-whole-series change, and `single_occurrence` (with an `occurrence_date_hint`) to
-change/cancel just one upcoming occurrence of a recurring reminder, leaving the
-rest of the series untouched.
-
-## On a creation/modification failure
-
-A call into this capability can genuinely fail (e.g. the due date/time you
-computed turns out not to be in the future). When that happens you get back
-the REAL reason, not a generic "it failed" — read it. It will point you back
-at the current date/time already stated in THIS call's own instructions
-("THE CURRENT DATE AND TIME IS..."): recompute the due date/recurrence
-relative to that actual value (never a guess, never a date from training
-data) and retry the SAME call once. Only if that second attempt also fails,
-tell the user plainly that the action didn't go through — never silently
-give up after one failure, and never retry more than once without a new,
-different reason to believe it will work.
-
-
-# Capability: Reminders — Read (godfather/admin only)
-
-Attaches `list_reminders`: the user's existing active reminders (what is scheduled, and
-when), each with its text, its human-readable schedule and its `reminder_id`. It is
-read-only and needs no confirmation.
-
-Answer directly from what it returns, in Hebrew, concisely. Never invent a reminder
-that is not in the returned list. If the user's own message names or implies a
-specific day or timeframe ("מחר", "היום", "השבוע", a specific date), filter your
-answer to reminders actually due within it; list the full set only when the user did
-not ask about a specific timeframe.
-
-
-# Capability: Approval with buttons
-
-`approval_with_yes_no_buttons(text)` ends the turn showing the user WhatsApp yes/no
-buttons alongside `text`. It is plain and stateless: it does not know what the write
-is, and there is no pending-approval state to track. On the user's next turn, read
-their reply (a typed "כן"/"לא" or a button tap; both arrive as an ordinary turn) from
-the conversation, and act accordingly. Your own `cap_record_planning_status` note is
-what carries "I am waiting for approval of X" across the gap.
-
-The flow that needs the approval decides that an approval is required. The write
-capability you are about to use defines which details the approval must state.
-
-- Start the text with `📋 לאישור:` (or, for a document-creation approval,
-  `📋 לאישור — <what it is>:`, e.g. `📋 לאישור — לקוח חדש:`) on its own line,
-  then the details as REAL data: given by the user, or fetched this turn.
-  Never from memory or a guess. A missing detail is a question to ask BEFORE
-  requesting approval, never "not stated".
-- End the text with EXACTLY this closed question, verbatim, every single time:
-  `לאישור — כן/לא?`. Never paraphrase it (not `אישור — כן/לא?`, not `האם לאשר...`,
-  not any other wording) and never let a competing question follow it — this exact
-  string is a fixed contract other code relies on to recognize a real approval gate.
-- Ask once per action. Act only on a clear affirmative to THAT specific action,
-  exactly once. On "לא", do not act: acknowledge and ask what to change.
-- Reply in Hebrew only.
-
-
-## Loaded flows
-
-flow_modify_reminder
-
-## Loaded capabilities
-
-cap_reminders_write, cap_reminders_read, cap_approval_with_buttons
-
----
-
-THE CURRENT DATE AND TIME IS 2026-09-30 14:46 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
-YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
-```
-
-</details>
-
-</details>
-
-</details>
-
-<details>
-<summary>79. [2026-09-30 14:47:00] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- response.id: `resp_0a39f3eacca191dc006abcf6b2d5f887d19ff5bdbe6ed712a7`
-- status: `completed`
-- usage: `{"input_tokens": 10482, "input_tokens_details": {"cache_write_tokens": 62, "cached_tokens": 10417}, "output_tokens": 15, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 10497}`
-- function_call: `list_reminders` call_id=`call_dV9b8ALXyzcxJ7JfUTr5kGep`
+- usage: `{"input_tokens": 10509, "input_tokens_details": {"cache_write_tokens": 76, "cached_tokens": 10430}, "output_tokens": 15, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 10524}`
+- function_call: `list_reminders` call_id=`call_PH9JRvR8CoWnXOVQmiTIVmkX`
 ```json
 {}
 ```
@@ -11981,10 +11114,10 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0a39f3eacca191dc006abcf6b2d5f887d19ff5bdbe6ed712a7`
+- response.id: `resp_0dffc0679bef00f1006abcf8e48e0887d1ba80dafc29113456`
 - status: `completed`
-- usage: `{"input_tokens": 10482, "input_tokens_details": {"cache_write_tokens": 62, "cached_tokens": 10417}, "output_tokens": 15, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 10497}`
-- function_call: `list_reminders` call_id=`call_dV9b8ALXyzcxJ7JfUTr5kGep`
+- usage: `{"input_tokens": 10509, "input_tokens_details": {"cache_write_tokens": 76, "cached_tokens": 10430}, "output_tokens": 15, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 10524}`
+- function_call: `list_reminders` call_id=`call_PH9JRvR8CoWnXOVQmiTIVmkX`
 ```json
 {}
 ```
@@ -11994,32 +11127,32 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>80. [2026-09-30 14:47:00] APP-INTERNAL: use_capability dispatch outcome</summary>
+<summary>69. [2026-09-30 14:56:21] APP-INTERNAL: use_capability dispatch outcome</summary>
 
 ```text
-[CAPABILITY-AUDIT] capability='cap_reminders_read' outcome='success' note='list_reminders({})' detail='{"reminders": [{"reminder_id": "1bb07206-9031-46c2-baaa-897559410f9a", "message_text": "לשתות מים", "schedule": "יומי, החל מ-01/10/2026 09:00"}]}'
+[CAPABILITY-AUDIT] capability='cap_reminders_read' outcome='success' note='list_reminders({})' detail='{"reminders": [{"reminder_id": "4efa168c-5ca8-4b2b-9109-4bae04e02c34", "message_text": "לשתות מים", "schedule": "יומי, החל מ-01/10/2026 09:00"}]}'
 ```
 
 </details>
 
 <details>
-<summary>81. [2026-09-30 14:47:00] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>70. [2026-09-30 14:56:21] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- flows: flow_modify_reminder
+- flows: flow_create_reminder, flow_modify_reminder
 
 - capabilities: cap_reminders_write, cap_reminders_read, cap_approval_with_buttons
 
 **input:**
 
-- app's reply to `list_reminders` (call_id=`call_dV9b8ALXyzcxJ7JfUTr5kGep`):
+- app's reply to `list_reminders` (call_id=`call_PH9JRvR8CoWnXOVQmiTIVmkX`):
 ```text
 {
   "reminders": [
     {
-      "reminder_id": "1bb07206-9031-46c2-baaa-897559410f9a",
+      "reminder_id": "4efa168c-5ca8-4b2b-9109-4bae04e02c34",
       "message_text": "לשתות מים",
       "schedule": "יומי, החל מ-01/10/2026 09:00"
     }
@@ -12027,33 +11160,33 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 }
 ```
 
-- tools (14): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'list_reminders', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
+- tools (14): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons', 'list_reminders']
 
-- previous_response_id: `'resp_0a39f3eacca191dc006abcf6b2d5f887d19ff5bdbe6ed712a7'`
+- previous_response_id: `'resp_0dffc0679bef00f1006abcf8e48e0887d1ba80dafc29113456'`
 
 - max_output_tokens: `20000`
 
 - model: `'gpt-5.6-luna'`
 
-- instructions: backbone (flows=flow_modify_reminder, capabilities=cap_reminders_write, cap_reminders_read, cap_approval_with_buttons)
+- instructions: backbone (flows=flow_create_reminder, flow_modify_reminder, capabilities=cap_reminders_write, cap_reminders_read, cap_approval_with_buttons)
 
 </details>
 
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- flows: flow_modify_reminder
+- flows: flow_create_reminder, flow_modify_reminder
 
 - capabilities: cap_reminders_write, cap_reminders_read, cap_approval_with_buttons
 
 **input:**
 
-- app's reply to `list_reminders` (call_id=`call_dV9b8ALXyzcxJ7JfUTr5kGep`):
+- app's reply to `list_reminders` (call_id=`call_PH9JRvR8CoWnXOVQmiTIVmkX`):
 ```text
 {
   "reminders": [
     {
-      "reminder_id": "1bb07206-9031-46c2-baaa-897559410f9a",
+      "reminder_id": "4efa168c-5ca8-4b2b-9109-4bae04e02c34",
       "message_text": "לשתות מים",
       "schedule": "יומי, החל מ-01/10/2026 09:00"
     }
@@ -12061,16 +11194,16 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 }
 ```
 
-- tools (14): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'list_reminders', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
+- tools (14): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons', 'list_reminders']
 
-- previous_response_id: `'resp_0a39f3eacca191dc006abcf6b2d5f887d19ff5bdbe6ed712a7'`
+- previous_response_id: `'resp_0dffc0679bef00f1006abcf8e48e0887d1ba80dafc29113456'`
 
 - max_output_tokens: `20000`
 
 - model: `'gpt-5.6-luna'`
 
 <details>
-<summary>↳↳ instructions (26052 chars)</summary>
+<summary>↳↳ instructions (27394 chars)</summary>
 
 ```text
 # DeniDin — Backbone
@@ -12312,6 +11445,22 @@ Also note what you are waiting for and what you will do with each possible answe
 - cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
 - cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
 
+# Flow: Create reminder
+
+Goal: create a new reminder (one-time or recurring) for the user, exactly as they asked.
+
+Capabilities: `cap_reminders_write`, `cap_approval_with_buttons`.
+
+Follow these steps in order, to the letter.
+
+1. Load `cap_reminders_write`.
+2. Work out what to remind about and when (a one-time moment, or a recurring cadence), resolving relative wording against the current date and time. Anything you don't have from the user, ask for with `cap_send_to_user`, one question at a time; never guess or invent a value.
+3. Approval: creating a reminder MUST be approved by the user BEFORE it is created. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Do NOT call `create_reminder` in this step or before a clear yes. On a no, do nothing, and ask with `cap_send_to_user` what to change.
+4. Only after a clear yes: call `create_reminder`. If it fails, tell the user plainly what happened; retry once only if the reason is fixable, otherwise stop.
+5. If the user drops the request or changes the subject at any point, do nothing further; the flow is complete.
+6. End: report the outcome with `cap_send_to_user`, then unload `cap_reminders_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
+
+
 # Flow: Modify reminder
 
 Goal: change or cancel an existing reminder, on the exact one the user means.
@@ -12424,7 +11573,7 @@ capability you are about to use defines which details the approval must state.
 
 ## Loaded flows
 
-flow_modify_reminder
+flow_create_reminder, flow_modify_reminder
 
 ## Loaded capabilities
 
@@ -12432,7 +11581,7 @@ cap_reminders_write, cap_reminders_read, cap_approval_with_buttons
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 14:46 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-09-30 14:56 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -12443,21 +11592,21 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>82. [2026-09-30 14:47:03] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>71. [2026-09-30 14:56:24] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0a39f3eacca191dc006abcf6b4869487d18664880d5b87b94d`
+- response.id: `resp_0dffc0679bef00f1006abcf8e5cd1487d184c77e206b7ac880`
 - status: `completed`
-- usage: `{"input_tokens": 10572, "input_tokens_details": {"cache_write_tokens": 90, "cached_tokens": 10479}, "output_tokens": 184, "output_tokens_details": {"reasoning_tokens": 33}, "total_tokens": 10756}`
+- usage: `{"input_tokens": 10603, "input_tokens_details": {"cache_write_tokens": 94, "cached_tokens": 10506}, "output_tokens": 194, "output_tokens_details": {"reasoning_tokens": 40}, "total_tokens": 10797}`
 - reasoning item (content not user-visible)
-- function_call: `record_planning_status` call_id=`call_W5oOVBdBn16l0ax6legRQTOo`
+- function_call: `record_planning_status` call_id=`call_KyinORw3umq4mGhTLOyUCdle`
 ```json
 {
-  "where_i_was": "במסלול שינוי תזכורת, שלב 1 הושלם: נמצאה תזכורת יחידה בשם לשתות מים, יומית החל מ-01.10.2026 בשעה 09:00. המשתמש הבהיר שמדובר במופע יחיד של מחר.",
-  "this_turns_purpose": "לבקש אישור לדחות את המופע של 01.10.2026 בלבד לשעה 10:00.",
-  "expectation": "לאחר אישור אעדכן את המופע היחיד; הסדרה תישאר בשעה 09:00."
+  "where_i_was": "בתהליך שינוי תזכורת. זוהתה תזכורת יחידה: לשתות מים, יומית בשעה 9:00, מזהה 4efa168c-5ca8-4b2b-9109-4bae04e02c34.",
+  "this_turns_purpose": "לבקש אישור לדחות רק את המופע של 1 באוקטובר 2026 לשעה 10:00, בלי לשנות את שאר הסדרה.",
+  "expectation": "אם המשתמש יאשר, אשנה את המופע היחיד; אם יסרב, לא אבצע שינוי."
 }
 ```
 
@@ -12466,16 +11615,16 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0a39f3eacca191dc006abcf6b4869487d18664880d5b87b94d`
+- response.id: `resp_0dffc0679bef00f1006abcf8e5cd1487d184c77e206b7ac880`
 - status: `completed`
-- usage: `{"input_tokens": 10572, "input_tokens_details": {"cache_write_tokens": 90, "cached_tokens": 10479}, "output_tokens": 184, "output_tokens_details": {"reasoning_tokens": 33}, "total_tokens": 10756}`
+- usage: `{"input_tokens": 10603, "input_tokens_details": {"cache_write_tokens": 94, "cached_tokens": 10506}, "output_tokens": 194, "output_tokens_details": {"reasoning_tokens": 40}, "total_tokens": 10797}`
 - reasoning item (content not user-visible)
-- function_call: `record_planning_status` call_id=`call_W5oOVBdBn16l0ax6legRQTOo`
+- function_call: `record_planning_status` call_id=`call_KyinORw3umq4mGhTLOyUCdle`
 ```json
 {
-  "where_i_was": "במסלול שינוי תזכורת, שלב 1 הושלם: נמצאה תזכורת יחידה בשם לשתות מים, יומית החל מ-01.10.2026 בשעה 09:00. המשתמש הבהיר שמדובר במופע יחיד של מחר.",
-  "this_turns_purpose": "לבקש אישור לדחות את המופע של 01.10.2026 בלבד לשעה 10:00.",
-  "expectation": "לאחר אישור אעדכן את המופע היחיד; הסדרה תישאר בשעה 09:00."
+  "where_i_was": "בתהליך שינוי תזכורת. זוהתה תזכורת יחידה: לשתות מים, יומית בשעה 9:00, מזהה 4efa168c-5ca8-4b2b-9109-4bae04e02c34.",
+  "this_turns_purpose": "לבקש אישור לדחות רק את המופע של 1 באוקטובר 2026 לשעה 10:00, בלי לשנות את שאר הסדרה.",
+  "expectation": "אם המשתמש יאשר, אשנה את המופע היחיד; אם יסרב, לא אבצע שינוי."
 }
 ```
 
@@ -12484,58 +11633,58 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>83. [2026-09-30 14:47:03] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>72. [2026-09-30 14:56:24] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- flows: flow_modify_reminder
+- flows: flow_create_reminder, flow_modify_reminder
 
 - capabilities: cap_reminders_write, cap_reminders_read, cap_approval_with_buttons
 
 **input:**
 
-- app's reply to `record_planning_status` (call_id=`call_W5oOVBdBn16l0ax6legRQTOo`):
+- app's reply to `record_planning_status` (call_id=`call_KyinORw3umq4mGhTLOyUCdle`):
 ```text
 recorded
 ```
 
-- tools (14): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'list_reminders', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
+- tools (14): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons', 'list_reminders']
 
-- previous_response_id: `'resp_0a39f3eacca191dc006abcf6b4869487d18664880d5b87b94d'`
+- previous_response_id: `'resp_0dffc0679bef00f1006abcf8e5cd1487d184c77e206b7ac880'`
 
 - max_output_tokens: `20000`
 
 - model: `'gpt-5.6-luna'`
 
-- instructions: backbone (flows=flow_modify_reminder, capabilities=cap_reminders_write, cap_reminders_read, cap_approval_with_buttons)
+- instructions: backbone (flows=flow_create_reminder, flow_modify_reminder, capabilities=cap_reminders_write, cap_reminders_read, cap_approval_with_buttons)
 
 </details>
 
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- flows: flow_modify_reminder
+- flows: flow_create_reminder, flow_modify_reminder
 
 - capabilities: cap_reminders_write, cap_reminders_read, cap_approval_with_buttons
 
 **input:**
 
-- app's reply to `record_planning_status` (call_id=`call_W5oOVBdBn16l0ax6legRQTOo`):
+- app's reply to `record_planning_status` (call_id=`call_KyinORw3umq4mGhTLOyUCdle`):
 ```text
 recorded
 ```
 
-- tools (14): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'list_reminders', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
+- tools (14): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons', 'list_reminders']
 
-- previous_response_id: `'resp_0a39f3eacca191dc006abcf6b4869487d18664880d5b87b94d'`
+- previous_response_id: `'resp_0dffc0679bef00f1006abcf8e5cd1487d184c77e206b7ac880'`
 
 - max_output_tokens: `20000`
 
 - model: `'gpt-5.6-luna'`
 
 <details>
-<summary>↳↳ instructions (26052 chars)</summary>
+<summary>↳↳ instructions (27394 chars)</summary>
 
 ```text
 # DeniDin — Backbone
@@ -12777,6 +11926,22 @@ Also note what you are waiting for and what you will do with each possible answe
 - cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
 - cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
 
+# Flow: Create reminder
+
+Goal: create a new reminder (one-time or recurring) for the user, exactly as they asked.
+
+Capabilities: `cap_reminders_write`, `cap_approval_with_buttons`.
+
+Follow these steps in order, to the letter.
+
+1. Load `cap_reminders_write`.
+2. Work out what to remind about and when (a one-time moment, or a recurring cadence), resolving relative wording against the current date and time. Anything you don't have from the user, ask for with `cap_send_to_user`, one question at a time; never guess or invent a value.
+3. Approval: creating a reminder MUST be approved by the user BEFORE it is created. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Do NOT call `create_reminder` in this step or before a clear yes. On a no, do nothing, and ask with `cap_send_to_user` what to change.
+4. Only after a clear yes: call `create_reminder`. If it fails, tell the user plainly what happened; retry once only if the reason is fixable, otherwise stop.
+5. If the user drops the request or changes the subject at any point, do nothing further; the flow is complete.
+6. End: report the outcome with `cap_send_to_user`, then unload `cap_reminders_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
+
+
 # Flow: Modify reminder
 
 Goal: change or cancel an existing reminder, on the exact one the user means.
@@ -12889,7 +12054,7 @@ capability you are about to use defines which details the approval must state.
 
 ## Loaded flows
 
-flow_modify_reminder
+flow_create_reminder, flow_modify_reminder
 
 ## Loaded capabilities
 
@@ -12897,7 +12062,7 @@ cap_reminders_write, cap_reminders_read, cap_approval_with_buttons
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 14:46 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-09-30 14:56 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -12908,18 +12073,18 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>84. [2026-09-30 14:47:05] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>73. [2026-09-30 14:56:26] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0a39f3eacca191dc006abcf6b7b1c887d1ac8814ef936d1fb9`
+- response.id: `resp_0dffc0679bef00f1006abcf8e8e68087d189b5146304e118dd`
 - status: `completed`
-- usage: `{"input_tokens": 10771, "input_tokens_details": {"cache_write_tokens": 199, "cached_tokens": 10569}, "output_tokens": 95, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 10866}`
-- function_call: `approval_with_yes_no_buttons` call_id=`call_FB8g4VSaHAsnjoUZjaSwre2t`
+- usage: `{"input_tokens": 10812, "input_tokens_details": {"cache_write_tokens": 209, "cached_tokens": 10600}, "output_tokens": 85, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 10897}`
+- function_call: `approval_with_yes_no_buttons` call_id=`call_yDO26sDvTaG7JW3Xm7emEdmJ`
 ```json
 {
-  "text": "📋 לאישור:\nתזכורת: לשתות מים\nשינוי: דחיית המופע היחיד של 01.10.2026 משעה 09:00 לשעה 10:00\nהסדרה הקבועה תישאר ללא שינוי בשעה 09:00\nלאישור — כן/לא?"
+  "text": "📋 לאישור:\nתזכורת: לשתות מים\nשינוי: רק המופע של 1 באוקטובר 2026 יידחה מ־9:00 ל־10:00\nשאר הסדרה תישאר ללא שינוי\nלאישור — כן/לא?"
 }
 ```
 
@@ -12928,13 +12093,13 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0a39f3eacca191dc006abcf6b7b1c887d1ac8814ef936d1fb9`
+- response.id: `resp_0dffc0679bef00f1006abcf8e8e68087d189b5146304e118dd`
 - status: `completed`
-- usage: `{"input_tokens": 10771, "input_tokens_details": {"cache_write_tokens": 199, "cached_tokens": 10569}, "output_tokens": 95, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 10866}`
-- function_call: `approval_with_yes_no_buttons` call_id=`call_FB8g4VSaHAsnjoUZjaSwre2t`
+- usage: `{"input_tokens": 10812, "input_tokens_details": {"cache_write_tokens": 209, "cached_tokens": 10600}, "output_tokens": 85, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 10897}`
+- function_call: `approval_with_yes_no_buttons` call_id=`call_yDO26sDvTaG7JW3Xm7emEdmJ`
 ```json
 {
-  "text": "📋 לאישור:\nתזכורת: לשתות מים\nשינוי: דחיית המופע היחיד של 01.10.2026 משעה 09:00 לשעה 10:00\nהסדרה הקבועה תישאר ללא שינוי בשעה 09:00\nלאישור — כן/לא?"
+  "text": "📋 לאישור:\nתזכורת: לשתות מים\nשינוי: רק המופע של 1 באוקטובר 2026 יידחה מ־9:00 ל־10:00\nשאר הסדרה תישאר ללא שינוי\nלאישור — כן/לא?"
 }
 ```
 
@@ -12943,7 +12108,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>85. [2026-09-30 14:47:05] APP → USER — context=buttons</summary>
+<summary>74. [2026-09-30 14:56:26] APP → USER — context=buttons</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -12951,7 +12116,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 ```json
 {
   "chat_id": "+972501234567@c.us",
-  "message": "📋 לאישור:\nתזכורת: לשתות מים\nשינוי: דחיית המופע היחיד של 01.10.2026 משעה 09:00 לשעה 10:00\nהסדרה הקבועה תישאר ללא שינוי בשעה 09:00\nלאישור — כן/לא?"
+  "message": "📋 לאישור:\nתזכורת: לשתות מים\nשינוי: רק המופע של 1 באוקטובר 2026 יידחה מ־9:00 ל־10:00\nשאר הסדרה תישאר ללא שינוי\nלאישור — כן/לא?"
 }
 ```
 
@@ -12963,7 +12128,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 ```json
 {
   "chat_id": "+972501234567@c.us",
-  "message": "📋 לאישור:\nתזכורת: לשתות מים\nשינוי: דחיית המופע היחיד של 01.10.2026 משעה 09:00 לשעה 10:00\nהסדרה הקבועה תישאר ללא שינוי בשעה 09:00\nלאישור — כן/לא?"
+  "message": "📋 לאישור:\nתזכורת: לשתות מים\nשינוי: רק המופע של 1 באוקטובר 2026 יידחה מ־9:00 ל־10:00\nשאר הסדרה תישאר ללא שינוי\nלאישור — כן/לא?"
 }
 ```
 
@@ -12972,7 +12137,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>86. [2026-09-30 14:47:05] APP → MODEL — context=recognize_ledger_event</summary>
+<summary>75. [2026-09-30 14:56:26] APP → MODEL — context=recognize_ledger_event</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -12980,7 +12145,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 **input:**
 
 ```json
-{"role": "user", "content": "THE CONVERSATION WINDOW (the last 1h, oldest first) - '<message_id> [<role>] <content>':\n2e9c6423-f037-497b-8e59-df0c3cea7598 [godfather] תזכיר לי כל יום בשעה 9:00 לשתות מים\n0749149c-0dfd-4ce6-8033-e4b1e8f3fa65 [assistant] מטפל ביצירת התזכורת היומית.\n4a53e9d5-bf26-4640-9e2d-8669de1ff23a [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: הבקשה היא ליצור תזכורת חדשה שחוזרת מדי יום.\nTHIS TURN'S PURPOSE: להפעיל את מסלול יצירת התזכורת, לאשר את הנוסח והשעה, ואז ליצור אותה רק לאחר אישור.\nEXPECTATION: אטעין את המסלול והיכולות הנדרשות, אציג סיכום לאישור, ואמתין לתשובת המשתמש לפני הכתיבה.\n22aafb77-617e-43c5-b4cb-61dc34486423 [assistant] בודק את פרטי התזכורת ומכין אותה לאישור.\n2fd70e88-42fb-45ba-ae05-4bb25fda01e4 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: במסלול יצירת תזכורת, לאחר קבלת נוסח ותדירות: לשתות מים מדי יום בשעה 09:00. השעה הנוכחית היא 30.09.2026 בשעה 14:45, ולכן המופע הראשון יהיה 01.10.2026 בשעה 09:00.\nTHIS TURN'S PURPOSE: לקבל אישור מפורש לפני יצירת התזכורת.\nEXPECTATION: אטען את יכולת האישור ואציג סיכום מלא עם אפשרות לאישור או דחייה.\ndd5635ee-1868-47da-9132-34e44f4460ee [assistant] התזכורת מוכנה לאישור לפני יצירתה.\naebffcf6-d2b8-4492-b3a6-a26ca36f3586 [assistant] 📋 לאישור:\nתוכן: לשתות מים\nתדירות: בכל יום בשעה 09:00\nהמופע הראשון: 01.10.2026 בשעה 09:00\nלאישור — כן/לא?\n00c84626-43d8-4baf-9ffd-6114c647208b [godfather] כן\ndf4a66b9-5285-4130-bbad-f09cf4375d43 [assistant] יוצר עכשיו את התזכורת היומית.\n49fb0dcf-cdb6-4190-a811-aacd03a3659b [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש אישר את יצירת התזכורת היומית לשתות מים בשעה 09:00. האישור התקבל לאחר הצגת המופע הראשון ב-01.10.2026 בשעה 09:00.\nTHIS TURN'S PURPOSE: ליצור את התזכורת המאושרת במערכת.\nEXPECTATION: אקרא לכלי יצירת התזכורת עם כלל יומי מלא; לאחר מכן אדווח על הצלחה או כשלון, ואסיים את המסלול.\n59548203-c82a-4042-a9d3-aa83c605f09d [assistant] התזכורת נוצרה בהצלחה.\n6d38425d-9d4c-40c3-b311-3e5a8b36a991 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: התזכורת נוצרה בהצלחה: לשתות מים, בכל יום בשעה 09:00, החל מ-01.10.2026.\nTHIS TURN'S PURPOSE: לדווח למשתמש על השלמת יצירת התזכורת.\nEXPECTATION: הפעולה הושלמה ואין צורך בצעדים נוספים.\nf90646e2-0801-49d4-ae3e-27f14e03015e [assistant] מסיים את הטיפול בבקשה.\n1789bc96-788f-457a-a117-45ebd4629d80 [assistant] התזכורת נוצרה בהצלחה ✅\n\nלשתות מים — בכל יום בשעה 09:00.\nהתזכורת הראשונה: 01.10.2026 בשעה 09:00.\n63b652bf-2b7c-4b38-a59b-d96763384210 [godfather] תדחה רק את התזכורת של מחר לשעה 10:00, לא את כל הסדרה\nc90f9a2a-cac5-4454-b547-4597bf08a69d [assistant] בודק את התזכורת המדויקת של מחר כדי לדחות רק את המופע הזה.\n37416682-6567-43d7-9ffe-ed9b33f53ee5 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש ביקש לדחות רק את המופע של מחר בשעה 10:00, בלי לשנות את הסדרה.\nTHIS TURN'S PURPOSE: להפעיל את מסלול שינוי תזכורת, למצוא את התזכורת המדויקת ולאשר את דחיית המופע היחיד לפני שינוי.\nEXPECTATION: אטען את מסלול שינוי התזכורת ואת יכולות הקריאה והכתיבה הנדרשות, אאתר את התזכורת, ואז אבקש אישור ממוקד.\n8f6b45d7-351f-4673-aa19-d11224bf0fbf [assistant] מאתר את התזכורת ואת המופע של מחר.\n66ea17c7-8ffd-4f63-a123-6fe5bb0c4b8a [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: במסלול שינוי תזכורת, שלב 1 הושלם: נמצאה תזכורת יחידה בשם לשתות מים, יומית החל מ-01.10.2026 בשעה 09:00. המשתמש הבהיר שמדובר במופע יחיד של מחר.\nTHIS TURN'S PURPOSE: לבקש אישור לדחות את המופע של 01.10.2026 בלבד לשעה 10:00.\nEXPECTATION: לאחר אישור אעדכן את המופע היחיד; הסדרה תישאר בשעה 09:00.\n7304b406-232b-4b71-8ffd-876df0ad50c9 [assistant] 📋 לאישור:\nתזכורת: לשתות מים\nשינוי: דחיית המופע היחיד של 01.10.2026 משעה 09:00 לשעה 10:00\nהסדרה הקבועה תישאר ללא שינוי בשעה 09:00\nלאישור — כן/לא?\n\nTHE REPLY JUST SENT TO THE OPERATOR THIS ROUND:\n📋 לאישור:\nתזכורת: לשתות מים\nשינוי: דחיית המופע היחיד של 01.10.2026 משעה 09:00 לשעה 10:00\nהסדרה הקבועה תישאר ללא שינוי בשעה 09:00\nלאישור — כן/לא?\n\nNO Morning MCP tools were called this turn.\n\nFollow the recognition prompt above: query the client's ledger history first when the round concerns a client, then call report_ledger_recognition exactly once with the verdict for THIS round."}
+{"role": "user", "content": "THE CONVERSATION WINDOW (the last 1h, oldest first) - '<message_id> [<role>] <content>':\n9e260e0b-2bf1-49b2-a2d5-59d957144fa6 [godfather] תזכיר לי כל יום בשעה 9:00 לשתות מים\n811b1d9c-3b14-44f3-b967-14e5c22f273b [assistant] מגדיר תזכורת יומית לשתיית מים בשעה 9:00.\ne84d4695-c5fa-4ea0-afa2-12407cb28af8 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש ביקש ליצור תזכורת חוזרת יומית.\nTHIS TURN'S PURPOSE: לטעון את תהליך יצירת התזכורת, לאשר את הנוסח והשעה, ואז ליצור אותה לאחר אישור.\nEXPECTATION: אציג אישור ממוקד עם תזכורת יומית בשעה 9:00 לשתות מים; לאחר אישור אצור אותה.\ne237d526-97c4-4745-b340-ee7b090e6f44 [assistant] בודק את פרטי התזכורת לפני בקשת האישור.\n5424134d-060b-453b-a1c5-7aff83207052 [assistant] הפרטים ברורים; מציג אישור לפני היצירה.\nf6918dc8-e859-47e0-97e1-e1e4473d15a9 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך יצירת תזכורת, לאחר טעינת יכולת הכתיבה ויכולת האישור.\nTHIS TURN'S PURPOSE: לבקש אישור מפורש ליצירת התזכורת.\nEXPECTATION: ממתין לתשובת כן או לא. אם כן, אצור תזכורת יומית בשעה 09:00 החל מהמועד הקרוב; אם לא, לא אבצע פעולה.\n39ed2192-293d-4400-b4a1-c99bc9817cb9 [assistant] נדרשת רק הסכמה קצרה לפני יצירת התזכורת.\nef0ff4ff-6109-4b1d-9076-e9e0115bb85e [assistant] 📋 לאישור:\nתזכורת: לשתות מים\nתדירות: כל יום בשעה 9:00, החל מ־1 באוקטובר 2026\n\nלאישור — כן/לא?\n91771ab8-081d-46eb-ae94-165a4b87667d [godfather] כן\n191f0fc6-4f7e-405d-8dad-170f36ad4474 [assistant] יוצר עכשיו את התזכורת היומית.\n9a940ddb-ce52-4682-90e9-72825ad578c5 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך יצירת תזכורת, לאחר שהמשתמש אישר יצירה של תזכורת יומית לשתיית מים בשעה 9:00.\nTHIS TURN'S PURPOSE: ליצור את התזכורת המאושרת.\nEXPECTATION: אנסה ליצור תזכורת יומית החל מ-1 באוקטובר 2026; לאחר מכן אדווח על התוצאה.\n28d522b0-5417-4488-a9b4-769940938c68 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: התזכורת נוצרה בהצלחה במערכת.\nTHIS TURN'S PURPOSE: לדווח למשתמש על יצירת התזכורת.\nEXPECTATION: המשתמש יקבל אישור שהתזכורת היומית לשתיית מים נקבעה לשעה 9:00.\n32cb6836-b32b-4552-98bb-79a225c91a37 [assistant] התזכורת נוצרה בהצלחה: לשתות מים, כל יום בשעה 9:00, החל מ־1 באוקטובר 2026.\nfddf3bda-4401-4a0f-b558-e7f119ef8b91 [godfather] תדחה רק את התזכורת של מחר לשעה 10:00, לא את כל הסדרה\n2bec7a59-6054-42e7-80a4-2c09f74e2146 [assistant] מאתר את התזכורת המדויקת כדי לדחות רק את המופע של מחר.\nadc6514f-ecc3-428d-aecb-f3b15ae6c075 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך שינוי תזכורת. זוהתה תזכורת יחידה: לשתות מים, יומית בשעה 9:00, מזהה 4efa168c-5ca8-4b2b-9109-4bae04e02c34.\nTHIS TURN'S PURPOSE: לבקש אישור לדחות רק את המופע של 1 באוקטובר 2026 לשעה 10:00, בלי לשנות את שאר הסדרה.\nEXPECTATION: אם המשתמש יאשר, אשנה את המופע היחיד; אם יסרב, לא אבצע שינוי.\nf37c4443-73b7-4621-9723-65fa081e31be [assistant] 📋 לאישור:\nתזכורת: לשתות מים\nשינוי: רק המופע של 1 באוקטובר 2026 יידחה מ־9:00 ל־10:00\nשאר הסדרה תישאר ללא שינוי\nלאישור — כן/לא?\n\nTHE REPLY JUST SENT TO THE OPERATOR THIS ROUND:\n📋 לאישור:\nתזכורת: לשתות מים\nשינוי: רק המופע של 1 באוקטובר 2026 יידחה מ־9:00 ל־10:00\nשאר הסדרה תישאר ללא שינוי\nלאישור — כן/לא?\n\nNO Morning MCP tools were called this turn.\n\nFollow the recognition prompt above: query the client's ledger history first when the round concerns a client, then call report_ledger_recognition exactly once with the verdict for THIS round."}
 ```
 
 - tools (2): ['report_ledger_recognition', 'query_ledger_events']
@@ -12999,7 +12164,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 **input:**
 
 ```json
-{"role": "user", "content": "THE CONVERSATION WINDOW (the last 1h, oldest first) - '<message_id> [<role>] <content>':\n2e9c6423-f037-497b-8e59-df0c3cea7598 [godfather] תזכיר לי כל יום בשעה 9:00 לשתות מים\n0749149c-0dfd-4ce6-8033-e4b1e8f3fa65 [assistant] מטפל ביצירת התזכורת היומית.\n4a53e9d5-bf26-4640-9e2d-8669de1ff23a [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: הבקשה היא ליצור תזכורת חדשה שחוזרת מדי יום.\nTHIS TURN'S PURPOSE: להפעיל את מסלול יצירת התזכורת, לאשר את הנוסח והשעה, ואז ליצור אותה רק לאחר אישור.\nEXPECTATION: אטעין את המסלול והיכולות הנדרשות, אציג סיכום לאישור, ואמתין לתשובת המשתמש לפני הכתיבה.\n22aafb77-617e-43c5-b4cb-61dc34486423 [assistant] בודק את פרטי התזכורת ומכין אותה לאישור.\n2fd70e88-42fb-45ba-ae05-4bb25fda01e4 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: במסלול יצירת תזכורת, לאחר קבלת נוסח ותדירות: לשתות מים מדי יום בשעה 09:00. השעה הנוכחית היא 30.09.2026 בשעה 14:45, ולכן המופע הראשון יהיה 01.10.2026 בשעה 09:00.\nTHIS TURN'S PURPOSE: לקבל אישור מפורש לפני יצירת התזכורת.\nEXPECTATION: אטען את יכולת האישור ואציג סיכום מלא עם אפשרות לאישור או דחייה.\ndd5635ee-1868-47da-9132-34e44f4460ee [assistant] התזכורת מוכנה לאישור לפני יצירתה.\naebffcf6-d2b8-4492-b3a6-a26ca36f3586 [assistant] 📋 לאישור:\nתוכן: לשתות מים\nתדירות: בכל יום בשעה 09:00\nהמופע הראשון: 01.10.2026 בשעה 09:00\nלאישור — כן/לא?\n00c84626-43d8-4baf-9ffd-6114c647208b [godfather] כן\ndf4a66b9-5285-4130-bbad-f09cf4375d43 [assistant] יוצר עכשיו את התזכורת היומית.\n49fb0dcf-cdb6-4190-a811-aacd03a3659b [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש אישר את יצירת התזכורת היומית לשתות מים בשעה 09:00. האישור התקבל לאחר הצגת המופע הראשון ב-01.10.2026 בשעה 09:00.\nTHIS TURN'S PURPOSE: ליצור את התזכורת המאושרת במערכת.\nEXPECTATION: אקרא לכלי יצירת התזכורת עם כלל יומי מלא; לאחר מכן אדווח על הצלחה או כשלון, ואסיים את המסלול.\n59548203-c82a-4042-a9d3-aa83c605f09d [assistant] התזכורת נוצרה בהצלחה.\n6d38425d-9d4c-40c3-b311-3e5a8b36a991 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: התזכורת נוצרה בהצלחה: לשתות מים, בכל יום בשעה 09:00, החל מ-01.10.2026.\nTHIS TURN'S PURPOSE: לדווח למשתמש על השלמת יצירת התזכורת.\nEXPECTATION: הפעולה הושלמה ואין צורך בצעדים נוספים.\nf90646e2-0801-49d4-ae3e-27f14e03015e [assistant] מסיים את הטיפול בבקשה.\n1789bc96-788f-457a-a117-45ebd4629d80 [assistant] התזכורת נוצרה בהצלחה ✅\n\nלשתות מים — בכל יום בשעה 09:00.\nהתזכורת הראשונה: 01.10.2026 בשעה 09:00.\n63b652bf-2b7c-4b38-a59b-d96763384210 [godfather] תדחה רק את התזכורת של מחר לשעה 10:00, לא את כל הסדרה\nc90f9a2a-cac5-4454-b547-4597bf08a69d [assistant] בודק את התזכורת המדויקת של מחר כדי לדחות רק את המופע הזה.\n37416682-6567-43d7-9ffe-ed9b33f53ee5 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש ביקש לדחות רק את המופע של מחר בשעה 10:00, בלי לשנות את הסדרה.\nTHIS TURN'S PURPOSE: להפעיל את מסלול שינוי תזכורת, למצוא את התזכורת המדויקת ולאשר את דחיית המופע היחיד לפני שינוי.\nEXPECTATION: אטען את מסלול שינוי התזכורת ואת יכולות הקריאה והכתיבה הנדרשות, אאתר את התזכורת, ואז אבקש אישור ממוקד.\n8f6b45d7-351f-4673-aa19-d11224bf0fbf [assistant] מאתר את התזכורת ואת המופע של מחר.\n66ea17c7-8ffd-4f63-a123-6fe5bb0c4b8a [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: במסלול שינוי תזכורת, שלב 1 הושלם: נמצאה תזכורת יחידה בשם לשתות מים, יומית החל מ-01.10.2026 בשעה 09:00. המשתמש הבהיר שמדובר במופע יחיד של מחר.\nTHIS TURN'S PURPOSE: לבקש אישור לדחות את המופע של 01.10.2026 בלבד לשעה 10:00.\nEXPECTATION: לאחר אישור אעדכן את המופע היחיד; הסדרה תישאר בשעה 09:00.\n7304b406-232b-4b71-8ffd-876df0ad50c9 [assistant] 📋 לאישור:\nתזכורת: לשתות מים\nשינוי: דחיית המופע היחיד של 01.10.2026 משעה 09:00 לשעה 10:00\nהסדרה הקבועה תישאר ללא שינוי בשעה 09:00\nלאישור — כן/לא?\n\nTHE REPLY JUST SENT TO THE OPERATOR THIS ROUND:\n📋 לאישור:\nתזכורת: לשתות מים\nשינוי: דחיית המופע היחיד של 01.10.2026 משעה 09:00 לשעה 10:00\nהסדרה הקבועה תישאר ללא שינוי בשעה 09:00\nלאישור — כן/לא?\n\nNO Morning MCP tools were called this turn.\n\nFollow the recognition prompt above: query the client's ledger history first when the round concerns a client, then call report_ledger_recognition exactly once with the verdict for THIS round."}
+{"role": "user", "content": "THE CONVERSATION WINDOW (the last 1h, oldest first) - '<message_id> [<role>] <content>':\n9e260e0b-2bf1-49b2-a2d5-59d957144fa6 [godfather] תזכיר לי כל יום בשעה 9:00 לשתות מים\n811b1d9c-3b14-44f3-b967-14e5c22f273b [assistant] מגדיר תזכורת יומית לשתיית מים בשעה 9:00.\ne84d4695-c5fa-4ea0-afa2-12407cb28af8 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש ביקש ליצור תזכורת חוזרת יומית.\nTHIS TURN'S PURPOSE: לטעון את תהליך יצירת התזכורת, לאשר את הנוסח והשעה, ואז ליצור אותה לאחר אישור.\nEXPECTATION: אציג אישור ממוקד עם תזכורת יומית בשעה 9:00 לשתות מים; לאחר אישור אצור אותה.\ne237d526-97c4-4745-b340-ee7b090e6f44 [assistant] בודק את פרטי התזכורת לפני בקשת האישור.\n5424134d-060b-453b-a1c5-7aff83207052 [assistant] הפרטים ברורים; מציג אישור לפני היצירה.\nf6918dc8-e859-47e0-97e1-e1e4473d15a9 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך יצירת תזכורת, לאחר טעינת יכולת הכתיבה ויכולת האישור.\nTHIS TURN'S PURPOSE: לבקש אישור מפורש ליצירת התזכורת.\nEXPECTATION: ממתין לתשובת כן או לא. אם כן, אצור תזכורת יומית בשעה 09:00 החל מהמועד הקרוב; אם לא, לא אבצע פעולה.\n39ed2192-293d-4400-b4a1-c99bc9817cb9 [assistant] נדרשת רק הסכמה קצרה לפני יצירת התזכורת.\nef0ff4ff-6109-4b1d-9076-e9e0115bb85e [assistant] 📋 לאישור:\nתזכורת: לשתות מים\nתדירות: כל יום בשעה 9:00, החל מ־1 באוקטובר 2026\n\nלאישור — כן/לא?\n91771ab8-081d-46eb-ae94-165a4b87667d [godfather] כן\n191f0fc6-4f7e-405d-8dad-170f36ad4474 [assistant] יוצר עכשיו את התזכורת היומית.\n9a940ddb-ce52-4682-90e9-72825ad578c5 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך יצירת תזכורת, לאחר שהמשתמש אישר יצירה של תזכורת יומית לשתיית מים בשעה 9:00.\nTHIS TURN'S PURPOSE: ליצור את התזכורת המאושרת.\nEXPECTATION: אנסה ליצור תזכורת יומית החל מ-1 באוקטובר 2026; לאחר מכן אדווח על התוצאה.\n28d522b0-5417-4488-a9b4-769940938c68 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: התזכורת נוצרה בהצלחה במערכת.\nTHIS TURN'S PURPOSE: לדווח למשתמש על יצירת התזכורת.\nEXPECTATION: המשתמש יקבל אישור שהתזכורת היומית לשתיית מים נקבעה לשעה 9:00.\n32cb6836-b32b-4552-98bb-79a225c91a37 [assistant] התזכורת נוצרה בהצלחה: לשתות מים, כל יום בשעה 9:00, החל מ־1 באוקטובר 2026.\nfddf3bda-4401-4a0f-b558-e7f119ef8b91 [godfather] תדחה רק את התזכורת של מחר לשעה 10:00, לא את כל הסדרה\n2bec7a59-6054-42e7-80a4-2c09f74e2146 [assistant] מאתר את התזכורת המדויקת כדי לדחות רק את המופע של מחר.\nadc6514f-ecc3-428d-aecb-f3b15ae6c075 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך שינוי תזכורת. זוהתה תזכורת יחידה: לשתות מים, יומית בשעה 9:00, מזהה 4efa168c-5ca8-4b2b-9109-4bae04e02c34.\nTHIS TURN'S PURPOSE: לבקש אישור לדחות רק את המופע של 1 באוקטובר 2026 לשעה 10:00, בלי לשנות את שאר הסדרה.\nEXPECTATION: אם המשתמש יאשר, אשנה את המופע היחיד; אם יסרב, לא אבצע שינוי.\nf37c4443-73b7-4621-9723-65fa081e31be [assistant] 📋 לאישור:\nתזכורת: לשתות מים\nשינוי: רק המופע של 1 באוקטובר 2026 יידחה מ־9:00 ל־10:00\nשאר הסדרה תישאר ללא שינוי\nלאישור — כן/לא?\n\nTHE REPLY JUST SENT TO THE OPERATOR THIS ROUND:\n📋 לאישור:\nתזכורת: לשתות מים\nשינוי: רק המופע של 1 באוקטובר 2026 יידחה מ־9:00 ל־10:00\nשאר הסדרה תישאר ללא שינוי\nלאישור — כן/לא?\n\nNO Morning MCP tools were called this turn.\n\nFollow the recognition prompt above: query the client's ledger history first when the round concerns a client, then call report_ledger_recognition exactly once with the verdict for THIS round."}
 ```
 
 - tools (2): ['report_ledger_recognition', 'query_ledger_events']
@@ -13258,20 +12423,25 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 </details>
 
 <details>
-<summary>87. [2026-09-30 14:47:07] MODEL → APP — context=recognize_ledger_event</summary>
+<summary>76. [2026-09-30 14:56:28] MODEL → APP — context=recognize_ledger_event</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_00b54ed6938ef690006abcf6b9e75887d19dc04d9bc1fd7c0c`
+- response.id: `resp_0605c510f7c89388006abcf8eab25887d1873fd83a4fcad74d`
 - status: `completed`
-- usage: `{"input_tokens": 9623, "input_tokens_details": {"cache_write_tokens": 1684, "cached_tokens": 7936}, "output_tokens": 52, "output_tokens_details": {"reasoning_tokens": 17}, "total_tokens": 9675}`
+- usage: `{"input_tokens": 9310, "input_tokens_details": {"cache_write_tokens": 1371, "cached_tokens": 7936}, "output_tokens": 78, "output_tokens_details": {"reasoning_tokens": 17}, "total_tokens": 9388}`
 - reasoning item (content not user-visible)
-- function_call: `report_ledger_recognition` call_id=`call_BX5PjuNX6vH7mZPqUdcWToeI`
+- function_call: `report_ledger_recognition` call_id=`call_698mWNPXFej0t8jHLmeFngLv`
 ```json
 {
   "verdict": "none",
-  "none_reason": "ordinary reminder conversation; no ledger event"
+  "none_reason": "ordinary reminder conversation; no ledger event",
+  "event": null,
+  "trigger_message_id": null,
+  "source_type": null,
+  "client_name_stated": null,
+  "reason": null
 }
 ```
 
@@ -13280,15 +12450,20 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_00b54ed6938ef690006abcf6b9e75887d19dc04d9bc1fd7c0c`
+- response.id: `resp_0605c510f7c89388006abcf8eab25887d1873fd83a4fcad74d`
 - status: `completed`
-- usage: `{"input_tokens": 9623, "input_tokens_details": {"cache_write_tokens": 1684, "cached_tokens": 7936}, "output_tokens": 52, "output_tokens_details": {"reasoning_tokens": 17}, "total_tokens": 9675}`
+- usage: `{"input_tokens": 9310, "input_tokens_details": {"cache_write_tokens": 1371, "cached_tokens": 7936}, "output_tokens": 78, "output_tokens_details": {"reasoning_tokens": 17}, "total_tokens": 9388}`
 - reasoning item (content not user-visible)
-- function_call: `report_ledger_recognition` call_id=`call_BX5PjuNX6vH7mZPqUdcWToeI`
+- function_call: `report_ledger_recognition` call_id=`call_698mWNPXFej0t8jHLmeFngLv`
 ```json
 {
   "verdict": "none",
-  "none_reason": "ordinary reminder conversation; no ledger event"
+  "none_reason": "ordinary reminder conversation; no ledger event",
+  "event": null,
+  "trigger_message_id": null,
+  "source_type": null,
+  "client_name_stated": null,
+  "reason": null
 }
 ```
 
@@ -13297,7 +12472,7 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 </details>
 
 <details>
-<summary>88. [2026-09-30 14:47:07] USER → APP — context=webhook</summary>
+<summary>77. [2026-09-30 14:56:28] USER → APP — context=webhook</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -13305,8 +12480,8 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 ```json
 {
   "typeWebhook": "incomingMessageReceived",
-  "idMessage": "billed_modify_single_approve_cd463500",
-  "timestamp": 1790768827,
+  "idMessage": "billed_modify_single_approve_8abd7ae6",
+  "timestamp": 1790769388,
   "senderData": {
     "chatId": "+972501234567@c.us",
     "sender": "+972501234567",
@@ -13329,8 +12504,8 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 ```json
 {
   "typeWebhook": "incomingMessageReceived",
-  "idMessage": "billed_modify_single_approve_cd463500",
-  "timestamp": 1790768827,
+  "idMessage": "billed_modify_single_approve_8abd7ae6",
+  "timestamp": 1790769388,
   "senderData": {
     "chatId": "+972501234567@c.us",
     "sender": "+972501234567",
@@ -13350,12 +12525,12 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 </details>
 
 <details>
-<summary>89. [2026-09-30 14:47:07] APP → MODEL — context=_run_resolution_loop (first round)</summary>
+<summary>78. [2026-09-30 14:56:28] APP → MODEL — context=_run_resolution_loop (first round)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- flows: flow_modify_reminder
+- flows: flow_create_reminder, flow_modify_reminder
 
 - capabilities: cap_reminders_write, cap_reminders_read, cap_approval_with_buttons
 
@@ -13365,22 +12540,25 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 {"role": "user", "content": "תזכיר לי כל יום בשעה 9:00 לשתות מים"}
 ```
 ```json
-{"role": "assistant", "content": "מטפל ביצירת התזכורת היומית."}
+{"role": "assistant", "content": "מגדיר תזכורת יומית לשתיית מים בשעה 9:00."}
 ```
 ```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: הבקשה היא ליצור תזכורת חדשה שחוזרת מדי יום.\nTHIS TURN'S PURPOSE: להפעיל את מסלול יצירת התזכורת, לאשר את הנוסח והשעה, ואז ליצור אותה רק לאחר אישור.\nEXPECTATION: אטעין את המסלול והיכולות הנדרשות, אציג סיכום לאישור, ואמתין לתשובת המשתמש לפני הכתיבה."}
+{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש ביקש ליצור תזכורת חוזרת יומית.\nTHIS TURN'S PURPOSE: לטעון את תהליך יצירת התזכורת, לאשר את הנוסח והשעה, ואז ליצור אותה לאחר אישור.\nEXPECTATION: אציג אישור ממוקד עם תזכורת יומית בשעה 9:00 לשתות מים; לאחר אישור אצור אותה."}
 ```
 ```json
-{"role": "assistant", "content": "בודק את פרטי התזכורת ומכין אותה לאישור."}
+{"role": "assistant", "content": "בודק את פרטי התזכורת לפני בקשת האישור."}
 ```
 ```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: במסלול יצירת תזכורת, לאחר קבלת נוסח ותדירות: לשתות מים מדי יום בשעה 09:00. השעה הנוכחית היא 30.09.2026 בשעה 14:45, ולכן המופע הראשון יהיה 01.10.2026 בשעה 09:00.\nTHIS TURN'S PURPOSE: לקבל אישור מפורש לפני יצירת התזכורת.\nEXPECTATION: אטען את יכולת האישור ואציג סיכום מלא עם אפשרות לאישור או דחייה."}
+{"role": "assistant", "content": "הפרטים ברורים; מציג אישור לפני היצירה."}
 ```
 ```json
-{"role": "assistant", "content": "התזכורת מוכנה לאישור לפני יצירתה."}
+{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך יצירת תזכורת, לאחר טעינת יכולת הכתיבה ויכולת האישור.\nTHIS TURN'S PURPOSE: לבקש אישור מפורש ליצירת התזכורת.\nEXPECTATION: ממתין לתשובת כן או לא. אם כן, אצור תזכורת יומית בשעה 09:00 החל מהמועד הקרוב; אם לא, לא אבצע פעולה."}
 ```
 ```json
-{"role": "assistant", "content": "📋 לאישור:\nתוכן: לשתות מים\nתדירות: בכל יום בשעה 09:00\nהמופע הראשון: 01.10.2026 בשעה 09:00\nלאישור — כן/לא?"}
+{"role": "assistant", "content": "נדרשת רק הסכמה קצרה לפני יצירת התזכורת."}
+```
+```json
+{"role": "assistant", "content": "📋 לאישור:\nתזכורת: לשתות מים\nתדירות: כל יום בשעה 9:00, החל מ־1 באוקטובר 2026\n\nלאישור — כן/לא?"}
 ```
 ```json
 {"role": "user", "content": "כן"}
@@ -13389,56 +12567,44 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 {"role": "assistant", "content": "יוצר עכשיו את התזכורת היומית."}
 ```
 ```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש אישר את יצירת התזכורת היומית לשתות מים בשעה 09:00. האישור התקבל לאחר הצגת המופע הראשון ב-01.10.2026 בשעה 09:00.\nTHIS TURN'S PURPOSE: ליצור את התזכורת המאושרת במערכת.\nEXPECTATION: אקרא לכלי יצירת התזכורת עם כלל יומי מלא; לאחר מכן אדווח על הצלחה או כשלון, ואסיים את המסלול."}
+{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך יצירת תזכורת, לאחר שהמשתמש אישר יצירה של תזכורת יומית לשתיית מים בשעה 9:00.\nTHIS TURN'S PURPOSE: ליצור את התזכורת המאושרת.\nEXPECTATION: אנסה ליצור תזכורת יומית החל מ-1 באוקטובר 2026; לאחר מכן אדווח על התוצאה."}
 ```
 ```json
-{"role": "assistant", "content": "התזכורת נוצרה בהצלחה."}
+{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: התזכורת נוצרה בהצלחה במערכת.\nTHIS TURN'S PURPOSE: לדווח למשתמש על יצירת התזכורת.\nEXPECTATION: המשתמש יקבל אישור שהתזכורת היומית לשתיית מים נקבעה לשעה 9:00."}
 ```
 ```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: התזכורת נוצרה בהצלחה: לשתות מים, בכל יום בשעה 09:00, החל מ-01.10.2026.\nTHIS TURN'S PURPOSE: לדווח למשתמש על השלמת יצירת התזכורת.\nEXPECTATION: הפעולה הושלמה ואין צורך בצעדים נוספים."}
-```
-```json
-{"role": "assistant", "content": "מסיים את הטיפול בבקשה."}
-```
-```json
-{"role": "assistant", "content": "התזכורת נוצרה בהצלחה ✅\n\nלשתות מים — בכל יום בשעה 09:00.\nהתזכורת הראשונה: 01.10.2026 בשעה 09:00."}
+{"role": "assistant", "content": "התזכורת נוצרה בהצלחה: לשתות מים, כל יום בשעה 9:00, החל מ־1 באוקטובר 2026."}
 ```
 ```json
 {"role": "user", "content": "תדחה רק את התזכורת של מחר לשעה 10:00, לא את כל הסדרה"}
 ```
 ```json
-{"role": "assistant", "content": "בודק את התזכורת המדויקת של מחר כדי לדחות רק את המופע הזה."}
+{"role": "assistant", "content": "מאתר את התזכורת המדויקת כדי לדחות רק את המופע של מחר."}
 ```
 ```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש ביקש לדחות רק את המופע של מחר בשעה 10:00, בלי לשנות את הסדרה.\nTHIS TURN'S PURPOSE: להפעיל את מסלול שינוי תזכורת, למצוא את התזכורת המדויקת ולאשר את דחיית המופע היחיד לפני שינוי.\nEXPECTATION: אטען את מסלול שינוי התזכורת ואת יכולות הקריאה והכתיבה הנדרשות, אאתר את התזכורת, ואז אבקש אישור ממוקד."}
+{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך שינוי תזכורת. זוהתה תזכורת יחידה: לשתות מים, יומית בשעה 9:00, מזהה 4efa168c-5ca8-4b2b-9109-4bae04e02c34.\nTHIS TURN'S PURPOSE: לבקש אישור לדחות רק את המופע של 1 באוקטובר 2026 לשעה 10:00, בלי לשנות את שאר הסדרה.\nEXPECTATION: אם המשתמש יאשר, אשנה את המופע היחיד; אם יסרב, לא אבצע שינוי."}
 ```
 ```json
-{"role": "assistant", "content": "מאתר את התזכורת ואת המופע של מחר."}
-```
-```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: במסלול שינוי תזכורת, שלב 1 הושלם: נמצאה תזכורת יחידה בשם לשתות מים, יומית החל מ-01.10.2026 בשעה 09:00. המשתמש הבהיר שמדובר במופע יחיד של מחר.\nTHIS TURN'S PURPOSE: לבקש אישור לדחות את המופע של 01.10.2026 בלבד לשעה 10:00.\nEXPECTATION: לאחר אישור אעדכן את המופע היחיד; הסדרה תישאר בשעה 09:00."}
-```
-```json
-{"role": "assistant", "content": "📋 לאישור:\nתזכורת: לשתות מים\nשינוי: דחיית המופע היחיד של 01.10.2026 משעה 09:00 לשעה 10:00\nהסדרה הקבועה תישאר ללא שינוי בשעה 09:00\nלאישור — כן/לא?"}
+{"role": "assistant", "content": "📋 לאישור:\nתזכורת: לשתות מים\nשינוי: רק המופע של 1 באוקטובר 2026 יידחה מ־9:00 ל־10:00\nשאר הסדרה תישאר ללא שינוי\nלאישור — כן/לא?"}
 ```
 ```json
 {"role": "user", "content": "כן"}
 ```
 
-- tools (14): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'list_reminders', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
+- tools (14): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons', 'list_reminders']
 
 - max_output_tokens: `20000`
 
 - model: `'gpt-5.6-luna'`
 
-- instructions: backbone (flows=flow_modify_reminder, capabilities=cap_reminders_write, cap_reminders_read, cap_approval_with_buttons)
+- instructions: backbone (flows=flow_create_reminder, flow_modify_reminder, capabilities=cap_reminders_write, cap_reminders_read, cap_approval_with_buttons)
 
 </details>
 
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- flows: flow_modify_reminder
+- flows: flow_create_reminder, flow_modify_reminder
 
 - capabilities: cap_reminders_write, cap_reminders_read, cap_approval_with_buttons
 
@@ -13448,22 +12614,25 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 {"role": "user", "content": "תזכיר לי כל יום בשעה 9:00 לשתות מים"}
 ```
 ```json
-{"role": "assistant", "content": "מטפל ביצירת התזכורת היומית."}
+{"role": "assistant", "content": "מגדיר תזכורת יומית לשתיית מים בשעה 9:00."}
 ```
 ```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: הבקשה היא ליצור תזכורת חדשה שחוזרת מדי יום.\nTHIS TURN'S PURPOSE: להפעיל את מסלול יצירת התזכורת, לאשר את הנוסח והשעה, ואז ליצור אותה רק לאחר אישור.\nEXPECTATION: אטעין את המסלול והיכולות הנדרשות, אציג סיכום לאישור, ואמתין לתשובת המשתמש לפני הכתיבה."}
+{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש ביקש ליצור תזכורת חוזרת יומית.\nTHIS TURN'S PURPOSE: לטעון את תהליך יצירת התזכורת, לאשר את הנוסח והשעה, ואז ליצור אותה לאחר אישור.\nEXPECTATION: אציג אישור ממוקד עם תזכורת יומית בשעה 9:00 לשתות מים; לאחר אישור אצור אותה."}
 ```
 ```json
-{"role": "assistant", "content": "בודק את פרטי התזכורת ומכין אותה לאישור."}
+{"role": "assistant", "content": "בודק את פרטי התזכורת לפני בקשת האישור."}
 ```
 ```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: במסלול יצירת תזכורת, לאחר קבלת נוסח ותדירות: לשתות מים מדי יום בשעה 09:00. השעה הנוכחית היא 30.09.2026 בשעה 14:45, ולכן המופע הראשון יהיה 01.10.2026 בשעה 09:00.\nTHIS TURN'S PURPOSE: לקבל אישור מפורש לפני יצירת התזכורת.\nEXPECTATION: אטען את יכולת האישור ואציג סיכום מלא עם אפשרות לאישור או דחייה."}
+{"role": "assistant", "content": "הפרטים ברורים; מציג אישור לפני היצירה."}
 ```
 ```json
-{"role": "assistant", "content": "התזכורת מוכנה לאישור לפני יצירתה."}
+{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך יצירת תזכורת, לאחר טעינת יכולת הכתיבה ויכולת האישור.\nTHIS TURN'S PURPOSE: לבקש אישור מפורש ליצירת התזכורת.\nEXPECTATION: ממתין לתשובת כן או לא. אם כן, אצור תזכורת יומית בשעה 09:00 החל מהמועד הקרוב; אם לא, לא אבצע פעולה."}
 ```
 ```json
-{"role": "assistant", "content": "📋 לאישור:\nתוכן: לשתות מים\nתדירות: בכל יום בשעה 09:00\nהמופע הראשון: 01.10.2026 בשעה 09:00\nלאישור — כן/לא?"}
+{"role": "assistant", "content": "נדרשת רק הסכמה קצרה לפני יצירת התזכורת."}
+```
+```json
+{"role": "assistant", "content": "📋 לאישור:\nתזכורת: לשתות מים\nתדירות: כל יום בשעה 9:00, החל מ־1 באוקטובר 2026\n\nלאישור — כן/לא?"}
 ```
 ```json
 {"role": "user", "content": "כן"}
@@ -13472,50 +12641,38 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 {"role": "assistant", "content": "יוצר עכשיו את התזכורת היומית."}
 ```
 ```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש אישר את יצירת התזכורת היומית לשתות מים בשעה 09:00. האישור התקבל לאחר הצגת המופע הראשון ב-01.10.2026 בשעה 09:00.\nTHIS TURN'S PURPOSE: ליצור את התזכורת המאושרת במערכת.\nEXPECTATION: אקרא לכלי יצירת התזכורת עם כלל יומי מלא; לאחר מכן אדווח על הצלחה או כשלון, ואסיים את המסלול."}
+{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך יצירת תזכורת, לאחר שהמשתמש אישר יצירה של תזכורת יומית לשתיית מים בשעה 9:00.\nTHIS TURN'S PURPOSE: ליצור את התזכורת המאושרת.\nEXPECTATION: אנסה ליצור תזכורת יומית החל מ-1 באוקטובר 2026; לאחר מכן אדווח על התוצאה."}
 ```
 ```json
-{"role": "assistant", "content": "התזכורת נוצרה בהצלחה."}
+{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: התזכורת נוצרה בהצלחה במערכת.\nTHIS TURN'S PURPOSE: לדווח למשתמש על יצירת התזכורת.\nEXPECTATION: המשתמש יקבל אישור שהתזכורת היומית לשתיית מים נקבעה לשעה 9:00."}
 ```
 ```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: התזכורת נוצרה בהצלחה: לשתות מים, בכל יום בשעה 09:00, החל מ-01.10.2026.\nTHIS TURN'S PURPOSE: לדווח למשתמש על השלמת יצירת התזכורת.\nEXPECTATION: הפעולה הושלמה ואין צורך בצעדים נוספים."}
-```
-```json
-{"role": "assistant", "content": "מסיים את הטיפול בבקשה."}
-```
-```json
-{"role": "assistant", "content": "התזכורת נוצרה בהצלחה ✅\n\nלשתות מים — בכל יום בשעה 09:00.\nהתזכורת הראשונה: 01.10.2026 בשעה 09:00."}
+{"role": "assistant", "content": "התזכורת נוצרה בהצלחה: לשתות מים, כל יום בשעה 9:00, החל מ־1 באוקטובר 2026."}
 ```
 ```json
 {"role": "user", "content": "תדחה רק את התזכורת של מחר לשעה 10:00, לא את כל הסדרה"}
 ```
 ```json
-{"role": "assistant", "content": "בודק את התזכורת המדויקת של מחר כדי לדחות רק את המופע הזה."}
+{"role": "assistant", "content": "מאתר את התזכורת המדויקת כדי לדחות רק את המופע של מחר."}
 ```
 ```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש ביקש לדחות רק את המופע של מחר בשעה 10:00, בלי לשנות את הסדרה.\nTHIS TURN'S PURPOSE: להפעיל את מסלול שינוי תזכורת, למצוא את התזכורת המדויקת ולאשר את דחיית המופע היחיד לפני שינוי.\nEXPECTATION: אטען את מסלול שינוי התזכורת ואת יכולות הקריאה והכתיבה הנדרשות, אאתר את התזכורת, ואז אבקש אישור ממוקד."}
+{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך שינוי תזכורת. זוהתה תזכורת יחידה: לשתות מים, יומית בשעה 9:00, מזהה 4efa168c-5ca8-4b2b-9109-4bae04e02c34.\nTHIS TURN'S PURPOSE: לבקש אישור לדחות רק את המופע של 1 באוקטובר 2026 לשעה 10:00, בלי לשנות את שאר הסדרה.\nEXPECTATION: אם המשתמש יאשר, אשנה את המופע היחיד; אם יסרב, לא אבצע שינוי."}
 ```
 ```json
-{"role": "assistant", "content": "מאתר את התזכורת ואת המופע של מחר."}
-```
-```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: במסלול שינוי תזכורת, שלב 1 הושלם: נמצאה תזכורת יחידה בשם לשתות מים, יומית החל מ-01.10.2026 בשעה 09:00. המשתמש הבהיר שמדובר במופע יחיד של מחר.\nTHIS TURN'S PURPOSE: לבקש אישור לדחות את המופע של 01.10.2026 בלבד לשעה 10:00.\nEXPECTATION: לאחר אישור אעדכן את המופע היחיד; הסדרה תישאר בשעה 09:00."}
-```
-```json
-{"role": "assistant", "content": "📋 לאישור:\nתזכורת: לשתות מים\nשינוי: דחיית המופע היחיד של 01.10.2026 משעה 09:00 לשעה 10:00\nהסדרה הקבועה תישאר ללא שינוי בשעה 09:00\nלאישור — כן/לא?"}
+{"role": "assistant", "content": "📋 לאישור:\nתזכורת: לשתות מים\nשינוי: רק המופע של 1 באוקטובר 2026 יידחה מ־9:00 ל־10:00\nשאר הסדרה תישאר ללא שינוי\nלאישור — כן/לא?"}
 ```
 ```json
 {"role": "user", "content": "כן"}
 ```
 
-- tools (14): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'list_reminders', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
+- tools (14): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons', 'list_reminders']
 
 - max_output_tokens: `20000`
 
 - model: `'gpt-5.6-luna'`
 
 <details>
-<summary>↳↳ instructions (26052 chars)</summary>
+<summary>↳↳ instructions (27394 chars)</summary>
 
 ```text
 # DeniDin — Backbone
@@ -13757,472 +12914,21 @@ Also note what you are waiting for and what you will do with each possible answe
 - cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
 - cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
 
-# Flow: Modify reminder
+# Flow: Create reminder
 
-Goal: change or cancel an existing reminder, on the exact one the user means.
+Goal: create a new reminder (one-time or recurring) for the user, exactly as they asked.
 
-Capabilities: `cap_reminders_read`, `cap_reminders_write`, `cap_approval_with_buttons`.
+Capabilities: `cap_reminders_write`, `cap_approval_with_buttons`.
 
 Follow these steps in order, to the letter.
 
-1. Load `cap_reminders_read` and list the user's active reminders. Work out which one the user's wording points to (its text, or its time). Never guess a reminder.
-   - Exactly one plausible match: use `cap_send_to_user` to confirm it with the user if there is any doubt.
-   - Several: use `cap_send_to_user` to show the candidates and ask which one.
-   - None: use `cap_send_to_user` to say so. The flow is complete.
-2. If the reminder repeats, find out whether the user means the whole series or a single occurrence; ask with `cap_send_to_user` if it is not clear.
-3. Load `cap_reminders_write`. Gather what is still missing. Anything you don't have from the user or the source, use `cap_send_to_user` to ask for, one question at a time; never guess or invent a value.
-4. Changing or cancelling a reminder MUST be approved by the user first. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Act only on a clear yes. On a no, do nothing, and use `cap_send_to_user` to ask what to change.
-5. On a yes, make the change or cancel. If the action fails, use `cap_send_to_user` to tell the user plainly what happened. Retry once only if the reason is fixable; otherwise stop.
-6. If the user drops the request or changes the subject mid-way, do nothing further and treat the flow as complete.
-7. End. Use `cap_send_to_user` to report the outcome. Then unload `cap_reminders_read`, `cap_reminders_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
+1. Load `cap_reminders_write`.
+2. Work out what to remind about and when (a one-time moment, or a recurring cadence), resolving relative wording against the current date and time. Anything you don't have from the user, ask for with `cap_send_to_user`, one question at a time; never guess or invent a value.
+3. Approval: creating a reminder MUST be approved by the user BEFORE it is created. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Do NOT call `create_reminder` in this step or before a clear yes. On a no, do nothing, and ask with `cap_send_to_user` what to change.
+4. Only after a clear yes: call `create_reminder`. If it fails, tell the user plainly what happened; retry once only if the reason is fixable, otherwise stop.
+5. If the user drops the request or changes the subject at any point, do nothing further; the flow is complete.
+6. End: report the outcome with `cap_send_to_user`, then unload `cap_reminders_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
 
-
-# Capability: Reminders — Write (godfather/admin only)
-
-**Use this capability from within a flow (flow_create_reminder / flow_modify_reminder), never on its own for a user request.** The flow decides when it is loaded and when approval is required; this capability holds the details of the write itself.
-
-**Creating, modifying or deleting a reminder is a state-changing action, which usually requires the user's explicit approval first.**
-
-Attaches `create_reminder`, `modify_reminder` and `delete_reminder`. Each executes
-immediately and needs the user's approval first. ONLY call `create_reminder` when the
-user's own message explicitly asks to be reminded of something at a future time
-(one-time, or a recurring cadence like "כל יום/שבוע"). ONLY call `modify_reminder` or
-`delete_reminder` when the user explicitly asks to change or cancel an EXISTING
-reminder, with that reminder's real `reminder_id` (never a guess). Never call any of
-these to interpret a confirmation reply ("כן"/"לא") or an ambiguous message.
-
-**Approval data points.** Whoever raises the approval must show the user:
-- create: the reminder's text and its schedule (when, or the recurrence),
-  human-readable.
-- modify: WHICH reminder (its text), the scope (whole series or a single occurrence),
-  and exactly what changes (new text / new time / new recurrence).
-- delete: WHICH reminder (its text) and the scope (whole series or a single
-  occurrence).
-
-`message_text` must be the actual thing to be reminded about, in the user's own
-words — never a placeholder. Any due-date/time field must be a future ISO-8601
-local (Asia/Jerusalem) datetime.
-
-For `create_reminder`: `schedule_type=one_time` needs `one_time_due_at` (and
-`recurrence` null); `schedule_type=recurring` needs a full `recurrence` object
-(interval/freq/weekdays or month_day/month_nth_weekday/first_occurrence_at/
-end_condition) and `one_time_due_at` null — gather everything needed through
-conversation before calling, never guess a missing recurrence field.
-
-For modify/delete, `scope` is `whole_series` for a one-time reminder or a
-whole-series change, and `single_occurrence` (with an `occurrence_date_hint`) to
-change/cancel just one upcoming occurrence of a recurring reminder, leaving the
-rest of the series untouched.
-
-## On a creation/modification failure
-
-A call into this capability can genuinely fail (e.g. the due date/time you
-computed turns out not to be in the future). When that happens you get back
-the REAL reason, not a generic "it failed" — read it. It will point you back
-at the current date/time already stated in THIS call's own instructions
-("THE CURRENT DATE AND TIME IS..."): recompute the due date/recurrence
-relative to that actual value (never a guess, never a date from training
-data) and retry the SAME call once. Only if that second attempt also fails,
-tell the user plainly that the action didn't go through — never silently
-give up after one failure, and never retry more than once without a new,
-different reason to believe it will work.
-
-
-# Capability: Reminders — Read (godfather/admin only)
-
-Attaches `list_reminders`: the user's existing active reminders (what is scheduled, and
-when), each with its text, its human-readable schedule and its `reminder_id`. It is
-read-only and needs no confirmation.
-
-Answer directly from what it returns, in Hebrew, concisely. Never invent a reminder
-that is not in the returned list. If the user's own message names or implies a
-specific day or timeframe ("מחר", "היום", "השבוע", a specific date), filter your
-answer to reminders actually due within it; list the full set only when the user did
-not ask about a specific timeframe.
-
-
-# Capability: Approval with buttons
-
-`approval_with_yes_no_buttons(text)` ends the turn showing the user WhatsApp yes/no
-buttons alongside `text`. It is plain and stateless: it does not know what the write
-is, and there is no pending-approval state to track. On the user's next turn, read
-their reply (a typed "כן"/"לא" or a button tap; both arrive as an ordinary turn) from
-the conversation, and act accordingly. Your own `cap_record_planning_status` note is
-what carries "I am waiting for approval of X" across the gap.
-
-The flow that needs the approval decides that an approval is required. The write
-capability you are about to use defines which details the approval must state.
-
-- Start the text with `📋 לאישור:` (or, for a document-creation approval,
-  `📋 לאישור — <what it is>:`, e.g. `📋 לאישור — לקוח חדש:`) on its own line,
-  then the details as REAL data: given by the user, or fetched this turn.
-  Never from memory or a guess. A missing detail is a question to ask BEFORE
-  requesting approval, never "not stated".
-- End the text with EXACTLY this closed question, verbatim, every single time:
-  `לאישור — כן/לא?`. Never paraphrase it (not `אישור — כן/לא?`, not `האם לאשר...`,
-  not any other wording) and never let a competing question follow it — this exact
-  string is a fixed contract other code relies on to recognize a real approval gate.
-- Ask once per action. Act only on a clear affirmative to THAT specific action,
-  exactly once. On "לא", do not act: acknowledge and ask what to change.
-- Reply in Hebrew only.
-
-
-## Loaded flows
-
-flow_modify_reminder
-
-## Loaded capabilities
-
-cap_reminders_write, cap_reminders_read, cap_approval_with_buttons
-
----
-
-THE CURRENT DATE AND TIME IS 2026-09-30 14:47 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
-YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
-```
-
-</details>
-
-</details>
-
-</details>
-
-<details>
-<summary>90. [2026-09-30 14:47:13] MODEL → APP — context=_run_resolution_loop (first round)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- response.id: `resp_0e9e1b7a8b0663f5006abcf6bc3aac87d1a54446933f3cf3ad`
-- status: `completed`
-- usage: `{"input_tokens": 10379, "input_tokens_details": {"cache_write_tokens": 10376, "cached_tokens": 0}, "output_tokens": 329, "output_tokens_details": {"reasoning_tokens": 154}, "total_tokens": 10708}`
-- reasoning item (content not user-visible)
-- message (role=assistant): 'מאשר את הדחייה של המופע היחיד ומאתר את מזהה התזכורת לצורך העדכון.'
-- function_call: `record_planning_status` call_id=`call_XIRLMGsFgOZpDqno2r6yMCa3`
-```json
-{
-  "where_i_was": "המשתמש אישר לדחות רק את המופע של תזכורת שתיית המים בתאריך 01.10.2026 משעה 09:00 לשעה 10:00. עדיין חסר מזהה התזכורת המדויק.",
-  "this_turns_purpose": "לאתר את התזכורת המאושרת ולאחר מכן לעדכן רק את המופע היחיד.",
-  "expectation": "אשלוף את רשימת התזכורות, אשתמש במזהה המתאים, ואדווח על התוצאה."
-}
-```
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- response.id: `resp_0e9e1b7a8b0663f5006abcf6bc3aac87d1a54446933f3cf3ad`
-- status: `completed`
-- usage: `{"input_tokens": 10379, "input_tokens_details": {"cache_write_tokens": 10376, "cached_tokens": 0}, "output_tokens": 329, "output_tokens_details": {"reasoning_tokens": 154}, "total_tokens": 10708}`
-- reasoning item (content not user-visible)
-- message (role=assistant): 'מאשר את הדחייה של המופע היחיד ומאתר את מזהה התזכורת לצורך העדכון.'
-- function_call: `record_planning_status` call_id=`call_XIRLMGsFgOZpDqno2r6yMCa3`
-```json
-{
-  "where_i_was": "המשתמש אישר לדחות רק את המופע של תזכורת שתיית המים בתאריך 01.10.2026 משעה 09:00 לשעה 10:00. עדיין חסר מזהה התזכורת המדויק.",
-  "this_turns_purpose": "לאתר את התזכורת המאושרת ולאחר מכן לעדכן רק את המופע היחיד.",
-  "expectation": "אשלוף את רשימת התזכורות, אשתמש במזהה המתאים, ואדווח על התוצאה."
-}
-```
-
-</details>
-
-</details>
-
-<details>
-<summary>91. [2026-09-30 14:47:13] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- flows: flow_modify_reminder
-
-- capabilities: cap_reminders_write, cap_reminders_read, cap_approval_with_buttons
-
-**input:**
-
-- app's reply to `record_planning_status` (call_id=`call_XIRLMGsFgOZpDqno2r6yMCa3`):
-```text
-recorded
-```
-
-- tools (14): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'list_reminders', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
-
-- previous_response_id: `'resp_0e9e1b7a8b0663f5006abcf6bc3aac87d1a54446933f3cf3ad'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-- instructions: backbone (flows=flow_modify_reminder, capabilities=cap_reminders_write, cap_reminders_read, cap_approval_with_buttons)
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- flows: flow_modify_reminder
-
-- capabilities: cap_reminders_write, cap_reminders_read, cap_approval_with_buttons
-
-**input:**
-
-- app's reply to `record_planning_status` (call_id=`call_XIRLMGsFgOZpDqno2r6yMCa3`):
-```text
-recorded
-```
-
-- tools (14): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'list_reminders', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
-
-- previous_response_id: `'resp_0e9e1b7a8b0663f5006abcf6bc3aac87d1a54446933f3cf3ad'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-<details>
-<summary>↳↳ instructions (26052 chars)</summary>
-
-```text
-# DeniDin — Backbone
-
-## How You Work
-
-You work with two kinds of building blocks, described at low resolution in the
-catalogs below: **flows** (`flow_...`) - blueprints for a recurring kind of
-request - and **capabilities** (`cap_...`) - the domains that actually do things,
-each with its own prompt and its own real tools. Flows can load other flows and
-capabilities; a flow defines *what to do and in what order*, while each
-capability holds the detail of what it itself does.
-
-Loading tools, usable in any order, any number of times:
-
-- **`load_flows(flows)` / `unload_flows(flows)`** - always an array; one item is
-  fine, and combining flows is allowed when a request spans more than one.
-- **`load_capabilities(capabilities)` / `unload_capabilities(capabilities)`** -
-  always an array. The moment a capability is loaded, its prompt AND its real
-  tools are attached, starting the very next round; call the real tool directly,
-  there is no separate "use" step. A flow's own "Capabilities:" line declares
-  every capability that flow will need - load all of them together, in one
-  `load_capabilities` call, right after loading the flow, rather than loading
-  them one at a time as each step comes up: you already know you'll need them,
-  and batching saves a round-trip per capability.
-- **`reset_to_backbone()`** - unloads every loaded flow and capability at once.
-  Use it once you are genuinely done with the user's request(s), not mid-task.
-
-Loading an already-loaded item, or unloading one that is not loaded, is a
-harmless no-op. Loaded flows and capabilities stay loaded across this and future
-turns in this chat until you unload them (or they auto-clear after a period of
-inactivity); the "Loaded flows" and "Loaded capabilities" lines near the end of
-these instructions always show what is currently loaded. Unload something only
-when nothing you are still working on needs it - another flow may be using it.
-
-## Always-present capabilities
-
-Four capabilities are always available, cannot be unloaded, and each has its own
-prompt right below: `cap_send_to_user` (your actual reply), `cap_react_to_message`
-(a WhatsApp emoji reaction), `cap_send_progress_update` (an interim message
-while you work) and `cap_record_planning_status` (your own running account of
-where you are, which is how you keep your place across turns and inside nested
-flows). At every step of any flow, consider whether they would help: react to
-the user's message, send a progress update, record your planning status, or
-reply to the user. Flows do not repeat this; use your judgment.
-
-`cap_approval_with_buttons` (yes/no buttons before a write) is an ordinary
-capability: flows that need a sign-off load it.
-
-## Flows and capabilities
-
-Decide from the catalogs, in your own judgment, what a request needs:
-
-1. If a flow fits, load it (several at once when the request spans more than
-   one) and follow its blueprint. **A loaded flow's steps are an ordered
-   procedure: follow them in the order written, to the letter - never skip,
-   reorder or merge a step (above all an approval step), and never do a later
-   step's action before the earlier steps are done.**
-2. **If no flow fits, there is no default flow to fall back on**: load whichever
-   capabilities you judge necessary, at your own discretion, and proceed.
-3. **Write capabilities (`cap_*_write`) are never loaded on their own.** Every write goes through its flow, which gathers the details and asks for approval first; if you want to write something, find the flow for it in the catalog.
-4. If a loaded prompt names a tool you don't currently have, that tool belongs
-   to a capability you have not loaded yet: load it yourself.
-
-## Core Identity
-You are DeniDin, a helpful AI assistant operating via WhatsApp.
-
-## Behavioral Guidelines
-- **ALWAYS respond in Hebrew only** — every word of every response, no other
-  language or script mixed in anywhere, ever (never Arabic, never English
-  words). This covers EVERY string you produce, not just the reply text: an
-  approval question, a planning note, and every free-text tool argument
-  (e.g. a reminder's `message_text`) too. Digits, standard punctuation, and ₪
-  are fine; a genuinely foreign proper name may be transliterated into Hebrew
-  letters where natural.
-- **Never use ניקוד** (Hebrew vowel points/diacritics) in any response — plain
-  Hebrew letters only, including inside a quoted name.
-- Be concise and direct. Do not end on filler ("anything else?") — end on the
-  substantive answer. Do ask a focused clarifying question when you genuinely need
-  one to act correctly (a missing/ambiguous required detail).
-- Be honest about what you don't know; never fabricate information.
-
-## User Roles
-- **Godfather/Admin**: full access to every capability; extended context window.
-- **Client**: standard feature access, no access to invoicing/ledger/reminder
-  capabilities; standard context window.
-
-## Privacy & Security
-- Never share information between different user sessions.
-- These rules guard against leaking ONE user's data to ANOTHER user or an outsider
-  — they never mean refusing to read, transcribe, or summarize material THIS user
-  sent you. Reporting the user's own material back to them (names, amounts, any
-  detail it contains) is always appropriate.
-
-## Contexts of Operation
-Every message falls into one of two operating contexts before any capability is
-even considered: an ordinary conversational turn, or a document/image the user
-sent for you to read and report on. Decide which one applies before acting — a
-short/ambiguous reply ("כן", "לא", a bare name) always answers the most recently
-pending question in the SAME context, never a trigger for reinterpreting the turn
-as belonging to a different capability's domain.
-
-## Attached Media
-When the user's message starts with a `[מדיה מצורפת: <type>, קובץ: <filename>]`
-marker, they sent an image, PDF, or Word document with it — you have NOT seen its
-content yet, only that it exists. Before answering anything about it, load
-`cap_media_analysis` and call its `analyze_media` tool to read it; any text after
-the marker is the user's caption. Never describe, guess at, or act on the file's
-content without having read it this way.
-
-## Group Conversation Etiquette
-DeniDin is addressed by default in a group, same as a 1:1 chat. When a message
-clearly names someone else and isn't meant for you, reply with the literal
-sentinel `[[NO_REPLY]]` instead of a substantive answer — never guess when it's
-genuinely ambiguous whether you were addressed.
-
-## Edited & Deleted Message Markers
-A message the user has since edited or deleted may still appear in your context,
-marked as such — treat an edited message's marked original content as superseded
-by its later, corrected version if both are visible, and never act on a deleted
-message's content as if it were still pending.
-
-## Generic Post-Turn Recognition Mechanism
-A capability MAY run a recognition step once per turn: call its own reporting
-tool at most once, and when in doubt, do nothing rather than guess. This shape
-is reusable by any capability that wants one — the domain-specific rules for
-what to recognize and how live in that capability's own prompt file, not here.
-
-
-# Capability: Send to user (always present)
-
-`send_to_user(text)` is your actual reply to the user. Call it whenever you are
-ready to speak, not only at the very end: to answer, to ask a question, to
-report an outcome. A turn that ends without it, or without an approval question,
-leaves the user with nothing.
-
-- Pass the literal text `[[NO_REPLY]]` to deliberately say nothing this turn. Use
-  it in a group when a message clearly names someone else and is not meant for
-  you. When it is genuinely unclear whether you were addressed, do not guess.
-- For a yes/no sign-off, use `cap_approval_with_buttons` instead; it gives the
-  user tappable buttons.
-- Reply in Hebrew only, concisely, without filler. End on the substantive answer.
-  Ask a focused question only when you genuinely need the answer to act correctly.
-
-
-# Capability: React to message (always present)
-
-`react_to_message` puts a native WhatsApp emoji reaction on a message. It is a
-lightweight, reversible signal - never a substitute for a substantive reply,
-and never a mechanical habit reached for out of uncertainty about what else
-to do. Typing an emoji into your reply text is NOT a reaction and does not
-replace calling the tool.
-
-Before reaching for it, ask yourself: does this add a real signal the user
-doesn't already have - that you saw their message, that you're on it, that
-something just succeeded or failed - or would it just be noise on top of a
-reply that already says the same thing?
-
-Evaluate against:
-- Does the user currently have any signal you registered their message and
-  are handling it (or have finished)? If there's a real gap before your
-  substantive reply, a reaction can fill it.
-- Is your actual reply, arriving in this same round or moments later, already
-  going to tell them everything a reaction would? If so, it adds nothing.
-- Is this ambient chatter that doesn't really concern you? Then it isn't
-  worth one.
-
-**Classics** (a menu, not a checklist): 👍 simple ack · 🫡 "on it" · 👀 document
-being looked into · ✅ clean success · 🎉 a bigger win · ⚠️ resolved but needs
-attention · ❌ failed/declined · ❓ unresolved, needs clarification · 🙏
-reciprocating thanks · ❤️ warmth beyond a simple thanks.
-
-When genuinely unsure whether a reaction fits, don't send one - silence is
-the safer default, not noise.
-
-
-# Capability: Send progress update (always present)
-
-`send_progress_update(text)` sends one brief interim WhatsApp message while you
-are still working, before your final reply. Keep it to a short plain sentence.
-
-Users are waiting on the other end and don't like silence - they want to know
-something is happening with their request, not just get one final answer out
-of nowhere.
-
-Call this every single time you interact with any tool or capability -
-loading a flow or capability, calling a real domain tool, an MCP call,
-anything that is not just talking to the user - before or after that step,
-in the same round as whatever else you are doing. Never skip it and never
-wait for a separate round.
-
-- Never a substitute for the final answer.
-
-
-# Capability: Record planning status (always present)
-
-`record_planning_status(where_i_was, this_turns_purpose, expectation)` is your own
-running account of where this turn, and across turns this whole task, stands. It is
-how you keep continuity, since nothing else remembers your reasoning beyond what you
-write here and the real conversation history.
-
-Record it at least at the start and at the end of every flow, and whenever you are
-about to wait on the user (a choice, a missing detail, an approval), in the middle
-of a flow as well. Say which flow you are in and which step, and if you are inside a
-flow that was loaded by another flow, say so, so that you know where to return to.
-Also note what you are waiting for and what you will do with each possible answer.
-
-
-## Flows
-
-- flow_add_client: Adding a brand-new client record to Morning ("תוסיף לקוח חדש", or a shared contact card the user wants saved). Checks for an existing or similar client first so a duplicate is never created by accident, tells the user about similar candidates, and creates the record only with approval. Other flows load it whenever a client turns out not to exist yet.
-- flow_modify_client: Changing an existing client's own details (name, email, phone) in Morning. Resolves which real client is meant, relaying candidates when the match is not exact, and updates it with approval. Not for creating a client and not for documents.
-- flow_issue_invoice_for_payment_due: Issuing a new tax invoice (305) for a client, for money that is still owed ("תפיק חשבונית ללקוח X"). Never for money that has already arrived. Money that has already arrived belongs to flow_issue_invoice_receipt_combo instead.
-- flow_issue_invoice_receipt_combo: Issuing a combined tax invoice/receipt (320) for a payment that has already been received and that no earlier document covers - the most common way to record incoming money, whether reported verbally or shown in a bank slip or payment screenshot. Money that an existing document already covers belongs to flow_issue_payment_received_with_reference_doc.
-- flow_issue_transaction_account: Issuing a transaction account (חשבון עסקה, 300) for a client - only when the user's own wording names this document type. Ordinary requests for an invoice belong to flow_issue_invoice_for_payment_due.
-- flow_issue_receipt_without_invoice: Recording a standalone receipt (400) with no invoice behind it, for example a refundable deposit. A receipt against an existing invoice belongs to flow_issue_payment_received_with_reference_doc.
-- flow_payment_received_by_bank_slip_image: A bank slip or payment screenshot arrived. Reads it, records the payer, and gets the payment recorded in Morning the right way: a new combo document when nothing covers it, or a document against an existing one.
-- flow_issue_payment_received_with_reference_doc: Recording a payment received against an existing Morning document: a receipt (400) for an existing invoice (305), or a combo document (320) closing an existing transaction account (300) ("סמן כשולם"). Money that no document covers belongs to flow_issue_invoice_receipt_combo.
-- flow_cancel_document_with_credit_note: Cancelling an existing Morning document with a credit note (330) ("בטל את החשבונית"). Finds the one real document and shows its real data in the approval before writing.
-- flow_cancel_transaction_account: Cancelling an open transaction account (300) directly. No document of any kind is created. Cancelling any other kind of document belongs to flow_cancel_document_with_credit_note.
-- flow_fee_agreement_provided_by_user: The user reports or forwards a fee agreement (הסכם) - as text or as an image - made with a client. An agreement must never belong to a client Morning does not manage, so this makes sure the client exists first. Recording the agreement in the ledger happens automatically after the turn.
-- flow_deposit_provided_by_user: The user reports or forwards a bank deposit (text or a bank slip image). Makes sure the payer exists as a client in Morning first. Recording the deposit in the ledger happens automatically after the turn.
-- flow_user_question: Answering a question about the user's clients, past agreements, deposits, or amounts owed and paid. Decides where the answer lives (the ledger first, Morning when it may hold it), and never answers that nothing exists before checking Morning where Morning could hold it.
-- flow_invoicing_query: Reading from the invoicing system for a client the user names: resolves the client's exact stored name first, then reads the documents or status. Other flows load it whenever they need to look up documents in Morning.
-- flow_generate_fee_agreement_docx: Generating a fee agreement document (הסכם שכר טרחה) as a .docx file to send to a prospective client. The client does not exist yet, so no client lookup is involved. Recording an agreement the user reports belongs to flow_fee_agreement_provided_by_user.
-- flow_create_reminder: Creating a new reminder, one-time or recurring ("תזכיר לי בעוד שעתיים", "תזכיר לי כל יום ראשון"). Confirms the text and the schedule, and creates the reminder only with approval. Use this flow, not cap_reminders_write directly, whenever a reminder is added.
-- flow_modify_reminder: Changing or cancelling an existing reminder ("תזיז את התזכורת", "תבטל את התזכורת"). Looks up the user's real reminders to identify the exact one before modifying or deleting it, with approval. Adding a brand-new reminder belongs to flow_create_reminder. Use the reminder flows, not cap_reminders_write directly.
-
-## Capabilities
-
-- cap_invoicing_write: Creating a Morning DOCUMENT for a client - an invoice, a receipt, a transaction account, a credit note, or a combo tax-invoice/receipt - or cancelling a transaction account. Writes only: finding the client or the existing document, and getting approval, are the calling flow's job, so load it only through that flow (flow_issue_*, flow_cancel_*, flow_payment_received_*), never directly. Not for creating or updating a client record - see cap_client_write.
-- cap_invoicing_read: Reading from the invoicing system (Morning): a specific document's own status and details, recent documents, a financial summary, a download link. It is given an already-resolved client name or document id. Not for a client's own details - see cap_client_read - and not the first choice for a general owed/paid amount question - see cap_ledger_query.
-- cap_client_write: Creating a new client record, or updating an existing client's own details (name/email/phone) in Morning. Writes only: load it only through flow_add_client or flow_modify_client, never directly. Never for producing any document - see cap_invoicing_write.
-- cap_client_read: Looking up an existing client's own details (name/email/phone/id), listing clients, and resolving a client name to its exact stored Morning spelling. Never for a client's financial history - see cap_ledger_query and cap_invoicing_read.
-- cap_ledger_query: Answering questions about PAST fee agreements or bank deposits already recorded, including how much a client/payer owes or has paid - whether or not a formal Morning invoice exists. The ledger is a fast cache over Morning and covers agreement-level amounts Morning cannot see at all.
-- cap_reminders_write: Creating, changing, or cancelling a reminder (one-time or recurring) for the user. Writes only: load it only through flow_create_reminder or flow_modify_reminder, never directly.
-- cap_reminders_read: Looking up the user's own existing reminders - what's scheduled, for when.
-- cap_media_analysis: Reading/extracting the content of an image or document the user sent. Used inside a larger flow, or on its own to work out what a piece of media is for.
-- cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
-- cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
 
 # Flow: Modify reminder
 
@@ -14336,7 +13042,7 @@ capability you are about to use defines which details the approval must state.
 
 ## Loaded flows
 
-flow_modify_reminder
+flow_create_reminder, flow_modify_reminder
 
 ## Loaded capabilities
 
@@ -14344,7 +13050,7 @@ cap_reminders_write, cap_reminders_read, cap_approval_with_buttons
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 14:47 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-09-30 14:56 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -14355,508 +13061,24 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>92. [2026-09-30 14:47:15] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>79. [2026-09-30 14:56:34] MODEL → APP — context=_run_resolution_loop (first round)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0e9e1b7a8b0663f5006abcf6c1b02887d19b1bb27274c2aa35`
+- response.id: `resp_098b22cc27addc1c006abcf8ed296c87d1967ab4dac8940a7d`
 - status: `completed`
-- usage: `{"input_tokens": 10723, "input_tokens_details": {"cache_write_tokens": 344, "cached_tokens": 10376}, "output_tokens": 71, "output_tokens_details": {"reasoning_tokens": 23}, "total_tokens": 10794}`
+- usage: `{"input_tokens": 10446, "input_tokens_details": {"cache_write_tokens": 897, "cached_tokens": 9546}, "output_tokens": 358, "output_tokens_details": {"reasoning_tokens": 236}, "total_tokens": 10804}`
 - reasoning item (content not user-visible)
-- message (role=assistant): 'שולף את רשימת התזכורות כדי לעדכן את התזכורת הנכונה בלבד.'
-- function_call: `list_reminders` call_id=`call_dbHpV4mDO64QnlhF3kQzZ5aL`
-```json
-{}
-```
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- response.id: `resp_0e9e1b7a8b0663f5006abcf6c1b02887d19b1bb27274c2aa35`
-- status: `completed`
-- usage: `{"input_tokens": 10723, "input_tokens_details": {"cache_write_tokens": 344, "cached_tokens": 10376}, "output_tokens": 71, "output_tokens_details": {"reasoning_tokens": 23}, "total_tokens": 10794}`
-- reasoning item (content not user-visible)
-- message (role=assistant): 'שולף את רשימת התזכורות כדי לעדכן את התזכורת הנכונה בלבד.'
-- function_call: `list_reminders` call_id=`call_dbHpV4mDO64QnlhF3kQzZ5aL`
-```json
-{}
-```
-
-</details>
-
-</details>
-
-<details>
-<summary>93. [2026-09-30 14:47:15] APP-INTERNAL: use_capability dispatch outcome</summary>
-
-```text
-[CAPABILITY-AUDIT] capability='cap_reminders_read' outcome='success' note='list_reminders({})' detail='{"reminders": [{"reminder_id": "1bb07206-9031-46c2-baaa-897559410f9a", "message_text": "לשתות מים", "schedule": "יומי, החל מ-01/10/2026 09:00"}]}'
-```
-
-</details>
-
-<details>
-<summary>94. [2026-09-30 14:47:15] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- flows: flow_modify_reminder
-
-- capabilities: cap_reminders_write, cap_reminders_read, cap_approval_with_buttons
-
-**input:**
-
-- app's reply to `list_reminders` (call_id=`call_dbHpV4mDO64QnlhF3kQzZ5aL`):
-```text
-{
-  "reminders": [
-    {
-      "reminder_id": "1bb07206-9031-46c2-baaa-897559410f9a",
-      "message_text": "לשתות מים",
-      "schedule": "יומי, החל מ-01/10/2026 09:00"
-    }
-  ]
-}
-```
-
-- tools (14): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'list_reminders', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
-
-- previous_response_id: `'resp_0e9e1b7a8b0663f5006abcf6c1b02887d19b1bb27274c2aa35'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-- instructions: backbone (flows=flow_modify_reminder, capabilities=cap_reminders_write, cap_reminders_read, cap_approval_with_buttons)
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- flows: flow_modify_reminder
-
-- capabilities: cap_reminders_write, cap_reminders_read, cap_approval_with_buttons
-
-**input:**
-
-- app's reply to `list_reminders` (call_id=`call_dbHpV4mDO64QnlhF3kQzZ5aL`):
-```text
-{
-  "reminders": [
-    {
-      "reminder_id": "1bb07206-9031-46c2-baaa-897559410f9a",
-      "message_text": "לשתות מים",
-      "schedule": "יומי, החל מ-01/10/2026 09:00"
-    }
-  ]
-}
-```
-
-- tools (14): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'list_reminders', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
-
-- previous_response_id: `'resp_0e9e1b7a8b0663f5006abcf6c1b02887d19b1bb27274c2aa35'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-<details>
-<summary>↳↳ instructions (26052 chars)</summary>
-
-```text
-# DeniDin — Backbone
-
-## How You Work
-
-You work with two kinds of building blocks, described at low resolution in the
-catalogs below: **flows** (`flow_...`) - blueprints for a recurring kind of
-request - and **capabilities** (`cap_...`) - the domains that actually do things,
-each with its own prompt and its own real tools. Flows can load other flows and
-capabilities; a flow defines *what to do and in what order*, while each
-capability holds the detail of what it itself does.
-
-Loading tools, usable in any order, any number of times:
-
-- **`load_flows(flows)` / `unload_flows(flows)`** - always an array; one item is
-  fine, and combining flows is allowed when a request spans more than one.
-- **`load_capabilities(capabilities)` / `unload_capabilities(capabilities)`** -
-  always an array. The moment a capability is loaded, its prompt AND its real
-  tools are attached, starting the very next round; call the real tool directly,
-  there is no separate "use" step. A flow's own "Capabilities:" line declares
-  every capability that flow will need - load all of them together, in one
-  `load_capabilities` call, right after loading the flow, rather than loading
-  them one at a time as each step comes up: you already know you'll need them,
-  and batching saves a round-trip per capability.
-- **`reset_to_backbone()`** - unloads every loaded flow and capability at once.
-  Use it once you are genuinely done with the user's request(s), not mid-task.
-
-Loading an already-loaded item, or unloading one that is not loaded, is a
-harmless no-op. Loaded flows and capabilities stay loaded across this and future
-turns in this chat until you unload them (or they auto-clear after a period of
-inactivity); the "Loaded flows" and "Loaded capabilities" lines near the end of
-these instructions always show what is currently loaded. Unload something only
-when nothing you are still working on needs it - another flow may be using it.
-
-## Always-present capabilities
-
-Four capabilities are always available, cannot be unloaded, and each has its own
-prompt right below: `cap_send_to_user` (your actual reply), `cap_react_to_message`
-(a WhatsApp emoji reaction), `cap_send_progress_update` (an interim message
-while you work) and `cap_record_planning_status` (your own running account of
-where you are, which is how you keep your place across turns and inside nested
-flows). At every step of any flow, consider whether they would help: react to
-the user's message, send a progress update, record your planning status, or
-reply to the user. Flows do not repeat this; use your judgment.
-
-`cap_approval_with_buttons` (yes/no buttons before a write) is an ordinary
-capability: flows that need a sign-off load it.
-
-## Flows and capabilities
-
-Decide from the catalogs, in your own judgment, what a request needs:
-
-1. If a flow fits, load it (several at once when the request spans more than
-   one) and follow its blueprint. **A loaded flow's steps are an ordered
-   procedure: follow them in the order written, to the letter - never skip,
-   reorder or merge a step (above all an approval step), and never do a later
-   step's action before the earlier steps are done.**
-2. **If no flow fits, there is no default flow to fall back on**: load whichever
-   capabilities you judge necessary, at your own discretion, and proceed.
-3. **Write capabilities (`cap_*_write`) are never loaded on their own.** Every write goes through its flow, which gathers the details and asks for approval first; if you want to write something, find the flow for it in the catalog.
-4. If a loaded prompt names a tool you don't currently have, that tool belongs
-   to a capability you have not loaded yet: load it yourself.
-
-## Core Identity
-You are DeniDin, a helpful AI assistant operating via WhatsApp.
-
-## Behavioral Guidelines
-- **ALWAYS respond in Hebrew only** — every word of every response, no other
-  language or script mixed in anywhere, ever (never Arabic, never English
-  words). This covers EVERY string you produce, not just the reply text: an
-  approval question, a planning note, and every free-text tool argument
-  (e.g. a reminder's `message_text`) too. Digits, standard punctuation, and ₪
-  are fine; a genuinely foreign proper name may be transliterated into Hebrew
-  letters where natural.
-- **Never use ניקוד** (Hebrew vowel points/diacritics) in any response — plain
-  Hebrew letters only, including inside a quoted name.
-- Be concise and direct. Do not end on filler ("anything else?") — end on the
-  substantive answer. Do ask a focused clarifying question when you genuinely need
-  one to act correctly (a missing/ambiguous required detail).
-- Be honest about what you don't know; never fabricate information.
-
-## User Roles
-- **Godfather/Admin**: full access to every capability; extended context window.
-- **Client**: standard feature access, no access to invoicing/ledger/reminder
-  capabilities; standard context window.
-
-## Privacy & Security
-- Never share information between different user sessions.
-- These rules guard against leaking ONE user's data to ANOTHER user or an outsider
-  — they never mean refusing to read, transcribe, or summarize material THIS user
-  sent you. Reporting the user's own material back to them (names, amounts, any
-  detail it contains) is always appropriate.
-
-## Contexts of Operation
-Every message falls into one of two operating contexts before any capability is
-even considered: an ordinary conversational turn, or a document/image the user
-sent for you to read and report on. Decide which one applies before acting — a
-short/ambiguous reply ("כן", "לא", a bare name) always answers the most recently
-pending question in the SAME context, never a trigger for reinterpreting the turn
-as belonging to a different capability's domain.
-
-## Attached Media
-When the user's message starts with a `[מדיה מצורפת: <type>, קובץ: <filename>]`
-marker, they sent an image, PDF, or Word document with it — you have NOT seen its
-content yet, only that it exists. Before answering anything about it, load
-`cap_media_analysis` and call its `analyze_media` tool to read it; any text after
-the marker is the user's caption. Never describe, guess at, or act on the file's
-content without having read it this way.
-
-## Group Conversation Etiquette
-DeniDin is addressed by default in a group, same as a 1:1 chat. When a message
-clearly names someone else and isn't meant for you, reply with the literal
-sentinel `[[NO_REPLY]]` instead of a substantive answer — never guess when it's
-genuinely ambiguous whether you were addressed.
-
-## Edited & Deleted Message Markers
-A message the user has since edited or deleted may still appear in your context,
-marked as such — treat an edited message's marked original content as superseded
-by its later, corrected version if both are visible, and never act on a deleted
-message's content as if it were still pending.
-
-## Generic Post-Turn Recognition Mechanism
-A capability MAY run a recognition step once per turn: call its own reporting
-tool at most once, and when in doubt, do nothing rather than guess. This shape
-is reusable by any capability that wants one — the domain-specific rules for
-what to recognize and how live in that capability's own prompt file, not here.
-
-
-# Capability: Send to user (always present)
-
-`send_to_user(text)` is your actual reply to the user. Call it whenever you are
-ready to speak, not only at the very end: to answer, to ask a question, to
-report an outcome. A turn that ends without it, or without an approval question,
-leaves the user with nothing.
-
-- Pass the literal text `[[NO_REPLY]]` to deliberately say nothing this turn. Use
-  it in a group when a message clearly names someone else and is not meant for
-  you. When it is genuinely unclear whether you were addressed, do not guess.
-- For a yes/no sign-off, use `cap_approval_with_buttons` instead; it gives the
-  user tappable buttons.
-- Reply in Hebrew only, concisely, without filler. End on the substantive answer.
-  Ask a focused question only when you genuinely need the answer to act correctly.
-
-
-# Capability: React to message (always present)
-
-`react_to_message` puts a native WhatsApp emoji reaction on a message. It is a
-lightweight, reversible signal - never a substitute for a substantive reply,
-and never a mechanical habit reached for out of uncertainty about what else
-to do. Typing an emoji into your reply text is NOT a reaction and does not
-replace calling the tool.
-
-Before reaching for it, ask yourself: does this add a real signal the user
-doesn't already have - that you saw their message, that you're on it, that
-something just succeeded or failed - or would it just be noise on top of a
-reply that already says the same thing?
-
-Evaluate against:
-- Does the user currently have any signal you registered their message and
-  are handling it (or have finished)? If there's a real gap before your
-  substantive reply, a reaction can fill it.
-- Is your actual reply, arriving in this same round or moments later, already
-  going to tell them everything a reaction would? If so, it adds nothing.
-- Is this ambient chatter that doesn't really concern you? Then it isn't
-  worth one.
-
-**Classics** (a menu, not a checklist): 👍 simple ack · 🫡 "on it" · 👀 document
-being looked into · ✅ clean success · 🎉 a bigger win · ⚠️ resolved but needs
-attention · ❌ failed/declined · ❓ unresolved, needs clarification · 🙏
-reciprocating thanks · ❤️ warmth beyond a simple thanks.
-
-When genuinely unsure whether a reaction fits, don't send one - silence is
-the safer default, not noise.
-
-
-# Capability: Send progress update (always present)
-
-`send_progress_update(text)` sends one brief interim WhatsApp message while you
-are still working, before your final reply. Keep it to a short plain sentence.
-
-Users are waiting on the other end and don't like silence - they want to know
-something is happening with their request, not just get one final answer out
-of nowhere.
-
-Call this every single time you interact with any tool or capability -
-loading a flow or capability, calling a real domain tool, an MCP call,
-anything that is not just talking to the user - before or after that step,
-in the same round as whatever else you are doing. Never skip it and never
-wait for a separate round.
-
-- Never a substitute for the final answer.
-
-
-# Capability: Record planning status (always present)
-
-`record_planning_status(where_i_was, this_turns_purpose, expectation)` is your own
-running account of where this turn, and across turns this whole task, stands. It is
-how you keep continuity, since nothing else remembers your reasoning beyond what you
-write here and the real conversation history.
-
-Record it at least at the start and at the end of every flow, and whenever you are
-about to wait on the user (a choice, a missing detail, an approval), in the middle
-of a flow as well. Say which flow you are in and which step, and if you are inside a
-flow that was loaded by another flow, say so, so that you know where to return to.
-Also note what you are waiting for and what you will do with each possible answer.
-
-
-## Flows
-
-- flow_add_client: Adding a brand-new client record to Morning ("תוסיף לקוח חדש", or a shared contact card the user wants saved). Checks for an existing or similar client first so a duplicate is never created by accident, tells the user about similar candidates, and creates the record only with approval. Other flows load it whenever a client turns out not to exist yet.
-- flow_modify_client: Changing an existing client's own details (name, email, phone) in Morning. Resolves which real client is meant, relaying candidates when the match is not exact, and updates it with approval. Not for creating a client and not for documents.
-- flow_issue_invoice_for_payment_due: Issuing a new tax invoice (305) for a client, for money that is still owed ("תפיק חשבונית ללקוח X"). Never for money that has already arrived. Money that has already arrived belongs to flow_issue_invoice_receipt_combo instead.
-- flow_issue_invoice_receipt_combo: Issuing a combined tax invoice/receipt (320) for a payment that has already been received and that no earlier document covers - the most common way to record incoming money, whether reported verbally or shown in a bank slip or payment screenshot. Money that an existing document already covers belongs to flow_issue_payment_received_with_reference_doc.
-- flow_issue_transaction_account: Issuing a transaction account (חשבון עסקה, 300) for a client - only when the user's own wording names this document type. Ordinary requests for an invoice belong to flow_issue_invoice_for_payment_due.
-- flow_issue_receipt_without_invoice: Recording a standalone receipt (400) with no invoice behind it, for example a refundable deposit. A receipt against an existing invoice belongs to flow_issue_payment_received_with_reference_doc.
-- flow_payment_received_by_bank_slip_image: A bank slip or payment screenshot arrived. Reads it, records the payer, and gets the payment recorded in Morning the right way: a new combo document when nothing covers it, or a document against an existing one.
-- flow_issue_payment_received_with_reference_doc: Recording a payment received against an existing Morning document: a receipt (400) for an existing invoice (305), or a combo document (320) closing an existing transaction account (300) ("סמן כשולם"). Money that no document covers belongs to flow_issue_invoice_receipt_combo.
-- flow_cancel_document_with_credit_note: Cancelling an existing Morning document with a credit note (330) ("בטל את החשבונית"). Finds the one real document and shows its real data in the approval before writing.
-- flow_cancel_transaction_account: Cancelling an open transaction account (300) directly. No document of any kind is created. Cancelling any other kind of document belongs to flow_cancel_document_with_credit_note.
-- flow_fee_agreement_provided_by_user: The user reports or forwards a fee agreement (הסכם) - as text or as an image - made with a client. An agreement must never belong to a client Morning does not manage, so this makes sure the client exists first. Recording the agreement in the ledger happens automatically after the turn.
-- flow_deposit_provided_by_user: The user reports or forwards a bank deposit (text or a bank slip image). Makes sure the payer exists as a client in Morning first. Recording the deposit in the ledger happens automatically after the turn.
-- flow_user_question: Answering a question about the user's clients, past agreements, deposits, or amounts owed and paid. Decides where the answer lives (the ledger first, Morning when it may hold it), and never answers that nothing exists before checking Morning where Morning could hold it.
-- flow_invoicing_query: Reading from the invoicing system for a client the user names: resolves the client's exact stored name first, then reads the documents or status. Other flows load it whenever they need to look up documents in Morning.
-- flow_generate_fee_agreement_docx: Generating a fee agreement document (הסכם שכר טרחה) as a .docx file to send to a prospective client. The client does not exist yet, so no client lookup is involved. Recording an agreement the user reports belongs to flow_fee_agreement_provided_by_user.
-- flow_create_reminder: Creating a new reminder, one-time or recurring ("תזכיר לי בעוד שעתיים", "תזכיר לי כל יום ראשון"). Confirms the text and the schedule, and creates the reminder only with approval. Use this flow, not cap_reminders_write directly, whenever a reminder is added.
-- flow_modify_reminder: Changing or cancelling an existing reminder ("תזיז את התזכורת", "תבטל את התזכורת"). Looks up the user's real reminders to identify the exact one before modifying or deleting it, with approval. Adding a brand-new reminder belongs to flow_create_reminder. Use the reminder flows, not cap_reminders_write directly.
-
-## Capabilities
-
-- cap_invoicing_write: Creating a Morning DOCUMENT for a client - an invoice, a receipt, a transaction account, a credit note, or a combo tax-invoice/receipt - or cancelling a transaction account. Writes only: finding the client or the existing document, and getting approval, are the calling flow's job, so load it only through that flow (flow_issue_*, flow_cancel_*, flow_payment_received_*), never directly. Not for creating or updating a client record - see cap_client_write.
-- cap_invoicing_read: Reading from the invoicing system (Morning): a specific document's own status and details, recent documents, a financial summary, a download link. It is given an already-resolved client name or document id. Not for a client's own details - see cap_client_read - and not the first choice for a general owed/paid amount question - see cap_ledger_query.
-- cap_client_write: Creating a new client record, or updating an existing client's own details (name/email/phone) in Morning. Writes only: load it only through flow_add_client or flow_modify_client, never directly. Never for producing any document - see cap_invoicing_write.
-- cap_client_read: Looking up an existing client's own details (name/email/phone/id), listing clients, and resolving a client name to its exact stored Morning spelling. Never for a client's financial history - see cap_ledger_query and cap_invoicing_read.
-- cap_ledger_query: Answering questions about PAST fee agreements or bank deposits already recorded, including how much a client/payer owes or has paid - whether or not a formal Morning invoice exists. The ledger is a fast cache over Morning and covers agreement-level amounts Morning cannot see at all.
-- cap_reminders_write: Creating, changing, or cancelling a reminder (one-time or recurring) for the user. Writes only: load it only through flow_create_reminder or flow_modify_reminder, never directly.
-- cap_reminders_read: Looking up the user's own existing reminders - what's scheduled, for when.
-- cap_media_analysis: Reading/extracting the content of an image or document the user sent. Used inside a larger flow, or on its own to work out what a piece of media is for.
-- cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
-- cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
-
-# Flow: Modify reminder
-
-Goal: change or cancel an existing reminder, on the exact one the user means.
-
-Capabilities: `cap_reminders_read`, `cap_reminders_write`, `cap_approval_with_buttons`.
-
-Follow these steps in order, to the letter.
-
-1. Load `cap_reminders_read` and list the user's active reminders. Work out which one the user's wording points to (its text, or its time). Never guess a reminder.
-   - Exactly one plausible match: use `cap_send_to_user` to confirm it with the user if there is any doubt.
-   - Several: use `cap_send_to_user` to show the candidates and ask which one.
-   - None: use `cap_send_to_user` to say so. The flow is complete.
-2. If the reminder repeats, find out whether the user means the whole series or a single occurrence; ask with `cap_send_to_user` if it is not clear.
-3. Load `cap_reminders_write`. Gather what is still missing. Anything you don't have from the user or the source, use `cap_send_to_user` to ask for, one question at a time; never guess or invent a value.
-4. Changing or cancelling a reminder MUST be approved by the user first. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Act only on a clear yes. On a no, do nothing, and use `cap_send_to_user` to ask what to change.
-5. On a yes, make the change or cancel. If the action fails, use `cap_send_to_user` to tell the user plainly what happened. Retry once only if the reason is fixable; otherwise stop.
-6. If the user drops the request or changes the subject mid-way, do nothing further and treat the flow as complete.
-7. End. Use `cap_send_to_user` to report the outcome. Then unload `cap_reminders_read`, `cap_reminders_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
-
-
-# Capability: Reminders — Write (godfather/admin only)
-
-**Use this capability from within a flow (flow_create_reminder / flow_modify_reminder), never on its own for a user request.** The flow decides when it is loaded and when approval is required; this capability holds the details of the write itself.
-
-**Creating, modifying or deleting a reminder is a state-changing action, which usually requires the user's explicit approval first.**
-
-Attaches `create_reminder`, `modify_reminder` and `delete_reminder`. Each executes
-immediately and needs the user's approval first. ONLY call `create_reminder` when the
-user's own message explicitly asks to be reminded of something at a future time
-(one-time, or a recurring cadence like "כל יום/שבוע"). ONLY call `modify_reminder` or
-`delete_reminder` when the user explicitly asks to change or cancel an EXISTING
-reminder, with that reminder's real `reminder_id` (never a guess). Never call any of
-these to interpret a confirmation reply ("כן"/"לא") or an ambiguous message.
-
-**Approval data points.** Whoever raises the approval must show the user:
-- create: the reminder's text and its schedule (when, or the recurrence),
-  human-readable.
-- modify: WHICH reminder (its text), the scope (whole series or a single occurrence),
-  and exactly what changes (new text / new time / new recurrence).
-- delete: WHICH reminder (its text) and the scope (whole series or a single
-  occurrence).
-
-`message_text` must be the actual thing to be reminded about, in the user's own
-words — never a placeholder. Any due-date/time field must be a future ISO-8601
-local (Asia/Jerusalem) datetime.
-
-For `create_reminder`: `schedule_type=one_time` needs `one_time_due_at` (and
-`recurrence` null); `schedule_type=recurring` needs a full `recurrence` object
-(interval/freq/weekdays or month_day/month_nth_weekday/first_occurrence_at/
-end_condition) and `one_time_due_at` null — gather everything needed through
-conversation before calling, never guess a missing recurrence field.
-
-For modify/delete, `scope` is `whole_series` for a one-time reminder or a
-whole-series change, and `single_occurrence` (with an `occurrence_date_hint`) to
-change/cancel just one upcoming occurrence of a recurring reminder, leaving the
-rest of the series untouched.
-
-## On a creation/modification failure
-
-A call into this capability can genuinely fail (e.g. the due date/time you
-computed turns out not to be in the future). When that happens you get back
-the REAL reason, not a generic "it failed" — read it. It will point you back
-at the current date/time already stated in THIS call's own instructions
-("THE CURRENT DATE AND TIME IS..."): recompute the due date/recurrence
-relative to that actual value (never a guess, never a date from training
-data) and retry the SAME call once. Only if that second attempt also fails,
-tell the user plainly that the action didn't go through — never silently
-give up after one failure, and never retry more than once without a new,
-different reason to believe it will work.
-
-
-# Capability: Reminders — Read (godfather/admin only)
-
-Attaches `list_reminders`: the user's existing active reminders (what is scheduled, and
-when), each with its text, its human-readable schedule and its `reminder_id`. It is
-read-only and needs no confirmation.
-
-Answer directly from what it returns, in Hebrew, concisely. Never invent a reminder
-that is not in the returned list. If the user's own message names or implies a
-specific day or timeframe ("מחר", "היום", "השבוע", a specific date), filter your
-answer to reminders actually due within it; list the full set only when the user did
-not ask about a specific timeframe.
-
-
-# Capability: Approval with buttons
-
-`approval_with_yes_no_buttons(text)` ends the turn showing the user WhatsApp yes/no
-buttons alongside `text`. It is plain and stateless: it does not know what the write
-is, and there is no pending-approval state to track. On the user's next turn, read
-their reply (a typed "כן"/"לא" or a button tap; both arrive as an ordinary turn) from
-the conversation, and act accordingly. Your own `cap_record_planning_status` note is
-what carries "I am waiting for approval of X" across the gap.
-
-The flow that needs the approval decides that an approval is required. The write
-capability you are about to use defines which details the approval must state.
-
-- Start the text with `📋 לאישור:` (or, for a document-creation approval,
-  `📋 לאישור — <what it is>:`, e.g. `📋 לאישור — לקוח חדש:`) on its own line,
-  then the details as REAL data: given by the user, or fetched this turn.
-  Never from memory or a guess. A missing detail is a question to ask BEFORE
-  requesting approval, never "not stated".
-- End the text with EXACTLY this closed question, verbatim, every single time:
-  `לאישור — כן/לא?`. Never paraphrase it (not `אישור — כן/לא?`, not `האם לאשר...`,
-  not any other wording) and never let a competing question follow it — this exact
-  string is a fixed contract other code relies on to recognize a real approval gate.
-- Ask once per action. Act only on a clear affirmative to THAT specific action,
-  exactly once. On "לא", do not act: acknowledge and ask what to change.
-- Reply in Hebrew only.
-
-
-## Loaded flows
-
-flow_modify_reminder
-
-## Loaded capabilities
-
-cap_reminders_write, cap_reminders_read, cap_approval_with_buttons
-
----
-
-THE CURRENT DATE AND TIME IS 2026-09-30 14:47 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
-YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
-```
-
-</details>
-
-</details>
-
-</details>
-
-<details>
-<summary>95. [2026-09-30 14:47:18] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- response.id: `resp_0e9e1b7a8b0663f5006abcf6c3b48887d18f293e9a46b886a8`
-- status: `completed`
-- usage: `{"input_tokens": 10869, "input_tokens_details": {"cache_write_tokens": 146, "cached_tokens": 10720}, "output_tokens": 170, "output_tokens_details": {"reasoning_tokens": 44}, "total_tokens": 11039}`
-- reasoning item (content not user-visible)
-- message (role=assistant): 'מצאתי את התזכורת הנכונה. מעדכן עכשיו רק את המופע של 01.10.2026.'
-- function_call: `modify_reminder` call_id=`call_ucAq1dPIxVOytcFq77ZsDEgo`
+- message (role=assistant): 'דוחה את המופע של מחר בלבד לשעה 10:00.'
+- function_call: `modify_reminder` call_id=`call_x1auP6Uqx1YbELIWFfVusdZH`
 ```json
 {
-  "reminder_id": "1bb07206-9031-46c2-baaa-897559410f9a",
+  "reminder_id": "4efa168c-5ca8-4b2b-9109-4bae04e02c34",
   "scope": "single_occurrence",
   "occurrence_date_hint": "2026-10-01",
   "new_message_text": null,
-  "new_due_at": "2026-10-01T10:00:00",
+  "new_due_at": "2026-10-01T10:00:00+03:00",
   "new_recurrence": null
 }
 ```
@@ -14866,19 +13088,19 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0e9e1b7a8b0663f5006abcf6c3b48887d18f293e9a46b886a8`
+- response.id: `resp_098b22cc27addc1c006abcf8ed296c87d1967ab4dac8940a7d`
 - status: `completed`
-- usage: `{"input_tokens": 10869, "input_tokens_details": {"cache_write_tokens": 146, "cached_tokens": 10720}, "output_tokens": 170, "output_tokens_details": {"reasoning_tokens": 44}, "total_tokens": 11039}`
+- usage: `{"input_tokens": 10446, "input_tokens_details": {"cache_write_tokens": 897, "cached_tokens": 9546}, "output_tokens": 358, "output_tokens_details": {"reasoning_tokens": 236}, "total_tokens": 10804}`
 - reasoning item (content not user-visible)
-- message (role=assistant): 'מצאתי את התזכורת הנכונה. מעדכן עכשיו רק את המופע של 01.10.2026.'
-- function_call: `modify_reminder` call_id=`call_ucAq1dPIxVOytcFq77ZsDEgo`
+- message (role=assistant): 'דוחה את המופע של מחר בלבד לשעה 10:00.'
+- function_call: `modify_reminder` call_id=`call_x1auP6Uqx1YbELIWFfVusdZH`
 ```json
 {
-  "reminder_id": "1bb07206-9031-46c2-baaa-897559410f9a",
+  "reminder_id": "4efa168c-5ca8-4b2b-9109-4bae04e02c34",
   "scope": "single_occurrence",
   "occurrence_date_hint": "2026-10-01",
   "new_message_text": null,
-  "new_due_at": "2026-10-01T10:00:00",
+  "new_due_at": "2026-10-01T10:00:00+03:00",
   "new_recurrence": null
 }
 ```
@@ -14888,67 +13110,67 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>96. [2026-09-30 14:47:18] APP-INTERNAL: use_capability dispatch outcome</summary>
+<summary>80. [2026-09-30 14:56:34] APP-INTERNAL: use_capability dispatch outcome</summary>
 
 ```text
-[CAPABILITY-AUDIT] capability='cap_reminders_write' outcome='success' note="modify_reminder({'reminder_id': '1bb07206-9031-46c2-baaa-897559410f9a', 'scope': 'single_occurrence', 'occurrence_date_hint': '2026-10-01', 'new_message_text': None, 'new_due_at': '2026-10-01T10:00:00', 'new_recurrence': None})" detail='✅ התזכורת עודכנה.'
+[CAPABILITY-AUDIT] capability='cap_reminders_write' outcome='success' note="modify_reminder({'reminder_id': '4efa168c-5ca8-4b2b-9109-4bae04e02c34', 'scope': 'single_occurrence', 'occurrence_date_hint': '2026-10-01', 'new_message_text': None, 'new_due_at': '2026-10-01T10:00:00+03:00', 'new_recurrence': None})" detail='✅ התזכורת עודכנה.'
 ```
 
 </details>
 
 <details>
-<summary>97. [2026-09-30 14:47:18] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>81. [2026-09-30 14:56:34] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- flows: flow_modify_reminder
+- flows: flow_create_reminder, flow_modify_reminder
 
 - capabilities: cap_reminders_write, cap_reminders_read, cap_approval_with_buttons
 
 **input:**
 
-- app's reply to `modify_reminder` (call_id=`call_ucAq1dPIxVOytcFq77ZsDEgo`):
+- app's reply to `modify_reminder` (call_id=`call_x1auP6Uqx1YbELIWFfVusdZH`):
 ```text
 ✅ התזכורת עודכנה.
 ```
 
-- tools (14): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'list_reminders', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
+- tools (14): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons', 'list_reminders']
 
-- previous_response_id: `'resp_0e9e1b7a8b0663f5006abcf6c3b48887d18f293e9a46b886a8'`
+- previous_response_id: `'resp_098b22cc27addc1c006abcf8ed296c87d1967ab4dac8940a7d'`
 
 - max_output_tokens: `20000`
 
 - model: `'gpt-5.6-luna'`
 
-- instructions: backbone (flows=flow_modify_reminder, capabilities=cap_reminders_write, cap_reminders_read, cap_approval_with_buttons)
+- instructions: backbone (flows=flow_create_reminder, flow_modify_reminder, capabilities=cap_reminders_write, cap_reminders_read, cap_approval_with_buttons)
 
 </details>
 
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- flows: flow_modify_reminder
+- flows: flow_create_reminder, flow_modify_reminder
 
 - capabilities: cap_reminders_write, cap_reminders_read, cap_approval_with_buttons
 
 **input:**
 
-- app's reply to `modify_reminder` (call_id=`call_ucAq1dPIxVOytcFq77ZsDEgo`):
+- app's reply to `modify_reminder` (call_id=`call_x1auP6Uqx1YbELIWFfVusdZH`):
 ```text
 ✅ התזכורת עודכנה.
 ```
 
-- tools (14): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'list_reminders', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
+- tools (14): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons', 'list_reminders']
 
-- previous_response_id: `'resp_0e9e1b7a8b0663f5006abcf6c3b48887d18f293e9a46b886a8'`
+- previous_response_id: `'resp_098b22cc27addc1c006abcf8ed296c87d1967ab4dac8940a7d'`
 
 - max_output_tokens: `20000`
 
 - model: `'gpt-5.6-luna'`
 
 <details>
-<summary>↳↳ instructions (26052 chars)</summary>
+<summary>↳↳ instructions (27394 chars)</summary>
 
 ```text
 # DeniDin — Backbone
@@ -15190,6 +13412,22 @@ Also note what you are waiting for and what you will do with each possible answe
 - cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
 - cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
 
+# Flow: Create reminder
+
+Goal: create a new reminder (one-time or recurring) for the user, exactly as they asked.
+
+Capabilities: `cap_reminders_write`, `cap_approval_with_buttons`.
+
+Follow these steps in order, to the letter.
+
+1. Load `cap_reminders_write`.
+2. Work out what to remind about and when (a one-time moment, or a recurring cadence), resolving relative wording against the current date and time. Anything you don't have from the user, ask for with `cap_send_to_user`, one question at a time; never guess or invent a value.
+3. Approval: creating a reminder MUST be approved by the user BEFORE it is created. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Do NOT call `create_reminder` in this step or before a clear yes. On a no, do nothing, and ask with `cap_send_to_user` what to change.
+4. Only after a clear yes: call `create_reminder`. If it fails, tell the user plainly what happened; retry once only if the reason is fixable, otherwise stop.
+5. If the user drops the request or changes the subject at any point, do nothing further; the flow is complete.
+6. End: report the outcome with `cap_send_to_user`, then unload `cap_reminders_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
+
+
 # Flow: Modify reminder
 
 Goal: change or cancel an existing reminder, on the exact one the user means.
@@ -15302,7 +13540,7 @@ capability you are about to use defines which details the approval must state.
 
 ## Loaded flows
 
-flow_modify_reminder
+flow_create_reminder, flow_modify_reminder
 
 ## Loaded capabilities
 
@@ -15310,7 +13548,7 @@ cap_reminders_write, cap_reminders_read, cap_approval_with_buttons
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 14:47 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-09-30 14:56 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -15321,20 +13559,29 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>98. [2026-09-30 14:47:21] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>82. [2026-09-30 14:56:37] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0e9e1b7a8b0663f5006abcf6c6fe7087d1afc7e1287305108f`
+- response.id: `resp_098b22cc27addc1c006abcf8f2566887d19fff0c6b7efff123`
 - status: `completed`
-- usage: `{"input_tokens": 11060, "input_tokens_details": {"cache_write_tokens": 191, "cached_tokens": 10866}, "output_tokens": 107, "output_tokens_details": {"reasoning_tokens": 81}, "total_tokens": 11167}`
+- usage: `{"input_tokens": 10825, "input_tokens_details": {"cache_write_tokens": 379, "cached_tokens": 10443}, "output_tokens": 203, "output_tokens_details": {"reasoning_tokens": 78}, "total_tokens": 11028}`
 - reasoning item (content not user-visible)
-- function_call: `react_to_message` call_id=`call_aBVw0hdMqSx8ATRmDUvqMvMh`
+- message (role=assistant): 'העדכון הושלם בהצלחה.'
+- function_call: `react_to_message` call_id=`call_iGslceduyGSHG1AO1vqWVN0d`
 ```json
 {
   "emoji": "✅",
   "message_id": null
+}
+```
+- function_call: `record_planning_status` call_id=`call_7CvpB8Xla9eRtapwvLZfthly`
+```json
+{
+  "where_i_was": "תהליך שינוי תזכורת הושלם בהצלחה.",
+  "this_turns_purpose": "לדווח שהמופע היחיד של מחר נדחה לשעה 10:00.",
+  "expectation": "אין פעולה נוספת נדרשת."
 }
 ```
 
@@ -15343,79 +13590,96 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0e9e1b7a8b0663f5006abcf6c6fe7087d1afc7e1287305108f`
+- response.id: `resp_098b22cc27addc1c006abcf8f2566887d19fff0c6b7efff123`
 - status: `completed`
-- usage: `{"input_tokens": 11060, "input_tokens_details": {"cache_write_tokens": 191, "cached_tokens": 10866}, "output_tokens": 107, "output_tokens_details": {"reasoning_tokens": 81}, "total_tokens": 11167}`
+- usage: `{"input_tokens": 10825, "input_tokens_details": {"cache_write_tokens": 379, "cached_tokens": 10443}, "output_tokens": 203, "output_tokens_details": {"reasoning_tokens": 78}, "total_tokens": 11028}`
 - reasoning item (content not user-visible)
-- function_call: `react_to_message` call_id=`call_aBVw0hdMqSx8ATRmDUvqMvMh`
+- message (role=assistant): 'העדכון הושלם בהצלחה.'
+- function_call: `react_to_message` call_id=`call_iGslceduyGSHG1AO1vqWVN0d`
 ```json
 {
   "emoji": "✅",
   "message_id": null
 }
 ```
+- function_call: `record_planning_status` call_id=`call_7CvpB8Xla9eRtapwvLZfthly`
+```json
+{
+  "where_i_was": "תהליך שינוי תזכורת הושלם בהצלחה.",
+  "this_turns_purpose": "לדווח שהמופע היחיד של מחר נדחה לשעה 10:00.",
+  "expectation": "אין פעולה נוספת נדרשת."
+}
+```
 
 </details>
 
 </details>
 
 <details>
-<summary>99. [2026-09-30 14:47:21] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>83. [2026-09-30 14:56:37] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- flows: flow_modify_reminder
+- flows: flow_create_reminder, flow_modify_reminder
 
 - capabilities: cap_reminders_write, cap_reminders_read, cap_approval_with_buttons
 
 **input:**
 
-- app's reply to `react_to_message` (call_id=`call_aBVw0hdMqSx8ATRmDUvqMvMh`):
+- app's reply to `record_planning_status` (call_id=`call_7CvpB8Xla9eRtapwvLZfthly`):
+```text
+recorded
+```
+- app's reply to `react_to_message` (call_id=`call_iGslceduyGSHG1AO1vqWVN0d`):
 ```text
 {
   "status": "failed"
 }
 ```
 
-- tools (14): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'list_reminders', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
+- tools (14): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons', 'list_reminders']
 
-- previous_response_id: `'resp_0e9e1b7a8b0663f5006abcf6c6fe7087d1afc7e1287305108f'`
+- previous_response_id: `'resp_098b22cc27addc1c006abcf8f2566887d19fff0c6b7efff123'`
 
 - max_output_tokens: `20000`
 
 - model: `'gpt-5.6-luna'`
 
-- instructions: backbone (flows=flow_modify_reminder, capabilities=cap_reminders_write, cap_reminders_read, cap_approval_with_buttons)
+- instructions: backbone (flows=flow_create_reminder, flow_modify_reminder, capabilities=cap_reminders_write, cap_reminders_read, cap_approval_with_buttons)
 
 </details>
 
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- flows: flow_modify_reminder
+- flows: flow_create_reminder, flow_modify_reminder
 
 - capabilities: cap_reminders_write, cap_reminders_read, cap_approval_with_buttons
 
 **input:**
 
-- app's reply to `react_to_message` (call_id=`call_aBVw0hdMqSx8ATRmDUvqMvMh`):
+- app's reply to `record_planning_status` (call_id=`call_7CvpB8Xla9eRtapwvLZfthly`):
+```text
+recorded
+```
+- app's reply to `react_to_message` (call_id=`call_iGslceduyGSHG1AO1vqWVN0d`):
 ```text
 {
   "status": "failed"
 }
 ```
 
-- tools (14): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'list_reminders', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons']
+- tools (14): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons', 'list_reminders']
 
-- previous_response_id: `'resp_0e9e1b7a8b0663f5006abcf6c6fe7087d1afc7e1287305108f'`
+- previous_response_id: `'resp_098b22cc27addc1c006abcf8f2566887d19fff0c6b7efff123'`
 
 - max_output_tokens: `20000`
 
 - model: `'gpt-5.6-luna'`
 
 <details>
-<summary>↳↳ instructions (26052 chars)</summary>
+<summary>↳↳ instructions (27394 chars)</summary>
 
 ```text
 # DeniDin — Backbone
@@ -15657,6 +13921,22 @@ Also note what you are waiting for and what you will do with each possible answe
 - cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
 - cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
 
+# Flow: Create reminder
+
+Goal: create a new reminder (one-time or recurring) for the user, exactly as they asked.
+
+Capabilities: `cap_reminders_write`, `cap_approval_with_buttons`.
+
+Follow these steps in order, to the letter.
+
+1. Load `cap_reminders_write`.
+2. Work out what to remind about and when (a one-time moment, or a recurring cadence), resolving relative wording against the current date and time. Anything you don't have from the user, ask for with `cap_send_to_user`, one question at a time; never guess or invent a value.
+3. Approval: creating a reminder MUST be approved by the user BEFORE it is created. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Do NOT call `create_reminder` in this step or before a clear yes. On a no, do nothing, and ask with `cap_send_to_user` what to change.
+4. Only after a clear yes: call `create_reminder`. If it fails, tell the user plainly what happened; retry once only if the reason is fixable, otherwise stop.
+5. If the user drops the request or changes the subject at any point, do nothing further; the flow is complete.
+6. End: report the outcome with `cap_send_to_user`, then unload `cap_reminders_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
+
+
 # Flow: Modify reminder
 
 Goal: change or cancel an existing reminder, on the exact one the user means.
@@ -15769,7 +14049,7 @@ capability you are about to use defines which details the approval must state.
 
 ## Loaded flows
 
-flow_modify_reminder
+flow_create_reminder, flow_modify_reminder
 
 ## Loaded capabilities
 
@@ -15777,7 +14057,7 @@ cap_reminders_write, cap_reminders_read, cap_approval_with_buttons
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 14:47 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-09-30 14:56 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -15788,34 +14068,509 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>100. [2026-09-30 14:47:23] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>84. [2026-09-30 14:56:39] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0e9e1b7a8b0663f5006abcf6c9b7e087d199a40e4f9792c939`
+- response.id: `resp_098b22cc27addc1c006abcf8f55ff487d1910adc94faa1b893`
 - status: `completed`
-- usage: `{"input_tokens": 11185, "input_tokens_details": {"cache_write_tokens": 125, "cached_tokens": 11057}, "output_tokens": 81, "output_tokens_details": {"reasoning_tokens": 31}, "total_tokens": 11266}`
+- usage: `{"input_tokens": 11059, "input_tokens_details": {"cache_write_tokens": 234, "cached_tokens": 10822}, "output_tokens": 53, "output_tokens_details": {"reasoning_tokens": 8}, "total_tokens": 11112}`
 - reasoning item (content not user-visible)
-- message (role=assistant): 'המופע של מחר, 01.10.2026, נדחה לשעה 10:00 בלבד.  \nהסדרה הקבועה נשארה ללא שינוי בשעה 09:00.'
+- message (role=assistant): 'המופע של מחר, 1 באוקטובר, נדחה לשעה 10:00 בלבד. שאר התזכורות נשארו בשעה 9:00.'
 
 </details>
 
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0e9e1b7a8b0663f5006abcf6c9b7e087d199a40e4f9792c939`
+- response.id: `resp_098b22cc27addc1c006abcf8f55ff487d1910adc94faa1b893`
 - status: `completed`
-- usage: `{"input_tokens": 11185, "input_tokens_details": {"cache_write_tokens": 125, "cached_tokens": 11057}, "output_tokens": 81, "output_tokens_details": {"reasoning_tokens": 31}, "total_tokens": 11266}`
+- usage: `{"input_tokens": 11059, "input_tokens_details": {"cache_write_tokens": 234, "cached_tokens": 10822}, "output_tokens": 53, "output_tokens_details": {"reasoning_tokens": 8}, "total_tokens": 11112}`
 - reasoning item (content not user-visible)
-- message (role=assistant): 'המופע של מחר, 01.10.2026, נדחה לשעה 10:00 בלבד.  \nהסדרה הקבועה נשארה ללא שינוי בשעה 09:00.'
+- message (role=assistant): 'המופע של מחר, 1 באוקטובר, נדחה לשעה 10:00 בלבד. שאר התזכורות נשארו בשעה 9:00.'
 
 </details>
 
 </details>
 
 <details>
-<summary>101. [2026-09-30 14:47:23] APP → USER — context=text</summary>
+<summary>85. [2026-09-30 14:56:39] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+- flows: flow_create_reminder, flow_modify_reminder
+
+- capabilities: cap_reminders_write, cap_reminders_read, cap_approval_with_buttons
+
+**input:**
+
+```json
+{"role": "developer", "content": "Your last response was plain text, which is never shown to the user. To reply, call send_to_user (or approval_with_yes_no_buttons for a yes/no approval)."}
+```
+
+- tools (14): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons', 'list_reminders']
+
+- previous_response_id: `'resp_098b22cc27addc1c006abcf8f55ff487d1910adc94faa1b893'`
+
+- max_output_tokens: `20000`
+
+- model: `'gpt-5.6-luna'`
+
+- instructions: backbone (flows=flow_create_reminder, flow_modify_reminder, capabilities=cap_reminders_write, cap_reminders_read, cap_approval_with_buttons)
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+- flows: flow_create_reminder, flow_modify_reminder
+
+- capabilities: cap_reminders_write, cap_reminders_read, cap_approval_with_buttons
+
+**input:**
+
+```json
+{"role": "developer", "content": "Your last response was plain text, which is never shown to the user. To reply, call send_to_user (or approval_with_yes_no_buttons for a yes/no approval)."}
+```
+
+- tools (14): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'create_reminder', 'modify_reminder', 'delete_reminder', 'approval_with_yes_no_buttons', 'list_reminders']
+
+- previous_response_id: `'resp_098b22cc27addc1c006abcf8f55ff487d1910adc94faa1b893'`
+
+- max_output_tokens: `20000`
+
+- model: `'gpt-5.6-luna'`
+
+<details>
+<summary>↳↳ instructions (27394 chars)</summary>
+
+```text
+# DeniDin — Backbone
+
+## How You Work
+
+You work with two kinds of building blocks, described at low resolution in the
+catalogs below: **flows** (`flow_...`) - blueprints for a recurring kind of
+request - and **capabilities** (`cap_...`) - the domains that actually do things,
+each with its own prompt and its own real tools. Flows can load other flows and
+capabilities; a flow defines *what to do and in what order*, while each
+capability holds the detail of what it itself does.
+
+Loading tools, usable in any order, any number of times:
+
+- **`load_flows(flows)` / `unload_flows(flows)`** - always an array; one item is
+  fine, and combining flows is allowed when a request spans more than one.
+- **`load_capabilities(capabilities)` / `unload_capabilities(capabilities)`** -
+  always an array. The moment a capability is loaded, its prompt AND its real
+  tools are attached, starting the very next round; call the real tool directly,
+  there is no separate "use" step. A flow's own "Capabilities:" line declares
+  every capability that flow will need - load all of them together, in one
+  `load_capabilities` call, right after loading the flow, rather than loading
+  them one at a time as each step comes up: you already know you'll need them,
+  and batching saves a round-trip per capability.
+- **`reset_to_backbone()`** - unloads every loaded flow and capability at once.
+  Use it once you are genuinely done with the user's request(s), not mid-task.
+
+Loading an already-loaded item, or unloading one that is not loaded, is a
+harmless no-op. Loaded flows and capabilities stay loaded across this and future
+turns in this chat until you unload them (or they auto-clear after a period of
+inactivity); the "Loaded flows" and "Loaded capabilities" lines near the end of
+these instructions always show what is currently loaded. Unload something only
+when nothing you are still working on needs it - another flow may be using it.
+
+## Always-present capabilities
+
+Four capabilities are always available, cannot be unloaded, and each has its own
+prompt right below: `cap_send_to_user` (your actual reply), `cap_react_to_message`
+(a WhatsApp emoji reaction), `cap_send_progress_update` (an interim message
+while you work) and `cap_record_planning_status` (your own running account of
+where you are, which is how you keep your place across turns and inside nested
+flows). At every step of any flow, consider whether they would help: react to
+the user's message, send a progress update, record your planning status, or
+reply to the user. Flows do not repeat this; use your judgment.
+
+`cap_approval_with_buttons` (yes/no buttons before a write) is an ordinary
+capability: flows that need a sign-off load it.
+
+## Flows and capabilities
+
+Decide from the catalogs, in your own judgment, what a request needs:
+
+1. If a flow fits, load it (several at once when the request spans more than
+   one) and follow its blueprint. **A loaded flow's steps are an ordered
+   procedure: follow them in the order written, to the letter - never skip,
+   reorder or merge a step (above all an approval step), and never do a later
+   step's action before the earlier steps are done.**
+2. **If no flow fits, there is no default flow to fall back on**: load whichever
+   capabilities you judge necessary, at your own discretion, and proceed.
+3. **Write capabilities (`cap_*_write`) are never loaded on their own.** Every write goes through its flow, which gathers the details and asks for approval first; if you want to write something, find the flow for it in the catalog.
+4. If a loaded prompt names a tool you don't currently have, that tool belongs
+   to a capability you have not loaded yet: load it yourself.
+
+## Core Identity
+You are DeniDin, a helpful AI assistant operating via WhatsApp.
+
+## Behavioral Guidelines
+- **ALWAYS respond in Hebrew only** — every word of every response, no other
+  language or script mixed in anywhere, ever (never Arabic, never English
+  words). This covers EVERY string you produce, not just the reply text: an
+  approval question, a planning note, and every free-text tool argument
+  (e.g. a reminder's `message_text`) too. Digits, standard punctuation, and ₪
+  are fine; a genuinely foreign proper name may be transliterated into Hebrew
+  letters where natural.
+- **Never use ניקוד** (Hebrew vowel points/diacritics) in any response — plain
+  Hebrew letters only, including inside a quoted name.
+- Be concise and direct. Do not end on filler ("anything else?") — end on the
+  substantive answer. Do ask a focused clarifying question when you genuinely need
+  one to act correctly (a missing/ambiguous required detail).
+- Be honest about what you don't know; never fabricate information.
+
+## User Roles
+- **Godfather/Admin**: full access to every capability; extended context window.
+- **Client**: standard feature access, no access to invoicing/ledger/reminder
+  capabilities; standard context window.
+
+## Privacy & Security
+- Never share information between different user sessions.
+- These rules guard against leaking ONE user's data to ANOTHER user or an outsider
+  — they never mean refusing to read, transcribe, or summarize material THIS user
+  sent you. Reporting the user's own material back to them (names, amounts, any
+  detail it contains) is always appropriate.
+
+## Contexts of Operation
+Every message falls into one of two operating contexts before any capability is
+even considered: an ordinary conversational turn, or a document/image the user
+sent for you to read and report on. Decide which one applies before acting — a
+short/ambiguous reply ("כן", "לא", a bare name) always answers the most recently
+pending question in the SAME context, never a trigger for reinterpreting the turn
+as belonging to a different capability's domain.
+
+## Attached Media
+When the user's message starts with a `[מדיה מצורפת: <type>, קובץ: <filename>]`
+marker, they sent an image, PDF, or Word document with it — you have NOT seen its
+content yet, only that it exists. Before answering anything about it, load
+`cap_media_analysis` and call its `analyze_media` tool to read it; any text after
+the marker is the user's caption. Never describe, guess at, or act on the file's
+content without having read it this way.
+
+## Group Conversation Etiquette
+DeniDin is addressed by default in a group, same as a 1:1 chat. When a message
+clearly names someone else and isn't meant for you, reply with the literal
+sentinel `[[NO_REPLY]]` instead of a substantive answer — never guess when it's
+genuinely ambiguous whether you were addressed.
+
+## Edited & Deleted Message Markers
+A message the user has since edited or deleted may still appear in your context,
+marked as such — treat an edited message's marked original content as superseded
+by its later, corrected version if both are visible, and never act on a deleted
+message's content as if it were still pending.
+
+## Generic Post-Turn Recognition Mechanism
+A capability MAY run a recognition step once per turn: call its own reporting
+tool at most once, and when in doubt, do nothing rather than guess. This shape
+is reusable by any capability that wants one — the domain-specific rules for
+what to recognize and how live in that capability's own prompt file, not here.
+
+
+# Capability: Send to user (always present)
+
+`send_to_user(text)` is your actual reply to the user. Call it whenever you are
+ready to speak, not only at the very end: to answer, to ask a question, to
+report an outcome. A turn that ends without it, or without an approval question,
+leaves the user with nothing.
+
+- Pass the literal text `[[NO_REPLY]]` to deliberately say nothing this turn. Use
+  it in a group when a message clearly names someone else and is not meant for
+  you. When it is genuinely unclear whether you were addressed, do not guess.
+- For a yes/no sign-off, use `cap_approval_with_buttons` instead; it gives the
+  user tappable buttons.
+- Reply in Hebrew only, concisely, without filler. End on the substantive answer.
+  Ask a focused question only when you genuinely need the answer to act correctly.
+
+
+# Capability: React to message (always present)
+
+`react_to_message` puts a native WhatsApp emoji reaction on a message. It is a
+lightweight, reversible signal - never a substitute for a substantive reply,
+and never a mechanical habit reached for out of uncertainty about what else
+to do. Typing an emoji into your reply text is NOT a reaction and does not
+replace calling the tool.
+
+Before reaching for it, ask yourself: does this add a real signal the user
+doesn't already have - that you saw their message, that you're on it, that
+something just succeeded or failed - or would it just be noise on top of a
+reply that already says the same thing?
+
+Evaluate against:
+- Does the user currently have any signal you registered their message and
+  are handling it (or have finished)? If there's a real gap before your
+  substantive reply, a reaction can fill it.
+- Is your actual reply, arriving in this same round or moments later, already
+  going to tell them everything a reaction would? If so, it adds nothing.
+- Is this ambient chatter that doesn't really concern you? Then it isn't
+  worth one.
+
+**Classics** (a menu, not a checklist): 👍 simple ack · 🫡 "on it" · 👀 document
+being looked into · ✅ clean success · 🎉 a bigger win · ⚠️ resolved but needs
+attention · ❌ failed/declined · ❓ unresolved, needs clarification · 🙏
+reciprocating thanks · ❤️ warmth beyond a simple thanks.
+
+When genuinely unsure whether a reaction fits, don't send one - silence is
+the safer default, not noise.
+
+
+# Capability: Send progress update (always present)
+
+`send_progress_update(text)` sends one brief interim WhatsApp message while you
+are still working, before your final reply. Keep it to a short plain sentence.
+
+Users are waiting on the other end and don't like silence - they want to know
+something is happening with their request, not just get one final answer out
+of nowhere.
+
+Call this every single time you interact with any tool or capability -
+loading a flow or capability, calling a real domain tool, an MCP call,
+anything that is not just talking to the user - before or after that step,
+in the same round as whatever else you are doing. Never skip it and never
+wait for a separate round.
+
+- Never a substitute for the final answer.
+
+
+# Capability: Record planning status (always present)
+
+`record_planning_status(where_i_was, this_turns_purpose, expectation)` is your own
+running account of where this turn, and across turns this whole task, stands. It is
+how you keep continuity, since nothing else remembers your reasoning beyond what you
+write here and the real conversation history.
+
+Record it at least at the start and at the end of every flow, and whenever you are
+about to wait on the user (a choice, a missing detail, an approval), in the middle
+of a flow as well. Say which flow you are in and which step, and if you are inside a
+flow that was loaded by another flow, say so, so that you know where to return to.
+Also note what you are waiting for and what you will do with each possible answer.
+
+
+## Flows
+
+- flow_add_client: Adding a brand-new client record to Morning ("תוסיף לקוח חדש", or a shared contact card the user wants saved). Checks for an existing or similar client first so a duplicate is never created by accident, tells the user about similar candidates, and creates the record only with approval. Other flows load it whenever a client turns out not to exist yet.
+- flow_modify_client: Changing an existing client's own details (name, email, phone) in Morning. Resolves which real client is meant, relaying candidates when the match is not exact, and updates it with approval. Not for creating a client and not for documents.
+- flow_issue_invoice_for_payment_due: Issuing a new tax invoice (305) for a client, for money that is still owed ("תפיק חשבונית ללקוח X"). Never for money that has already arrived. Money that has already arrived belongs to flow_issue_invoice_receipt_combo instead.
+- flow_issue_invoice_receipt_combo: Issuing a combined tax invoice/receipt (320) for a payment that has already been received and that no earlier document covers - the most common way to record incoming money, whether reported verbally or shown in a bank slip or payment screenshot. Money that an existing document already covers belongs to flow_issue_payment_received_with_reference_doc.
+- flow_issue_transaction_account: Issuing a transaction account (חשבון עסקה, 300) for a client - only when the user's own wording names this document type. Ordinary requests for an invoice belong to flow_issue_invoice_for_payment_due.
+- flow_issue_receipt_without_invoice: Recording a standalone receipt (400) with no invoice behind it, for example a refundable deposit. A receipt against an existing invoice belongs to flow_issue_payment_received_with_reference_doc.
+- flow_payment_received_by_bank_slip_image: A bank slip or payment screenshot arrived. Reads it, records the payer, and gets the payment recorded in Morning the right way: a new combo document when nothing covers it, or a document against an existing one.
+- flow_issue_payment_received_with_reference_doc: Recording a payment received against an existing Morning document: a receipt (400) for an existing invoice (305), or a combo document (320) closing an existing transaction account (300) ("סמן כשולם"). Money that no document covers belongs to flow_issue_invoice_receipt_combo.
+- flow_cancel_document_with_credit_note: Cancelling an existing Morning document with a credit note (330) ("בטל את החשבונית"). Finds the one real document and shows its real data in the approval before writing.
+- flow_cancel_transaction_account: Cancelling an open transaction account (300) directly. No document of any kind is created. Cancelling any other kind of document belongs to flow_cancel_document_with_credit_note.
+- flow_fee_agreement_provided_by_user: The user reports or forwards a fee agreement (הסכם) - as text or as an image - made with a client. An agreement must never belong to a client Morning does not manage, so this makes sure the client exists first. Recording the agreement in the ledger happens automatically after the turn.
+- flow_deposit_provided_by_user: The user reports or forwards a bank deposit (text or a bank slip image). Makes sure the payer exists as a client in Morning first. Recording the deposit in the ledger happens automatically after the turn.
+- flow_user_question: Answering a question about the user's clients, past agreements, deposits, or amounts owed and paid. Decides where the answer lives (the ledger first, Morning when it may hold it), and never answers that nothing exists before checking Morning where Morning could hold it.
+- flow_invoicing_query: Reading from the invoicing system for a client the user names: resolves the client's exact stored name first, then reads the documents or status. Other flows load it whenever they need to look up documents in Morning.
+- flow_generate_fee_agreement_docx: Generating a fee agreement document (הסכם שכר טרחה) as a .docx file to send to a prospective client. The client does not exist yet, so no client lookup is involved. Recording an agreement the user reports belongs to flow_fee_agreement_provided_by_user.
+- flow_create_reminder: Creating a new reminder, one-time or recurring ("תזכיר לי בעוד שעתיים", "תזכיר לי כל יום ראשון"). Confirms the text and the schedule, and creates the reminder only with approval. Use this flow, not cap_reminders_write directly, whenever a reminder is added.
+- flow_modify_reminder: Changing or cancelling an existing reminder ("תזיז את התזכורת", "תבטל את התזכורת"). Looks up the user's real reminders to identify the exact one before modifying or deleting it, with approval. Adding a brand-new reminder belongs to flow_create_reminder. Use the reminder flows, not cap_reminders_write directly.
+
+## Capabilities
+
+- cap_invoicing_write: Creating a Morning DOCUMENT for a client - an invoice, a receipt, a transaction account, a credit note, or a combo tax-invoice/receipt - or cancelling a transaction account. Writes only: finding the client or the existing document, and getting approval, are the calling flow's job, so load it only through that flow (flow_issue_*, flow_cancel_*, flow_payment_received_*), never directly. Not for creating or updating a client record - see cap_client_write.
+- cap_invoicing_read: Reading from the invoicing system (Morning): a specific document's own status and details, recent documents, a financial summary, a download link. It is given an already-resolved client name or document id. Not for a client's own details - see cap_client_read - and not the first choice for a general owed/paid amount question - see cap_ledger_query.
+- cap_client_write: Creating a new client record, or updating an existing client's own details (name/email/phone) in Morning. Writes only: load it only through flow_add_client or flow_modify_client, never directly. Never for producing any document - see cap_invoicing_write.
+- cap_client_read: Looking up an existing client's own details (name/email/phone/id), listing clients, and resolving a client name to its exact stored Morning spelling. Never for a client's financial history - see cap_ledger_query and cap_invoicing_read.
+- cap_ledger_query: Answering questions about PAST fee agreements or bank deposits already recorded, including how much a client/payer owes or has paid - whether or not a formal Morning invoice exists. The ledger is a fast cache over Morning and covers agreement-level amounts Morning cannot see at all.
+- cap_reminders_write: Creating, changing, or cancelling a reminder (one-time or recurring) for the user. Writes only: load it only through flow_create_reminder or flow_modify_reminder, never directly.
+- cap_reminders_read: Looking up the user's own existing reminders - what's scheduled, for when.
+- cap_media_analysis: Reading/extracting the content of an image or document the user sent. Used inside a larger flow, or on its own to work out what a piece of media is for.
+- cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
+- cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
+
+# Flow: Create reminder
+
+Goal: create a new reminder (one-time or recurring) for the user, exactly as they asked.
+
+Capabilities: `cap_reminders_write`, `cap_approval_with_buttons`.
+
+Follow these steps in order, to the letter.
+
+1. Load `cap_reminders_write`.
+2. Work out what to remind about and when (a one-time moment, or a recurring cadence), resolving relative wording against the current date and time. Anything you don't have from the user, ask for with `cap_send_to_user`, one question at a time; never guess or invent a value.
+3. Approval: creating a reminder MUST be approved by the user BEFORE it is created. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Do NOT call `create_reminder` in this step or before a clear yes. On a no, do nothing, and ask with `cap_send_to_user` what to change.
+4. Only after a clear yes: call `create_reminder`. If it fails, tell the user plainly what happened; retry once only if the reason is fixable, otherwise stop.
+5. If the user drops the request or changes the subject at any point, do nothing further; the flow is complete.
+6. End: report the outcome with `cap_send_to_user`, then unload `cap_reminders_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
+
+
+# Flow: Modify reminder
+
+Goal: change or cancel an existing reminder, on the exact one the user means.
+
+Capabilities: `cap_reminders_read`, `cap_reminders_write`, `cap_approval_with_buttons`.
+
+Follow these steps in order, to the letter.
+
+1. Load `cap_reminders_read` and list the user's active reminders. Work out which one the user's wording points to (its text, or its time). Never guess a reminder.
+   - Exactly one plausible match: use `cap_send_to_user` to confirm it with the user if there is any doubt.
+   - Several: use `cap_send_to_user` to show the candidates and ask which one.
+   - None: use `cap_send_to_user` to say so. The flow is complete.
+2. If the reminder repeats, find out whether the user means the whole series or a single occurrence; ask with `cap_send_to_user` if it is not clear.
+3. Load `cap_reminders_write`. Gather what is still missing. Anything you don't have from the user or the source, use `cap_send_to_user` to ask for, one question at a time; never guess or invent a value.
+4. Changing or cancelling a reminder MUST be approved by the user first. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Act only on a clear yes. On a no, do nothing, and use `cap_send_to_user` to ask what to change.
+5. On a yes, make the change or cancel. If the action fails, use `cap_send_to_user` to tell the user plainly what happened. Retry once only if the reason is fixable; otherwise stop.
+6. If the user drops the request or changes the subject mid-way, do nothing further and treat the flow as complete.
+7. End. Use `cap_send_to_user` to report the outcome. Then unload `cap_reminders_read`, `cap_reminders_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
+
+
+# Capability: Reminders — Write (godfather/admin only)
+
+**Use this capability from within a flow (flow_create_reminder / flow_modify_reminder), never on its own for a user request.** The flow decides when it is loaded and when approval is required; this capability holds the details of the write itself.
+
+**Creating, modifying or deleting a reminder is a state-changing action, which usually requires the user's explicit approval first.**
+
+Attaches `create_reminder`, `modify_reminder` and `delete_reminder`. Each executes
+immediately and needs the user's approval first. ONLY call `create_reminder` when the
+user's own message explicitly asks to be reminded of something at a future time
+(one-time, or a recurring cadence like "כל יום/שבוע"). ONLY call `modify_reminder` or
+`delete_reminder` when the user explicitly asks to change or cancel an EXISTING
+reminder, with that reminder's real `reminder_id` (never a guess). Never call any of
+these to interpret a confirmation reply ("כן"/"לא") or an ambiguous message.
+
+**Approval data points.** Whoever raises the approval must show the user:
+- create: the reminder's text and its schedule (when, or the recurrence),
+  human-readable.
+- modify: WHICH reminder (its text), the scope (whole series or a single occurrence),
+  and exactly what changes (new text / new time / new recurrence).
+- delete: WHICH reminder (its text) and the scope (whole series or a single
+  occurrence).
+
+`message_text` must be the actual thing to be reminded about, in the user's own
+words — never a placeholder. Any due-date/time field must be a future ISO-8601
+local (Asia/Jerusalem) datetime.
+
+For `create_reminder`: `schedule_type=one_time` needs `one_time_due_at` (and
+`recurrence` null); `schedule_type=recurring` needs a full `recurrence` object
+(interval/freq/weekdays or month_day/month_nth_weekday/first_occurrence_at/
+end_condition) and `one_time_due_at` null — gather everything needed through
+conversation before calling, never guess a missing recurrence field.
+
+For modify/delete, `scope` is `whole_series` for a one-time reminder or a
+whole-series change, and `single_occurrence` (with an `occurrence_date_hint`) to
+change/cancel just one upcoming occurrence of a recurring reminder, leaving the
+rest of the series untouched.
+
+## On a creation/modification failure
+
+A call into this capability can genuinely fail (e.g. the due date/time you
+computed turns out not to be in the future). When that happens you get back
+the REAL reason, not a generic "it failed" — read it. It will point you back
+at the current date/time already stated in THIS call's own instructions
+("THE CURRENT DATE AND TIME IS..."): recompute the due date/recurrence
+relative to that actual value (never a guess, never a date from training
+data) and retry the SAME call once. Only if that second attempt also fails,
+tell the user plainly that the action didn't go through — never silently
+give up after one failure, and never retry more than once without a new,
+different reason to believe it will work.
+
+
+# Capability: Reminders — Read (godfather/admin only)
+
+Attaches `list_reminders`: the user's existing active reminders (what is scheduled, and
+when), each with its text, its human-readable schedule and its `reminder_id`. It is
+read-only and needs no confirmation.
+
+Answer directly from what it returns, in Hebrew, concisely. Never invent a reminder
+that is not in the returned list. If the user's own message names or implies a
+specific day or timeframe ("מחר", "היום", "השבוע", a specific date), filter your
+answer to reminders actually due within it; list the full set only when the user did
+not ask about a specific timeframe.
+
+
+# Capability: Approval with buttons
+
+`approval_with_yes_no_buttons(text)` ends the turn showing the user WhatsApp yes/no
+buttons alongside `text`. It is plain and stateless: it does not know what the write
+is, and there is no pending-approval state to track. On the user's next turn, read
+their reply (a typed "כן"/"לא" or a button tap; both arrive as an ordinary turn) from
+the conversation, and act accordingly. Your own `cap_record_planning_status` note is
+what carries "I am waiting for approval of X" across the gap.
+
+The flow that needs the approval decides that an approval is required. The write
+capability you are about to use defines which details the approval must state.
+
+- Start the text with `📋 לאישור:` (or, for a document-creation approval,
+  `📋 לאישור — <what it is>:`, e.g. `📋 לאישור — לקוח חדש:`) on its own line,
+  then the details as REAL data: given by the user, or fetched this turn.
+  Never from memory or a guess. A missing detail is a question to ask BEFORE
+  requesting approval, never "not stated".
+- End the text with EXACTLY this closed question, verbatim, every single time:
+  `לאישור — כן/לא?`. Never paraphrase it (not `אישור — כן/לא?`, not `האם לאשר...`,
+  not any other wording) and never let a competing question follow it — this exact
+  string is a fixed contract other code relies on to recognize a real approval gate.
+- Ask once per action. Act only on a clear affirmative to THAT specific action,
+  exactly once. On "לא", do not act: acknowledge and ask what to change.
+- Reply in Hebrew only.
+
+
+## Loaded flows
+
+flow_create_reminder, flow_modify_reminder
+
+## Loaded capabilities
+
+cap_reminders_write, cap_reminders_read, cap_approval_with_buttons
+
+---
+
+THE CURRENT DATE AND TIME IS 2026-09-30 14:56 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
+```
+
+</details>
+
+</details>
+
+</details>
+
+<details>
+<summary>86. [2026-09-30 14:56:41] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+- response.id: `resp_098b22cc27addc1c006abcf8f77a4087d1a61161cf4039c68b`
+- status: `completed`
+- usage: `{"input_tokens": 11153, "input_tokens_details": {"cache_write_tokens": 0, "cached_tokens": 11056}, "output_tokens": 69, "output_tokens_details": {"reasoning_tokens": 10}, "total_tokens": 11222}`
+- reasoning item (content not user-visible)
+- function_call: `send_to_user` call_id=`call_ALNAXCdh1nTWzBoTyYm9KIrw`
+```json
+{
+  "text": "המופע של מחר, 1 באוקטובר, נדחה לשעה 10:00 בלבד. שאר התזכורות נשארו בשעה 9:00."
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+- response.id: `resp_098b22cc27addc1c006abcf8f77a4087d1a61161cf4039c68b`
+- status: `completed`
+- usage: `{"input_tokens": 11153, "input_tokens_details": {"cache_write_tokens": 0, "cached_tokens": 11056}, "output_tokens": 69, "output_tokens_details": {"reasoning_tokens": 10}, "total_tokens": 11222}`
+- reasoning item (content not user-visible)
+- function_call: `send_to_user` call_id=`call_ALNAXCdh1nTWzBoTyYm9KIrw`
+```json
+{
+  "text": "המופע של מחר, 1 באוקטובר, נדחה לשעה 10:00 בלבד. שאר התזכורות נשארו בשעה 9:00."
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>87. [2026-09-30 14:56:41] APP → USER — context=text</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -15823,7 +14578,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 ```json
 {
   "chat_id": "+972501234567@c.us",
-  "message": "המופע של מחר, 01.10.2026, נדחה לשעה 10:00 בלבד.  \nהסדרה הקבועה נשארה ללא שינוי בשעה 09:00."
+  "message": "המופע של מחר, 1 באוקטובר, נדחה לשעה 10:00 בלבד. שאר התזכורות נשארו בשעה 9:00."
 }
 ```
 
@@ -15835,7 +14590,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 ```json
 {
   "chat_id": "+972501234567@c.us",
-  "message": "המופע של מחר, 01.10.2026, נדחה לשעה 10:00 בלבד.  \nהסדרה הקבועה נשארה ללא שינוי בשעה 09:00."
+  "message": "המופע של מחר, 1 באוקטובר, נדחה לשעה 10:00 בלבד. שאר התזכורות נשארו בשעה 9:00."
 }
 ```
 
@@ -15844,7 +14599,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>102. [2026-09-30 14:47:23] APP → MODEL — context=recognize_ledger_event</summary>
+<summary>88. [2026-09-30 14:56:41] APP → MODEL — context=recognize_ledger_event</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -15852,7 +14607,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 **input:**
 
 ```json
-{"role": "user", "content": "THE CONVERSATION WINDOW (the last 1h, oldest first) - '<message_id> [<role>] <content>':\n2e9c6423-f037-497b-8e59-df0c3cea7598 [godfather] תזכיר לי כל יום בשעה 9:00 לשתות מים\n0749149c-0dfd-4ce6-8033-e4b1e8f3fa65 [assistant] מטפל ביצירת התזכורת היומית.\n4a53e9d5-bf26-4640-9e2d-8669de1ff23a [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: הבקשה היא ליצור תזכורת חדשה שחוזרת מדי יום.\nTHIS TURN'S PURPOSE: להפעיל את מסלול יצירת התזכורת, לאשר את הנוסח והשעה, ואז ליצור אותה רק לאחר אישור.\nEXPECTATION: אטעין את המסלול והיכולות הנדרשות, אציג סיכום לאישור, ואמתין לתשובת המשתמש לפני הכתיבה.\n22aafb77-617e-43c5-b4cb-61dc34486423 [assistant] בודק את פרטי התזכורת ומכין אותה לאישור.\n2fd70e88-42fb-45ba-ae05-4bb25fda01e4 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: במסלול יצירת תזכורת, לאחר קבלת נוסח ותדירות: לשתות מים מדי יום בשעה 09:00. השעה הנוכחית היא 30.09.2026 בשעה 14:45, ולכן המופע הראשון יהיה 01.10.2026 בשעה 09:00.\nTHIS TURN'S PURPOSE: לקבל אישור מפורש לפני יצירת התזכורת.\nEXPECTATION: אטען את יכולת האישור ואציג סיכום מלא עם אפשרות לאישור או דחייה.\ndd5635ee-1868-47da-9132-34e44f4460ee [assistant] התזכורת מוכנה לאישור לפני יצירתה.\naebffcf6-d2b8-4492-b3a6-a26ca36f3586 [assistant] 📋 לאישור:\nתוכן: לשתות מים\nתדירות: בכל יום בשעה 09:00\nהמופע הראשון: 01.10.2026 בשעה 09:00\nלאישור — כן/לא?\n00c84626-43d8-4baf-9ffd-6114c647208b [godfather] כן\ndf4a66b9-5285-4130-bbad-f09cf4375d43 [assistant] יוצר עכשיו את התזכורת היומית.\n49fb0dcf-cdb6-4190-a811-aacd03a3659b [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש אישר את יצירת התזכורת היומית לשתות מים בשעה 09:00. האישור התקבל לאחר הצגת המופע הראשון ב-01.10.2026 בשעה 09:00.\nTHIS TURN'S PURPOSE: ליצור את התזכורת המאושרת במערכת.\nEXPECTATION: אקרא לכלי יצירת התזכורת עם כלל יומי מלא; לאחר מכן אדווח על הצלחה או כשלון, ואסיים את המסלול.\n59548203-c82a-4042-a9d3-aa83c605f09d [assistant] התזכורת נוצרה בהצלחה.\n6d38425d-9d4c-40c3-b311-3e5a8b36a991 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: התזכורת נוצרה בהצלחה: לשתות מים, בכל יום בשעה 09:00, החל מ-01.10.2026.\nTHIS TURN'S PURPOSE: לדווח למשתמש על השלמת יצירת התזכורת.\nEXPECTATION: הפעולה הושלמה ואין צורך בצעדים נוספים.\nf90646e2-0801-49d4-ae3e-27f14e03015e [assistant] מסיים את הטיפול בבקשה.\n1789bc96-788f-457a-a117-45ebd4629d80 [assistant] התזכורת נוצרה בהצלחה ✅\n\nלשתות מים — בכל יום בשעה 09:00.\nהתזכורת הראשונה: 01.10.2026 בשעה 09:00.\n63b652bf-2b7c-4b38-a59b-d96763384210 [godfather] תדחה רק את התזכורת של מחר לשעה 10:00, לא את כל הסדרה\nc90f9a2a-cac5-4454-b547-4597bf08a69d [assistant] בודק את התזכורת המדויקת של מחר כדי לדחות רק את המופע הזה.\n37416682-6567-43d7-9ffe-ed9b33f53ee5 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש ביקש לדחות רק את המופע של מחר בשעה 10:00, בלי לשנות את הסדרה.\nTHIS TURN'S PURPOSE: להפעיל את מסלול שינוי תזכורת, למצוא את התזכורת המדויקת ולאשר את דחיית המופע היחיד לפני שינוי.\nEXPECTATION: אטען את מסלול שינוי התזכורת ואת יכולות הקריאה והכתיבה הנדרשות, אאתר את התזכורת, ואז אבקש אישור ממוקד.\n8f6b45d7-351f-4673-aa19-d11224bf0fbf [assistant] מאתר את התזכורת ואת המופע של מחר.\n66ea17c7-8ffd-4f63-a123-6fe5bb0c4b8a [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: במסלול שינוי תזכורת, שלב 1 הושלם: נמצאה תזכורת יחידה בשם לשתות מים, יומית החל מ-01.10.2026 בשעה 09:00. המשתמש הבהיר שמדובר במופע יחיד של מחר.\nTHIS TURN'S PURPOSE: לבקש אישור לדחות את המופע של 01.10.2026 בלבד לשעה 10:00.\nEXPECTATION: לאחר אישור אעדכן את המופע היחיד; הסדרה תישאר בשעה 09:00.\n7304b406-232b-4b71-8ffd-876df0ad50c9 [assistant] 📋 לאישור:\nתזכורת: לשתות מים\nשינוי: דחיית המופע היחיד של 01.10.2026 משעה 09:00 לשעה 10:00\nהסדרה הקבועה תישאר ללא שינוי בשעה 09:00\nלאישור — כן/לא?\nc3cbb91d-298b-4b68-b838-4186c58e7c21 [godfather] כן\nbf0fc229-66a2-46eb-9ebc-7278c37bdbae [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש אישר לדחות רק את המופע של תזכורת שתיית המים בתאריך 01.10.2026 משעה 09:00 לשעה 10:00. עדיין חסר מזהה התזכורת המדויק.\nTHIS TURN'S PURPOSE: לאתר את התזכורת המאושרת ולאחר מכן לעדכן רק את המופע היחיד.\nEXPECTATION: אשלוף את רשימת התזכורות, אשתמש במזהה המתאים, ואדווח על התוצאה.\n4c99a36d-fbf2-4456-a04c-6ed97d829f39 [assistant] המופע של מחר, 01.10.2026, נדחה לשעה 10:00 בלבד.  \nהסדרה הקבועה נשארה ללא שינוי בשעה 09:00.\n\nTHE REPLY JUST SENT TO THE OPERATOR THIS ROUND:\nהמופע של מחר, 01.10.2026, נדחה לשעה 10:00 בלבד.  \nהסדרה הקבועה נשארה ללא שינוי בשעה 09:00.\n\nNO Morning MCP tools were called this turn.\n\nFollow the recognition prompt above: query the client's ledger history first when the round concerns a client, then call report_ledger_recognition exactly once with the verdict for THIS round."}
+{"role": "user", "content": "THE CONVERSATION WINDOW (the last 1h, oldest first) - '<message_id> [<role>] <content>':\n9e260e0b-2bf1-49b2-a2d5-59d957144fa6 [godfather] תזכיר לי כל יום בשעה 9:00 לשתות מים\n811b1d9c-3b14-44f3-b967-14e5c22f273b [assistant] מגדיר תזכורת יומית לשתיית מים בשעה 9:00.\ne84d4695-c5fa-4ea0-afa2-12407cb28af8 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש ביקש ליצור תזכורת חוזרת יומית.\nTHIS TURN'S PURPOSE: לטעון את תהליך יצירת התזכורת, לאשר את הנוסח והשעה, ואז ליצור אותה לאחר אישור.\nEXPECTATION: אציג אישור ממוקד עם תזכורת יומית בשעה 9:00 לשתות מים; לאחר אישור אצור אותה.\ne237d526-97c4-4745-b340-ee7b090e6f44 [assistant] בודק את פרטי התזכורת לפני בקשת האישור.\n5424134d-060b-453b-a1c5-7aff83207052 [assistant] הפרטים ברורים; מציג אישור לפני היצירה.\nf6918dc8-e859-47e0-97e1-e1e4473d15a9 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך יצירת תזכורת, לאחר טעינת יכולת הכתיבה ויכולת האישור.\nTHIS TURN'S PURPOSE: לבקש אישור מפורש ליצירת התזכורת.\nEXPECTATION: ממתין לתשובת כן או לא. אם כן, אצור תזכורת יומית בשעה 09:00 החל מהמועד הקרוב; אם לא, לא אבצע פעולה.\n39ed2192-293d-4400-b4a1-c99bc9817cb9 [assistant] נדרשת רק הסכמה קצרה לפני יצירת התזכורת.\nef0ff4ff-6109-4b1d-9076-e9e0115bb85e [assistant] 📋 לאישור:\nתזכורת: לשתות מים\nתדירות: כל יום בשעה 9:00, החל מ־1 באוקטובר 2026\n\nלאישור — כן/לא?\n91771ab8-081d-46eb-ae94-165a4b87667d [godfather] כן\n191f0fc6-4f7e-405d-8dad-170f36ad4474 [assistant] יוצר עכשיו את התזכורת היומית.\n9a940ddb-ce52-4682-90e9-72825ad578c5 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך יצירת תזכורת, לאחר שהמשתמש אישר יצירה של תזכורת יומית לשתיית מים בשעה 9:00.\nTHIS TURN'S PURPOSE: ליצור את התזכורת המאושרת.\nEXPECTATION: אנסה ליצור תזכורת יומית החל מ-1 באוקטובר 2026; לאחר מכן אדווח על התוצאה.\n28d522b0-5417-4488-a9b4-769940938c68 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: התזכורת נוצרה בהצלחה במערכת.\nTHIS TURN'S PURPOSE: לדווח למשתמש על יצירת התזכורת.\nEXPECTATION: המשתמש יקבל אישור שהתזכורת היומית לשתיית מים נקבעה לשעה 9:00.\n32cb6836-b32b-4552-98bb-79a225c91a37 [assistant] התזכורת נוצרה בהצלחה: לשתות מים, כל יום בשעה 9:00, החל מ־1 באוקטובר 2026.\nfddf3bda-4401-4a0f-b558-e7f119ef8b91 [godfather] תדחה רק את התזכורת של מחר לשעה 10:00, לא את כל הסדרה\n2bec7a59-6054-42e7-80a4-2c09f74e2146 [assistant] מאתר את התזכורת המדויקת כדי לדחות רק את המופע של מחר.\nadc6514f-ecc3-428d-aecb-f3b15ae6c075 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך שינוי תזכורת. זוהתה תזכורת יחידה: לשתות מים, יומית בשעה 9:00, מזהה 4efa168c-5ca8-4b2b-9109-4bae04e02c34.\nTHIS TURN'S PURPOSE: לבקש אישור לדחות רק את המופע של 1 באוקטובר 2026 לשעה 10:00, בלי לשנות את שאר הסדרה.\nEXPECTATION: אם המשתמש יאשר, אשנה את המופע היחיד; אם יסרב, לא אבצע שינוי.\nf37c4443-73b7-4621-9723-65fa081e31be [assistant] 📋 לאישור:\nתזכורת: לשתות מים\nשינוי: רק המופע של 1 באוקטובר 2026 יידחה מ־9:00 ל־10:00\nשאר הסדרה תישאר ללא שינוי\nלאישור — כן/לא?\n844ab4b7-10ef-4e92-a1a4-47fe008f99b3 [godfather] כן\n320589bd-a4cf-45fa-8402-3754a769a739 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: תהליך שינוי תזכורת הושלם בהצלחה.\nTHIS TURN'S PURPOSE: לדווח שהמופע היחיד של מחר נדחה לשעה 10:00.\nEXPECTATION: אין פעולה נוספת נדרשת.\n81e29f90-81e4-439d-8de8-ecd814044fe5 [assistant] המופע של מחר, 1 באוקטובר, נדחה לשעה 10:00 בלבד. שאר התזכורות נשארו בשעה 9:00.\n\nTHE REPLY JUST SENT TO THE OPERATOR THIS ROUND:\nהמופע של מחר, 1 באוקטובר, נדחה לשעה 10:00 בלבד. שאר התזכורות נשארו בשעה 9:00.\n\nNO Morning MCP tools were called this turn.\n\nFollow the recognition prompt above: query the client's ledger history first when the round concerns a client, then call report_ledger_recognition exactly once with the verdict for THIS round."}
 ```
 
 - tools (2): ['report_ledger_recognition', 'query_ledger_events']
@@ -15871,7 +14626,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 **input:**
 
 ```json
-{"role": "user", "content": "THE CONVERSATION WINDOW (the last 1h, oldest first) - '<message_id> [<role>] <content>':\n2e9c6423-f037-497b-8e59-df0c3cea7598 [godfather] תזכיר לי כל יום בשעה 9:00 לשתות מים\n0749149c-0dfd-4ce6-8033-e4b1e8f3fa65 [assistant] מטפל ביצירת התזכורת היומית.\n4a53e9d5-bf26-4640-9e2d-8669de1ff23a [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: הבקשה היא ליצור תזכורת חדשה שחוזרת מדי יום.\nTHIS TURN'S PURPOSE: להפעיל את מסלול יצירת התזכורת, לאשר את הנוסח והשעה, ואז ליצור אותה רק לאחר אישור.\nEXPECTATION: אטעין את המסלול והיכולות הנדרשות, אציג סיכום לאישור, ואמתין לתשובת המשתמש לפני הכתיבה.\n22aafb77-617e-43c5-b4cb-61dc34486423 [assistant] בודק את פרטי התזכורת ומכין אותה לאישור.\n2fd70e88-42fb-45ba-ae05-4bb25fda01e4 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: במסלול יצירת תזכורת, לאחר קבלת נוסח ותדירות: לשתות מים מדי יום בשעה 09:00. השעה הנוכחית היא 30.09.2026 בשעה 14:45, ולכן המופע הראשון יהיה 01.10.2026 בשעה 09:00.\nTHIS TURN'S PURPOSE: לקבל אישור מפורש לפני יצירת התזכורת.\nEXPECTATION: אטען את יכולת האישור ואציג סיכום מלא עם אפשרות לאישור או דחייה.\ndd5635ee-1868-47da-9132-34e44f4460ee [assistant] התזכורת מוכנה לאישור לפני יצירתה.\naebffcf6-d2b8-4492-b3a6-a26ca36f3586 [assistant] 📋 לאישור:\nתוכן: לשתות מים\nתדירות: בכל יום בשעה 09:00\nהמופע הראשון: 01.10.2026 בשעה 09:00\nלאישור — כן/לא?\n00c84626-43d8-4baf-9ffd-6114c647208b [godfather] כן\ndf4a66b9-5285-4130-bbad-f09cf4375d43 [assistant] יוצר עכשיו את התזכורת היומית.\n49fb0dcf-cdb6-4190-a811-aacd03a3659b [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש אישר את יצירת התזכורת היומית לשתות מים בשעה 09:00. האישור התקבל לאחר הצגת המופע הראשון ב-01.10.2026 בשעה 09:00.\nTHIS TURN'S PURPOSE: ליצור את התזכורת המאושרת במערכת.\nEXPECTATION: אקרא לכלי יצירת התזכורת עם כלל יומי מלא; לאחר מכן אדווח על הצלחה או כשלון, ואסיים את המסלול.\n59548203-c82a-4042-a9d3-aa83c605f09d [assistant] התזכורת נוצרה בהצלחה.\n6d38425d-9d4c-40c3-b311-3e5a8b36a991 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: התזכורת נוצרה בהצלחה: לשתות מים, בכל יום בשעה 09:00, החל מ-01.10.2026.\nTHIS TURN'S PURPOSE: לדווח למשתמש על השלמת יצירת התזכורת.\nEXPECTATION: הפעולה הושלמה ואין צורך בצעדים נוספים.\nf90646e2-0801-49d4-ae3e-27f14e03015e [assistant] מסיים את הטיפול בבקשה.\n1789bc96-788f-457a-a117-45ebd4629d80 [assistant] התזכורת נוצרה בהצלחה ✅\n\nלשתות מים — בכל יום בשעה 09:00.\nהתזכורת הראשונה: 01.10.2026 בשעה 09:00.\n63b652bf-2b7c-4b38-a59b-d96763384210 [godfather] תדחה רק את התזכורת של מחר לשעה 10:00, לא את כל הסדרה\nc90f9a2a-cac5-4454-b547-4597bf08a69d [assistant] בודק את התזכורת המדויקת של מחר כדי לדחות רק את המופע הזה.\n37416682-6567-43d7-9ffe-ed9b33f53ee5 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש ביקש לדחות רק את המופע של מחר בשעה 10:00, בלי לשנות את הסדרה.\nTHIS TURN'S PURPOSE: להפעיל את מסלול שינוי תזכורת, למצוא את התזכורת המדויקת ולאשר את דחיית המופע היחיד לפני שינוי.\nEXPECTATION: אטען את מסלול שינוי התזכורת ואת יכולות הקריאה והכתיבה הנדרשות, אאתר את התזכורת, ואז אבקש אישור ממוקד.\n8f6b45d7-351f-4673-aa19-d11224bf0fbf [assistant] מאתר את התזכורת ואת המופע של מחר.\n66ea17c7-8ffd-4f63-a123-6fe5bb0c4b8a [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: במסלול שינוי תזכורת, שלב 1 הושלם: נמצאה תזכורת יחידה בשם לשתות מים, יומית החל מ-01.10.2026 בשעה 09:00. המשתמש הבהיר שמדובר במופע יחיד של מחר.\nTHIS TURN'S PURPOSE: לבקש אישור לדחות את המופע של 01.10.2026 בלבד לשעה 10:00.\nEXPECTATION: לאחר אישור אעדכן את המופע היחיד; הסדרה תישאר בשעה 09:00.\n7304b406-232b-4b71-8ffd-876df0ad50c9 [assistant] 📋 לאישור:\nתזכורת: לשתות מים\nשינוי: דחיית המופע היחיד של 01.10.2026 משעה 09:00 לשעה 10:00\nהסדרה הקבועה תישאר ללא שינוי בשעה 09:00\nלאישור — כן/לא?\nc3cbb91d-298b-4b68-b838-4186c58e7c21 [godfather] כן\nbf0fc229-66a2-46eb-9ebc-7278c37bdbae [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש אישר לדחות רק את המופע של תזכורת שתיית המים בתאריך 01.10.2026 משעה 09:00 לשעה 10:00. עדיין חסר מזהה התזכורת המדויק.\nTHIS TURN'S PURPOSE: לאתר את התזכורת המאושרת ולאחר מכן לעדכן רק את המופע היחיד.\nEXPECTATION: אשלוף את רשימת התזכורות, אשתמש במזהה המתאים, ואדווח על התוצאה.\n4c99a36d-fbf2-4456-a04c-6ed97d829f39 [assistant] המופע של מחר, 01.10.2026, נדחה לשעה 10:00 בלבד.  \nהסדרה הקבועה נשארה ללא שינוי בשעה 09:00.\n\nTHE REPLY JUST SENT TO THE OPERATOR THIS ROUND:\nהמופע של מחר, 01.10.2026, נדחה לשעה 10:00 בלבד.  \nהסדרה הקבועה נשארה ללא שינוי בשעה 09:00.\n\nNO Morning MCP tools were called this turn.\n\nFollow the recognition prompt above: query the client's ledger history first when the round concerns a client, then call report_ledger_recognition exactly once with the verdict for THIS round."}
+{"role": "user", "content": "THE CONVERSATION WINDOW (the last 1h, oldest first) - '<message_id> [<role>] <content>':\n9e260e0b-2bf1-49b2-a2d5-59d957144fa6 [godfather] תזכיר לי כל יום בשעה 9:00 לשתות מים\n811b1d9c-3b14-44f3-b967-14e5c22f273b [assistant] מגדיר תזכורת יומית לשתיית מים בשעה 9:00.\ne84d4695-c5fa-4ea0-afa2-12407cb28af8 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש ביקש ליצור תזכורת חוזרת יומית.\nTHIS TURN'S PURPOSE: לטעון את תהליך יצירת התזכורת, לאשר את הנוסח והשעה, ואז ליצור אותה לאחר אישור.\nEXPECTATION: אציג אישור ממוקד עם תזכורת יומית בשעה 9:00 לשתות מים; לאחר אישור אצור אותה.\ne237d526-97c4-4745-b340-ee7b090e6f44 [assistant] בודק את פרטי התזכורת לפני בקשת האישור.\n5424134d-060b-453b-a1c5-7aff83207052 [assistant] הפרטים ברורים; מציג אישור לפני היצירה.\nf6918dc8-e859-47e0-97e1-e1e4473d15a9 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך יצירת תזכורת, לאחר טעינת יכולת הכתיבה ויכולת האישור.\nTHIS TURN'S PURPOSE: לבקש אישור מפורש ליצירת התזכורת.\nEXPECTATION: ממתין לתשובת כן או לא. אם כן, אצור תזכורת יומית בשעה 09:00 החל מהמועד הקרוב; אם לא, לא אבצע פעולה.\n39ed2192-293d-4400-b4a1-c99bc9817cb9 [assistant] נדרשת רק הסכמה קצרה לפני יצירת התזכורת.\nef0ff4ff-6109-4b1d-9076-e9e0115bb85e [assistant] 📋 לאישור:\nתזכורת: לשתות מים\nתדירות: כל יום בשעה 9:00, החל מ־1 באוקטובר 2026\n\nלאישור — כן/לא?\n91771ab8-081d-46eb-ae94-165a4b87667d [godfather] כן\n191f0fc6-4f7e-405d-8dad-170f36ad4474 [assistant] יוצר עכשיו את התזכורת היומית.\n9a940ddb-ce52-4682-90e9-72825ad578c5 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך יצירת תזכורת, לאחר שהמשתמש אישר יצירה של תזכורת יומית לשתיית מים בשעה 9:00.\nTHIS TURN'S PURPOSE: ליצור את התזכורת המאושרת.\nEXPECTATION: אנסה ליצור תזכורת יומית החל מ-1 באוקטובר 2026; לאחר מכן אדווח על התוצאה.\n28d522b0-5417-4488-a9b4-769940938c68 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: התזכורת נוצרה בהצלחה במערכת.\nTHIS TURN'S PURPOSE: לדווח למשתמש על יצירת התזכורת.\nEXPECTATION: המשתמש יקבל אישור שהתזכורת היומית לשתיית מים נקבעה לשעה 9:00.\n32cb6836-b32b-4552-98bb-79a225c91a37 [assistant] התזכורת נוצרה בהצלחה: לשתות מים, כל יום בשעה 9:00, החל מ־1 באוקטובר 2026.\nfddf3bda-4401-4a0f-b558-e7f119ef8b91 [godfather] תדחה רק את התזכורת של מחר לשעה 10:00, לא את כל הסדרה\n2bec7a59-6054-42e7-80a4-2c09f74e2146 [assistant] מאתר את התזכורת המדויקת כדי לדחות רק את המופע של מחר.\nadc6514f-ecc3-428d-aecb-f3b15ae6c075 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך שינוי תזכורת. זוהתה תזכורת יחידה: לשתות מים, יומית בשעה 9:00, מזהה 4efa168c-5ca8-4b2b-9109-4bae04e02c34.\nTHIS TURN'S PURPOSE: לבקש אישור לדחות רק את המופע של 1 באוקטובר 2026 לשעה 10:00, בלי לשנות את שאר הסדרה.\nEXPECTATION: אם המשתמש יאשר, אשנה את המופע היחיד; אם יסרב, לא אבצע שינוי.\nf37c4443-73b7-4621-9723-65fa081e31be [assistant] 📋 לאישור:\nתזכורת: לשתות מים\nשינוי: רק המופע של 1 באוקטובר 2026 יידחה מ־9:00 ל־10:00\nשאר הסדרה תישאר ללא שינוי\nלאישור — כן/לא?\n844ab4b7-10ef-4e92-a1a4-47fe008f99b3 [godfather] כן\n320589bd-a4cf-45fa-8402-3754a769a739 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: תהליך שינוי תזכורת הושלם בהצלחה.\nTHIS TURN'S PURPOSE: לדווח שהמופע היחיד של מחר נדחה לשעה 10:00.\nEXPECTATION: אין פעולה נוספת נדרשת.\n81e29f90-81e4-439d-8de8-ecd814044fe5 [assistant] המופע של מחר, 1 באוקטובר, נדחה לשעה 10:00 בלבד. שאר התזכורות נשארו בשעה 9:00.\n\nTHE REPLY JUST SENT TO THE OPERATOR THIS ROUND:\nהמופע של מחר, 1 באוקטובר, נדחה לשעה 10:00 בלבד. שאר התזכורות נשארו בשעה 9:00.\n\nNO Morning MCP tools were called this turn.\n\nFollow the recognition prompt above: query the client's ledger history first when the round concerns a client, then call report_ledger_recognition exactly once with the verdict for THIS round."}
 ```
 
 - tools (2): ['report_ledger_recognition', 'query_ledger_events']
@@ -16130,16 +14885,16 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 </details>
 
 <details>
-<summary>103. [2026-09-30 14:47:25] MODEL → APP — context=recognize_ledger_event</summary>
+<summary>89. [2026-09-30 14:56:42] MODEL → APP — context=recognize_ledger_event</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_04296dc3b579acc1006abcf6cc38dc87d1b444738b3e1c9a2b`
+- response.id: `resp_0c70d3ded071806e006abcf8f9832c87d189665be4d68d8c8f`
 - status: `completed`
-- usage: `{"input_tokens": 9845, "input_tokens_details": {"cache_write_tokens": 1906, "cached_tokens": 7936}, "output_tokens": 57, "output_tokens_details": {"reasoning_tokens": 21}, "total_tokens": 9902}`
+- usage: `{"input_tokens": 9463, "input_tokens_details": {"cache_write_tokens": 1524, "cached_tokens": 7936}, "output_tokens": 56, "output_tokens_details": {"reasoning_tokens": 20}, "total_tokens": 9519}`
 - reasoning item (content not user-visible)
-- function_call: `report_ledger_recognition` call_id=`call_2EqUUquOYo6jHFjGnGCVZjUM`
+- function_call: `report_ledger_recognition` call_id=`call_Lh0WzQgmAQLAlKgY8MPr6dUK`
 ```json
 {
   "verdict": "none",
@@ -16152,11 +14907,11 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_04296dc3b579acc1006abcf6cc38dc87d1b444738b3e1c9a2b`
+- response.id: `resp_0c70d3ded071806e006abcf8f9832c87d189665be4d68d8c8f`
 - status: `completed`
-- usage: `{"input_tokens": 9845, "input_tokens_details": {"cache_write_tokens": 1906, "cached_tokens": 7936}, "output_tokens": 57, "output_tokens_details": {"reasoning_tokens": 21}, "total_tokens": 9902}`
+- usage: `{"input_tokens": 9463, "input_tokens_details": {"cache_write_tokens": 1524, "cached_tokens": 7936}, "output_tokens": 56, "output_tokens_details": {"reasoning_tokens": 20}, "total_tokens": 9519}`
 - reasoning item (content not user-visible)
-- function_call: `report_ledger_recognition` call_id=`call_2EqUUquOYo6jHFjGnGCVZjUM`
+- function_call: `report_ledger_recognition` call_id=`call_Lh0WzQgmAQLAlKgY8MPr6dUK`
 ```json
 {
   "verdict": "none",

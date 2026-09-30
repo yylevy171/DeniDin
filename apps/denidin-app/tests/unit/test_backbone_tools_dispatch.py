@@ -7,7 +7,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.backbone.backbone import Backbone
+from src.backbone.backbone import Backbone, PLAIN_TEXT_REPLY_REMINDER
+from src.constants.error_messages import BACKBONE_UNEXPECTED_ERROR
 from tests.backbone_test_support import make_session_manager
 from src.models.config import AppConfiguration
 from src.models.message import AIRequest
@@ -99,12 +100,31 @@ def test_progress_update_uses_active_callback(prompts_root):
     assert response.response_text == "תשובה סופית."
 
 
-def test_no_tool_calls_returns_plain_text_single_call(prompts_root):
+def test_plain_text_is_never_sent_the_model_is_reminded_to_use_send_to_user(prompts_root):
+    """2026-09-30: a reply reaches the user only through send_to_user - plain text gets
+    one reminder round instead of being sent."""
     client = MagicMock()
-    client.responses.create.return_value = _resp([], "r1", "תשובה.")
+    client.responses.create.side_effect = [
+        _resp([], "r1", "תשובה בטקסט רגיל."),
+        _resp([_function_call_item("send_to_user", "call_1", {"text": "תשובה."})], "r2", ""),
+    ]
     response = _run(_backbone(prompts_root, client))
-    assert client.responses.create.call_count == 1
+    assert client.responses.create.call_count == 2
+    reminder_call = client.responses.create.call_args_list[1].kwargs
+    assert reminder_call["previous_response_id"] == "r1"
+    assert reminder_call["input"] == [{"role": "developer", "content": PLAIN_TEXT_REPLY_REMINDER}]
     assert response.response_text == "תשובה."
+
+
+def test_plain_text_again_after_the_reminder_replies_with_an_error(prompts_root):
+    client = MagicMock()
+    client.responses.create.side_effect = [
+        _resp([], "r1", "טקסט רגיל."),
+        _resp([], "r2", "שוב טקסט רגיל."),
+    ]
+    response = _run(_backbone(prompts_root, client))
+    assert client.responses.create.call_count == 2
+    assert response.response_text == BACKBONE_UNEXPECTED_ERROR
 
 
 def test_follow_up_failure_falls_back_to_first_round_text(prompts_root):

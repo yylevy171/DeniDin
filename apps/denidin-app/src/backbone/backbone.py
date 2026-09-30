@@ -57,6 +57,15 @@ logger = logging.getLogger(__name__)
 # send_to_user answer - see the loop-cap fallback's own known bug noted below.
 MAX_BACKBONE_TOOL_LOOP_ITERATIONS = 100
 
+# A reply reaches the user ONLY through send_to_user / approval_with_yes_no_buttons
+# (2026-09-30). A round that ends in plain text (no tool call) is never sent: the model
+# gets this one reminder and another round; if it answers in plain text again, the user
+# gets BACKBONE_UNEXPECTED_ERROR instead.
+PLAIN_TEXT_REPLY_REMINDER = (
+    "Your last response was plain text, which is never shown to the user. "
+    "To reply, call send_to_user (or approval_with_yes_no_buttons for a yes/no approval)."
+)
+
 # Hebrew label per MediaFileManager.validate_format result, used in the
 # first-round "[מדיה מצורפת: ...]" marker of a media turn.
 MEDIA_TYPE_LABELS = {"image": "תמונה", "pdf": "PDF", "docx": "מסמך Word"}
@@ -634,12 +643,28 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
             "tools": tools,
         })
 
+        reminded_of_send_to_user = False
         for _loop_round in range(MAX_BACKBONE_TOOL_LOOP_ITERATIONS):
             round_result = self._execute_round_calls(
                 request, turn_context, chat_id=chat_id, tags=tags, response=response)
             if round_result is None:
-                return (getattr(response, "output_text", "") or "").strip() or NO_REPLY_SENTINEL
-            outputs, final_text = round_result
+                # Plain text, no tool call - never sent to the user (see
+                # PLAIN_TEXT_REPLY_REMINDER).
+                plain_text = (getattr(response, "output_text", "") or "").strip()
+                if reminded_of_send_to_user:
+                    logger.error(
+                        "Model answered in plain text again after being reminded to use "
+                        "send_to_user (request %s) - not sent; replying with an error. Text: %r",
+                        request.request_id, plain_text)
+                    return BACKBONE_UNEXPECTED_ERROR
+                logger.warning(
+                    "Model answered in plain text without send_to_user (request %s) - not sent; "
+                    "reminding it once. Text: %r", request.request_id, plain_text)
+                reminded_of_send_to_user = True
+                outputs = [{"role": "developer", "content": PLAIN_TEXT_REPLY_REMINDER}]
+                final_text = None
+            else:
+                outputs, final_text = round_result
             if final_text is not None:
                 return final_text or NO_REPLY_SENTINEL
 

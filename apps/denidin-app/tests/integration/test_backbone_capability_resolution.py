@@ -43,7 +43,9 @@ def _fc(name, args=None, call_id="c", rid="r"):
 
 
 def _text(text, rid="rt"):
-    return SimpleNamespace(output=[], output_text=text, id=rid, usage=None)
+    """The model's final reply - always a send_to_user call (2026-09-30: plain text is
+    never sent to the user)."""
+    return _fc("send_to_user", {"text": text}, call_id="c-reply", rid=rid)
 
 
 def _request(text="שלום", chat="chat1"):
