@@ -664,6 +664,56 @@ def _run_post_turn_ledger_recognition(
         )
 
 
+def _make_progress_callback(notification, message, is_blocked: bool):
+    """The turn's progress_callback - shared by every turn entry point (text/contact
+    turns and button taps), so a send_progress_update is delivered the same way from
+    all of them.
+
+    Feature 080: progress_callback is how send_progress_update actually sends a real
+    interim WhatsApp message mid-turn - notification.answer is the same real send
+    mechanism send_response() eventually uses for the final reply (and what
+    billed/expensive test fixtures already capture via _test_sent_messages), so
+    reusing it here keeps interim and final sends byte-identical in production AND
+    tests. Always passed now (the feature flag that used to gate this has been
+    removed, 2026-09-12, explicit operator instruction).
+
+    Bugfix (2026-09-13): sending the interim message is itself a real WhatsApp send,
+    and WhatsApp clears the visible "typing..." indicator client-side the instant any
+    message is delivered to the chat - the renewal job's next SCHEDULED tick can then
+    land well after the indicator has already visibly disappeared (up to
+    interval_seconds later, compounded by this environment's observed ~20s sendTyping
+    latency), so the dots can appear to vanish for good mid-turn even though the
+    keep-alive job itself never stopped. Re-firing one sendTyping call immediately
+    after each successful interim send closes that gap instead of waiting for the
+    next scheduled tick - best-effort/log-only, same as every other typing-indicator
+    call, never allowed to affect message delivery.
+    """
+    def _progress_callback_with_typing_refresh(text: str) -> None:
+        # notification.answer() below previously crossed the WhatsApp
+        # boundary with NO log at all, audit or otherwise, unlike every
+        # other outbound send in this codebase (2026-09-24,
+        # debug_exact_calls skill investigation) - audit_wire/debug_wire
+        # are the ONLY two wire-logging functions in this codebase (see
+        # src/utils/wire_log.py), called directly, here as everywhere.
+        _wire_payload = {"chat_id": message.chat_id, "message": text}
+        audit_wire("whatsapp", "out", "progress_update", _wire_payload)
+        debug_wire("whatsapp", "out", "progress_update", _wire_payload)
+        result = notification.answer(text)
+        audit_wire("whatsapp", "in", "progress_update", {"chat_id": message.chat_id, "message": repr(result)})
+        debug_wire("whatsapp", "in", "progress_update", {"result": repr(result)})
+        # A progress update is a message like any other: stored right after it's sent.
+        if denidin_app.chat_log is not None:
+            _data = getattr(result, "data", None)
+            denidin_app.chat_log.store_outbound(
+                message, text,
+                whatsapp_id_message=_data.get("idMessage") if isinstance(_data, dict) else None,
+            )
+        if denidin_app.green_api_bot is not None:
+            send_typing_indicator(denidin_app.green_api_bot, message.chat_id, is_blocked)
+
+    return _progress_callback_with_typing_refresh
+
+
 def _process_conversational_message(notification: Notification, *, internal: bool = False) -> None:
     """
     Shared turn-processing logic for any message type that flows into the conversational
@@ -752,48 +802,7 @@ def _process_conversational_message(notification: Notification, *, internal: boo
         # 2026-08-04: this silently broke RBAC-gated Morning MCP tool attachment
         # for every 1:1 conversation, resolving the display name as an unknown
         # phone -> defaulting to CLIENT role).
-        # Feature 080: progress_callback is how send_progress_update actually sends a real
-        # interim WhatsApp message mid-turn - notification.answer is the same real send
-        # mechanism send_response() below eventually uses for the final reply (and what
-        # billed/expensive test fixtures already capture via _test_sent_messages), so
-        # reusing it here keeps interim and final sends byte-identical in production AND
-        # tests. Always passed now (the feature flag that used to gate this has been
-        # removed, 2026-09-12, explicit operator instruction).
-        #
-        # Bugfix (2026-09-13): sending the interim message is itself a real WhatsApp send,
-        # and WhatsApp clears the visible "typing..." indicator client-side the instant any
-        # message is delivered to the chat - the renewal job's next SCHEDULED tick can then
-        # land well after the indicator has already visibly disappeared (up to
-        # interval_seconds later, compounded by this environment's observed ~20s sendTyping
-        # latency), so the dots can appear to vanish for good mid-turn even though the
-        # keep-alive job itself never stopped. Re-firing one sendTyping call immediately
-        # after each successful interim send closes that gap instead of waiting for the
-        # next scheduled tick - best-effort/log-only, same as every other typing-indicator
-        # call, never allowed to affect message delivery.
-        def _progress_callback_with_typing_refresh(text: str) -> None:
-            # notification.answer() below previously crossed the WhatsApp
-            # boundary with NO log at all, audit or otherwise, unlike every
-            # other outbound send in this codebase (2026-09-24,
-            # debug_exact_calls skill investigation) - audit_wire/debug_wire
-            # are the ONLY two wire-logging functions in this codebase (see
-            # src/utils/wire_log.py), called directly, here as everywhere.
-            _wire_payload = {"chat_id": message.chat_id, "message": text}
-            audit_wire("whatsapp", "out", "progress_update", _wire_payload)
-            debug_wire("whatsapp", "out", "progress_update", _wire_payload)
-            result = notification.answer(text)
-            audit_wire("whatsapp", "in", "progress_update", {"chat_id": message.chat_id, "message": repr(result)})
-            debug_wire("whatsapp", "in", "progress_update", {"result": repr(result)})
-            # A progress update is a message like any other: stored right after it's sent.
-            if denidin_app.chat_log is not None:
-                _data = getattr(result, "data", None)
-                denidin_app.chat_log.store_outbound(
-                    message, text,
-                    whatsapp_id_message=_data.get("idMessage") if isinstance(_data, dict) else None,
-                )
-            if denidin_app.green_api_bot is not None:
-                send_typing_indicator(denidin_app.green_api_bot, message.chat_id, is_blocked)
-
-        progress_callback = _progress_callback_with_typing_refresh
+        progress_callback = _make_progress_callback(notification, message, is_blocked)
         # Feature 063 (Dynamic Capability Backbone): when the flag is on, text turns
         # enter through the SAME Backbone media turns already use (see
         # _process_media_message above) - not just button taps. The backbone has
@@ -1406,10 +1415,19 @@ def handle_button_tap(notification: Notification) -> None:
                 original_message=message,
             )
             resolved_user = denidin_app.ai_handler.user_manager.get_user(message.sender_id)
+            # A tap is a turn like any other: same progress-update delivery and the same
+            # sender/chat details the text path passes (2026-09-30 - a tap turn's progress
+            # updates were silently dropped, no progress_callback was passed).
             ai_response = denidin_app.backbone.resolve_button_tap(
                 chat_id=message.chat_id, stanza_id=stanza_id,
                 request=synthetic_request,
                 user_role=resolved_user.role if resolved_user else 'client',
+                sender=message.sender_display_name,
+                user_phone=message.sender_id,
+                sender_phone=message.sender_id,
+                is_group=message.is_group,
+                chat_name=message.chat_name,
+                progress_callback=_make_progress_callback(notification, message, is_blocked),
             )
             if ai_response is not None:
                 # 2026-09-15 (closing a real gap - same fix as the text/media

@@ -125,3 +125,41 @@ class TestStoreMedia:
         assert relative.startswith("media/DD-972501234567-")
         assert relative.endswith(".jpg")
         assert (tmp_path / relative).read_bytes() == b"bytes"
+
+
+class _RecordingBackbone(Backbone):
+    """Records what a turn is run with instead of calling the model."""
+    def turn_with_rounds(self, request, **kwargs):  # pylint: disable=arguments-differ
+        self.turn_kwargs = kwargs
+        return "ran"
+
+
+class TestButtonTapRunsAsAFullTurn:
+    """2026-09-30: a live tap's turn gets the same progress_callback and sender/chat
+    details as a typed turn - its progress updates were silently dropped before."""
+
+    def test_live_tap_passes_progress_callback_and_sender_details(self, backbone):
+        tapping = _RecordingBackbone(MagicMock(), backbone.config,
+                                     session_manager=backbone.session_manager)
+        tapping.session_manager.set_approval_message_id(CHAT_ID, "WA-BUTTONS-1")
+        progress = MagicMock()
+
+        result = tapping.resolve_button_tap(
+            chat_id=CHAT_ID, stanza_id="WA-BUTTONS-1", request=_request("כן"),
+            user_role="godfather", sender="Yaron", user_phone=SENDER,
+            progress_callback=progress)
+
+        assert result == "ran"
+        assert tapping.turn_kwargs["progress_callback"] is progress
+        assert tapping.turn_kwargs["sender"] == "Yaron"
+        assert tapping.turn_kwargs["user_phone"] == SENDER
+
+    def test_stale_tap_runs_nothing(self, backbone):
+        tapping = _RecordingBackbone(MagicMock(), backbone.config,
+                                     session_manager=backbone.session_manager)
+        tapping.session_manager.set_approval_message_id(CHAT_ID, "WA-BUTTONS-1")
+
+        assert tapping.resolve_button_tap(
+            chat_id=CHAT_ID, stanza_id="WA-OLD", request=_request("כן"),
+            progress_callback=MagicMock()) is None
+        assert not hasattr(tapping, "turn_kwargs")

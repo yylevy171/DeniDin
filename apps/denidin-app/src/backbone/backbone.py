@@ -902,7 +902,7 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
         self.session_manager.set_approval_message_id(chat_id, message_id)
 
     def resolve_button_tap(self, chat_id: str, stanza_id: str, request: AIRequest, *,
-                            user_role: str = "godfather") -> Optional[AIResponse]:
+                            user_role: str = "godfather", **turn_kwargs: Any) -> Optional[AIResponse]:
         """Feature 047's stale-tap guard: a tap is live only if its `stanza_id`
         exactly equals the idMessage of the approval-buttons message this chat
         is currently offering (Session.approval_message_id). A stale/superseded/
@@ -910,8 +910,10 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
         tap is consumed (cleared, so a second tap on the same message is stale)
         and then resolved like a typed "כן"/"לא": `request` is the caller's
         synthetic "כן"/"לא" AIRequest, run through the ordinary turn_with_rounds()
-        loop, where the model reads its own history and acts on the answer."""
+        loop, where the model reads its own history and acts on the answer.
+        `turn_kwargs` (progress_callback, sender, user_phone, ...) are passed through to
+        turn_with_rounds unchanged, so a tap turn behaves exactly like a typed one."""
         if self.session_manager.get_session(chat_id).approval_message_id != stanza_id:
             logger.info("[047] Stale button tap ignored: chat=%r stanza_id=%r", chat_id, stanza_id)
             return None
-        return self.turn_with_rounds(request, chat_id=chat_id, user_role=user_role)
+        return self.turn_with_rounds(request, chat_id=chat_id, user_role=user_role, **turn_kwargs)
