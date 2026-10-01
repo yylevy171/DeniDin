@@ -113,6 +113,18 @@ def try_literal_or_json(text: str):
 # the specific tool call they answer, instead of appearing as an anonymous
 # blob inside a generic `input` dump.
 _CALL_ID_TO_TOOL: dict = {}
+# call_id -> parsed arguments, same accumulation - lets a later app log line
+# that names only a call_id (e.g. a skipped react_to_message) show what the
+# model asked for (the emoji).
+_CALL_ID_TO_ARGS: dict = {}
+
+# messaging_actions.py logs this, naming the call, whenever react_to_message
+# returns before send_reaction - so no [WIRE-*] reaction line exists for it.
+# Rendered as an APP -> USER reaction marked NOT SENT, never silently dropped.
+REACTION_SKIPPED_RE = re.compile(
+    r"^\[084\] react_to_message call '(?P<call_id>[^']*)': nothing to react through "
+    r"\(target_id=(?P<target>.*?), chat_id=(?P<chat>.*?), green_api_bot_set=(?P<bot>True|False)\)$"
+)
 
 # How many backticks to fence a code block with - bumped above any run of
 # backticks actually present in the content, so a payload that itself
@@ -285,6 +297,7 @@ def render_openai_debug_in(data: dict) -> str:
             parts.append(code_block(_readable_text(item.get("arguments")), "json"))
             if item.get("call_id"):
                 _CALL_ID_TO_TOOL[item["call_id"]] = item.get("name")
+                _CALL_ID_TO_ARGS[item["call_id"]] = try_literal_or_json(item.get("arguments") or "")
         elif item_type == "mcp_call":
             continue  # rendered as its own separate top-level turns by the caller
         elif item_type == "mcp_approval_request":
@@ -452,6 +465,21 @@ def handle_capability_audit(index: int, ts, msg) -> str:
                     code_block(msg, "text"))
 
 
+def handle_reaction_skipped(index: int, ts, msg, m) -> str:
+    """A react_to_message the app never sent: APP -> USER, marked NOT SENT,
+    with the reason read from the app's own log line (shown verbatim)."""
+    args = _CALL_ID_TO_ARGS.get(m.group("call_id"))
+    emoji = args.get("emoji", "?") if isinstance(args, dict) else "?"
+    if m.group("bot") == "False":
+        reason = "no WhatsApp bot in this run"
+    elif m.group("target") == "None":
+        reason = "no message to react to"
+    else:
+        reason = "no chat to react in"
+    return details(f"{index}. [{ts}] APP → USER — context=reaction — {emoji} — NOT SENT ({reason})",
+                   code_block(msg, "text"))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--log", required=True, action="append", help="Log file path (repeatable)")
@@ -567,6 +595,12 @@ def main():
         elif msg.startswith("[CAPABILITY-AUDIT]"):
             event_index += 1
             print(handle_capability_audit(event_index, ts_str, msg))
+            print()
+            i += 1
+
+        elif REACTION_SKIPPED_RE.match(msg):
+            event_index += 1
+            print(handle_reaction_skipped(event_index, ts_str, msg, REACTION_SKIPPED_RE.match(msg)))
             print()
             i += 1
 

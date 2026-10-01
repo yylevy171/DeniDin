@@ -158,11 +158,6 @@ def denidin_app(denidin_config, live_morning_tunnel):
     if denidin.denidin_app.green_api_bot is None:
         denidin.denidin_app.green_api_bot = object()
     denidin.denidin_app.ai_handler.green_api_bot = denidin.denidin_app.green_api_bot
-    # 2026-09-30: the backbone (flag ON) has its own green_api_bot, wired separately in
-    # __main__ - without this every flag-ON react_to_message bailed out before the send
-    # (green_api_bot_set=False), so no reaction ever reached the wire log or a trace.
-    if denidin.denidin_app.backbone is not None:
-        denidin.denidin_app.backbone.green_api_bot = denidin.denidin_app.green_api_bot
     return denidin.denidin_app
 
 

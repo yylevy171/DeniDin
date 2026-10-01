@@ -413,7 +413,16 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>4. [2026-10-01 10:27:13] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>4. [2026-10-01 10:27:13] APP → USER — context=reaction — 👀 — NOT SENT (no WhatsApp bot in this run)</summary>
+
+```text
+[084] react_to_message call 'call_zBPscrVnhXVUXSBaL0pWg3LI': nothing to react through (target_id='LEDGER_GILYAN_PROBE_A1_1790839626', chat_id='972500000021@c.us', green_api_bot_set=False)
+```
+
+</details>
+
+<details>
+<summary>5. [2026-10-01 10:27:13] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -731,7 +740,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>5. [2026-10-01 10:27:15] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>6. [2026-10-01 10:27:15] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -766,7 +775,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>6. [2026-10-01 10:27:15] APP → USER — context=progress_update</summary>
+<summary>7. [2026-10-01 10:27:15] APP → USER — context=progress_update</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -795,7 +804,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>7. [2026-10-01 10:27:15] USER ← APP (send result) — context=progress_update</summary>
+<summary>8. [2026-10-01 10:27:15] USER ← APP (send result) — context=progress_update</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -823,7 +832,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>8. [2026-10-01 10:27:15] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>9. [2026-10-01 10:27:15] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -1141,7 +1150,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>9. [2026-10-01 10:27:17] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>10. [2026-10-01 10:27:17] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -1180,7 +1189,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>10. [2026-10-01 10:27:17] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>11. [2026-10-01 10:27:17] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -1494,7 +1503,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>11. [2026-10-01 10:27:19] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>12. [2026-10-01 10:27:19] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -1533,7 +1542,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>12. [2026-10-01 10:27:19] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>13. [2026-10-01 10:27:19] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -1869,7 +1878,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>13. [2026-10-01 10:27:22] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>14. [2026-10-01 10:27:22] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -1908,7 +1917,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>14. [2026-10-01 10:27:22] APP → USER — context=progress_update</summary>
+<summary>15. [2026-10-01 10:27:22] APP → USER — context=progress_update</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -1937,7 +1946,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>15. [2026-10-01 10:27:22] USER ← APP (send result) — context=progress_update</summary>
+<summary>16. [2026-10-01 10:27:22] USER ← APP (send result) — context=progress_update</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -1965,7 +1974,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>16. [2026-10-01 10:27:22] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>17. [2026-10-01 10:27:22] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -2305,7 +2314,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>17. [2026-10-01 10:27:27] MODEL → APP — context=_run_resolution_loop (follow-up) (response part 1/2)</summary>
+<summary>18. [2026-10-01 10:27:27] MODEL → APP — context=_run_resolution_loop (follow-up) (response part 1/2)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -2329,7 +2338,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>18. [2026-10-01 10:27:27] MODEL → MORNING MCP — resolve_client_name</summary>
+<summary>19. [2026-10-01 10:27:27] MODEL → MORNING MCP — resolve_client_name</summary>
 
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
@@ -2349,7 +2358,7 @@ arguments:
 </details>
 
 <details>
-<summary>19. [2026-10-01 10:27:27] MORNING MCP → MODEL — resolve_client_name</summary>
+<summary>20. [2026-10-01 10:27:27] MORNING MCP → MODEL — resolve_client_name</summary>
 
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
@@ -2367,7 +2376,7 @@ output:
 </details>
 
 <details>
-<summary>20. [2026-10-01 10:27:27] MODEL → APP — context=_run_resolution_loop (follow-up) (response part 2/2)</summary>
+<summary>21. [2026-10-01 10:27:27] MODEL → APP — context=_run_resolution_loop (follow-up) (response part 2/2)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -2404,7 +2413,7 @@ output:
 </details>
 
 <details>
-<summary>21. [2026-10-01 10:27:27] APP → USER — context=progress_update</summary>
+<summary>22. [2026-10-01 10:27:27] APP → USER — context=progress_update</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -2433,7 +2442,7 @@ output:
 </details>
 
 <details>
-<summary>22. [2026-10-01 10:27:27] USER ← APP (send result) — context=progress_update</summary>
+<summary>23. [2026-10-01 10:27:27] USER ← APP (send result) — context=progress_update</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -2461,7 +2470,7 @@ output:
 </details>
 
 <details>
-<summary>23. [2026-10-01 10:27:27] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>24. [2026-10-01 10:27:27] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -2801,7 +2810,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>24. [2026-10-01 10:27:32] MODEL → APP — context=_run_resolution_loop (follow-up) (response part 1/2)</summary>
+<summary>25. [2026-10-01 10:27:32] MODEL → APP — context=_run_resolution_loop (follow-up) (response part 1/2)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -2825,7 +2834,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>25. [2026-10-01 10:27:32] MODEL → MORNING MCP — get_client_details</summary>
+<summary>26. [2026-10-01 10:27:32] MODEL → MORNING MCP — get_client_details</summary>
 
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
@@ -2846,7 +2855,7 @@ arguments:
 </details>
 
 <details>
-<summary>26. [2026-10-01 10:27:32] MORNING MCP → MODEL — get_client_details</summary>
+<summary>27. [2026-10-01 10:27:32] MORNING MCP → MODEL — get_client_details</summary>
 
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
@@ -2869,7 +2878,7 @@ output:
 </details>
 
 <details>
-<summary>27. [2026-10-01 10:27:32] MODEL → APP — context=_run_resolution_loop (follow-up) (response part 2/2)</summary>
+<summary>28. [2026-10-01 10:27:32] MODEL → APP — context=_run_resolution_loop (follow-up) (response part 2/2)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -2906,7 +2915,7 @@ output:
 </details>
 
 <details>
-<summary>28. [2026-10-01 10:27:32] APP → USER — context=progress_update</summary>
+<summary>29. [2026-10-01 10:27:32] APP → USER — context=progress_update</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -2935,7 +2944,7 @@ output:
 </details>
 
 <details>
-<summary>29. [2026-10-01 10:27:32] USER ← APP (send result) — context=progress_update</summary>
+<summary>30. [2026-10-01 10:27:32] USER ← APP (send result) — context=progress_update</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -2963,7 +2972,7 @@ output:
 </details>
 
 <details>
-<summary>30. [2026-10-01 10:27:32] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>31. [2026-10-01 10:27:32] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -3303,7 +3312,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>31. [2026-10-01 10:27:35] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>32. [2026-10-01 10:27:35] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -3342,7 +3351,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>32. [2026-10-01 10:27:35] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>33. [2026-10-01 10:27:35] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -3678,7 +3687,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>33. [2026-10-01 10:27:36] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>34. [2026-10-01 10:27:36] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -3715,7 +3724,16 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>34. [2026-10-01 10:27:36] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>35. [2026-10-01 10:27:36] APP → USER — context=reaction — ✅ — NOT SENT (no WhatsApp bot in this run)</summary>
+
+```text
+[084] react_to_message call 'call_djP5iorxrriaofiRhvA7mJIk': nothing to react through (target_id='LEDGER_GILYAN_PROBE_A1_1790839626', chat_id='972500000021@c.us', green_api_bot_set=False)
+```
+
+</details>
+
+<details>
+<summary>36. [2026-10-01 10:27:36] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -4055,7 +4073,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>35. [2026-10-01 10:27:39] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>37. [2026-10-01 10:27:39] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -4090,7 +4108,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>36. [2026-10-01 10:27:39] APP → USER — context=text</summary>
+<summary>38. [2026-10-01 10:27:39] APP → USER — context=text</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -4119,7 +4137,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>37. [2026-10-01 10:27:39] APP → MODEL — context=recognize_ledger_event</summary>
+<summary>39. [2026-10-01 10:27:39] APP → MODEL — context=recognize_ledger_event</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -4405,7 +4423,7 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 </details>
 
 <details>
-<summary>38. [2026-10-01 10:27:40] MODEL → APP — context=recognize_ledger_event</summary>
+<summary>40. [2026-10-01 10:27:40] MODEL → APP — context=recognize_ledger_event</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -4452,7 +4470,7 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 </details>
 
 <details>
-<summary>39. [2026-10-01 10:27:40] APP → MODEL — context=recognize_ledger_event (query round)</summary>
+<summary>41. [2026-10-01 10:27:40] APP → MODEL — context=recognize_ledger_event (query round)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -4750,7 +4768,7 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 </details>
 
 <details>
-<summary>40. [2026-10-01 10:27:42] MODEL → APP — context=recognize_ledger_event (query round)</summary>
+<summary>42. [2026-10-01 10:27:42] MODEL → APP — context=recognize_ledger_event (query round)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -4787,7 +4805,7 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 </details>
 
 <details>
-<summary>41. [2026-10-01 10:27:42] USER → APP — context=webhook</summary>
+<summary>43. [2026-10-01 10:27:42] USER → APP — context=webhook</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -4850,7 +4868,7 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 </details>
 
 <details>
-<summary>42. [2026-10-01 10:27:43] APP → MODEL — context=_run_resolution_loop (first round)</summary>
+<summary>44. [2026-10-01 10:27:43] APP → MODEL — context=_run_resolution_loop (first round)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -5228,7 +5246,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>43. [2026-10-01 10:27:47] MODEL → APP — context=_run_resolution_loop (first round)</summary>
+<summary>45. [2026-10-01 10:27:47] MODEL → APP — context=_run_resolution_loop (first round)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -5269,7 +5287,16 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>44. [2026-10-01 10:27:47] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>46. [2026-10-01 10:27:47] APP → USER — context=reaction — 🫡 — NOT SENT (no WhatsApp bot in this run)</summary>
+
+```text
+[084] react_to_message call 'call_qRyTfh8ZysmYP9Fysl9GupBF': nothing to react through (target_id='LEDGER_E2E_TEXT_MULTISTAGE_1', chat_id='972500000021@c.us', green_api_bot_set=False)
+```
+
+</details>
+
+<details>
+<summary>47. [2026-10-01 10:27:47] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -5609,7 +5636,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>45. [2026-10-01 10:27:48] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>48. [2026-10-01 10:27:48] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -5648,7 +5675,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>46. [2026-10-01 10:27:48] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>49. [2026-10-01 10:27:48] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -6006,7 +6033,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>47. [2026-10-01 10:27:51] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>50. [2026-10-01 10:27:51] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -6045,7 +6072,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>48. [2026-10-01 10:27:51] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>51. [2026-10-01 10:27:51] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -6403,7 +6430,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>49. [2026-10-01 10:27:54] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>52. [2026-10-01 10:27:54] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -6442,7 +6469,16 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>50. [2026-10-01 10:27:54] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>53. [2026-10-01 10:27:54] APP → USER — context=reaction — ✅ — NOT SENT (no WhatsApp bot in this run)</summary>
+
+```text
+[084] react_to_message call 'call_xZjLb17UejmOfgkjm7Nc8KeJ': nothing to react through (target_id='LEDGER_E2E_TEXT_MULTISTAGE_1', chat_id='972500000021@c.us', green_api_bot_set=False)
+```
+
+</details>
+
+<details>
+<summary>54. [2026-10-01 10:27:54] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -6804,7 +6840,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>51. [2026-10-01 10:27:57] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>55. [2026-10-01 10:27:57] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -6839,7 +6875,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>52. [2026-10-01 10:27:57] APP → USER — context=text</summary>
+<summary>56. [2026-10-01 10:27:57] APP → USER — context=text</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -6868,7 +6904,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>53. [2026-10-01 10:27:57] APP → MODEL — context=recognize_ledger_event</summary>
+<summary>57. [2026-10-01 10:27:57] APP → MODEL — context=recognize_ledger_event</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -7154,7 +7190,7 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 </details>
 
 <details>
-<summary>54. [2026-10-01 10:27:59] MODEL → APP — context=recognize_ledger_event</summary>
+<summary>58. [2026-10-01 10:27:59] MODEL → APP — context=recognize_ledger_event</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -7201,7 +7237,7 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 </details>
 
 <details>
-<summary>55. [2026-10-01 10:27:59] APP → MODEL — context=recognize_ledger_event (query round)</summary>
+<summary>59. [2026-10-01 10:27:59] APP → MODEL — context=recognize_ledger_event (query round)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -7499,7 +7535,7 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 </details>
 
 <details>
-<summary>56. [2026-10-01 10:28:05] MODEL → APP — context=recognize_ledger_event (query round)</summary>
+<summary>60. [2026-10-01 10:28:05] MODEL → APP — context=recognize_ledger_event (query round)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
