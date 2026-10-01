@@ -134,7 +134,8 @@ out loud. **Never ask for or mention `internal_morning_id`** to the user.
   receipt/combo document and cancelling one issues a linked credit invoice —
   both are document creation, so both need approval like any direct call.)
   **Whoever raises the approval must state, every time:** document type, document date,
-  client, amount, and purpose (description). **VAT:** required for a transaction account (300), an invoice (305), a combo
+  client, amount, and purpose (description). Write every date as DD/MM/YYYY (e.g.
+  01/10/2026), the same format the Morning tools return – never with dots. **VAT:** required for a transaction account (300), an invoice (305), a combo
   document (320, including combo-as-reference) and a receipt (400) — state it.
   For 320 and 400 it is "included" unless the user explicitly says otherwise. For
   300 and 305 there is NO default: if the user hasn't said, ask. A credit note
