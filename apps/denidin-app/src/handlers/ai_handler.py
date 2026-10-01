@@ -1415,50 +1415,22 @@ class AIHandler:
         count, per contracts/telemetry-recorder.md) - the original call's own exception (after
         the explicit retry above is exhausted) propagates unchanged; this never adds new failure
         modes. Telemetry recording is a complete no-op when no telemetry builder is active -
-        the exact common case when the feature flag is off; the explicit retry always applies."""
-        from src.managers.telemetry_manager import monotonic_ms
-        from src.core.model_calls import call_model_with_retry
+        the exact common case when the feature flag is off; the explicit retry always applies.
+        2026-10-01: delegates to the shared model_calls.timed_model_call, also used by the
+        backbone."""
+        from src.core.model_calls import timed_model_call
 
-        retrying_call_fn = lambda: call_model_with_retry(call_fn, context=context)  # noqa: E731
-
-        builder = _active_telemetry_builder.get()
-        if builder is None:
-            return retrying_call_fn()
-
-        start_ms = monotonic_ms()
-        response = None
-        try:
-            response = retrying_call_fn()
-            return response
-        finally:
-            duration_ms = monotonic_ms() - start_ms
-            usage = getattr(response, "usage", None)
-            input_tokens = getattr(usage, "input_tokens", 0) or 0
-            output_tokens = getattr(usage, "output_tokens", 0) or 0
-            try:
-                builder.record_llm_call(duration_ms, input_tokens, output_tokens)
-            except Exception as telemetry_error:  # pylint: disable=broad-except
-                # Telemetry accounting must never break the real call it's timing.
-                logger.warning(f"Feature 080 telemetry record_llm_call failed: {telemetry_error}")
+        return timed_model_call(_active_telemetry_builder.get(), call_fn, context=context)
 
     def _timed_tool_call(self, tool_name: str, call_fn: Callable[[], Any], *, is_morning_tool: bool = False) -> Any:
         """Same contract as _timed_llm_call, for local function-tool dispatch and remote MCP
-        tool-call handling - see contracts/telemetry-recorder.md's record_tool_call()."""
-        from src.managers.telemetry_manager import monotonic_ms
+        tool-call handling - see contracts/telemetry-recorder.md's record_tool_call().
+        2026-10-01: delegates to the shared model_calls.timed_tool_call, also used by the
+        backbone."""
+        from src.core.model_calls import timed_tool_call
 
-        builder = _active_telemetry_builder.get()
-        if builder is None:
-            return call_fn()
-
-        start_ms = monotonic_ms()
-        try:
-            return call_fn()
-        finally:
-            duration_ms = monotonic_ms() - start_ms
-            try:
-                builder.record_tool_call(tool_name, duration_ms, is_morning_tool=is_morning_tool)
-            except Exception as telemetry_error:  # pylint: disable=broad-except
-                logger.warning(f"Feature 080 telemetry record_tool_call failed: {telemetry_error}")
+        return timed_tool_call(_active_telemetry_builder.get(), tool_name, call_fn,
+                               is_morning_tool=is_morning_tool)
 
     def _load_constitution(self) -> str:
         """
@@ -3349,10 +3321,10 @@ class AIHandler:
             # future Morning-side timing improvement (out of scope here - see plan.md's
             # "no changes to apps/morning-mcp-app" note) could attach real durations;
             # until then this correctly reports count/name, not a fabricated duration.
-            telemetry_builder = _active_telemetry_builder.get()
-            if telemetry_builder is not None:
-                for call in mcp_calls:
-                    self._timed_tool_call(call["name"], lambda: None, is_morning_tool=True)
+            # 2026-10-01: the shared model_calls.record_mcp_tool_calls, also used by
+            # the backbone.
+            from src.core.model_calls import record_mcp_tool_calls
+            record_mcp_tool_calls(_active_telemetry_builder.get(), mcp_calls)
         elif tools and any(
             phrase in response_text
             for phrase in ("הוצאה בהצלחה", "סומנה כשולמה", "בוטלה בהצלחה", "נוסף בהצלחה")

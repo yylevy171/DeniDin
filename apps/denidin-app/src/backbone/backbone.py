@@ -10,7 +10,6 @@ See contracts/capability-resolution-loop.md (the loop) and contracts/prompt-asse
 """
 import json
 import logging
-import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -40,8 +39,8 @@ from src.tool_actions.messaging_actions import (
 )
 from src.core.turn_context import load_rolling_window, recall_memory_context
 from src.core.model_calls import (
-    build_fallback_response, call_model_with_retry,
-    telemetry_span,
+    build_fallback_response, record_mcp_tool_calls, telemetry_span, timed_model_call,
+    tool_call_span,
 )
 from src.utils.wire_log import audit_wire, debug_wire
 from src.utils.time_utils import now_local, local_from_timestamp
@@ -532,6 +531,11 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
                 self.session_manager.set_approval_message_id(effective_chat_id, None)
             final_text = self._run_resolution_loop(request, turn_context, is_media=is_media)
 
+            # Feature 080: the turn's Morning MCP calls, recorded the same way
+            # AIHandler._finalize_response records them (shared helper).
+            if self._turn_mcp_calls:
+                logger.info("MCP calls for request %s: %s", request.request_id, self._turn_mcp_calls)
+            record_mcp_tool_calls(self._turn_telemetry_builder, self._turn_mcp_calls)
             return self._finalize_response(request, final_text)
         except Exception as exc:  # pylint: disable=broad-except
             logger.error(
@@ -645,45 +649,49 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
 
         reminded_of_send_to_user = False
         for _loop_round in range(MAX_BACKBONE_TOOL_LOOP_ITERATIONS):
-            round_result = self._execute_round_calls(
-                request, turn_context, chat_id=chat_id, tags=tags, response=response)
-            if round_result is None:
-                # Plain text, no tool call - never sent to the user (see
-                # PLAIN_TEXT_REPLY_REMINDER).
-                plain_text = (getattr(response, "output_text", "") or "").strip()
-                if reminded_of_send_to_user:
-                    logger.error(
-                        "Model answered in plain text again after being reminded to use "
-                        "send_to_user (request %s) - not sent; replying with an error. Text: %r",
-                        request.request_id, plain_text)
-                    return BACKBONE_UNEXPECTED_ERROR
-                logger.warning(
-                    "Model answered in plain text without send_to_user (request %s) - not sent; "
-                    "reminding it once. Text: %r", request.request_id, plain_text)
-                reminded_of_send_to_user = True
-                outputs = [{"role": "developer", "content": PLAIN_TEXT_REPLY_REMINDER}]
-                final_text = None
-            else:
-                outputs, final_text = round_result
-            if final_text is not None:
-                return final_text or NO_REPLY_SENTINEL
+            # Feature 080 telemetry, matching AIHandler._run_local_tool_dispatch_loop: each
+            # round's tool dispatch AND its follow-up model call are timed as one
+            # "local_tools" tool call (the shared model_calls.tool_call_span).
+            with tool_call_span(self._turn_telemetry_builder, "local_tools"):
+                round_result = self._execute_round_calls(
+                    request, turn_context, chat_id=chat_id, tags=tags, response=response)
+                if round_result is None:
+                    # Plain text, no tool call - never sent to the user (see
+                    # PLAIN_TEXT_REPLY_REMINDER).
+                    plain_text = (getattr(response, "output_text", "") or "").strip()
+                    if reminded_of_send_to_user:
+                        logger.error(
+                            "Model answered in plain text again after being reminded to use "
+                            "send_to_user (request %s) - not sent; replying with an error. Text: %r",
+                            request.request_id, plain_text)
+                        return BACKBONE_UNEXPECTED_ERROR
+                    logger.warning(
+                        "Model answered in plain text without send_to_user (request %s) - not sent; "
+                        "reminding it once. Text: %r", request.request_id, plain_text)
+                    reminded_of_send_to_user = True
+                    outputs = [{"role": "developer", "content": PLAIN_TEXT_REPLY_REMINDER}]
+                    final_text = None
+                else:
+                    outputs, final_text = round_result
+                if final_text is not None:
+                    return final_text or NO_REPLY_SENTINEL
 
-            try:
-                # Recompute BOTH instructions and tools from the (possibly
-                # just-mutated) persisted set - previous_response_id retains
-                # neither.
-                tags, instructions, tools = self._build_round_inputs(request, chat_id, turn_context)
-                response = self._call_model("_run_resolution_loop (follow-up)", {
-                    "model": request.model,
-                    "instructions": instructions,
-                    "input": outputs,
-                    "previous_response_id": getattr(response, "id", None),
-                    "max_output_tokens": request.max_tokens,
-                    "tools": tools,
-                })
-            except Exception as exc:  # pylint: disable=broad-except
-                logger.error("Resolution-loop follow-up call failed (non-fatal): %s", exc)
-                return (getattr(response, "output_text", "") or "").strip() or NO_REPLY_SENTINEL
+                try:
+                    # Recompute BOTH instructions and tools from the (possibly
+                    # just-mutated) persisted set - previous_response_id retains
+                    # neither.
+                    tags, instructions, tools = self._build_round_inputs(request, chat_id, turn_context)
+                    response = self._call_model("_run_resolution_loop (follow-up)", {
+                        "model": request.model,
+                        "instructions": instructions,
+                        "input": outputs,
+                        "previous_response_id": getattr(response, "id", None),
+                        "max_output_tokens": request.max_tokens,
+                        "tools": tools,
+                    })
+                except Exception as exc:  # pylint: disable=broad-except
+                    logger.error("Resolution-loop follow-up call failed (non-fatal): %s", exc)
+                    return (getattr(response, "output_text", "") or "").strip() or NO_REPLY_SENTINEL
 
         logger.warning(
             "Resolution loop hit MAX_BACKBONE_TOOL_LOOP_ITERATIONS=%d for request %s "
@@ -768,21 +776,14 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
         the same shared retry AIHandler._timed_llm_call also uses."""
         audit_wire("openai", "out", context, kwargs)
         debug_wire("openai", "out", context, kwargs)
-        start = time.monotonic()
-        response = call_model_with_retry(
-            lambda: self.client.responses.create(**kwargs), context=context,
+        # Retry + Feature 080 timing via the shared model_calls.timed_model_call (also
+        # AIHandler._timed_llm_call's): a failed call is timed and counted too.
+        response = timed_model_call(
+            self._turn_telemetry_builder, lambda: self.client.responses.create(**kwargs), context=context,
         )
-        duration_ms = (time.monotonic() - start) * 1000
         audit_wire("openai", "in", context, response)
         debug_wire("openai", "in", context, response)
         self._turn_mcp_calls.extend(self._extract_mcp_call_items(response))
-        if self._turn_telemetry_builder is not None:
-            usage = getattr(response, "usage", None)
-            self._turn_telemetry_builder.record_llm_call(
-                int(duration_ms),
-                int(getattr(usage, "input_tokens", 0) or 0),
-                int(getattr(usage, "output_tokens", 0) or 0),
-            )
         return response
 
     def _dispatch_resolution_tool(self, tool_name: str, args: Dict[str, Any], chat_id: str) -> str:

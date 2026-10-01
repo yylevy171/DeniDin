@@ -9,7 +9,7 @@ with behavior unchanged, one implementation, used by both paths.
 import contextlib
 import logging
 import time
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from openai import APIStatusError
 
@@ -82,6 +82,78 @@ def sane_source_epoch(epoch: Optional[int]) -> Optional[int]:
     if epoch is None or epoch < _MIN_PLAUSIBLE_SOURCE_EPOCH:
         return None
     return epoch
+
+
+def timed_model_call(builder: Optional[Any], call_fn: Callable[[], Any], *, context: str) -> Any:
+    """2026-10-01 consolidation: the ONE timed responses.create() call (Feature 080,
+    REQ-080-04) - moved out of AIHandler._timed_llm_call, also used by the backbone (which
+    used to record only successful calls). call_fn runs through call_model_with_retry;
+    the call is timed and recorded into `builder` on success AND failure alike (a
+    timed-out/errored call still consumed wall-clock time), the call's own exception
+    propagating unchanged. Recording is a no-op when `builder` is None; the retry always
+    applies."""
+    retrying_call_fn = lambda: call_model_with_retry(call_fn, context=context)  # noqa: E731
+    if builder is None:
+        return retrying_call_fn()
+    from src.managers.telemetry_manager import monotonic_ms  # pylint: disable=import-outside-toplevel
+    start_ms = monotonic_ms()
+    response = None
+    try:
+        response = retrying_call_fn()
+        return response
+    finally:
+        duration_ms = monotonic_ms() - start_ms
+        usage = getattr(response, "usage", None)
+        input_tokens = getattr(usage, "input_tokens", 0) or 0
+        output_tokens = getattr(usage, "output_tokens", 0) or 0
+        try:
+            builder.record_llm_call(duration_ms, input_tokens, output_tokens)
+        except Exception as telemetry_error:  # pylint: disable=broad-except
+            # Telemetry accounting must never break the real call it's timing.
+            logger.warning(f"Feature 080 telemetry record_llm_call failed: {telemetry_error}")
+
+
+@contextlib.contextmanager
+def tool_call_span(builder: Optional[Any], tool_name: str, *, is_morning_tool: bool = False):
+    """2026-10-01 consolidation: the ONE tool-call timing (Feature 080, REQ-080-04,
+    contracts/telemetry-recorder.md's record_tool_call()) - moved out of
+    AIHandler._timed_tool_call so the backbone records tool calls exactly the way the
+    legacy path does. Times the wrapped block, success or exception alike, and records it
+    into `builder`; a complete no-op when `builder` is None. A telemetry failure is
+    logged, never raised - it must never break the real call it's timing."""
+    if builder is None:
+        yield
+        return
+    from src.managers.telemetry_manager import monotonic_ms  # pylint: disable=import-outside-toplevel
+    start_ms = monotonic_ms()
+    try:
+        yield
+    finally:
+        duration_ms = monotonic_ms() - start_ms
+        try:
+            builder.record_tool_call(tool_name, duration_ms, is_morning_tool=is_morning_tool)
+        except Exception as telemetry_error:  # pylint: disable=broad-except
+            logger.warning(f"Feature 080 telemetry record_tool_call failed: {telemetry_error}")
+
+
+def timed_tool_call(builder: Optional[Any], tool_name: str, call_fn: Callable[[], Any], *,
+                    is_morning_tool: bool = False) -> Any:
+    """call_fn() inside tool_call_span - the function form of the same timing."""
+    with tool_call_span(builder, tool_name, is_morning_tool=is_morning_tool):
+        return call_fn()
+
+
+def record_mcp_tool_calls(builder: Optional[Any], mcp_calls: List[Dict[str, Any]]) -> None:
+    """Records each of a turn's Morning MCP calls (Feature 080, REQ-080-04) for the
+    tool_calls_count/morning_api_request_times_ms breakdown - moved out of
+    AIHandler._finalize_response, one implementation for both paths. Duration is
+    deliberately ~0: OpenAI's Responses API runs a remote MCP call server-side, INSIDE
+    responses.create() (already timed as an LLM call), so there is no separate per-tool
+    duration observable from this side. A no-op when `builder` is None."""
+    if builder is None:
+        return
+    for call in mcp_calls:
+        timed_tool_call(builder, call["name"], lambda: None, is_morning_tool=True)
 
 
 @contextlib.contextmanager
