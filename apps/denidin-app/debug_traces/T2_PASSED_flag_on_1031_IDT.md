@@ -3,7 +3,7 @@
 Each numbered section below is one wire-crossing event, in strict chronological order (the number always goes up by 1, regardless of which boundary/direction it is). Click a section to expand it. Each has exactly two sub-sections, marked `↳` - Audit (concise) and Debug (full, verbatim) - and, inside Debug only, the long `instructions` text nests one level deeper, marked `↳↳`.
 
 <details>
-<summary>1. [2026-09-30 16:44:24] USER → APP — context=webhook</summary>
+<summary>1. [2026-10-01 10:31:08] USER → APP — context=webhook</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -11,8 +11,8 @@ Each numbered section below is one wire-crossing event, in strict chronological 
 ```json
 {
   "typeWebhook": "incomingMessageReceived",
-  "timestamp": 1790775864,
-  "idMessage": "E2E_ADD_CLIENT_APPROVE_SEED_A1_1790775864",
+  "timestamp": 1790839868,
+  "idMessage": "E2E_ADD_CLIENT_APPROVE_SEED_A1_1790839868",
   "instanceData": {
     "idInstance": 7103000000,
     "wid": "972501234567@c.us",
@@ -26,7 +26,7 @@ Each numbered section below is one wire-crossing event, in strict chronological 
   "messageData": {
     "typeMessage": "textMessage",
     "textMessageData": {
-      "textMessage": "תוסיף לקוח חדש בשם זכריה פרוקופנקו, מייל e2e-client-513218@example.com, טלפון +972501234567"
+      "textMessage": "תוסיף לקוח חדש בשם לריסה טסמה, מייל e2e-client-557926@example.com, טלפון +972501234567"
     }
   }
 }
@@ -40,8 +40,8 @@ Each numbered section below is one wire-crossing event, in strict chronological 
 ```json
 {
   "typeWebhook": "incomingMessageReceived",
-  "timestamp": 1790775864,
-  "idMessage": "E2E_ADD_CLIENT_APPROVE_SEED_A1_1790775864",
+  "timestamp": 1790839868,
+  "idMessage": "E2E_ADD_CLIENT_APPROVE_SEED_A1_1790839868",
   "instanceData": {
     "idInstance": 7103000000,
     "wid": "972501234567@c.us",
@@ -55,7 +55,7 @@ Each numbered section below is one wire-crossing event, in strict chronological 
   "messageData": {
     "typeMessage": "textMessage",
     "textMessageData": {
-      "textMessage": "תוסיף לקוח חדש בשם זכריה פרוקופנקו, מייל e2e-client-513218@example.com, טלפון +972501234567"
+      "textMessage": "תוסיף לקוח חדש בשם לריסה טסמה, מייל e2e-client-557926@example.com, טלפון +972501234567"
     }
   }
 }
@@ -66,7 +66,7 @@ Each numbered section below is one wire-crossing event, in strict chronological 
 </details>
 
 <details>
-<summary>2. [2026-09-30 16:44:28] APP → MODEL — context=_run_resolution_loop (first round)</summary>
+<summary>2. [2026-10-01 10:31:10] APP → MODEL — context=_run_resolution_loop (first round)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -78,7 +78,7 @@ Each numbered section below is one wire-crossing event, in strict chronological 
 **input:**
 
 ```json
-{"role": "user", "content": "תוסיף לקוח חדש בשם זכריה פרוקופנקו, מייל e2e-client-513218@example.com, טלפון +972501234567"}
+{"role": "user", "content": "תוסיף לקוח חדש בשם לריסה טסמה, מייל e2e-client-557926@example.com, טלפון +972501234567"}
 ```
 
 - tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
@@ -101,7 +101,7 @@ Each numbered section below is one wire-crossing event, in strict chronological 
 **input:**
 
 ```json
-{"role": "user", "content": "תוסיף לקוח חדש בשם זכריה פרוקופנקו, מייל e2e-client-513218@example.com, טלפון +972501234567"}
+{"role": "user", "content": "תוסיף לקוח חדש בשם לריסה טסמה, מייל e2e-client-557926@example.com, טלפון +972501234567"}
 ```
 
 - tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
@@ -363,7 +363,7 @@ Also note what you are waiting for and what you will do with each possible answe
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 16:44 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-10-01 10:31 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -374,16 +374,16 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>3. [2026-09-30 16:44:31] MODEL → APP — context=_run_resolution_loop (first round)</summary>
+<summary>3. [2026-10-01 10:31:13] MODEL → APP — context=_run_resolution_loop (first round)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0fed14ff1f754649006abd123d5a7487d18e19bd14e0600828`
+- response.id: `resp_0cb0d4d19a83bc31006abe0c3f0fc887d18fb83a046c57512e`
 - status: `completed`
-- usage: `{"input_tokens": 5946, "input_tokens_details": {"cache_write_tokens": 5943, "cached_tokens": 0}, "output_tokens": 61, "output_tokens_details": {"reasoning_tokens": 33}, "total_tokens": 6007}`
+- usage: `{"input_tokens": 5943, "input_tokens_details": {"cache_write_tokens": 5940, "cached_tokens": 0}, "output_tokens": 89, "output_tokens_details": {"reasoning_tokens": 61}, "total_tokens": 6032}`
 - reasoning item (content not user-visible)
-- function_call: `react_to_message` call_id=`call_aifqlQUj2ejqRZXp6aQyjnNi`
+- function_call: `react_to_message` call_id=`call_KAT542ppfg9G8Ga7BKJQzSle`
 ```json
 {
   "emoji": "🫡",
@@ -396,11 +396,11 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0fed14ff1f754649006abd123d5a7487d18e19bd14e0600828`
+- response.id: `resp_0cb0d4d19a83bc31006abe0c3f0fc887d18fb83a046c57512e`
 - status: `completed`
-- usage: `{"input_tokens": 5946, "input_tokens_details": {"cache_write_tokens": 5943, "cached_tokens": 0}, "output_tokens": 61, "output_tokens_details": {"reasoning_tokens": 33}, "total_tokens": 6007}`
+- usage: `{"input_tokens": 5943, "input_tokens_details": {"cache_write_tokens": 5940, "cached_tokens": 0}, "output_tokens": 89, "output_tokens_details": {"reasoning_tokens": 61}, "total_tokens": 6032}`
 - reasoning item (content not user-visible)
-- function_call: `react_to_message` call_id=`call_aifqlQUj2ejqRZXp6aQyjnNi`
+- function_call: `react_to_message` call_id=`call_KAT542ppfg9G8Ga7BKJQzSle`
 ```json
 {
   "emoji": "🫡",
@@ -413,7 +413,143 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>4. [2026-09-30 16:44:31] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>4. [2026-10-01 10:31:13] APP → USER — context=reaction</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+```json
+{
+  "chat_id": "972500000021@c.us",
+  "message": {
+    "chatId": "972500000021@c.us",
+    "idMessage": "E2E_ADD_CLIENT_APPROVE_SEED_A1_1790839868",
+    "reaction": "🫡"
+  }
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+```json
+{
+  "chatId": "972500000021@c.us",
+  "idMessage": "E2E_ADD_CLIENT_APPROVE_SEED_A1_1790839868",
+  "reaction": "🫡"
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>5. [2026-10-01 10:31:13] USER ← APP (send result) — context=reaction</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+```json
+{
+  "chat_id": "972500000021@c.us",
+  "message": {
+    "code": null,
+    "data": null,
+    "error": "'object' object has no attribute 'api'"
+  }
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+```json
+{
+  "code": null,
+  "data": null,
+  "error": "'object' object has no attribute 'api'"
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>6. [2026-10-01 10:31:14] APP → USER — context=reaction</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+```json
+{
+  "chat_id": "972500000021@c.us",
+  "message": {
+    "chatId": "972500000021@c.us",
+    "idMessage": "E2E_ADD_CLIENT_APPROVE_SEED_A1_1790839868",
+    "reaction": "🫡"
+  }
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+```json
+{
+  "chatId": "972500000021@c.us",
+  "idMessage": "E2E_ADD_CLIENT_APPROVE_SEED_A1_1790839868",
+  "reaction": "🫡"
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>7. [2026-10-01 10:31:14] USER ← APP (send result) — context=reaction</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+```json
+{
+  "chat_id": "972500000021@c.us",
+  "message": {
+    "code": null,
+    "data": null,
+    "error": "'object' object has no attribute 'api'"
+  }
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+```json
+{
+  "code": null,
+  "data": null,
+  "error": "'object' object has no attribute 'api'"
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>8. [2026-10-01 10:31:14] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -424,7 +560,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 **input:**
 
-- app's reply to `react_to_message` (call_id=`call_aifqlQUj2ejqRZXp6aQyjnNi`):
+- app's reply to `react_to_message` (call_id=`call_KAT542ppfg9G8Ga7BKJQzSle`):
 ```text
 {
   "status": "failed"
@@ -433,7 +569,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 - tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
 
-- previous_response_id: `'resp_0fed14ff1f754649006abd123d5a7487d18e19bd14e0600828'`
+- previous_response_id: `'resp_0cb0d4d19a83bc31006abe0c3f0fc887d18fb83a046c57512e'`
 
 - max_output_tokens: `20000`
 
@@ -452,7 +588,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 **input:**
 
-- app's reply to `react_to_message` (call_id=`call_aifqlQUj2ejqRZXp6aQyjnNi`):
+- app's reply to `react_to_message` (call_id=`call_KAT542ppfg9G8Ga7BKJQzSle`):
 ```text
 {
   "status": "failed"
@@ -461,7 +597,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 - tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
 
-- previous_response_id: `'resp_0fed14ff1f754649006abd123d5a7487d18e19bd14e0600828'`
+- previous_response_id: `'resp_0cb0d4d19a83bc31006abe0c3f0fc887d18fb83a046c57512e'`
 
 - max_output_tokens: `20000`
 
@@ -720,7 +856,7 @@ Also note what you are waiting for and what you will do with each possible answe
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 16:44 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-10-01 10:31 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -731,18 +867,18 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>5. [2026-09-30 16:44:34] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>9. [2026-10-01 10:31:16] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0fed14ff1f754649006abd12400f1487d1bb41856b2e375475`
+- response.id: `resp_0cb0d4d19a83bc31006abe0c4316b487d18bdee9f21aec6a07`
 - status: `completed`
-- usage: `{"input_tokens": 6025, "input_tokens_details": {"cache_write_tokens": 79, "cached_tokens": 5943}, "output_tokens": 36, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6061}`
-- function_call: `send_progress_update` call_id=`call_RCXINWRBzGTlUTBaN9D6vDnK`
+- usage: `{"input_tokens": 6050, "input_tokens_details": {"cache_write_tokens": 107, "cached_tokens": 5940}, "output_tokens": 41, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6091}`
+- function_call: `send_progress_update` call_id=`call_vmLlEFetHTwKBZolCZncGOmU`
 ```json
 {
-  "text": "מתחיל לבדוק אם הלקוח כבר קיים לפני הוספתו."
+  "text": "בודק אם הלקוח כבר קיים, ואז אציג לך את פרטי ההוספה לאישור."
 }
 ```
 
@@ -751,13 +887,13 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0fed14ff1f754649006abd12400f1487d1bb41856b2e375475`
+- response.id: `resp_0cb0d4d19a83bc31006abe0c4316b487d18bdee9f21aec6a07`
 - status: `completed`
-- usage: `{"input_tokens": 6025, "input_tokens_details": {"cache_write_tokens": 79, "cached_tokens": 5943}, "output_tokens": 36, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6061}`
-- function_call: `send_progress_update` call_id=`call_RCXINWRBzGTlUTBaN9D6vDnK`
+- usage: `{"input_tokens": 6050, "input_tokens_details": {"cache_write_tokens": 107, "cached_tokens": 5940}, "output_tokens": 41, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6091}`
+- function_call: `send_progress_update` call_id=`call_vmLlEFetHTwKBZolCZncGOmU`
 ```json
 {
-  "text": "מתחיל לבדוק אם הלקוח כבר קיים לפני הוספתו."
+  "text": "בודק אם הלקוח כבר קיים, ואז אציג לך את פרטי ההוספה לאישור."
 }
 ```
 
@@ -766,7 +902,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>6. [2026-09-30 16:44:34] APP → USER — context=progress_update</summary>
+<summary>10. [2026-10-01 10:31:16] APP → USER — context=progress_update</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -774,7 +910,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 ```json
 {
   "chat_id": "972500000021@c.us",
-  "message": "מתחיל לבדוק אם הלקוח כבר קיים לפני הוספתו."
+  "message": "בודק אם הלקוח כבר קיים, ואז אציג לך את פרטי ההוספה לאישור."
 }
 ```
 
@@ -786,7 +922,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 ```json
 {
   "chat_id": "972500000021@c.us",
-  "message": "מתחיל לבדוק אם הלקוח כבר קיים לפני הוספתו."
+  "message": "בודק אם הלקוח כבר קיים, ואז אציג לך את פרטי ההוספה לאישור."
 }
 ```
 
@@ -795,7 +931,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>7. [2026-09-30 16:44:34] USER ← APP (send result) — context=progress_update</summary>
+<summary>11. [2026-10-01 10:31:16] USER ← APP (send result) — context=progress_update</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -823,7 +959,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>8. [2026-09-30 16:44:34] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>12. [2026-10-01 10:31:16] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -834,7 +970,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 **input:**
 
-- app's reply to `send_progress_update` (call_id=`call_RCXINWRBzGTlUTBaN9D6vDnK`):
+- app's reply to `send_progress_update` (call_id=`call_vmLlEFetHTwKBZolCZncGOmU`):
 ```text
 {
   "sent": true
@@ -843,7 +979,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 - tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
 
-- previous_response_id: `'resp_0fed14ff1f754649006abd12400f1487d1bb41856b2e375475'`
+- previous_response_id: `'resp_0cb0d4d19a83bc31006abe0c4316b487d18bdee9f21aec6a07'`
 
 - max_output_tokens: `20000`
 
@@ -862,7 +998,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 **input:**
 
-- app's reply to `send_progress_update` (call_id=`call_RCXINWRBzGTlUTBaN9D6vDnK`):
+- app's reply to `send_progress_update` (call_id=`call_vmLlEFetHTwKBZolCZncGOmU`):
 ```text
 {
   "sent": true
@@ -871,7 +1007,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 - tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
 
-- previous_response_id: `'resp_0fed14ff1f754649006abd12400f1487d1bb41856b2e375475'`
+- previous_response_id: `'resp_0cb0d4d19a83bc31006abe0c4316b487d18bdee9f21aec6a07'`
 
 - max_output_tokens: `20000`
 
@@ -1130,7 +1266,7 @@ Also note what you are waiting for and what you will do with each possible answe
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 16:44 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-10-01 10:31 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -1141,20 +1277,20 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>9. [2026-09-30 16:44:37] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>13. [2026-10-01 10:31:18] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0fed14ff1f754649006abd124331e087d1975abd5c72cee749`
+- response.id: `resp_0cb0d4d19a83bc31006abe0c45082887d1852d8b15d8cc4121`
 - status: `completed`
-- usage: `{"input_tokens": 6078, "input_tokens_details": {"cache_write_tokens": 53, "cached_tokens": 6022}, "output_tokens": 132, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6210}`
-- function_call: `record_planning_status` call_id=`call_jyacEt6MJdmQgToqwRVqH3j9`
+- usage: `{"input_tokens": 6108, "input_tokens_details": {"cache_write_tokens": 58, "cached_tokens": 6047}, "output_tokens": 116, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6224}`
+- function_call: `record_planning_status` call_id=`call_X8yeZX1Z7dmttNW2DLmJN5nO`
 ```json
 {
-  "where_i_was": "המשתמש ביקש להוסיף לקוח חדש בשם זכריה פרוקופנקו עם כתובת דואר אלקטרוני ומספר טלפון.",
-  "this_turns_purpose": "להפעיל את תהליך הוספת הלקוח, לבדוק כפילויות, ואז לבקש אישור לפני יצירה.",
-  "expectation": "לטעון את תהליך הוספת הלקוח ואת היכולות הנדרשות, לחפש התאמות קיימות, ולהציג את פרטי הלקוח לאישור."
+  "where_i_was": "התקבלה בקשה להוסיף לקוח חדש בשם לריסה טסמה עם מייל וטלפון שסופקו.",
+  "this_turns_purpose": "להפעיל את תהליך הוספת הלקוח, לבדוק כפילויות ולאסוף אישור לפני יצירה.",
+  "expectation": "אטען את התהליך והיכולות הנדרשות, אבדוק לקוחות דומים, ואז אבקש אישור מפורש ליצירה."
 }
 ```
 
@@ -1163,15 +1299,15 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0fed14ff1f754649006abd124331e087d1975abd5c72cee749`
+- response.id: `resp_0cb0d4d19a83bc31006abe0c45082887d1852d8b15d8cc4121`
 - status: `completed`
-- usage: `{"input_tokens": 6078, "input_tokens_details": {"cache_write_tokens": 53, "cached_tokens": 6022}, "output_tokens": 132, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6210}`
-- function_call: `record_planning_status` call_id=`call_jyacEt6MJdmQgToqwRVqH3j9`
+- usage: `{"input_tokens": 6108, "input_tokens_details": {"cache_write_tokens": 58, "cached_tokens": 6047}, "output_tokens": 116, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6224}`
+- function_call: `record_planning_status` call_id=`call_X8yeZX1Z7dmttNW2DLmJN5nO`
 ```json
 {
-  "where_i_was": "המשתמש ביקש להוסיף לקוח חדש בשם זכריה פרוקופנקו עם כתובת דואר אלקטרוני ומספר טלפון.",
-  "this_turns_purpose": "להפעיל את תהליך הוספת הלקוח, לבדוק כפילויות, ואז לבקש אישור לפני יצירה.",
-  "expectation": "לטעון את תהליך הוספת הלקוח ואת היכולות הנדרשות, לחפש התאמות קיימות, ולהציג את פרטי הלקוח לאישור."
+  "where_i_was": "התקבלה בקשה להוסיף לקוח חדש בשם לריסה טסמה עם מייל וטלפון שסופקו.",
+  "this_turns_purpose": "להפעיל את תהליך הוספת הלקוח, לבדוק כפילויות ולאסוף אישור לפני יצירה.",
+  "expectation": "אטען את התהליך והיכולות הנדרשות, אבדוק לקוחות דומים, ואז אבקש אישור מפורש ליצירה."
 }
 ```
 
@@ -1180,7 +1316,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>10. [2026-09-30 16:44:37] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>14. [2026-10-01 10:31:18] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -1191,14 +1327,14 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 **input:**
 
-- app's reply to `record_planning_status` (call_id=`call_jyacEt6MJdmQgToqwRVqH3j9`):
+- app's reply to `record_planning_status` (call_id=`call_X8yeZX1Z7dmttNW2DLmJN5nO`):
 ```text
 recorded
 ```
 
 - tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
 
-- previous_response_id: `'resp_0fed14ff1f754649006abd124331e087d1975abd5c72cee749'`
+- previous_response_id: `'resp_0cb0d4d19a83bc31006abe0c45082887d1852d8b15d8cc4121'`
 
 - max_output_tokens: `20000`
 
@@ -1217,14 +1353,14 @@ recorded
 
 **input:**
 
-- app's reply to `record_planning_status` (call_id=`call_jyacEt6MJdmQgToqwRVqH3j9`):
+- app's reply to `record_planning_status` (call_id=`call_X8yeZX1Z7dmttNW2DLmJN5nO`):
 ```text
 recorded
 ```
 
 - tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
 
-- previous_response_id: `'resp_0fed14ff1f754649006abd124331e087d1975abd5c72cee749'`
+- previous_response_id: `'resp_0cb0d4d19a83bc31006abe0c45082887d1852d8b15d8cc4121'`
 
 - max_output_tokens: `20000`
 
@@ -1483,7 +1619,7 @@ Also note what you are waiting for and what you will do with each possible answe
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 16:44 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-10-01 10:31 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -1494,15 +1630,15 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>11. [2026-09-30 16:44:38] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>15. [2026-10-01 10:31:20] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0fed14ff1f754649006abd1245665c87d1aba7b9ebbed6f675`
+- response.id: `resp_0cb0d4d19a83bc31006abe0c47bcdc87d1963cc49526d0a651`
 - status: `completed`
-- usage: `{"input_tokens": 6225, "input_tokens_details": {"cache_write_tokens": 147, "cached_tokens": 6075}, "output_tokens": 22, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6247}`
-- function_call: `load_flows` call_id=`call_qDMVT8K9EM1CWD3c695Gbmde`
+- usage: `{"input_tokens": 6239, "input_tokens_details": {"cache_write_tokens": 131, "cached_tokens": 6105}, "output_tokens": 22, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6261}`
+- function_call: `load_flows` call_id=`call_9tZrfMUeISLiUXH4a8klfxsj`
 ```json
 {
   "flows": [
@@ -1516,10 +1652,10 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0fed14ff1f754649006abd1245665c87d1aba7b9ebbed6f675`
+- response.id: `resp_0cb0d4d19a83bc31006abe0c47bcdc87d1963cc49526d0a651`
 - status: `completed`
-- usage: `{"input_tokens": 6225, "input_tokens_details": {"cache_write_tokens": 147, "cached_tokens": 6075}, "output_tokens": 22, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6247}`
-- function_call: `load_flows` call_id=`call_qDMVT8K9EM1CWD3c695Gbmde`
+- usage: `{"input_tokens": 6239, "input_tokens_details": {"cache_write_tokens": 131, "cached_tokens": 6105}, "output_tokens": 22, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6261}`
+- function_call: `load_flows` call_id=`call_9tZrfMUeISLiUXH4a8klfxsj`
 ```json
 {
   "flows": [
@@ -1533,7 +1669,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>12. [2026-09-30 16:44:38] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>16. [2026-10-01 10:31:20] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -1544,14 +1680,14 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 **input:**
 
-- app's reply to `load_flows` (call_id=`call_qDMVT8K9EM1CWD3c695Gbmde`):
+- app's reply to `load_flows` (call_id=`call_9tZrfMUeISLiUXH4a8klfxsj`):
 ```text
 loaded flows: flow_add_client. Loaded flows now: flow_add_client. Loaded capabilities now: (none). Their blueprint text is attached starting now.
 ```
 
 - tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
 
-- previous_response_id: `'resp_0fed14ff1f754649006abd1245665c87d1aba7b9ebbed6f675'`
+- previous_response_id: `'resp_0cb0d4d19a83bc31006abe0c47bcdc87d1963cc49526d0a651'`
 
 - max_output_tokens: `20000`
 
@@ -1570,14 +1706,14 @@ loaded flows: flow_add_client. Loaded flows now: flow_add_client. Loaded capabil
 
 **input:**
 
-- app's reply to `load_flows` (call_id=`call_qDMVT8K9EM1CWD3c695Gbmde`):
+- app's reply to `load_flows` (call_id=`call_9tZrfMUeISLiUXH4a8klfxsj`):
 ```text
 loaded flows: flow_add_client. Loaded flows now: flow_add_client. Loaded capabilities now: (none). Their blueprint text is attached starting now.
 ```
 
 - tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
 
-- previous_response_id: `'resp_0fed14ff1f754649006abd1245665c87d1aba7b9ebbed6f675'`
+- previous_response_id: `'resp_0cb0d4d19a83bc31006abe0c47bcdc87d1963cc49526d0a651'`
 
 - max_output_tokens: `20000`
 
@@ -1856,7 +1992,7 @@ flow_add_client
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 16:44 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-10-01 10:31 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -1867,19 +2003,22 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>13. [2026-09-30 16:44:40] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>17. [2026-10-01 10:31:22] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0fed14ff1f754649006abd1246e69487d191bb6955386b2e21`
+- response.id: `resp_0cb0d4d19a83bc31006abe0c49440c87d1b8f57d9cbc2323e5`
 - status: `completed`
-- usage: `{"input_tokens": 6741, "input_tokens_details": {"cache_write_tokens": 6738, "cached_tokens": 0}, "output_tokens": 69, "output_tokens_details": {"reasoning_tokens": 33}, "total_tokens": 6810}`
-- reasoning item (content not user-visible)
-- function_call: `send_progress_update` call_id=`call_snjlqJXAfH5pDcUJmOBL9PaN`
+- usage: `{"input_tokens": 6755, "input_tokens_details": {"cache_write_tokens": 6752, "cached_tokens": 0}, "output_tokens": 33, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6788}`
+- function_call: `load_capabilities` call_id=`call_14BIgHAKPkPAJwV44GyLJT8u`
 ```json
 {
-  "text": "בודק עכשיו אם קיימת רשומה זהה או דומה במערכת."
+  "capabilities": [
+    "cap_client_read",
+    "cap_client_write",
+    "cap_approval_with_buttons"
+  ]
 }
 ```
 
@@ -1888,14 +2027,17 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0fed14ff1f754649006abd1246e69487d191bb6955386b2e21`
+- response.id: `resp_0cb0d4d19a83bc31006abe0c49440c87d1b8f57d9cbc2323e5`
 - status: `completed`
-- usage: `{"input_tokens": 6741, "input_tokens_details": {"cache_write_tokens": 6738, "cached_tokens": 0}, "output_tokens": 69, "output_tokens_details": {"reasoning_tokens": 33}, "total_tokens": 6810}`
-- reasoning item (content not user-visible)
-- function_call: `send_progress_update` call_id=`call_snjlqJXAfH5pDcUJmOBL9PaN`
+- usage: `{"input_tokens": 6755, "input_tokens_details": {"cache_write_tokens": 6752, "cached_tokens": 0}, "output_tokens": 33, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6788}`
+- function_call: `load_capabilities` call_id=`call_14BIgHAKPkPAJwV44GyLJT8u`
 ```json
 {
-  "text": "בודק עכשיו אם קיימת רשומה זהה או דומה במערכת."
+  "capabilities": [
+    "cap_client_read",
+    "cap_client_write",
+    "cap_approval_with_buttons"
+  ]
 }
 ```
 
@@ -1904,7 +2046,462 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>14. [2026-09-30 16:44:40] APP → USER — context=progress_update</summary>
+<summary>18. [2026-10-01 10:31:22] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+- flows: flow_add_client
+
+- capabilities: cap_client_write, cap_client_read, cap_approval_with_buttons
+
+**input:**
+
+- app's reply to `load_capabilities` (call_id=`call_14BIgHAKPkPAJwV44GyLJT8u`):
+```text
+loaded capabilitys: cap_client_read, cap_client_write, cap_approval_with_buttons. Loaded flows now: flow_add_client. Loaded capabilities now: cap_client_read, cap_client_write, cap_approval_with_buttons. Their instructions and tools are attached starting now.
+```
+
+- tools (12): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp', 'mcp']
+
+- previous_response_id: `'resp_0cb0d4d19a83bc31006abe0c49440c87d1b8f57d9cbc2323e5'`
+
+- max_output_tokens: `20000`
+
+- model: `'gpt-5.6-luna'`
+
+- instructions: backbone (flows=flow_add_client, capabilities=cap_client_write, cap_client_read, cap_approval_with_buttons)
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+- flows: flow_add_client
+
+- capabilities: cap_client_write, cap_client_read, cap_approval_with_buttons
+
+**input:**
+
+- app's reply to `load_capabilities` (call_id=`call_14BIgHAKPkPAJwV44GyLJT8u`):
+```text
+loaded capabilitys: cap_client_read, cap_client_write, cap_approval_with_buttons. Loaded flows now: flow_add_client. Loaded capabilities now: cap_client_read, cap_client_write, cap_approval_with_buttons. Their instructions and tools are attached starting now.
+```
+
+- tools (12): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp', 'mcp']
+
+- previous_response_id: `'resp_0cb0d4d19a83bc31006abe0c49440c87d1b8f57d9cbc2323e5'`
+
+- max_output_tokens: `20000`
+
+- model: `'gpt-5.6-luna'`
+
+<details>
+<summary>↳↳ instructions (25120 chars)</summary>
+
+```text
+# DeniDin — Backbone
+
+## How You Work
+
+You work with two kinds of building blocks, described at low resolution in the
+catalogs below: **flows** (`flow_...`) - blueprints for a recurring kind of
+request - and **capabilities** (`cap_...`) - the domains that actually do things,
+each with its own prompt and its own real tools. Flows can load other flows and
+capabilities; a flow defines *what to do and in what order*, while each
+capability holds the detail of what it itself does.
+
+Loading tools, usable in any order, any number of times:
+
+- **`load_flows(flows)` / `unload_flows(flows)`** - always an array; one item is
+  fine, and combining flows is allowed when a request spans more than one.
+- **`load_capabilities(capabilities)` / `unload_capabilities(capabilities)`** -
+  always an array. The moment a capability is loaded, its prompt AND its real
+  tools are attached, starting the very next round; call the real tool directly,
+  there is no separate "use" step. A flow's own "Capabilities:" line declares
+  every capability that flow will need - load all of them together, in one
+  `load_capabilities` call, right after loading the flow, rather than loading
+  them one at a time as each step comes up: you already know you'll need them,
+  and batching saves a round-trip per capability.
+- **`reset_to_backbone()`** - unloads every loaded flow and capability at once.
+  Use it once you are genuinely done with the user's request(s), not mid-task.
+
+Loading an already-loaded item, or unloading one that is not loaded, is a
+harmless no-op. Loaded flows and capabilities stay loaded across this and future
+turns in this chat until you unload them (or they auto-clear after a period of
+inactivity); the "Loaded flows" and "Loaded capabilities" lines near the end of
+these instructions always show what is currently loaded. Unload something only
+when nothing you are still working on needs it - another flow may be using it.
+
+## Always-present capabilities
+
+Four capabilities are always available, cannot be unloaded, and each has its own
+prompt right below: `cap_send_to_user` (your actual reply), `cap_react_to_message`
+(a WhatsApp emoji reaction), `cap_send_progress_update` (an interim message
+while you work) and `cap_record_planning_status` (your own running account of
+where you are, which is how you keep your place across turns and inside nested
+flows). At every step of any flow, consider whether they would help: react to
+the user's message, send a progress update, record your planning status, or
+reply to the user. Flows do not repeat this; use your judgment.
+
+`cap_approval_with_buttons` (yes/no buttons before a write) is an ordinary
+capability: flows that need a sign-off load it.
+
+## Flows and capabilities
+
+Decide from the catalogs, in your own judgment, what a request needs:
+
+1. If a flow fits, load it (several at once when the request spans more than
+   one) and follow its blueprint. **A loaded flow's steps are an ordered
+   procedure: follow them in the order written, to the letter - never skip,
+   reorder or merge a step (above all an approval step), and never do a later
+   step's action before the earlier steps are done.**
+2. **If no flow fits, there is no default flow to fall back on**: load whichever
+   capabilities you judge necessary, at your own discretion, and proceed.
+3. **Write capabilities (`cap_*_write`) are never loaded on their own.** Every write goes through its flow, which gathers the details and asks for approval first; if you want to write something, find the flow for it in the catalog.
+4. If a loaded prompt names a tool you don't currently have, that tool belongs
+   to a capability you have not loaded yet: load it yourself.
+
+## Core Identity
+You are DeniDin, a helpful AI assistant operating via WhatsApp.
+
+## Behavioral Guidelines
+- **ALWAYS respond in Hebrew only** — every word of every response, no other
+  language or script mixed in anywhere, ever (never Arabic, never English
+  words). This covers EVERY string you produce, not just the reply text: an
+  approval question, a planning note, and every free-text tool argument
+  (e.g. a reminder's `message_text`) too. Digits, standard punctuation, and ₪
+  are fine; a genuinely foreign proper name may be transliterated into Hebrew
+  letters where natural.
+- **Never use ניקוד** (Hebrew vowel points/diacritics) in any response — plain
+  Hebrew letters only, including inside a quoted name.
+- Be concise and direct. Do not end on filler ("anything else?") — end on the
+  substantive answer. Do ask a focused clarifying question when you genuinely need
+  one to act correctly (a missing/ambiguous required detail).
+- Be honest about what you don't know; never fabricate information.
+
+## User Roles
+- **Godfather/Admin**: full access to every capability; extended context window.
+- **Client**: standard feature access, no access to invoicing/ledger/reminder
+  capabilities; standard context window.
+
+## Privacy & Security
+- Never share information between different user sessions.
+- These rules guard against leaking ONE user's data to ANOTHER user or an outsider
+  — they never mean refusing to read, transcribe, or summarize material THIS user
+  sent you. Reporting the user's own material back to them (names, amounts, any
+  detail it contains) is always appropriate.
+
+## Contexts of Operation
+Every message falls into one of two operating contexts before any capability is
+even considered: an ordinary conversational turn, or a document/image the user
+sent for you to read and report on. Decide which one applies before acting — a
+short/ambiguous reply ("כן", "לא", a bare name) always answers the most recently
+pending question in the SAME context, never a trigger for reinterpreting the turn
+as belonging to a different capability's domain.
+
+## Attached Media
+When the user's message starts with a `[מדיה מצורפת: <type>, קובץ: <filename>]`
+marker, they sent an image, PDF, or Word document with it — you have NOT seen its
+content yet, only that it exists. Before answering anything about it, load
+`cap_media_analysis` and call its `analyze_media` tool to read it; any text after
+the marker is the user's caption. Never describe, guess at, or act on the file's
+content without having read it this way.
+
+## Group Conversation Etiquette
+DeniDin is addressed by default in a group, same as a 1:1 chat. When a message
+clearly names someone else and isn't meant for you, reply with the literal
+sentinel `[[NO_REPLY]]` instead of a substantive answer — never guess when it's
+genuinely ambiguous whether you were addressed.
+
+## Edited & Deleted Message Markers
+A message the user has since edited or deleted may still appear in your context,
+marked as such — treat an edited message's marked original content as superseded
+by its later, corrected version if both are visible, and never act on a deleted
+message's content as if it were still pending.
+
+## Generic Post-Turn Recognition Mechanism
+A capability MAY run a recognition step once per turn: call its own reporting
+tool at most once, and when in doubt, do nothing rather than guess. This shape
+is reusable by any capability that wants one — the domain-specific rules for
+what to recognize and how live in that capability's own prompt file, not here.
+
+
+# Capability: Send to user (always present)
+
+`send_to_user(text)` is your actual reply to the user. Call it whenever you are
+ready to speak, not only at the very end: to answer, to ask a question, to
+report an outcome. A turn that ends without it, or without an approval question,
+leaves the user with nothing.
+
+- Pass the literal text `[[NO_REPLY]]` to deliberately say nothing this turn. Use
+  it in a group when a message clearly names someone else and is not meant for
+  you. When it is genuinely unclear whether you were addressed, do not guess.
+- For a yes/no sign-off, use `cap_approval_with_buttons` instead; it gives the
+  user tappable buttons.
+- Reply in Hebrew only, concisely, without filler. End on the substantive answer.
+  Ask a focused question only when you genuinely need the answer to act correctly.
+
+
+# Capability: React to message (always present)
+
+`react_to_message` puts a native WhatsApp emoji reaction on a message. It is a
+lightweight, reversible signal - never a substitute for a substantive reply,
+and never a mechanical habit reached for out of uncertainty about what else
+to do. Typing an emoji into your reply text is NOT a reaction and does not
+replace calling the tool.
+
+Before reaching for it, ask yourself: does this add a real signal the user
+doesn't already have - that you saw their message, that you're on it, that
+something just succeeded or failed - or would it just be noise on top of a
+reply that already says the same thing?
+
+Evaluate against:
+- Does the user currently have any signal you registered their message and
+  are handling it (or have finished)? If there's a real gap before your
+  substantive reply, a reaction can fill it.
+- Is your actual reply, arriving in this same round or moments later, already
+  going to tell them everything a reaction would? If so, it adds nothing.
+- Is this ambient chatter that doesn't really concern you? Then it isn't
+  worth one.
+
+**Classics** (a menu, not a checklist): 👍 simple ack · 🫡 "on it" · 👀 document
+being looked into · ✅ clean success · 🎉 a bigger win · ⚠️ resolved but needs
+attention · ❌ failed/declined · ❓ unresolved, needs clarification · 🙏
+reciprocating thanks · ❤️ warmth beyond a simple thanks.
+
+When genuinely unsure whether a reaction fits, don't send one - silence is
+the safer default, not noise.
+
+
+# Capability: Send progress update (always present)
+
+`send_progress_update(text)` sends one brief interim WhatsApp message while you
+are still working, before your final reply. Keep it to a short plain sentence.
+
+Users are waiting on the other end and don't like silence - they want to know
+something is happening with their request, not just get one final answer out
+of nowhere.
+
+Call this every single time you interact with any tool or capability -
+loading a flow or capability, calling a real domain tool, an MCP call,
+anything that is not just talking to the user - before or after that step,
+in the same round as whatever else you are doing. Never skip it and never
+wait for a separate round.
+
+- Never a substitute for the final answer.
+
+
+# Capability: Record planning status (always present)
+
+`record_planning_status(where_i_was, this_turns_purpose, expectation)` is your own
+running account of where this turn, and across turns this whole task, stands. It is
+how you keep continuity, since nothing else remembers your reasoning beyond what you
+write here and the real conversation history.
+
+Record it at least at the start and at the end of every flow, and whenever you are
+about to wait on the user (a choice, a missing detail, an approval), in the middle
+of a flow as well. Say which flow you are in and which step, and if you are inside a
+flow that was loaded by another flow, say so, so that you know where to return to.
+Also note what you are waiting for and what you will do with each possible answer.
+
+
+## Flows
+
+- flow_add_client: Adding a brand-new client record to Morning ("תוסיף לקוח חדש", or a shared contact card the user wants saved). Checks for an existing or similar client first so a duplicate is never created by accident, tells the user about similar candidates, and creates the record only with approval. Other flows load it whenever a client turns out not to exist yet.
+- flow_modify_client: Changing an existing client's own details (name, email, phone) in Morning. Resolves which real client is meant, relaying candidates when the match is not exact, and updates it with approval. Not for creating a client and not for documents.
+- flow_issue_invoice_for_payment_due: Issuing a new tax invoice (305) for a client, for money that is still owed ("תפיק חשבונית ללקוח X"). Never for money that has already arrived. Money that has already arrived belongs to flow_issue_invoice_receipt_combo instead.
+- flow_issue_invoice_receipt_combo: Issuing a combined tax invoice/receipt (320) for a payment that has already been received and that no earlier document covers - the most common way to record incoming money, whether reported verbally or shown in a bank slip or payment screenshot. Money that an existing document already covers belongs to flow_issue_payment_received_with_reference_doc.
+- flow_issue_transaction_account: Issuing a transaction account (חשבון עסקה, 300) for a client - only when the user's own wording names this document type. Ordinary requests for an invoice belong to flow_issue_invoice_for_payment_due.
+- flow_issue_receipt_without_invoice: Recording a standalone receipt (400) with no invoice behind it, for example a refundable deposit. A receipt against an existing invoice belongs to flow_issue_payment_received_with_reference_doc.
+- flow_payment_received_by_bank_slip_image: A bank slip or payment screenshot arrived. Reads it, records the payer, and gets the payment recorded in Morning the right way: a new combo document when nothing covers it, or a document against an existing one.
+- flow_issue_payment_received_with_reference_doc: Recording a payment received against an existing Morning document: a receipt (400) for an existing invoice (305), or a combo document (320) closing an existing transaction account (300) ("סמן כשולם"). Money that no document covers belongs to flow_issue_invoice_receipt_combo.
+- flow_cancel_document_with_credit_note: Cancelling an existing Morning document with a credit note (330) ("בטל את החשבונית"). Finds the one real document and shows its real data in the approval before writing.
+- flow_cancel_transaction_account: Cancelling an open transaction account (300) directly. No document of any kind is created. Cancelling any other kind of document belongs to flow_cancel_document_with_credit_note.
+- flow_fee_agreement_provided_by_user: The user reports or forwards a fee agreement (הסכם) - as text or as an image - made with a client. An agreement must never belong to a client Morning does not manage, so this makes sure the client exists first. Recording the agreement in the ledger happens automatically after the turn.
+- flow_deposit_provided_by_user: The user reports or forwards a bank deposit (text or a bank slip image). Makes sure the payer exists as a client in Morning first. Recording the deposit in the ledger happens automatically after the turn.
+- flow_user_question: Answering a question about the user's clients, past agreements, deposits, or amounts owed and paid. Decides where the answer lives (the ledger first, Morning when it may hold it), and never answers that nothing exists before checking Morning where Morning could hold it.
+- flow_invoicing_query: Reading from the invoicing system for a client the user names: resolves the client's exact stored name first, then reads the documents or status. Other flows load it whenever they need to look up documents in Morning.
+- flow_generate_fee_agreement_docx: Generating a fee agreement document (הסכם שכר טרחה) as a .docx file to send to a prospective client. The client does not exist yet, so no client lookup is involved. Recording an agreement the user reports belongs to flow_fee_agreement_provided_by_user.
+- flow_create_reminder: Creating a new reminder, one-time or recurring ("תזכיר לי בעוד שעתיים", "תזכיר לי כל יום ראשון"). Confirms the text and the schedule, and creates the reminder only with approval. Use this flow, not cap_reminders_write directly, whenever a reminder is added.
+- flow_modify_reminder: Changing or cancelling an existing reminder ("תזיז את התזכורת", "תבטל את התזכורת"). Looks up the user's real reminders to identify the exact one before modifying or deleting it, with approval. Adding a brand-new reminder belongs to flow_create_reminder. Use the reminder flows, not cap_reminders_write directly.
+
+## Capabilities
+
+- cap_invoicing_write: Creating a Morning DOCUMENT for a client - an invoice, a receipt, a transaction account, a credit note, or a combo tax-invoice/receipt - or cancelling a transaction account. Writes only: finding the client or the existing document, and getting approval, are the calling flow's job, so load it only through that flow (flow_issue_*, flow_cancel_*, flow_payment_received_*), never directly. Not for creating or updating a client record - see cap_client_write.
+- cap_invoicing_read: Reading from the invoicing system (Morning): a specific document's own status and details, recent documents, a financial summary, a download link. It is given an already-resolved client name or document id. Not for a client's own details - see cap_client_read - and not the first choice for a general owed/paid amount question - see cap_ledger_query.
+- cap_client_write: Creating a new client record, or updating an existing client's own details (name/email/phone) in Morning. Writes only: load it only through flow_add_client or flow_modify_client, never directly. Never for producing any document - see cap_invoicing_write.
+- cap_client_read: Looking up an existing client's own details (name/email/phone/id), listing clients, and resolving a client name to its exact stored Morning spelling. Never for a client's financial history - see cap_ledger_query and cap_invoicing_read.
+- cap_ledger_query: Answering questions about PAST fee agreements or bank deposits already recorded, including how much a client/payer owes or has paid - whether or not a formal Morning invoice exists. The ledger is a fast cache over Morning and covers agreement-level amounts Morning cannot see at all.
+- cap_reminders_write: Creating, changing, or cancelling a reminder (one-time or recurring) for the user. Writes only: load it only through flow_create_reminder or flow_modify_reminder, never directly.
+- cap_reminders_read: Looking up the user's own existing reminders - what's scheduled, for when.
+- cap_media_analysis: Reading/extracting the content of an image or document the user sent. Used inside a larger flow, or on its own to work out what a piece of media is for.
+- cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
+- cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
+
+# Flow: Add client
+
+Goal: add a brand-new client to Morning if it does not exist.
+
+Capabilities: `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons`.
+
+Follow these steps in order, to the letter.
+
+1. Load `cap_client_read` and look up the client by the name the user gave.
+2. Handle what you find:
+   - The client already exists: use `cap_send_to_user` to tell the user plainly that it does. Do not modify it and do not offer to. The flow is complete.
+   - Similar clients exist but none matches exactly: use `cap_send_to_user` to list each similar client by name and offer, as its own explicit choice, to create a new client under the exact name they gave. Wait for their choice. If they pick an existing client, the flow is complete. A plain "add client X" is not by itself the user asking for a new one; only wording that concedes a similar client may exist and wants a new record anyway means you may skip the question. Once that is clear, don't ask again.
+   - No such client: continue.
+3. Load `cap_client_write` and prepare the client from what the user gave. If something is missing, use `cap_send_to_user` to ask the user for it; don't guess.
+4. Creating a client MUST be approved by the user first. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Create the client only on a clear yes. On a no, create nothing, and use `cap_send_to_user` to ask what to change.
+5. If the creation fails, use `cap_send_to_user` to tell the user plainly what happened. Retry once only if the reason is fixable; otherwise stop.
+6. If the user drops the request or changes the subject mid-way, create nothing and treat the flow as complete.
+7. End. Use `cap_send_to_user` to report the outcome. Then unload `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
+
+
+# Capability: Client — Write (godfather/admin only)
+
+**Use this capability from within a flow (flow_add_client / flow_modify_client), never on its own for a user request.** The flow decides when it is loaded and when approval is required; this capability holds the details of the write itself.
+
+**Creating or changing a client is a state-changing action, which usually requires the user's explicit approval first.**
+
+Attaches `add_client` and `update_client`, which create or change a client record in
+Morning. They are real, persisted writes.
+
+**Approval data points.** Whoever raises the approval must show the user:
+- `add_client`: the new client's name, email and phone (and the tax id, if given).
+- `update_client`: the ACTUAL resolved client (never the user's loose wording) and
+  the specific field(s) changing, with their new values.
+
+## Creating a client
+
+`add_client` needs a name, an email AND a phone; all three are required, and none
+may be guessed or omitted. `tax_id` is the only optional field. If Morning rejects a
+tax id as invalid, relay that and ask for a corrected one.
+
+**Never alter the spelling of a name you are creating.** Use it exactly as the user
+wrote it, character for character; never "correct" it, even if you are confident
+which spelling was meant. Morning stores it verbatim, and a silently altered name
+means every later search for the real name fails.
+
+## Updating a client
+
+`update_client` needs `name_resolved=true` together with the EXACT name Morning has
+stored. Pass `name_resolved=true` only for a name that has actually been confirmed as
+Morning's stored name, never for the user's loose wording.
+
+
+# Capability: Client — Read (godfather/admin only)
+
+Attaches the Morning client-lookup tools: `list_clients`, `resolve_client_name`,
+`get_client_details`. All read-only; call them right away, in the same turn, as soon
+as you have what they need. None of them creates or changes a record.
+
+This capability answers "who is this client", "what are their details", and "which
+clients exist". It knows nothing about a client's amounts owed or paid.
+
+## What resolving a name returns
+
+`resolve_client_name` confirms the exact stored spelling of a name. A single-word
+name is a genuine partial/substring search. It returns one of:
+- an exact name: the stored spelling, to use verbatim;
+- a confirmation question: a single close match, to relay to the user as-is;
+- a candidates list: to relay to the user as-is;
+- no match at all.
+
+What to do with each result is the calling flow's business; this capability just
+reports it faithfully and never picks a candidate on its own.
+
+
+# Capability: Approval with buttons
+
+`approval_with_yes_no_buttons(text)` ends the turn showing the user WhatsApp yes/no
+buttons alongside `text`. It is plain and stateless: it does not know what the write
+is, and there is no pending-approval state to track. On the user's next turn, read
+their reply (a typed "כן"/"לא" or a button tap; both arrive as an ordinary turn) from
+the conversation, and act accordingly. Your own `cap_record_planning_status` note is
+what carries "I am waiting for approval of X" across the gap.
+
+The flow that needs the approval decides that an approval is required. The write
+capability you are about to use defines which details the approval must state.
+
+- Start the text with `📋 לאישור:` (or, for a document-creation approval,
+  `📋 לאישור — <what it is>:`, e.g. `📋 לאישור — לקוח חדש:`) on its own line,
+  then the details as REAL data: given by the user, or fetched this turn.
+  Never from memory or a guess. A missing detail is a question to ask BEFORE
+  requesting approval, never "not stated".
+- End the text with EXACTLY this closed question, verbatim, every single time:
+  `לאישור — כן/לא?`. Never paraphrase it (not `אישור — כן/לא?`, not `האם לאשר...`,
+  not any other wording) and never let a competing question follow it — this exact
+  string is a fixed contract other code relies on to recognize a real approval gate.
+- Ask once per action. Act only on a clear affirmative to THAT specific action,
+  exactly once. On "לא", do not act: acknowledge and ask what to change.
+- Reply in Hebrew only.
+
+
+## Loaded flows
+
+flow_add_client
+
+## Loaded capabilities
+
+cap_client_write, cap_client_read, cap_approval_with_buttons
+
+---
+
+THE CURRENT DATE AND TIME IS 2026-10-01 10:31 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
+```
+
+</details>
+
+</details>
+
+</details>
+
+<details>
+<summary>19. [2026-10-01 10:31:26] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+- response.id: `resp_0cb0d4d19a83bc31006abe0c4aeb6c87d1b284ab27c039c6b8`
+- status: `completed`
+- usage: `{"input_tokens": 8604, "input_tokens_details": {"cache_write_tokens": 8601, "cached_tokens": 0}, "output_tokens": 54, "output_tokens_details": {"reasoning_tokens": 20}, "total_tokens": 8658}`
+- mcp_list_tools (morning-invoices-client-read): ['list_clients', 'resolve_client_name', 'get_client_details']
+- mcp_list_tools (morning-invoices-client-write): ['add_client', 'update_client']
+- reasoning item (content not user-visible)
+- function_call: `send_progress_update` call_id=`call_axmKkNfEQE8v2AVUM1cj4Mov`
+```json
+{
+  "text": "מבצע בדיקת כפילות עבור לריסה טסמה."
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+- response.id: `resp_0cb0d4d19a83bc31006abe0c4aeb6c87d1b284ab27c039c6b8`
+- status: `completed`
+- usage: `{"input_tokens": 8604, "input_tokens_details": {"cache_write_tokens": 8601, "cached_tokens": 0}, "output_tokens": 54, "output_tokens_details": {"reasoning_tokens": 20}, "total_tokens": 8658}`
+- mcp_list_tools (morning-invoices-client-read): ['list_clients', 'resolve_client_name', 'get_client_details']
+- mcp_list_tools (morning-invoices-client-write): ['add_client', 'update_client']
+- reasoning item (content not user-visible)
+- function_call: `send_progress_update` call_id=`call_axmKkNfEQE8v2AVUM1cj4Mov`
+```json
+{
+  "text": "מבצע בדיקת כפילות עבור לריסה טסמה."
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>20. [2026-10-01 10:31:26] APP → USER — context=progress_update</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -1912,7 +2509,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 ```json
 {
   "chat_id": "972500000021@c.us",
-  "message": "בודק עכשיו אם קיימת רשומה זהה או דומה במערכת."
+  "message": "מבצע בדיקת כפילות עבור לריסה טסמה."
 }
 ```
 
@@ -1924,7 +2521,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 ```json
 {
   "chat_id": "972500000021@c.us",
-  "message": "בודק עכשיו אם קיימת רשומה זהה או דומה במערכת."
+  "message": "מבצע בדיקת כפילות עבור לריסה טסמה."
 }
 ```
 
@@ -1933,7 +2530,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>15. [2026-09-30 16:44:40] USER ← APP (send result) — context=progress_update</summary>
+<summary>21. [2026-10-01 10:31:26] USER ← APP (send result) — context=progress_update</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -1961,33 +2558,33 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>16. [2026-09-30 16:44:40] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>22. [2026-10-01 10:31:26] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
 - flows: flow_add_client
 
-- capabilities: (none - plain backbone)
+- capabilities: cap_client_write, cap_client_read, cap_approval_with_buttons
 
 **input:**
 
-- app's reply to `send_progress_update` (call_id=`call_snjlqJXAfH5pDcUJmOBL9PaN`):
+- app's reply to `send_progress_update` (call_id=`call_axmKkNfEQE8v2AVUM1cj4Mov`):
 ```text
 {
   "sent": true
 }
 ```
 
-- tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
+- tools (12): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp', 'mcp']
 
-- previous_response_id: `'resp_0fed14ff1f754649006abd1246e69487d191bb6955386b2e21'`
+- previous_response_id: `'resp_0cb0d4d19a83bc31006abe0c4aeb6c87d1b284ab27c039c6b8'`
 
 - max_output_tokens: `20000`
 
 - model: `'gpt-5.6-luna'`
 
-- instructions: backbone (flows=flow_add_client, capabilities=(none - plain backbone))
+- instructions: backbone (flows=flow_add_client, capabilities=cap_client_write, cap_client_read, cap_approval_with_buttons)
 
 </details>
 
@@ -1996,27 +2593,27 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 - flows: flow_add_client
 
-- capabilities: (none - plain backbone)
+- capabilities: cap_client_write, cap_client_read, cap_approval_with_buttons
 
 **input:**
 
-- app's reply to `send_progress_update` (call_id=`call_snjlqJXAfH5pDcUJmOBL9PaN`):
+- app's reply to `send_progress_update` (call_id=`call_axmKkNfEQE8v2AVUM1cj4Mov`):
 ```text
 {
   "sent": true
 }
 ```
 
-- tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
+- tools (12): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp', 'mcp']
 
-- previous_response_id: `'resp_0fed14ff1f754649006abd1246e69487d191bb6955386b2e21'`
+- previous_response_id: `'resp_0cb0d4d19a83bc31006abe0c4aeb6c87d1b284ab27c039c6b8'`
 
 - max_output_tokens: `20000`
 
 - model: `'gpt-5.6-luna'`
 
 <details>
-<summary>↳↳ instructions (20934 chars)</summary>
+<summary>↳↳ instructions (25120 chars)</summary>
 
 ```text
 # DeniDin — Backbone
@@ -2278,377 +2875,36 @@ Follow these steps in order, to the letter.
 7. End. Use `cap_send_to_user` to report the outcome. Then unload `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
 
 
-## Loaded flows
+# Capability: Client — Write (godfather/admin only)
 
-flow_add_client
+**Use this capability from within a flow (flow_add_client / flow_modify_client), never on its own for a user request.** The flow decides when it is loaded and when approval is required; this capability holds the details of the write itself.
 
-## Loaded capabilities
+**Creating or changing a client is a state-changing action, which usually requires the user's explicit approval first.**
 
-(none - plain backbone)
+Attaches `add_client` and `update_client`, which create or change a client record in
+Morning. They are real, persisted writes.
 
----
+**Approval data points.** Whoever raises the approval must show the user:
+- `add_client`: the new client's name, email and phone (and the tax id, if given).
+- `update_client`: the ACTUAL resolved client (never the user's loose wording) and
+  the specific field(s) changing, with their new values.
 
-THE CURRENT DATE AND TIME IS 2026-09-30 16:44 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
-YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
-```
+## Creating a client
 
-</details>
+`add_client` needs a name, an email AND a phone; all three are required, and none
+may be guessed or omitted. `tax_id` is the only optional field. If Morning rejects a
+tax id as invalid, relay that and ask for a corrected one.
 
-</details>
+**Never alter the spelling of a name you are creating.** Use it exactly as the user
+wrote it, character for character; never "correct" it, even if you are confident
+which spelling was meant. Morning stores it verbatim, and a silently altered name
+means every later search for the real name fails.
 
-</details>
+## Updating a client
 
-<details>
-<summary>17. [2026-09-30 16:44:42] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- response.id: `resp_0fed14ff1f754649006abd124942f487d198f3f61941600cca`
-- status: `completed`
-- usage: `{"input_tokens": 6827, "input_tokens_details": {"cache_write_tokens": 86, "cached_tokens": 6738}, "output_tokens": 23, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6850}`
-- function_call: `load_capabilities` call_id=`call_YztpTHOlFID9XfQ0UwJamDx6`
-```json
-{
-  "capabilities": [
-    "cap_client_read"
-  ]
-}
-```
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- response.id: `resp_0fed14ff1f754649006abd124942f487d198f3f61941600cca`
-- status: `completed`
-- usage: `{"input_tokens": 6827, "input_tokens_details": {"cache_write_tokens": 86, "cached_tokens": 6738}, "output_tokens": 23, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6850}`
-- function_call: `load_capabilities` call_id=`call_YztpTHOlFID9XfQ0UwJamDx6`
-```json
-{
-  "capabilities": [
-    "cap_client_read"
-  ]
-}
-```
-
-</details>
-
-</details>
-
-<details>
-<summary>18. [2026-09-30 16:44:42] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- flows: flow_add_client
-
-- capabilities: cap_client_read
-
-**input:**
-
-- app's reply to `load_capabilities` (call_id=`call_YztpTHOlFID9XfQ0UwJamDx6`):
-```text
-loaded capabilitys: cap_client_read. Loaded flows now: flow_add_client. Loaded capabilities now: cap_client_read. Their instructions and tools are attached starting now.
-```
-
-- tools (10): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'mcp']
-
-- previous_response_id: `'resp_0fed14ff1f754649006abd124942f487d198f3f61941600cca'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-- instructions: backbone (flows=flow_add_client, capabilities=cap_client_read)
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- flows: flow_add_client
-
-- capabilities: cap_client_read
-
-**input:**
-
-- app's reply to `load_capabilities` (call_id=`call_YztpTHOlFID9XfQ0UwJamDx6`):
-```text
-loaded capabilitys: cap_client_read. Loaded flows now: flow_add_client. Loaded capabilities now: cap_client_read. Their instructions and tools are attached starting now.
-```
-
-- tools (10): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'mcp']
-
-- previous_response_id: `'resp_0fed14ff1f754649006abd124942f487d198f3f61941600cca'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-<details>
-<summary>↳↳ instructions (21896 chars)</summary>
-
-```text
-# DeniDin — Backbone
-
-## How You Work
-
-You work with two kinds of building blocks, described at low resolution in the
-catalogs below: **flows** (`flow_...`) - blueprints for a recurring kind of
-request - and **capabilities** (`cap_...`) - the domains that actually do things,
-each with its own prompt and its own real tools. Flows can load other flows and
-capabilities; a flow defines *what to do and in what order*, while each
-capability holds the detail of what it itself does.
-
-Loading tools, usable in any order, any number of times:
-
-- **`load_flows(flows)` / `unload_flows(flows)`** - always an array; one item is
-  fine, and combining flows is allowed when a request spans more than one.
-- **`load_capabilities(capabilities)` / `unload_capabilities(capabilities)`** -
-  always an array. The moment a capability is loaded, its prompt AND its real
-  tools are attached, starting the very next round; call the real tool directly,
-  there is no separate "use" step. A flow's own "Capabilities:" line declares
-  every capability that flow will need - load all of them together, in one
-  `load_capabilities` call, right after loading the flow, rather than loading
-  them one at a time as each step comes up: you already know you'll need them,
-  and batching saves a round-trip per capability.
-- **`reset_to_backbone()`** - unloads every loaded flow and capability at once.
-  Use it once you are genuinely done with the user's request(s), not mid-task.
-
-Loading an already-loaded item, or unloading one that is not loaded, is a
-harmless no-op. Loaded flows and capabilities stay loaded across this and future
-turns in this chat until you unload them (or they auto-clear after a period of
-inactivity); the "Loaded flows" and "Loaded capabilities" lines near the end of
-these instructions always show what is currently loaded. Unload something only
-when nothing you are still working on needs it - another flow may be using it.
-
-## Always-present capabilities
-
-Four capabilities are always available, cannot be unloaded, and each has its own
-prompt right below: `cap_send_to_user` (your actual reply), `cap_react_to_message`
-(a WhatsApp emoji reaction), `cap_send_progress_update` (an interim message
-while you work) and `cap_record_planning_status` (your own running account of
-where you are, which is how you keep your place across turns and inside nested
-flows). At every step of any flow, consider whether they would help: react to
-the user's message, send a progress update, record your planning status, or
-reply to the user. Flows do not repeat this; use your judgment.
-
-`cap_approval_with_buttons` (yes/no buttons before a write) is an ordinary
-capability: flows that need a sign-off load it.
-
-## Flows and capabilities
-
-Decide from the catalogs, in your own judgment, what a request needs:
-
-1. If a flow fits, load it (several at once when the request spans more than
-   one) and follow its blueprint. **A loaded flow's steps are an ordered
-   procedure: follow them in the order written, to the letter - never skip,
-   reorder or merge a step (above all an approval step), and never do a later
-   step's action before the earlier steps are done.**
-2. **If no flow fits, there is no default flow to fall back on**: load whichever
-   capabilities you judge necessary, at your own discretion, and proceed.
-3. **Write capabilities (`cap_*_write`) are never loaded on their own.** Every write goes through its flow, which gathers the details and asks for approval first; if you want to write something, find the flow for it in the catalog.
-4. If a loaded prompt names a tool you don't currently have, that tool belongs
-   to a capability you have not loaded yet: load it yourself.
-
-## Core Identity
-You are DeniDin, a helpful AI assistant operating via WhatsApp.
-
-## Behavioral Guidelines
-- **ALWAYS respond in Hebrew only** — every word of every response, no other
-  language or script mixed in anywhere, ever (never Arabic, never English
-  words). This covers EVERY string you produce, not just the reply text: an
-  approval question, a planning note, and every free-text tool argument
-  (e.g. a reminder's `message_text`) too. Digits, standard punctuation, and ₪
-  are fine; a genuinely foreign proper name may be transliterated into Hebrew
-  letters where natural.
-- **Never use ניקוד** (Hebrew vowel points/diacritics) in any response — plain
-  Hebrew letters only, including inside a quoted name.
-- Be concise and direct. Do not end on filler ("anything else?") — end on the
-  substantive answer. Do ask a focused clarifying question when you genuinely need
-  one to act correctly (a missing/ambiguous required detail).
-- Be honest about what you don't know; never fabricate information.
-
-## User Roles
-- **Godfather/Admin**: full access to every capability; extended context window.
-- **Client**: standard feature access, no access to invoicing/ledger/reminder
-  capabilities; standard context window.
-
-## Privacy & Security
-- Never share information between different user sessions.
-- These rules guard against leaking ONE user's data to ANOTHER user or an outsider
-  — they never mean refusing to read, transcribe, or summarize material THIS user
-  sent you. Reporting the user's own material back to them (names, amounts, any
-  detail it contains) is always appropriate.
-
-## Contexts of Operation
-Every message falls into one of two operating contexts before any capability is
-even considered: an ordinary conversational turn, or a document/image the user
-sent for you to read and report on. Decide which one applies before acting — a
-short/ambiguous reply ("כן", "לא", a bare name) always answers the most recently
-pending question in the SAME context, never a trigger for reinterpreting the turn
-as belonging to a different capability's domain.
-
-## Attached Media
-When the user's message starts with a `[מדיה מצורפת: <type>, קובץ: <filename>]`
-marker, they sent an image, PDF, or Word document with it — you have NOT seen its
-content yet, only that it exists. Before answering anything about it, load
-`cap_media_analysis` and call its `analyze_media` tool to read it; any text after
-the marker is the user's caption. Never describe, guess at, or act on the file's
-content without having read it this way.
-
-## Group Conversation Etiquette
-DeniDin is addressed by default in a group, same as a 1:1 chat. When a message
-clearly names someone else and isn't meant for you, reply with the literal
-sentinel `[[NO_REPLY]]` instead of a substantive answer — never guess when it's
-genuinely ambiguous whether you were addressed.
-
-## Edited & Deleted Message Markers
-A message the user has since edited or deleted may still appear in your context,
-marked as such — treat an edited message's marked original content as superseded
-by its later, corrected version if both are visible, and never act on a deleted
-message's content as if it were still pending.
-
-## Generic Post-Turn Recognition Mechanism
-A capability MAY run a recognition step once per turn: call its own reporting
-tool at most once, and when in doubt, do nothing rather than guess. This shape
-is reusable by any capability that wants one — the domain-specific rules for
-what to recognize and how live in that capability's own prompt file, not here.
-
-
-# Capability: Send to user (always present)
-
-`send_to_user(text)` is your actual reply to the user. Call it whenever you are
-ready to speak, not only at the very end: to answer, to ask a question, to
-report an outcome. A turn that ends without it, or without an approval question,
-leaves the user with nothing.
-
-- Pass the literal text `[[NO_REPLY]]` to deliberately say nothing this turn. Use
-  it in a group when a message clearly names someone else and is not meant for
-  you. When it is genuinely unclear whether you were addressed, do not guess.
-- For a yes/no sign-off, use `cap_approval_with_buttons` instead; it gives the
-  user tappable buttons.
-- Reply in Hebrew only, concisely, without filler. End on the substantive answer.
-  Ask a focused question only when you genuinely need the answer to act correctly.
-
-
-# Capability: React to message (always present)
-
-`react_to_message` puts a native WhatsApp emoji reaction on a message. It is a
-lightweight, reversible signal - never a substitute for a substantive reply,
-and never a mechanical habit reached for out of uncertainty about what else
-to do. Typing an emoji into your reply text is NOT a reaction and does not
-replace calling the tool.
-
-Before reaching for it, ask yourself: does this add a real signal the user
-doesn't already have - that you saw their message, that you're on it, that
-something just succeeded or failed - or would it just be noise on top of a
-reply that already says the same thing?
-
-Evaluate against:
-- Does the user currently have any signal you registered their message and
-  are handling it (or have finished)? If there's a real gap before your
-  substantive reply, a reaction can fill it.
-- Is your actual reply, arriving in this same round or moments later, already
-  going to tell them everything a reaction would? If so, it adds nothing.
-- Is this ambient chatter that doesn't really concern you? Then it isn't
-  worth one.
-
-**Classics** (a menu, not a checklist): 👍 simple ack · 🫡 "on it" · 👀 document
-being looked into · ✅ clean success · 🎉 a bigger win · ⚠️ resolved but needs
-attention · ❌ failed/declined · ❓ unresolved, needs clarification · 🙏
-reciprocating thanks · ❤️ warmth beyond a simple thanks.
-
-When genuinely unsure whether a reaction fits, don't send one - silence is
-the safer default, not noise.
-
-
-# Capability: Send progress update (always present)
-
-`send_progress_update(text)` sends one brief interim WhatsApp message while you
-are still working, before your final reply. Keep it to a short plain sentence.
-
-Users are waiting on the other end and don't like silence - they want to know
-something is happening with their request, not just get one final answer out
-of nowhere.
-
-Call this every single time you interact with any tool or capability -
-loading a flow or capability, calling a real domain tool, an MCP call,
-anything that is not just talking to the user - before or after that step,
-in the same round as whatever else you are doing. Never skip it and never
-wait for a separate round.
-
-- Never a substitute for the final answer.
-
-
-# Capability: Record planning status (always present)
-
-`record_planning_status(where_i_was, this_turns_purpose, expectation)` is your own
-running account of where this turn, and across turns this whole task, stands. It is
-how you keep continuity, since nothing else remembers your reasoning beyond what you
-write here and the real conversation history.
-
-Record it at least at the start and at the end of every flow, and whenever you are
-about to wait on the user (a choice, a missing detail, an approval), in the middle
-of a flow as well. Say which flow you are in and which step, and if you are inside a
-flow that was loaded by another flow, say so, so that you know where to return to.
-Also note what you are waiting for and what you will do with each possible answer.
-
-
-## Flows
-
-- flow_add_client: Adding a brand-new client record to Morning ("תוסיף לקוח חדש", or a shared contact card the user wants saved). Checks for an existing or similar client first so a duplicate is never created by accident, tells the user about similar candidates, and creates the record only with approval. Other flows load it whenever a client turns out not to exist yet.
-- flow_modify_client: Changing an existing client's own details (name, email, phone) in Morning. Resolves which real client is meant, relaying candidates when the match is not exact, and updates it with approval. Not for creating a client and not for documents.
-- flow_issue_invoice_for_payment_due: Issuing a new tax invoice (305) for a client, for money that is still owed ("תפיק חשבונית ללקוח X"). Never for money that has already arrived. Money that has already arrived belongs to flow_issue_invoice_receipt_combo instead.
-- flow_issue_invoice_receipt_combo: Issuing a combined tax invoice/receipt (320) for a payment that has already been received and that no earlier document covers - the most common way to record incoming money, whether reported verbally or shown in a bank slip or payment screenshot. Money that an existing document already covers belongs to flow_issue_payment_received_with_reference_doc.
-- flow_issue_transaction_account: Issuing a transaction account (חשבון עסקה, 300) for a client - only when the user's own wording names this document type. Ordinary requests for an invoice belong to flow_issue_invoice_for_payment_due.
-- flow_issue_receipt_without_invoice: Recording a standalone receipt (400) with no invoice behind it, for example a refundable deposit. A receipt against an existing invoice belongs to flow_issue_payment_received_with_reference_doc.
-- flow_payment_received_by_bank_slip_image: A bank slip or payment screenshot arrived. Reads it, records the payer, and gets the payment recorded in Morning the right way: a new combo document when nothing covers it, or a document against an existing one.
-- flow_issue_payment_received_with_reference_doc: Recording a payment received against an existing Morning document: a receipt (400) for an existing invoice (305), or a combo document (320) closing an existing transaction account (300) ("סמן כשולם"). Money that no document covers belongs to flow_issue_invoice_receipt_combo.
-- flow_cancel_document_with_credit_note: Cancelling an existing Morning document with a credit note (330) ("בטל את החשבונית"). Finds the one real document and shows its real data in the approval before writing.
-- flow_cancel_transaction_account: Cancelling an open transaction account (300) directly. No document of any kind is created. Cancelling any other kind of document belongs to flow_cancel_document_with_credit_note.
-- flow_fee_agreement_provided_by_user: The user reports or forwards a fee agreement (הסכם) - as text or as an image - made with a client. An agreement must never belong to a client Morning does not manage, so this makes sure the client exists first. Recording the agreement in the ledger happens automatically after the turn.
-- flow_deposit_provided_by_user: The user reports or forwards a bank deposit (text or a bank slip image). Makes sure the payer exists as a client in Morning first. Recording the deposit in the ledger happens automatically after the turn.
-- flow_user_question: Answering a question about the user's clients, past agreements, deposits, or amounts owed and paid. Decides where the answer lives (the ledger first, Morning when it may hold it), and never answers that nothing exists before checking Morning where Morning could hold it.
-- flow_invoicing_query: Reading from the invoicing system for a client the user names: resolves the client's exact stored name first, then reads the documents or status. Other flows load it whenever they need to look up documents in Morning.
-- flow_generate_fee_agreement_docx: Generating a fee agreement document (הסכם שכר טרחה) as a .docx file to send to a prospective client. The client does not exist yet, so no client lookup is involved. Recording an agreement the user reports belongs to flow_fee_agreement_provided_by_user.
-- flow_create_reminder: Creating a new reminder, one-time or recurring ("תזכיר לי בעוד שעתיים", "תזכיר לי כל יום ראשון"). Confirms the text and the schedule, and creates the reminder only with approval. Use this flow, not cap_reminders_write directly, whenever a reminder is added.
-- flow_modify_reminder: Changing or cancelling an existing reminder ("תזיז את התזכורת", "תבטל את התזכורת"). Looks up the user's real reminders to identify the exact one before modifying or deleting it, with approval. Adding a brand-new reminder belongs to flow_create_reminder. Use the reminder flows, not cap_reminders_write directly.
-
-## Capabilities
-
-- cap_invoicing_write: Creating a Morning DOCUMENT for a client - an invoice, a receipt, a transaction account, a credit note, or a combo tax-invoice/receipt - or cancelling a transaction account. Writes only: finding the client or the existing document, and getting approval, are the calling flow's job, so load it only through that flow (flow_issue_*, flow_cancel_*, flow_payment_received_*), never directly. Not for creating or updating a client record - see cap_client_write.
-- cap_invoicing_read: Reading from the invoicing system (Morning): a specific document's own status and details, recent documents, a financial summary, a download link. It is given an already-resolved client name or document id. Not for a client's own details - see cap_client_read - and not the first choice for a general owed/paid amount question - see cap_ledger_query.
-- cap_client_write: Creating a new client record, or updating an existing client's own details (name/email/phone) in Morning. Writes only: load it only through flow_add_client or flow_modify_client, never directly. Never for producing any document - see cap_invoicing_write.
-- cap_client_read: Looking up an existing client's own details (name/email/phone/id), listing clients, and resolving a client name to its exact stored Morning spelling. Never for a client's financial history - see cap_ledger_query and cap_invoicing_read.
-- cap_ledger_query: Answering questions about PAST fee agreements or bank deposits already recorded, including how much a client/payer owes or has paid - whether or not a formal Morning invoice exists. The ledger is a fast cache over Morning and covers agreement-level amounts Morning cannot see at all.
-- cap_reminders_write: Creating, changing, or cancelling a reminder (one-time or recurring) for the user. Writes only: load it only through flow_create_reminder or flow_modify_reminder, never directly.
-- cap_reminders_read: Looking up the user's own existing reminders - what's scheduled, for when.
-- cap_media_analysis: Reading/extracting the content of an image or document the user sent. Used inside a larger flow, or on its own to work out what a piece of media is for.
-- cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
-- cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
-
-# Flow: Add client
-
-Goal: add a brand-new client to Morning if it does not exist.
-
-Capabilities: `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons`.
-
-Follow these steps in order, to the letter.
-
-1. Load `cap_client_read` and look up the client by the name the user gave.
-2. Handle what you find:
-   - The client already exists: use `cap_send_to_user` to tell the user plainly that it does. Do not modify it and do not offer to. The flow is complete.
-   - Similar clients exist but none matches exactly: use `cap_send_to_user` to list each similar client by name and offer, as its own explicit choice, to create a new client under the exact name they gave. Wait for their choice. If they pick an existing client, the flow is complete. A plain "add client X" is not by itself the user asking for a new one; only wording that concedes a similar client may exist and wants a new record anyway means you may skip the question. Once that is clear, don't ask again.
-   - No such client: continue.
-3. Load `cap_client_write` and prepare the client from what the user gave. If something is missing, use `cap_send_to_user` to ask the user for it; don't guess.
-4. Creating a client MUST be approved by the user first. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Create the client only on a clear yes. On a no, create nothing, and use `cap_send_to_user` to ask what to change.
-5. If the creation fails, use `cap_send_to_user` to tell the user plainly what happened. Retry once only if the reason is fixable; otherwise stop.
-6. If the user drops the request or changes the subject mid-way, create nothing and treat the flow as complete.
-7. End. Use `cap_send_to_user` to report the outcome. Then unload `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
+`update_client` needs `name_resolved=true` together with the EXACT name Morning has
+stored. Pass `name_resolved=true` only for a name that has actually been confirmed as
+Morning's stored name, never for the user's loose wording.
 
 
 # Capability: Client — Read (godfather/admin only)
@@ -2673,17 +2929,43 @@ What to do with each result is the calling flow's business; this capability just
 reports it faithfully and never picks a candidate on its own.
 
 
+# Capability: Approval with buttons
+
+`approval_with_yes_no_buttons(text)` ends the turn showing the user WhatsApp yes/no
+buttons alongside `text`. It is plain and stateless: it does not know what the write
+is, and there is no pending-approval state to track. On the user's next turn, read
+their reply (a typed "כן"/"לא" or a button tap; both arrive as an ordinary turn) from
+the conversation, and act accordingly. Your own `cap_record_planning_status` note is
+what carries "I am waiting for approval of X" across the gap.
+
+The flow that needs the approval decides that an approval is required. The write
+capability you are about to use defines which details the approval must state.
+
+- Start the text with `📋 לאישור:` (or, for a document-creation approval,
+  `📋 לאישור — <what it is>:`, e.g. `📋 לאישור — לקוח חדש:`) on its own line,
+  then the details as REAL data: given by the user, or fetched this turn.
+  Never from memory or a guess. A missing detail is a question to ask BEFORE
+  requesting approval, never "not stated".
+- End the text with EXACTLY this closed question, verbatim, every single time:
+  `לאישור — כן/לא?`. Never paraphrase it (not `אישור — כן/לא?`, not `האם לאשר...`,
+  not any other wording) and never let a competing question follow it — this exact
+  string is a fixed contract other code relies on to recognize a real approval gate.
+- Ask once per action. Act only on a clear affirmative to THAT specific action,
+  exactly once. On "לא", do not act: acknowledge and ask what to change.
+- Reply in Hebrew only.
+
+
 ## Loaded flows
 
 flow_add_client
 
 ## Loaded capabilities
 
-cap_client_read
+cap_client_write, cap_client_read, cap_approval_with_buttons
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 16:44 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-10-01 10:31 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -2694,479 +2976,23 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>19. [2026-09-30 16:44:46] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>23. [2026-10-01 10:31:32] MODEL → APP — context=_run_resolution_loop (follow-up) (response part 1/2)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0fed14ff1f754649006abd124ae4e887d1ac786717c28651d6`
+- response.id: `resp_0cb0d4d19a83bc31006abe0c4ea4c087d191a528b66280d56d`
 - status: `completed`
-- usage: `{"input_tokens": 7465, "input_tokens_details": {"cache_write_tokens": 7462, "cached_tokens": 0}, "output_tokens": 44, "output_tokens_details": {"reasoning_tokens": 14}, "total_tokens": 7509}`
-- mcp_list_tools (morning-invoices): ['list_clients', 'resolve_client_name', 'get_client_details']
-- reasoning item (content not user-visible)
-- function_call: `send_progress_update` call_id=`call_3dIMBCXn4FfgXq0ph9jVs15j`
-```json
-{
-  "text": "מחפש את השם המדויק במערכת."
-}
-```
+- usage: `{"input_tokens": 8730, "input_tokens_details": {"cache_write_tokens": 71, "cached_tokens": 8601}, "output_tokens": 195, "output_tokens_details": {"reasoning_tokens": 43}, "total_tokens": 8925}`
 
 </details>
 
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0fed14ff1f754649006abd124ae4e887d1ac786717c28651d6`
+- response.id: `resp_0cb0d4d19a83bc31006abe0c4ea4c087d191a528b66280d56d`
 - status: `completed`
-- usage: `{"input_tokens": 7465, "input_tokens_details": {"cache_write_tokens": 7462, "cached_tokens": 0}, "output_tokens": 44, "output_tokens_details": {"reasoning_tokens": 14}, "total_tokens": 7509}`
-- mcp_list_tools (morning-invoices): ['list_clients', 'resolve_client_name', 'get_client_details']
-- reasoning item (content not user-visible)
-- function_call: `send_progress_update` call_id=`call_3dIMBCXn4FfgXq0ph9jVs15j`
-```json
-{
-  "text": "מחפש את השם המדויק במערכת."
-}
-```
-
-</details>
-
-</details>
-
-<details>
-<summary>20. [2026-09-30 16:44:46] APP → USER — context=progress_update</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-```json
-{
-  "chat_id": "972500000021@c.us",
-  "message": "מחפש את השם המדויק במערכת."
-}
-```
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-```json
-{
-  "chat_id": "972500000021@c.us",
-  "message": "מחפש את השם המדויק במערכת."
-}
-```
-
-</details>
-
-</details>
-
-<details>
-<summary>21. [2026-09-30 16:44:46] USER ← APP (send result) — context=progress_update</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-```json
-{
-  "chat_id": "972500000021@c.us",
-  "message": "None"
-}
-```
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-```json
-{
-  "result": "None"
-}
-```
-
-</details>
-
-</details>
-
-<details>
-<summary>22. [2026-09-30 16:44:46] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- flows: flow_add_client
-
-- capabilities: cap_client_read
-
-**input:**
-
-- app's reply to `send_progress_update` (call_id=`call_3dIMBCXn4FfgXq0ph9jVs15j`):
-```text
-{
-  "sent": true
-}
-```
-
-- tools (10): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'mcp']
-
-- previous_response_id: `'resp_0fed14ff1f754649006abd124ae4e887d1ac786717c28651d6'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-- instructions: backbone (flows=flow_add_client, capabilities=cap_client_read)
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- flows: flow_add_client
-
-- capabilities: cap_client_read
-
-**input:**
-
-- app's reply to `send_progress_update` (call_id=`call_3dIMBCXn4FfgXq0ph9jVs15j`):
-```text
-{
-  "sent": true
-}
-```
-
-- tools (10): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'mcp']
-
-- previous_response_id: `'resp_0fed14ff1f754649006abd124ae4e887d1ac786717c28651d6'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-<details>
-<summary>↳↳ instructions (21896 chars)</summary>
-
-```text
-# DeniDin — Backbone
-
-## How You Work
-
-You work with two kinds of building blocks, described at low resolution in the
-catalogs below: **flows** (`flow_...`) - blueprints for a recurring kind of
-request - and **capabilities** (`cap_...`) - the domains that actually do things,
-each with its own prompt and its own real tools. Flows can load other flows and
-capabilities; a flow defines *what to do and in what order*, while each
-capability holds the detail of what it itself does.
-
-Loading tools, usable in any order, any number of times:
-
-- **`load_flows(flows)` / `unload_flows(flows)`** - always an array; one item is
-  fine, and combining flows is allowed when a request spans more than one.
-- **`load_capabilities(capabilities)` / `unload_capabilities(capabilities)`** -
-  always an array. The moment a capability is loaded, its prompt AND its real
-  tools are attached, starting the very next round; call the real tool directly,
-  there is no separate "use" step. A flow's own "Capabilities:" line declares
-  every capability that flow will need - load all of them together, in one
-  `load_capabilities` call, right after loading the flow, rather than loading
-  them one at a time as each step comes up: you already know you'll need them,
-  and batching saves a round-trip per capability.
-- **`reset_to_backbone()`** - unloads every loaded flow and capability at once.
-  Use it once you are genuinely done with the user's request(s), not mid-task.
-
-Loading an already-loaded item, or unloading one that is not loaded, is a
-harmless no-op. Loaded flows and capabilities stay loaded across this and future
-turns in this chat until you unload them (or they auto-clear after a period of
-inactivity); the "Loaded flows" and "Loaded capabilities" lines near the end of
-these instructions always show what is currently loaded. Unload something only
-when nothing you are still working on needs it - another flow may be using it.
-
-## Always-present capabilities
-
-Four capabilities are always available, cannot be unloaded, and each has its own
-prompt right below: `cap_send_to_user` (your actual reply), `cap_react_to_message`
-(a WhatsApp emoji reaction), `cap_send_progress_update` (an interim message
-while you work) and `cap_record_planning_status` (your own running account of
-where you are, which is how you keep your place across turns and inside nested
-flows). At every step of any flow, consider whether they would help: react to
-the user's message, send a progress update, record your planning status, or
-reply to the user. Flows do not repeat this; use your judgment.
-
-`cap_approval_with_buttons` (yes/no buttons before a write) is an ordinary
-capability: flows that need a sign-off load it.
-
-## Flows and capabilities
-
-Decide from the catalogs, in your own judgment, what a request needs:
-
-1. If a flow fits, load it (several at once when the request spans more than
-   one) and follow its blueprint. **A loaded flow's steps are an ordered
-   procedure: follow them in the order written, to the letter - never skip,
-   reorder or merge a step (above all an approval step), and never do a later
-   step's action before the earlier steps are done.**
-2. **If no flow fits, there is no default flow to fall back on**: load whichever
-   capabilities you judge necessary, at your own discretion, and proceed.
-3. **Write capabilities (`cap_*_write`) are never loaded on their own.** Every write goes through its flow, which gathers the details and asks for approval first; if you want to write something, find the flow for it in the catalog.
-4. If a loaded prompt names a tool you don't currently have, that tool belongs
-   to a capability you have not loaded yet: load it yourself.
-
-## Core Identity
-You are DeniDin, a helpful AI assistant operating via WhatsApp.
-
-## Behavioral Guidelines
-- **ALWAYS respond in Hebrew only** — every word of every response, no other
-  language or script mixed in anywhere, ever (never Arabic, never English
-  words). This covers EVERY string you produce, not just the reply text: an
-  approval question, a planning note, and every free-text tool argument
-  (e.g. a reminder's `message_text`) too. Digits, standard punctuation, and ₪
-  are fine; a genuinely foreign proper name may be transliterated into Hebrew
-  letters where natural.
-- **Never use ניקוד** (Hebrew vowel points/diacritics) in any response — plain
-  Hebrew letters only, including inside a quoted name.
-- Be concise and direct. Do not end on filler ("anything else?") — end on the
-  substantive answer. Do ask a focused clarifying question when you genuinely need
-  one to act correctly (a missing/ambiguous required detail).
-- Be honest about what you don't know; never fabricate information.
-
-## User Roles
-- **Godfather/Admin**: full access to every capability; extended context window.
-- **Client**: standard feature access, no access to invoicing/ledger/reminder
-  capabilities; standard context window.
-
-## Privacy & Security
-- Never share information between different user sessions.
-- These rules guard against leaking ONE user's data to ANOTHER user or an outsider
-  — they never mean refusing to read, transcribe, or summarize material THIS user
-  sent you. Reporting the user's own material back to them (names, amounts, any
-  detail it contains) is always appropriate.
-
-## Contexts of Operation
-Every message falls into one of two operating contexts before any capability is
-even considered: an ordinary conversational turn, or a document/image the user
-sent for you to read and report on. Decide which one applies before acting — a
-short/ambiguous reply ("כן", "לא", a bare name) always answers the most recently
-pending question in the SAME context, never a trigger for reinterpreting the turn
-as belonging to a different capability's domain.
-
-## Attached Media
-When the user's message starts with a `[מדיה מצורפת: <type>, קובץ: <filename>]`
-marker, they sent an image, PDF, or Word document with it — you have NOT seen its
-content yet, only that it exists. Before answering anything about it, load
-`cap_media_analysis` and call its `analyze_media` tool to read it; any text after
-the marker is the user's caption. Never describe, guess at, or act on the file's
-content without having read it this way.
-
-## Group Conversation Etiquette
-DeniDin is addressed by default in a group, same as a 1:1 chat. When a message
-clearly names someone else and isn't meant for you, reply with the literal
-sentinel `[[NO_REPLY]]` instead of a substantive answer — never guess when it's
-genuinely ambiguous whether you were addressed.
-
-## Edited & Deleted Message Markers
-A message the user has since edited or deleted may still appear in your context,
-marked as such — treat an edited message's marked original content as superseded
-by its later, corrected version if both are visible, and never act on a deleted
-message's content as if it were still pending.
-
-## Generic Post-Turn Recognition Mechanism
-A capability MAY run a recognition step once per turn: call its own reporting
-tool at most once, and when in doubt, do nothing rather than guess. This shape
-is reusable by any capability that wants one — the domain-specific rules for
-what to recognize and how live in that capability's own prompt file, not here.
-
-
-# Capability: Send to user (always present)
-
-`send_to_user(text)` is your actual reply to the user. Call it whenever you are
-ready to speak, not only at the very end: to answer, to ask a question, to
-report an outcome. A turn that ends without it, or without an approval question,
-leaves the user with nothing.
-
-- Pass the literal text `[[NO_REPLY]]` to deliberately say nothing this turn. Use
-  it in a group when a message clearly names someone else and is not meant for
-  you. When it is genuinely unclear whether you were addressed, do not guess.
-- For a yes/no sign-off, use `cap_approval_with_buttons` instead; it gives the
-  user tappable buttons.
-- Reply in Hebrew only, concisely, without filler. End on the substantive answer.
-  Ask a focused question only when you genuinely need the answer to act correctly.
-
-
-# Capability: React to message (always present)
-
-`react_to_message` puts a native WhatsApp emoji reaction on a message. It is a
-lightweight, reversible signal - never a substitute for a substantive reply,
-and never a mechanical habit reached for out of uncertainty about what else
-to do. Typing an emoji into your reply text is NOT a reaction and does not
-replace calling the tool.
-
-Before reaching for it, ask yourself: does this add a real signal the user
-doesn't already have - that you saw their message, that you're on it, that
-something just succeeded or failed - or would it just be noise on top of a
-reply that already says the same thing?
-
-Evaluate against:
-- Does the user currently have any signal you registered their message and
-  are handling it (or have finished)? If there's a real gap before your
-  substantive reply, a reaction can fill it.
-- Is your actual reply, arriving in this same round or moments later, already
-  going to tell them everything a reaction would? If so, it adds nothing.
-- Is this ambient chatter that doesn't really concern you? Then it isn't
-  worth one.
-
-**Classics** (a menu, not a checklist): 👍 simple ack · 🫡 "on it" · 👀 document
-being looked into · ✅ clean success · 🎉 a bigger win · ⚠️ resolved but needs
-attention · ❌ failed/declined · ❓ unresolved, needs clarification · 🙏
-reciprocating thanks · ❤️ warmth beyond a simple thanks.
-
-When genuinely unsure whether a reaction fits, don't send one - silence is
-the safer default, not noise.
-
-
-# Capability: Send progress update (always present)
-
-`send_progress_update(text)` sends one brief interim WhatsApp message while you
-are still working, before your final reply. Keep it to a short plain sentence.
-
-Users are waiting on the other end and don't like silence - they want to know
-something is happening with their request, not just get one final answer out
-of nowhere.
-
-Call this every single time you interact with any tool or capability -
-loading a flow or capability, calling a real domain tool, an MCP call,
-anything that is not just talking to the user - before or after that step,
-in the same round as whatever else you are doing. Never skip it and never
-wait for a separate round.
-
-- Never a substitute for the final answer.
-
-
-# Capability: Record planning status (always present)
-
-`record_planning_status(where_i_was, this_turns_purpose, expectation)` is your own
-running account of where this turn, and across turns this whole task, stands. It is
-how you keep continuity, since nothing else remembers your reasoning beyond what you
-write here and the real conversation history.
-
-Record it at least at the start and at the end of every flow, and whenever you are
-about to wait on the user (a choice, a missing detail, an approval), in the middle
-of a flow as well. Say which flow you are in and which step, and if you are inside a
-flow that was loaded by another flow, say so, so that you know where to return to.
-Also note what you are waiting for and what you will do with each possible answer.
-
-
-## Flows
-
-- flow_add_client: Adding a brand-new client record to Morning ("תוסיף לקוח חדש", or a shared contact card the user wants saved). Checks for an existing or similar client first so a duplicate is never created by accident, tells the user about similar candidates, and creates the record only with approval. Other flows load it whenever a client turns out not to exist yet.
-- flow_modify_client: Changing an existing client's own details (name, email, phone) in Morning. Resolves which real client is meant, relaying candidates when the match is not exact, and updates it with approval. Not for creating a client and not for documents.
-- flow_issue_invoice_for_payment_due: Issuing a new tax invoice (305) for a client, for money that is still owed ("תפיק חשבונית ללקוח X"). Never for money that has already arrived. Money that has already arrived belongs to flow_issue_invoice_receipt_combo instead.
-- flow_issue_invoice_receipt_combo: Issuing a combined tax invoice/receipt (320) for a payment that has already been received and that no earlier document covers - the most common way to record incoming money, whether reported verbally or shown in a bank slip or payment screenshot. Money that an existing document already covers belongs to flow_issue_payment_received_with_reference_doc.
-- flow_issue_transaction_account: Issuing a transaction account (חשבון עסקה, 300) for a client - only when the user's own wording names this document type. Ordinary requests for an invoice belong to flow_issue_invoice_for_payment_due.
-- flow_issue_receipt_without_invoice: Recording a standalone receipt (400) with no invoice behind it, for example a refundable deposit. A receipt against an existing invoice belongs to flow_issue_payment_received_with_reference_doc.
-- flow_payment_received_by_bank_slip_image: A bank slip or payment screenshot arrived. Reads it, records the payer, and gets the payment recorded in Morning the right way: a new combo document when nothing covers it, or a document against an existing one.
-- flow_issue_payment_received_with_reference_doc: Recording a payment received against an existing Morning document: a receipt (400) for an existing invoice (305), or a combo document (320) closing an existing transaction account (300) ("סמן כשולם"). Money that no document covers belongs to flow_issue_invoice_receipt_combo.
-- flow_cancel_document_with_credit_note: Cancelling an existing Morning document with a credit note (330) ("בטל את החשבונית"). Finds the one real document and shows its real data in the approval before writing.
-- flow_cancel_transaction_account: Cancelling an open transaction account (300) directly. No document of any kind is created. Cancelling any other kind of document belongs to flow_cancel_document_with_credit_note.
-- flow_fee_agreement_provided_by_user: The user reports or forwards a fee agreement (הסכם) - as text or as an image - made with a client. An agreement must never belong to a client Morning does not manage, so this makes sure the client exists first. Recording the agreement in the ledger happens automatically after the turn.
-- flow_deposit_provided_by_user: The user reports or forwards a bank deposit (text or a bank slip image). Makes sure the payer exists as a client in Morning first. Recording the deposit in the ledger happens automatically after the turn.
-- flow_user_question: Answering a question about the user's clients, past agreements, deposits, or amounts owed and paid. Decides where the answer lives (the ledger first, Morning when it may hold it), and never answers that nothing exists before checking Morning where Morning could hold it.
-- flow_invoicing_query: Reading from the invoicing system for a client the user names: resolves the client's exact stored name first, then reads the documents or status. Other flows load it whenever they need to look up documents in Morning.
-- flow_generate_fee_agreement_docx: Generating a fee agreement document (הסכם שכר טרחה) as a .docx file to send to a prospective client. The client does not exist yet, so no client lookup is involved. Recording an agreement the user reports belongs to flow_fee_agreement_provided_by_user.
-- flow_create_reminder: Creating a new reminder, one-time or recurring ("תזכיר לי בעוד שעתיים", "תזכיר לי כל יום ראשון"). Confirms the text and the schedule, and creates the reminder only with approval. Use this flow, not cap_reminders_write directly, whenever a reminder is added.
-- flow_modify_reminder: Changing or cancelling an existing reminder ("תזיז את התזכורת", "תבטל את התזכורת"). Looks up the user's real reminders to identify the exact one before modifying or deleting it, with approval. Adding a brand-new reminder belongs to flow_create_reminder. Use the reminder flows, not cap_reminders_write directly.
-
-## Capabilities
-
-- cap_invoicing_write: Creating a Morning DOCUMENT for a client - an invoice, a receipt, a transaction account, a credit note, or a combo tax-invoice/receipt - or cancelling a transaction account. Writes only: finding the client or the existing document, and getting approval, are the calling flow's job, so load it only through that flow (flow_issue_*, flow_cancel_*, flow_payment_received_*), never directly. Not for creating or updating a client record - see cap_client_write.
-- cap_invoicing_read: Reading from the invoicing system (Morning): a specific document's own status and details, recent documents, a financial summary, a download link. It is given an already-resolved client name or document id. Not for a client's own details - see cap_client_read - and not the first choice for a general owed/paid amount question - see cap_ledger_query.
-- cap_client_write: Creating a new client record, or updating an existing client's own details (name/email/phone) in Morning. Writes only: load it only through flow_add_client or flow_modify_client, never directly. Never for producing any document - see cap_invoicing_write.
-- cap_client_read: Looking up an existing client's own details (name/email/phone/id), listing clients, and resolving a client name to its exact stored Morning spelling. Never for a client's financial history - see cap_ledger_query and cap_invoicing_read.
-- cap_ledger_query: Answering questions about PAST fee agreements or bank deposits already recorded, including how much a client/payer owes or has paid - whether or not a formal Morning invoice exists. The ledger is a fast cache over Morning and covers agreement-level amounts Morning cannot see at all.
-- cap_reminders_write: Creating, changing, or cancelling a reminder (one-time or recurring) for the user. Writes only: load it only through flow_create_reminder or flow_modify_reminder, never directly.
-- cap_reminders_read: Looking up the user's own existing reminders - what's scheduled, for when.
-- cap_media_analysis: Reading/extracting the content of an image or document the user sent. Used inside a larger flow, or on its own to work out what a piece of media is for.
-- cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
-- cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
-
-# Flow: Add client
-
-Goal: add a brand-new client to Morning if it does not exist.
-
-Capabilities: `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons`.
-
-Follow these steps in order, to the letter.
-
-1. Load `cap_client_read` and look up the client by the name the user gave.
-2. Handle what you find:
-   - The client already exists: use `cap_send_to_user` to tell the user plainly that it does. Do not modify it and do not offer to. The flow is complete.
-   - Similar clients exist but none matches exactly: use `cap_send_to_user` to list each similar client by name and offer, as its own explicit choice, to create a new client under the exact name they gave. Wait for their choice. If they pick an existing client, the flow is complete. A plain "add client X" is not by itself the user asking for a new one; only wording that concedes a similar client may exist and wants a new record anyway means you may skip the question. Once that is clear, don't ask again.
-   - No such client: continue.
-3. Load `cap_client_write` and prepare the client from what the user gave. If something is missing, use `cap_send_to_user` to ask the user for it; don't guess.
-4. Creating a client MUST be approved by the user first. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Create the client only on a clear yes. On a no, create nothing, and use `cap_send_to_user` to ask what to change.
-5. If the creation fails, use `cap_send_to_user` to tell the user plainly what happened. Retry once only if the reason is fixable; otherwise stop.
-6. If the user drops the request or changes the subject mid-way, create nothing and treat the flow as complete.
-7. End. Use `cap_send_to_user` to report the outcome. Then unload `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
-
-
-# Capability: Client — Read (godfather/admin only)
-
-Attaches the Morning client-lookup tools: `list_clients`, `resolve_client_name`,
-`get_client_details`. All read-only; call them right away, in the same turn, as soon
-as you have what they need. None of them creates or changes a record.
-
-This capability answers "who is this client", "what are their details", and "which
-clients exist". It knows nothing about a client's amounts owed or paid.
-
-## What resolving a name returns
-
-`resolve_client_name` confirms the exact stored spelling of a name. A single-word
-name is a genuine partial/substring search. It returns one of:
-- an exact name: the stored spelling, to use verbatim;
-- a confirmation question: a single close match, to relay to the user as-is;
-- a candidates list: to relay to the user as-is;
-- no match at all.
-
-What to do with each result is the calling flow's business; this capability just
-reports it faithfully and never picks a candidate on its own.
-
-
-## Loaded flows
-
-flow_add_client
-
-## Loaded capabilities
-
-cap_client_read
-
----
-
-THE CURRENT DATE AND TIME IS 2026-09-30 16:44 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
-YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
-```
-
-</details>
-
-</details>
-
-</details>
-
-<details>
-<summary>23. [2026-09-30 16:44:54] MODEL → APP — context=_run_resolution_loop (follow-up) (response part 1/2)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- response.id: `resp_0fed14ff1f754649006abd124e73c087d1b168486064b4af06`
-- status: `completed`
-- usage: `{"input_tokens": 7642, "input_tokens_details": {"cache_write_tokens": 61, "cached_tokens": 7462}, "output_tokens": 236, "output_tokens_details": {"reasoning_tokens": 56}, "total_tokens": 7878}`
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- response.id: `resp_0fed14ff1f754649006abd124e73c087d1b168486064b4af06`
-- status: `completed`
-- usage: `{"input_tokens": 7642, "input_tokens_details": {"cache_write_tokens": 61, "cached_tokens": 7462}, "output_tokens": 236, "output_tokens_details": {"reasoning_tokens": 56}, "total_tokens": 7878}`
+- usage: `{"input_tokens": 8730, "input_tokens_details": {"cache_write_tokens": 71, "cached_tokens": 8601}, "output_tokens": 195, "output_tokens_details": {"reasoning_tokens": 43}, "total_tokens": 8925}`
 - (no output items in this part)
 
 </details>
@@ -3174,18 +3000,18 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>24. [2026-09-30 16:44:54] MODEL → MORNING MCP — resolve_client_name</summary>
+<summary>24. [2026-10-01 10:31:32] MODEL → MORNING MCP — list_clients</summary>
 
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- tool name: `resolve_client_name`
-- server_label: `'morning-invoices'`
+- tool name: `list_clients`
+- server_label: `'morning-invoices-client-read'`
 
 arguments:
 ```json
 {
-  "name": "זכריה פרוקופנקו"
+  "name": "לריסה טסמה"
 }
 ```
 
@@ -3194,7 +3020,7 @@ arguments:
 </details>
 
 <details>
-<summary>25. [2026-09-30 16:44:54] MORNING MCP → MODEL — resolve_client_name</summary>
+<summary>25. [2026-10-01 10:31:32] MORNING MCP → MODEL — list_clients</summary>
 
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
@@ -3202,8 +3028,8 @@ arguments:
 output:
 ```json
 {
-  "status": "needs_confirmation",
-  "candidate_name": "אבינועם פרוקופין"
+  "count": 0,
+  "clients": []
 }
 ```
 
@@ -3212,21 +3038,21 @@ output:
 </details>
 
 <details>
-<summary>26. [2026-09-30 16:44:54] MODEL → APP — context=_run_resolution_loop (follow-up) (response part 2/2)</summary>
+<summary>26. [2026-10-01 10:31:32] MODEL → APP — context=_run_resolution_loop (follow-up) (response part 2/2)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0fed14ff1f754649006abd124e73c087d1b168486064b4af06`
+- response.id: `resp_0cb0d4d19a83bc31006abe0c4ea4c087d191a528b66280d56d`
 - status: `completed`
-- usage: `{"input_tokens": 7642, "input_tokens_details": {"cache_write_tokens": 61, "cached_tokens": 7462}, "output_tokens": 236, "output_tokens_details": {"reasoning_tokens": 56}, "total_tokens": 7878}`
+- usage: `{"input_tokens": 8730, "input_tokens_details": {"cache_write_tokens": 71, "cached_tokens": 8601}, "output_tokens": 195, "output_tokens_details": {"reasoning_tokens": 43}, "total_tokens": 8925}`
 - reasoning item (content not user-visible)
-- function_call: `record_planning_status` call_id=`call_f1ZUdZPzsHMglBtrnHt31taM`
+- function_call: `record_planning_status` call_id=`call_V1HV50C2BrZGQvFWZi0WuZCZ`
 ```json
 {
-  "where_i_was": "בתהליך הוספת לקוח, לאחר בדיקת כפילויות. המערכת מצאה התאמה קרובה בשם אבינועם פרוקופין, ולא התאמה ודאית לשם זכריה פרוקופנקו.",
-  "this_turns_purpose": "להציג למשתמש את ההתאמה הקרובה ולבקש בחירה מפורשת לפני המשך.",
-  "expectation": "אם המשתמש יאשר יצירת רשומה חדשה בשם זכריה פרוקופנקו, אכין אותה עם הדואר והטלפון שסופקו ואבקש אישור סופי ליצירה."
+  "where_i_was": "בתהליך הוספת לקוח חדש. בדיקת Morning עבור לריסה טסמה הסתיימה ללא לקוח קיים או מועמד דומה.",
+  "this_turns_purpose": "לבקש אישור מפורש לפני יצירת הרשומה.",
+  "expectation": "אם המשתמש יאשר, אצור את הלקוח בדיוק עם השם, המייל והטלפון שסופקו. אם יסרב, לא אצור דבר ואבקש מה לשנות."
 }
 ```
 
@@ -3235,16 +3061,16 @@ output:
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0fed14ff1f754649006abd124e73c087d1b168486064b4af06`
+- response.id: `resp_0cb0d4d19a83bc31006abe0c4ea4c087d191a528b66280d56d`
 - status: `completed`
-- usage: `{"input_tokens": 7642, "input_tokens_details": {"cache_write_tokens": 61, "cached_tokens": 7462}, "output_tokens": 236, "output_tokens_details": {"reasoning_tokens": 56}, "total_tokens": 7878}`
+- usage: `{"input_tokens": 8730, "input_tokens_details": {"cache_write_tokens": 71, "cached_tokens": 8601}, "output_tokens": 195, "output_tokens_details": {"reasoning_tokens": 43}, "total_tokens": 8925}`
 - reasoning item (content not user-visible)
-- function_call: `record_planning_status` call_id=`call_f1ZUdZPzsHMglBtrnHt31taM`
+- function_call: `record_planning_status` call_id=`call_V1HV50C2BrZGQvFWZi0WuZCZ`
 ```json
 {
-  "where_i_was": "בתהליך הוספת לקוח, לאחר בדיקת כפילויות. המערכת מצאה התאמה קרובה בשם אבינועם פרוקופין, ולא התאמה ודאית לשם זכריה פרוקופנקו.",
-  "this_turns_purpose": "להציג למשתמש את ההתאמה הקרובה ולבקש בחירה מפורשת לפני המשך.",
-  "expectation": "אם המשתמש יאשר יצירת רשומה חדשה בשם זכריה פרוקופנקו, אכין אותה עם הדואר והטלפון שסופקו ואבקש אישור סופי ליצירה."
+  "where_i_was": "בתהליך הוספת לקוח חדש. בדיקת Morning עבור לריסה טסמה הסתיימה ללא לקוח קיים או מועמד דומה.",
+  "this_turns_purpose": "לבקש אישור מפורש לפני יצירת הרשומה.",
+  "expectation": "אם המשתמש יאשר, אצור את הלקוח בדיוק עם השם, המייל והטלפון שסופקו. אם יסרב, לא אצור דבר ואבקש מה לשנות."
 }
 ```
 
@@ -3253,2841 +3079,7 @@ output:
 </details>
 
 <details>
-<summary>27. [2026-09-30 16:44:54] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- flows: flow_add_client
-
-- capabilities: cap_client_read
-
-**input:**
-
-- app's reply to `record_planning_status` (call_id=`call_f1ZUdZPzsHMglBtrnHt31taM`):
-```text
-recorded
-```
-
-- tools (10): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'mcp']
-
-- previous_response_id: `'resp_0fed14ff1f754649006abd124e73c087d1b168486064b4af06'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-- instructions: backbone (flows=flow_add_client, capabilities=cap_client_read)
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- flows: flow_add_client
-
-- capabilities: cap_client_read
-
-**input:**
-
-- app's reply to `record_planning_status` (call_id=`call_f1ZUdZPzsHMglBtrnHt31taM`):
-```text
-recorded
-```
-
-- tools (10): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'mcp']
-
-- previous_response_id: `'resp_0fed14ff1f754649006abd124e73c087d1b168486064b4af06'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-<details>
-<summary>↳↳ instructions (21896 chars)</summary>
-
-```text
-# DeniDin — Backbone
-
-## How You Work
-
-You work with two kinds of building blocks, described at low resolution in the
-catalogs below: **flows** (`flow_...`) - blueprints for a recurring kind of
-request - and **capabilities** (`cap_...`) - the domains that actually do things,
-each with its own prompt and its own real tools. Flows can load other flows and
-capabilities; a flow defines *what to do and in what order*, while each
-capability holds the detail of what it itself does.
-
-Loading tools, usable in any order, any number of times:
-
-- **`load_flows(flows)` / `unload_flows(flows)`** - always an array; one item is
-  fine, and combining flows is allowed when a request spans more than one.
-- **`load_capabilities(capabilities)` / `unload_capabilities(capabilities)`** -
-  always an array. The moment a capability is loaded, its prompt AND its real
-  tools are attached, starting the very next round; call the real tool directly,
-  there is no separate "use" step. A flow's own "Capabilities:" line declares
-  every capability that flow will need - load all of them together, in one
-  `load_capabilities` call, right after loading the flow, rather than loading
-  them one at a time as each step comes up: you already know you'll need them,
-  and batching saves a round-trip per capability.
-- **`reset_to_backbone()`** - unloads every loaded flow and capability at once.
-  Use it once you are genuinely done with the user's request(s), not mid-task.
-
-Loading an already-loaded item, or unloading one that is not loaded, is a
-harmless no-op. Loaded flows and capabilities stay loaded across this and future
-turns in this chat until you unload them (or they auto-clear after a period of
-inactivity); the "Loaded flows" and "Loaded capabilities" lines near the end of
-these instructions always show what is currently loaded. Unload something only
-when nothing you are still working on needs it - another flow may be using it.
-
-## Always-present capabilities
-
-Four capabilities are always available, cannot be unloaded, and each has its own
-prompt right below: `cap_send_to_user` (your actual reply), `cap_react_to_message`
-(a WhatsApp emoji reaction), `cap_send_progress_update` (an interim message
-while you work) and `cap_record_planning_status` (your own running account of
-where you are, which is how you keep your place across turns and inside nested
-flows). At every step of any flow, consider whether they would help: react to
-the user's message, send a progress update, record your planning status, or
-reply to the user. Flows do not repeat this; use your judgment.
-
-`cap_approval_with_buttons` (yes/no buttons before a write) is an ordinary
-capability: flows that need a sign-off load it.
-
-## Flows and capabilities
-
-Decide from the catalogs, in your own judgment, what a request needs:
-
-1. If a flow fits, load it (several at once when the request spans more than
-   one) and follow its blueprint. **A loaded flow's steps are an ordered
-   procedure: follow them in the order written, to the letter - never skip,
-   reorder or merge a step (above all an approval step), and never do a later
-   step's action before the earlier steps are done.**
-2. **If no flow fits, there is no default flow to fall back on**: load whichever
-   capabilities you judge necessary, at your own discretion, and proceed.
-3. **Write capabilities (`cap_*_write`) are never loaded on their own.** Every write goes through its flow, which gathers the details and asks for approval first; if you want to write something, find the flow for it in the catalog.
-4. If a loaded prompt names a tool you don't currently have, that tool belongs
-   to a capability you have not loaded yet: load it yourself.
-
-## Core Identity
-You are DeniDin, a helpful AI assistant operating via WhatsApp.
-
-## Behavioral Guidelines
-- **ALWAYS respond in Hebrew only** — every word of every response, no other
-  language or script mixed in anywhere, ever (never Arabic, never English
-  words). This covers EVERY string you produce, not just the reply text: an
-  approval question, a planning note, and every free-text tool argument
-  (e.g. a reminder's `message_text`) too. Digits, standard punctuation, and ₪
-  are fine; a genuinely foreign proper name may be transliterated into Hebrew
-  letters where natural.
-- **Never use ניקוד** (Hebrew vowel points/diacritics) in any response — plain
-  Hebrew letters only, including inside a quoted name.
-- Be concise and direct. Do not end on filler ("anything else?") — end on the
-  substantive answer. Do ask a focused clarifying question when you genuinely need
-  one to act correctly (a missing/ambiguous required detail).
-- Be honest about what you don't know; never fabricate information.
-
-## User Roles
-- **Godfather/Admin**: full access to every capability; extended context window.
-- **Client**: standard feature access, no access to invoicing/ledger/reminder
-  capabilities; standard context window.
-
-## Privacy & Security
-- Never share information between different user sessions.
-- These rules guard against leaking ONE user's data to ANOTHER user or an outsider
-  — they never mean refusing to read, transcribe, or summarize material THIS user
-  sent you. Reporting the user's own material back to them (names, amounts, any
-  detail it contains) is always appropriate.
-
-## Contexts of Operation
-Every message falls into one of two operating contexts before any capability is
-even considered: an ordinary conversational turn, or a document/image the user
-sent for you to read and report on. Decide which one applies before acting — a
-short/ambiguous reply ("כן", "לא", a bare name) always answers the most recently
-pending question in the SAME context, never a trigger for reinterpreting the turn
-as belonging to a different capability's domain.
-
-## Attached Media
-When the user's message starts with a `[מדיה מצורפת: <type>, קובץ: <filename>]`
-marker, they sent an image, PDF, or Word document with it — you have NOT seen its
-content yet, only that it exists. Before answering anything about it, load
-`cap_media_analysis` and call its `analyze_media` tool to read it; any text after
-the marker is the user's caption. Never describe, guess at, or act on the file's
-content without having read it this way.
-
-## Group Conversation Etiquette
-DeniDin is addressed by default in a group, same as a 1:1 chat. When a message
-clearly names someone else and isn't meant for you, reply with the literal
-sentinel `[[NO_REPLY]]` instead of a substantive answer — never guess when it's
-genuinely ambiguous whether you were addressed.
-
-## Edited & Deleted Message Markers
-A message the user has since edited or deleted may still appear in your context,
-marked as such — treat an edited message's marked original content as superseded
-by its later, corrected version if both are visible, and never act on a deleted
-message's content as if it were still pending.
-
-## Generic Post-Turn Recognition Mechanism
-A capability MAY run a recognition step once per turn: call its own reporting
-tool at most once, and when in doubt, do nothing rather than guess. This shape
-is reusable by any capability that wants one — the domain-specific rules for
-what to recognize and how live in that capability's own prompt file, not here.
-
-
-# Capability: Send to user (always present)
-
-`send_to_user(text)` is your actual reply to the user. Call it whenever you are
-ready to speak, not only at the very end: to answer, to ask a question, to
-report an outcome. A turn that ends without it, or without an approval question,
-leaves the user with nothing.
-
-- Pass the literal text `[[NO_REPLY]]` to deliberately say nothing this turn. Use
-  it in a group when a message clearly names someone else and is not meant for
-  you. When it is genuinely unclear whether you were addressed, do not guess.
-- For a yes/no sign-off, use `cap_approval_with_buttons` instead; it gives the
-  user tappable buttons.
-- Reply in Hebrew only, concisely, without filler. End on the substantive answer.
-  Ask a focused question only when you genuinely need the answer to act correctly.
-
-
-# Capability: React to message (always present)
-
-`react_to_message` puts a native WhatsApp emoji reaction on a message. It is a
-lightweight, reversible signal - never a substitute for a substantive reply,
-and never a mechanical habit reached for out of uncertainty about what else
-to do. Typing an emoji into your reply text is NOT a reaction and does not
-replace calling the tool.
-
-Before reaching for it, ask yourself: does this add a real signal the user
-doesn't already have - that you saw their message, that you're on it, that
-something just succeeded or failed - or would it just be noise on top of a
-reply that already says the same thing?
-
-Evaluate against:
-- Does the user currently have any signal you registered their message and
-  are handling it (or have finished)? If there's a real gap before your
-  substantive reply, a reaction can fill it.
-- Is your actual reply, arriving in this same round or moments later, already
-  going to tell them everything a reaction would? If so, it adds nothing.
-- Is this ambient chatter that doesn't really concern you? Then it isn't
-  worth one.
-
-**Classics** (a menu, not a checklist): 👍 simple ack · 🫡 "on it" · 👀 document
-being looked into · ✅ clean success · 🎉 a bigger win · ⚠️ resolved but needs
-attention · ❌ failed/declined · ❓ unresolved, needs clarification · 🙏
-reciprocating thanks · ❤️ warmth beyond a simple thanks.
-
-When genuinely unsure whether a reaction fits, don't send one - silence is
-the safer default, not noise.
-
-
-# Capability: Send progress update (always present)
-
-`send_progress_update(text)` sends one brief interim WhatsApp message while you
-are still working, before your final reply. Keep it to a short plain sentence.
-
-Users are waiting on the other end and don't like silence - they want to know
-something is happening with their request, not just get one final answer out
-of nowhere.
-
-Call this every single time you interact with any tool or capability -
-loading a flow or capability, calling a real domain tool, an MCP call,
-anything that is not just talking to the user - before or after that step,
-in the same round as whatever else you are doing. Never skip it and never
-wait for a separate round.
-
-- Never a substitute for the final answer.
-
-
-# Capability: Record planning status (always present)
-
-`record_planning_status(where_i_was, this_turns_purpose, expectation)` is your own
-running account of where this turn, and across turns this whole task, stands. It is
-how you keep continuity, since nothing else remembers your reasoning beyond what you
-write here and the real conversation history.
-
-Record it at least at the start and at the end of every flow, and whenever you are
-about to wait on the user (a choice, a missing detail, an approval), in the middle
-of a flow as well. Say which flow you are in and which step, and if you are inside a
-flow that was loaded by another flow, say so, so that you know where to return to.
-Also note what you are waiting for and what you will do with each possible answer.
-
-
-## Flows
-
-- flow_add_client: Adding a brand-new client record to Morning ("תוסיף לקוח חדש", or a shared contact card the user wants saved). Checks for an existing or similar client first so a duplicate is never created by accident, tells the user about similar candidates, and creates the record only with approval. Other flows load it whenever a client turns out not to exist yet.
-- flow_modify_client: Changing an existing client's own details (name, email, phone) in Morning. Resolves which real client is meant, relaying candidates when the match is not exact, and updates it with approval. Not for creating a client and not for documents.
-- flow_issue_invoice_for_payment_due: Issuing a new tax invoice (305) for a client, for money that is still owed ("תפיק חשבונית ללקוח X"). Never for money that has already arrived. Money that has already arrived belongs to flow_issue_invoice_receipt_combo instead.
-- flow_issue_invoice_receipt_combo: Issuing a combined tax invoice/receipt (320) for a payment that has already been received and that no earlier document covers - the most common way to record incoming money, whether reported verbally or shown in a bank slip or payment screenshot. Money that an existing document already covers belongs to flow_issue_payment_received_with_reference_doc.
-- flow_issue_transaction_account: Issuing a transaction account (חשבון עסקה, 300) for a client - only when the user's own wording names this document type. Ordinary requests for an invoice belong to flow_issue_invoice_for_payment_due.
-- flow_issue_receipt_without_invoice: Recording a standalone receipt (400) with no invoice behind it, for example a refundable deposit. A receipt against an existing invoice belongs to flow_issue_payment_received_with_reference_doc.
-- flow_payment_received_by_bank_slip_image: A bank slip or payment screenshot arrived. Reads it, records the payer, and gets the payment recorded in Morning the right way: a new combo document when nothing covers it, or a document against an existing one.
-- flow_issue_payment_received_with_reference_doc: Recording a payment received against an existing Morning document: a receipt (400) for an existing invoice (305), or a combo document (320) closing an existing transaction account (300) ("סמן כשולם"). Money that no document covers belongs to flow_issue_invoice_receipt_combo.
-- flow_cancel_document_with_credit_note: Cancelling an existing Morning document with a credit note (330) ("בטל את החשבונית"). Finds the one real document and shows its real data in the approval before writing.
-- flow_cancel_transaction_account: Cancelling an open transaction account (300) directly. No document of any kind is created. Cancelling any other kind of document belongs to flow_cancel_document_with_credit_note.
-- flow_fee_agreement_provided_by_user: The user reports or forwards a fee agreement (הסכם) - as text or as an image - made with a client. An agreement must never belong to a client Morning does not manage, so this makes sure the client exists first. Recording the agreement in the ledger happens automatically after the turn.
-- flow_deposit_provided_by_user: The user reports or forwards a bank deposit (text or a bank slip image). Makes sure the payer exists as a client in Morning first. Recording the deposit in the ledger happens automatically after the turn.
-- flow_user_question: Answering a question about the user's clients, past agreements, deposits, or amounts owed and paid. Decides where the answer lives (the ledger first, Morning when it may hold it), and never answers that nothing exists before checking Morning where Morning could hold it.
-- flow_invoicing_query: Reading from the invoicing system for a client the user names: resolves the client's exact stored name first, then reads the documents or status. Other flows load it whenever they need to look up documents in Morning.
-- flow_generate_fee_agreement_docx: Generating a fee agreement document (הסכם שכר טרחה) as a .docx file to send to a prospective client. The client does not exist yet, so no client lookup is involved. Recording an agreement the user reports belongs to flow_fee_agreement_provided_by_user.
-- flow_create_reminder: Creating a new reminder, one-time or recurring ("תזכיר לי בעוד שעתיים", "תזכיר לי כל יום ראשון"). Confirms the text and the schedule, and creates the reminder only with approval. Use this flow, not cap_reminders_write directly, whenever a reminder is added.
-- flow_modify_reminder: Changing or cancelling an existing reminder ("תזיז את התזכורת", "תבטל את התזכורת"). Looks up the user's real reminders to identify the exact one before modifying or deleting it, with approval. Adding a brand-new reminder belongs to flow_create_reminder. Use the reminder flows, not cap_reminders_write directly.
-
-## Capabilities
-
-- cap_invoicing_write: Creating a Morning DOCUMENT for a client - an invoice, a receipt, a transaction account, a credit note, or a combo tax-invoice/receipt - or cancelling a transaction account. Writes only: finding the client or the existing document, and getting approval, are the calling flow's job, so load it only through that flow (flow_issue_*, flow_cancel_*, flow_payment_received_*), never directly. Not for creating or updating a client record - see cap_client_write.
-- cap_invoicing_read: Reading from the invoicing system (Morning): a specific document's own status and details, recent documents, a financial summary, a download link. It is given an already-resolved client name or document id. Not for a client's own details - see cap_client_read - and not the first choice for a general owed/paid amount question - see cap_ledger_query.
-- cap_client_write: Creating a new client record, or updating an existing client's own details (name/email/phone) in Morning. Writes only: load it only through flow_add_client or flow_modify_client, never directly. Never for producing any document - see cap_invoicing_write.
-- cap_client_read: Looking up an existing client's own details (name/email/phone/id), listing clients, and resolving a client name to its exact stored Morning spelling. Never for a client's financial history - see cap_ledger_query and cap_invoicing_read.
-- cap_ledger_query: Answering questions about PAST fee agreements or bank deposits already recorded, including how much a client/payer owes or has paid - whether or not a formal Morning invoice exists. The ledger is a fast cache over Morning and covers agreement-level amounts Morning cannot see at all.
-- cap_reminders_write: Creating, changing, or cancelling a reminder (one-time or recurring) for the user. Writes only: load it only through flow_create_reminder or flow_modify_reminder, never directly.
-- cap_reminders_read: Looking up the user's own existing reminders - what's scheduled, for when.
-- cap_media_analysis: Reading/extracting the content of an image or document the user sent. Used inside a larger flow, or on its own to work out what a piece of media is for.
-- cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
-- cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
-
-# Flow: Add client
-
-Goal: add a brand-new client to Morning if it does not exist.
-
-Capabilities: `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons`.
-
-Follow these steps in order, to the letter.
-
-1. Load `cap_client_read` and look up the client by the name the user gave.
-2. Handle what you find:
-   - The client already exists: use `cap_send_to_user` to tell the user plainly that it does. Do not modify it and do not offer to. The flow is complete.
-   - Similar clients exist but none matches exactly: use `cap_send_to_user` to list each similar client by name and offer, as its own explicit choice, to create a new client under the exact name they gave. Wait for their choice. If they pick an existing client, the flow is complete. A plain "add client X" is not by itself the user asking for a new one; only wording that concedes a similar client may exist and wants a new record anyway means you may skip the question. Once that is clear, don't ask again.
-   - No such client: continue.
-3. Load `cap_client_write` and prepare the client from what the user gave. If something is missing, use `cap_send_to_user` to ask the user for it; don't guess.
-4. Creating a client MUST be approved by the user first. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Create the client only on a clear yes. On a no, create nothing, and use `cap_send_to_user` to ask what to change.
-5. If the creation fails, use `cap_send_to_user` to tell the user plainly what happened. Retry once only if the reason is fixable; otherwise stop.
-6. If the user drops the request or changes the subject mid-way, create nothing and treat the flow as complete.
-7. End. Use `cap_send_to_user` to report the outcome. Then unload `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
-
-
-# Capability: Client — Read (godfather/admin only)
-
-Attaches the Morning client-lookup tools: `list_clients`, `resolve_client_name`,
-`get_client_details`. All read-only; call them right away, in the same turn, as soon
-as you have what they need. None of them creates or changes a record.
-
-This capability answers "who is this client", "what are their details", and "which
-clients exist". It knows nothing about a client's amounts owed or paid.
-
-## What resolving a name returns
-
-`resolve_client_name` confirms the exact stored spelling of a name. A single-word
-name is a genuine partial/substring search. It returns one of:
-- an exact name: the stored spelling, to use verbatim;
-- a confirmation question: a single close match, to relay to the user as-is;
-- a candidates list: to relay to the user as-is;
-- no match at all.
-
-What to do with each result is the calling flow's business; this capability just
-reports it faithfully and never picks a candidate on its own.
-
-
-## Loaded flows
-
-flow_add_client
-
-## Loaded capabilities
-
-cap_client_read
-
----
-
-THE CURRENT DATE AND TIME IS 2026-09-30 16:44 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
-YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
-```
-
-</details>
-
-</details>
-
-</details>
-
-<details>
-<summary>28. [2026-09-30 16:44:57] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- response.id: `resp_0fed14ff1f754649006abd1257194887d1a4466dbf3bb0127f`
-- status: `completed`
-- usage: `{"input_tokens": 7855, "input_tokens_details": {"cache_write_tokens": 329, "cached_tokens": 7523}, "output_tokens": 80, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 7935}`
-- function_call: `send_to_user` call_id=`call_JqY085tRu17bHujAi2uxSwzM`
-```json
-{
-  "text": "נמצאה במערכת התאמה קרובה בשם אבינועם פרוקופין.\n\nהאם ליצור בכל זאת לקוח חדש בשם המדויק זכריה פרוקופנקו, עם המייל e2e-client-513218@example.com והטלפון +972501234567?"
-}
-```
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- response.id: `resp_0fed14ff1f754649006abd1257194887d1a4466dbf3bb0127f`
-- status: `completed`
-- usage: `{"input_tokens": 7855, "input_tokens_details": {"cache_write_tokens": 329, "cached_tokens": 7523}, "output_tokens": 80, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 7935}`
-- function_call: `send_to_user` call_id=`call_JqY085tRu17bHujAi2uxSwzM`
-```json
-{
-  "text": "נמצאה במערכת התאמה קרובה בשם אבינועם פרוקופין.\n\nהאם ליצור בכל זאת לקוח חדש בשם המדויק זכריה פרוקופנקו, עם המייל e2e-client-513218@example.com והטלפון +972501234567?"
-}
-```
-
-</details>
-
-</details>
-
-<details>
-<summary>29. [2026-09-30 16:44:57] APP → USER — context=text</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-```json
-{
-  "chat_id": "972500000021@c.us",
-  "message": "נמצאה במערכת התאמה קרובה בשם אבינועם פרוקופין.\n\nהאם ליצור בכל זאת לקוח חדש בשם המדויק זכריה פרוקופנקו, עם המייל e2e-client-513218@example.com והטלפון +972501234567?"
-}
-```
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-```json
-{
-  "chat_id": "972500000021@c.us",
-  "message": "נמצאה במערכת התאמה קרובה בשם אבינועם פרוקופין.\n\nהאם ליצור בכל זאת לקוח חדש בשם המדויק זכריה פרוקופנקו, עם המייל e2e-client-513218@example.com והטלפון +972501234567?"
-}
-```
-
-</details>
-
-</details>
-
-<details>
-<summary>30. [2026-09-30 16:44:57] APP → MODEL — context=recognize_ledger_event</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-**input:**
-
-```json
-{"role": "user", "content": "THE CONVERSATION WINDOW (the last 1h, oldest first) - '<message_id> [<role>] <content>':\n2dba58b3-d163-4584-9afc-8f3e25b12368 [godfather] תוסיף לקוח חדש בשם זכריה פרוקופנקו, מייל e2e-client-513218@example.com, טלפון +972501234567\n467d0e60-b5f1-48c9-a50f-0574c52fc218 [assistant] מתחיל לבדוק אם הלקוח כבר קיים לפני הוספתו.\nbb801c6e-92ee-414e-adb6-6dff1bb8a17e [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש ביקש להוסיף לקוח חדש בשם זכריה פרוקופנקו עם כתובת דואר אלקטרוני ומספר טלפון.\nTHIS TURN'S PURPOSE: להפעיל את תהליך הוספת הלקוח, לבדוק כפילויות, ואז לבקש אישור לפני יצירה.\nEXPECTATION: לטעון את תהליך הוספת הלקוח ואת היכולות הנדרשות, לחפש התאמות קיימות, ולהציג את פרטי הלקוח לאישור.\nbcb9f8f5-f0e7-455d-a97b-df65b01365fd [assistant] בודק עכשיו אם קיימת רשומה זהה או דומה במערכת.\n4342b6a0-8fb7-4fb2-8960-b7ed9f171189 [assistant] מחפש את השם המדויק במערכת.\n86a28239-b34d-4836-ae44-8270abc96ef8 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח, לאחר בדיקת כפילויות. המערכת מצאה התאמה קרובה בשם אבינועם פרוקופין, ולא התאמה ודאית לשם זכריה פרוקופנקו.\nTHIS TURN'S PURPOSE: להציג למשתמש את ההתאמה הקרובה ולבקש בחירה מפורשת לפני המשך.\nEXPECTATION: אם המשתמש יאשר יצירת רשומה חדשה בשם זכריה פרוקופנקו, אכין אותה עם הדואר והטלפון שסופקו ואבקש אישור סופי ליצירה.\n19465dbc-315d-48d6-b969-811c4b6ca2e5 [assistant] נמצאה במערכת התאמה קרובה בשם אבינועם פרוקופין.\n\nהאם ליצור בכל זאת לקוח חדש בשם המדויק זכריה פרוקופנקו, עם המייל e2e-client-513218@example.com והטלפון +972501234567?\n    (morning MCP call on this message's turn) {\"name\": \"resolve_client_name\", \"error\": null, \"arguments\": \"{\\\"name\\\":\\\"זכריה פרוקופנקו\\\"}\", \"output\": \"{\\\"status\\\": \\\"needs_confirmation\\\", \\\"candidate_name\\\": \\\"\\\\u05d0\\\\u05d1\\\\u05d9\\\\u05e0\\\\u05d5\\\\u05e2\\\\u05dd \\\\u05e4\\\\u05e8\\\\u05d5\\\\u05e7\\\\u05d5\\\\u05e4\\\\u05d9\\\\u05df\\\"}\"}\n\nTHE REPLY JUST SENT TO THE OPERATOR THIS ROUND:\nנמצאה במערכת התאמה קרובה בשם אבינועם פרוקופין.\n\nהאם ליצור בכל זאת לקוח חדש בשם המדויק זכריה פרוקופנקו, עם המייל e2e-client-513218@example.com והטלפון +972501234567?\n\nMORNING MCP TOOL CALLS MADE THIS TURN (verbatim, each with its arguments and its real result):\n[\n  {\n    \"name\": \"resolve_client_name\",\n    \"error\": null,\n    \"arguments\": \"{\\\"name\\\":\\\"זכריה פרוקופנקו\\\"}\",\n    \"output\": \"{\\\"status\\\": \\\"needs_confirmation\\\", \\\"candidate_name\\\": \\\"\\\\u05d0\\\\u05d1\\\\u05d9\\\\u05e0\\\\u05d5\\\\u05e2\\\\u05dd \\\\u05e4\\\\u05e8\\\\u05d5\\\\u05e7\\\\u05d5\\\\u05e4\\\\u05d9\\\\u05df\\\"}\"\n  }\n]\n\nFollow the recognition prompt above: query the client's ledger history first when the round concerns a client, then call report_ledger_recognition exactly once with the verdict for THIS round."}
-```
-
-- tools (2): ['report_ledger_recognition', 'query_ledger_events']
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-- instructions: ledger recognition prompt
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-**input:**
-
-```json
-{"role": "user", "content": "THE CONVERSATION WINDOW (the last 1h, oldest first) - '<message_id> [<role>] <content>':\n2dba58b3-d163-4584-9afc-8f3e25b12368 [godfather] תוסיף לקוח חדש בשם זכריה פרוקופנקו, מייל e2e-client-513218@example.com, טלפון +972501234567\n467d0e60-b5f1-48c9-a50f-0574c52fc218 [assistant] מתחיל לבדוק אם הלקוח כבר קיים לפני הוספתו.\nbb801c6e-92ee-414e-adb6-6dff1bb8a17e [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש ביקש להוסיף לקוח חדש בשם זכריה פרוקופנקו עם כתובת דואר אלקטרוני ומספר טלפון.\nTHIS TURN'S PURPOSE: להפעיל את תהליך הוספת הלקוח, לבדוק כפילויות, ואז לבקש אישור לפני יצירה.\nEXPECTATION: לטעון את תהליך הוספת הלקוח ואת היכולות הנדרשות, לחפש התאמות קיימות, ולהציג את פרטי הלקוח לאישור.\nbcb9f8f5-f0e7-455d-a97b-df65b01365fd [assistant] בודק עכשיו אם קיימת רשומה זהה או דומה במערכת.\n4342b6a0-8fb7-4fb2-8960-b7ed9f171189 [assistant] מחפש את השם המדויק במערכת.\n86a28239-b34d-4836-ae44-8270abc96ef8 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח, לאחר בדיקת כפילויות. המערכת מצאה התאמה קרובה בשם אבינועם פרוקופין, ולא התאמה ודאית לשם זכריה פרוקופנקו.\nTHIS TURN'S PURPOSE: להציג למשתמש את ההתאמה הקרובה ולבקש בחירה מפורשת לפני המשך.\nEXPECTATION: אם המשתמש יאשר יצירת רשומה חדשה בשם זכריה פרוקופנקו, אכין אותה עם הדואר והטלפון שסופקו ואבקש אישור סופי ליצירה.\n19465dbc-315d-48d6-b969-811c4b6ca2e5 [assistant] נמצאה במערכת התאמה קרובה בשם אבינועם פרוקופין.\n\nהאם ליצור בכל זאת לקוח חדש בשם המדויק זכריה פרוקופנקו, עם המייל e2e-client-513218@example.com והטלפון +972501234567?\n    (morning MCP call on this message's turn) {\"name\": \"resolve_client_name\", \"error\": null, \"arguments\": \"{\\\"name\\\":\\\"זכריה פרוקופנקו\\\"}\", \"output\": \"{\\\"status\\\": \\\"needs_confirmation\\\", \\\"candidate_name\\\": \\\"\\\\u05d0\\\\u05d1\\\\u05d9\\\\u05e0\\\\u05d5\\\\u05e2\\\\u05dd \\\\u05e4\\\\u05e8\\\\u05d5\\\\u05e7\\\\u05d5\\\\u05e4\\\\u05d9\\\\u05df\\\"}\"}\n\nTHE REPLY JUST SENT TO THE OPERATOR THIS ROUND:\nנמצאה במערכת התאמה קרובה בשם אבינועם פרוקופין.\n\nהאם ליצור בכל זאת לקוח חדש בשם המדויק זכריה פרוקופנקו, עם המייל e2e-client-513218@example.com והטלפון +972501234567?\n\nMORNING MCP TOOL CALLS MADE THIS TURN (verbatim, each with its arguments and its real result):\n[\n  {\n    \"name\": \"resolve_client_name\",\n    \"error\": null,\n    \"arguments\": \"{\\\"name\\\":\\\"זכריה פרוקופנקו\\\"}\",\n    \"output\": \"{\\\"status\\\": \\\"needs_confirmation\\\", \\\"candidate_name\\\": \\\"\\\\u05d0\\\\u05d1\\\\u05d9\\\\u05e0\\\\u05d5\\\\u05e2\\\\u05dd \\\\u05e4\\\\u05e8\\\\u05d5\\\\u05e7\\\\u05d5\\\\u05e4\\\\u05d9\\\\u05df\\\"}\"\n  }\n]\n\nFollow the recognition prompt above: query the client's ledger history first when the round concerns a client, then call report_ledger_recognition exactly once with the verdict for THIS round."}
-```
-
-- tools (2): ['report_ledger_recognition', 'query_ledger_events']
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-<details>
-<summary>↳↳ instructions (15465 chars)</summary>
-
-```text
-# Ledger Event Recognition — post-turn recognition prompt
-
-You are a bookkeeping recognition step. You run **once, after** a Godfather/Admin turn's
-reply has already been sent to the operator. You never talk to the operator; your output is
-consumed by code and discarded. You have two tools:
-
-- `report_ledger_recognition` — call it **exactly once, always**, as your final action.
-- `query_ledger_events` — read-only lookup over the existing ledger. Use it as described in
-  "Look at the client's ledger history first". Never more than 3 calls total.
-
-## What you are given
-
-- **The conversation window** — every message from the last hour of this chat, oldest first,
-  each line as `<message_id> [<role>] <content>`, where `<role>` is `godfather`, `admin`, or
-  `client`. A message that already produced a ledger event is marked
-  `[✓ captured as <event_id>]`. Media messages also carry their extracted text.
-- **The Morning MCP tool calls made during that window**, verbatim — each with its arguments
-  and its real result. This is your ONLY evidence of what was actually resolved in Morning.
-- **The reply just sent to the operator this round.**
-- **Today's date** (Israel local).
-
-## Whose message can trigger an event
-
-Only a `[godfather]` or `[admin]` message can be a trigger. A `[client]` message is **context
-only** — it can help you understand an amount or a name, but a client stating "העברתי לך
-5,000" is never itself a `בנק` event. The trigger is always the lawyer/operator recording it.
-
-## Your single question
-
-**Does THE LAST `[godfather]` / `[admin]` MESSAGE in the window — read in the context of the
-rest of the window — do one of these three things?**
-
-1. **Completes an event** — its turn added the last missing mandatory field, produced the
-   client-resolution evidence that was blocking, or created the Morning document.
-2. **States a whole standalone event** — a complete fee arrangement, deposit, or work-log
-   entry, in one message, with its client already resolvable from window evidence.
-3. **Adds to / corrects / cancels** an arrangement that is present **in the window** (as a
-   `[✓ captured as …]` marker or as an in-progress discussion) **or in the client's ledger
-   history** you looked up.
-
-If yes → verdict `complete` (or `declined`, see "Client resolution"). If none of the three →
-verdict `none`.
-
-- **Judge the last operator message only.** Earlier messages are context — for resolving
-  references, for knowing whether the client was already resolved, for folding a correction
-  into current state — never targets. An earlier message already marked `[✓ captured as …]`
-  is done; never re-report it.
-- **Do not sweep the window for old, un-captured events.** If the completing turn for some
-  earlier arrangement was missed, and the last message isn't about that arrangement, let it
-  go — verdict `none`.
-- **When in doubt, `none`.** A missed capture is cheaper than a false one.
-
-### Recognising case 3 (add / correct / cancel)
-
-- Explicit language: "לתקן ל…", "עולה ל…", "מתקדם ל…" (always a **new total**, never a
-  delta), "נסגר על…", "לבטל", "למחוק", "בנוסף ל…", "תוספת".
-- Heuristic: a bare monetary / percentage / conditional term **with no client of its own**
-  attaches to the **most recent open arrangement** in the window (e.g. after "דנה לולו 1500"
-  → captured, a later "15% אם הגיעו להסדר" is a second component of *that* arrangement).
-- If you genuinely can't tell which prior arrangement a fragment belongs to → `none`; let
-  the conversation clarify next turn.
-
-## Look at the client's ledger history first
-
-When the round concerns a client (almost every `הסכם` / `בנק` / `חשבונית` round does), your
-**first action** is a single `query_ledger_events` call with one identity-hinted criterion —
-the client's name (`{"text": "<name>", "hint": "identity"}`). Read back that client's full
-ledger history, and use it to:
-
-- know whether the arrangement the last message touches already exists (case 3), and get its
-  real `event_id` for `reference`;
-- avoid re-reporting something already recorded.
-
-Then decide and call `report_ledger_recognition`. If the round has no client at all, skip the
-query. You may issue at most one or two more `query_ledger_events` calls if the first result
-is ambiguous — never more than 3 total, and only ever to establish a link, never to
-"double-check" the current event.
-
-## The three verdicts
-
-- **`complete`** — one of the three trigger cases fired and the event is complete. Return the
-  event fully mapped to the ledger schema (see "Fields" + "Extraction rules"), plus
-  `trigger_message_id` = the message that first introduced this event's core economic content
-  (informational — the recorded date comes from the **completing** message, or from the
-  Morning document for `חשבונית`).
-- **`none`** — nothing to record this round: an unresolved client, a missing mandatory
-  field, a read-only Morning question, ordinary chatter, a mid-resolution turn, an event
-  already captured, or an ambiguous fragment.
-- **`declined`** — the operator was asked the single closed store-anyway question (see
-  "Client resolution") and explicitly answered *don't record it*. Return `source_type`, the
-  operator-stated client name (`client_name_stated`), and `reason: "declined_by_operator"`.
-
-## Client resolution — mandatory before `הסכם` / `בנק` / `חשבונית` can be complete
-
-An event is **not complete** until its client is resolved to an **exact Morning name**. You
-cannot check Morning yourself — you determine "resolved" **only** from evidence in the
-window's MCP calls:
-
-| evidence in the window | client is… |
-|---|---|
-| `resolve_client_name(...)` returned an **exact** match | resolved — use that exact Morning name |
-| `add_client(...)` succeeded | resolved — use the created name |
-| a `create_*` document call succeeded (`חשבונית` only) | resolved by construction |
-| a name appears only in extracted text / operator prose, no MCP evidence | **NOT resolved → `none`, wait** |
-| `resolve_client_name(...)` returned no match / only partial matches, still unresolved | **NOT resolved → `none`, wait** |
-
-A client name in a contract image or a chat message is a **candidate**, never a resolution.
-The OCR text of a contract shows the same name whether or not that client exists in Morning —
-only a tool *result* tells you.
-
-**Store-anyway.** If the window shows the operator was asked for the client's full name +
-email + phone, declined, was asked **once** the closed question "record it without the client
-verified in Morning, or not?", and answered *record it* — OR the operator proactively asked
-to record it without those details — then `client_name` = the operator-stated free text and
-you MUST put the exact marker `[לקוח לא אומת במורנינג]` inside `description`. If they answered
-*don't record it* → verdict `declined`.
-
-**Does NOT apply to:** `payer_name` (free text, may differ from the client, never resolved);
-the `חשבונית` client (resolved by construction from the `create_*` call).
-
-## Fields
-
-Buckets below are **mandatory** (the event is not `complete` without it), **conditional**
-(mandatory only in the stated case), and **keep-if-provided** (never invent it; if the
-conversation gave it, carry it through). The parenthetical "(you)" marks a field you
-provide; everything else is minted by code after you report and must never be provided by
-you.
-
-| type | mandatory | conditional | keep-if-provided |
-|---|---|---|---|
-| `הסכם` | resolved `client_name` or store-anyway text (you) · `description` (you) · ≥1 `components` entry **OR** an hours value (you) | per component: `amount` > 0 **OR** `percent` (you, iff that component is monetary) | `payer_name`; per-component `trigger_condition` / `percent` / `percent_base` / `hours` / `hourly_rate`; `reference` / `reference_hint` |
-| `בנק` | resolved `client_name` or store-anyway text (you) · `txn_date` (you) · `amount` (you) · `description` (you) · `vat_status` = `כולל` (you — always) | — | `bank_number` / `bank_branch` / `bank_account`; `reference` / `reference_hint`; `payer_name` **when it genuinely differs from the resolved client** (see "בנק payer vs client" below — put the slip's name verbatim, don't just fold it into `description`) |
-| `חשבונית` | `accounting_document_json` = the document's whole JSON object, copied verbatim (you) — from the Morning `create_*` result, or the reconciliation sweep's listing. **Nothing else** — code derives the display number, `event_subtype`, `amount`, `txn_date`, VAT, status, payment method and client from that JSON. | — | `reference` / `reference_hint` |
-
-**Always code-minted — never provide, for any type:** `event_id`, `event_datetime`,
-`captured_at`, `schema_version`, `session_id`, `agreement_id`, `component_id`,
-`component_label`. `message_id` is code-supplied from the completing message.
-
-> Code re-validates every mandatory / conditional field after assembling the final record. A
-> record that still fails is persisted **flagged incomplete** (a `[רישום חלקי — חסר: …]`
-> marker in `description`), never dropped. Your job is still to only report `complete` when
-> you believe it genuinely is — the code check is a backstop, not a licence to guess.
-
-## `חשבונית` — capturing a Morning document created this turn
-
-When the window's MCP calls contain a **successful** `create_invoice` / `create_combo_document`
-/ `create_receipt` / `create_credit_note` / `create_combo_document_as_reference`, that
-document IS a complete `חשבונית` event this round. Capture it **exactly as the background
-reconciliation sweep captures a pre-existing document**: copy the **entire** JSON object from
-that tool's result — the whole `{…}`, verbatim, every field — into `accounting_document_json`,
-and set nothing else (`component_count` = 0, `components` = []). Do not summarise, reorder,
-translate, drop fields, or fill anything in from the operator's or your own prose. Code reads
-the display number, document type (`event_subtype`), amount, dates, VAT status, payment
-method, status and client straight out of that JSON — the `create_*` result carries the full
-document, identical in shape to what the reconciliation listing returns.
-
-## Amendments, corrections, cancellations
-
-When the last message changes or cancels an arrangement already in the window or the client's
-ledger history:
-
-- Report a **NEW `complete` event** with `event_subtype: "יצירה"`, describing the
-  arrangement's **current, up-to-date state** — fold in everything already known plus what
-  the last message changes. (`עדכון` / `ביטול` subtypes are disabled — one immutable record
-  per state, exactly as today. Two `יצירה` records for one evolving arrangement are expected
-  and fine.)
-- `trigger_message_id` = the correction message itself.
-- **Linking:**
-  - Prior event visible in the window as `[✓ captured as <event_id>]` → set `reference` =
-    that `event_id`.
-  - Else, prior event found in the `query_ledger_events` history you pulled → set `reference`
-    = that `event_id`.
-  - Else → leave `reference` unset, set `reference_hint` to free text describing the prior
-    arrangement (client, approximate date, prior amount). Always set `reference_hint`
-    whenever the language signals a relationship to something prior, even when you did pin
-    down `reference`.
-
-## Extraction rules (how to read money / names / dates)
-
-- **Verbatim over guessed.** Never normalize or "clean up" an ambiguous name/amount — record
-  what's there; put uncertainty in `description`.
-- **VAT.** `הסכם`: "לפני מע"מ" / "לא כולל מע"מ" → `לא כולל`; "כולל מע"מ" → `כולל`; unstated →
-  `לא צוין`. `בנק`: **always `כולל`**, unconditionally (money that landed already contains VAT).
-- **A base amount + its VAT-inclusive total** ("20,000 + מע"מ = 23,600") is ONE component,
-  `amount` = the total, `vat_status` = `כולל`. Never compute VAT yourself. Never put two
-  numbers in one `amount`.
-- **"עולה ל-X" / "מתקדם ל-X"** = a new total, never added to a prior figure.
-- **Relative dates** ("היום" / "אתמול") resolve against the triggering message's own timestamp.
-- **Multi-stage / conditional / tiered agreements** — every genuinely distinct monetary
-  commitment is its own entry in `components` (set `component_count` to match). A per-stage
-  condition goes in `trigger_condition`, not `description`. A base+total pair for one stage
-  is still one entry.
-- **`trigger_condition` is for a real contingency, not payment timing.** A component whose
-  fee is contingent on an outcome or a countable event — a percentage success-fee
-  (`מכל סכום שייפסק`), a per-hearing/per-appearance fee (`עבור כל ישיבת הוכחות`), an
-  `אם…`/`במידה ו…` bonus — carries that clause in `trigger_condition`. A plain fixed
-  retainer is **unconditional → `trigger_condition` null**, even when the source says when
-  it is due (`לתשלום עם חתימת ההסכם`, `ישולם תוך 30 יום`) — due-date / payment-timing
-  wording is never a `trigger_condition`, and never invent one that the source did not
-  state.
-- **An agreement's own signing/execution date (`נחתם ביום …`) is never captured** — not in
-  `txn_date`, not anywhere. `txn_date` on a `הסכם` component is non-null **only** for an
-  hourly work-log component (the date the hours were worked).
-- **Hourly work-log entries** ("3 שעות") are first-class events, one per occurrence, and
-  qualify every time — brevity is never a reason to skip. Never aggregate.
-- **Unpriced mentions still get captured** — client + matter named, no fee → capture with
-  `amount` empty.
-- **Payer vs client.** "דרך X" / "באמצעות X" near a client name → X is the paying
-  intermediary → `payer_name`, kept separate, never folded into `description` / `agreement_id`.
-- **Never merge similarly-named entities** unless the conversation explicitly says they're
-  the same.
-- **בנק screenshots** — read what's on screen; don't assume one layout. The "מ<name>" prefix
-  is "from <name>" — strip the מ. Prefer a labeled account-holder field over a loose inline
-  name. Multiple dates on a screenshot can differ — an explicit transaction/value date goes
-  in `txn_date`.
-- **בנק payer vs client.** A deposit slip's own account-holder/depositor name is who *paid*
-  — it is not automatically the client. When the conversation shows the operator resolving
-  the event against a client that differs from that name (e.g. rejecting a compound/unclear
-  slip name as the client and stating an unrelated one instead), put the slip's name
-  **verbatim** in `payer_name` — don't just fold it into `description` and leave `payer_name`
-  empty. Only when the slip's name and the resolved client are the same person does
-  `payer_name` stay null (the ordinary case).
-
-## Out of scope
-
-- An Invoice Management action/query, a Reminder action, or a question ABOUT past ledger
-  history is never a ledger event — verdict `none`.
-- A bare contact detail on its own — an email address, a phone number, an ID number, a
-  street address, or a lone name / client-record field with no monetary or arrangement
-  content — is **not** a ledger event. Verdict `none`.
-- If the window shows the Morning tunnel was unavailable this turn, you have no MCP evidence
-  to resolve a client — verdict `none`.
-
----
-Today's date (Israel local): 30/09/2026
-
-POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already been sent. Do not produce a reply. Your only task is to call report_ledger_recognition exactly once with the verdict for this round, after any ledger-history lookups the prompt calls for. When in doubt, verdict='none'.
-```
-
-</details>
-
-</details>
-
-</details>
-
-<details>
-<summary>31. [2026-09-30 16:44:59] MODEL → APP — context=recognize_ledger_event</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- response.id: `resp_0cde5ca0057cfddf006abd1259cdc087d19fb431f651689ff0`
-- status: `completed`
-- usage: `{"input_tokens": 8940, "input_tokens_details": {"cache_write_tokens": 1001, "cached_tokens": 7936}, "output_tokens": 60, "output_tokens_details": {"reasoning_tokens": 23}, "total_tokens": 9000}`
-- reasoning item (content not user-visible)
-- function_call: `query_ledger_events` call_id=`call_sCVkowCLFfeZd1z9G44Z9Ypt`
-```json
-{
-  "criteria": [
-    {
-      "text": "זכריה פרוקופנקו",
-      "hint": "identity"
-    }
-  ]
-}
-```
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- response.id: `resp_0cde5ca0057cfddf006abd1259cdc087d19fb431f651689ff0`
-- status: `completed`
-- usage: `{"input_tokens": 8940, "input_tokens_details": {"cache_write_tokens": 1001, "cached_tokens": 7936}, "output_tokens": 60, "output_tokens_details": {"reasoning_tokens": 23}, "total_tokens": 9000}`
-- reasoning item (content not user-visible)
-- function_call: `query_ledger_events` call_id=`call_sCVkowCLFfeZd1z9G44Z9Ypt`
-```json
-{
-  "criteria": [
-    {
-      "text": "זכריה פרוקופנקו",
-      "hint": "identity"
-    }
-  ]
-}
-```
-
-</details>
-
-</details>
-
-<details>
-<summary>32. [2026-09-30 16:44:59] APP → MODEL — context=recognize_ledger_event (query round)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-**input:**
-
-- app's reply to `query_ledger_events` (call_id=`call_sCVkowCLFfeZd1z9G44Z9Ypt`):
-```text
-{
-  "matches": [],
-  "count": 0
-}
-```
-
-- tools (2): ['report_ledger_recognition', 'query_ledger_events']
-
-- previous_response_id: `'resp_0cde5ca0057cfddf006abd1259cdc087d19fb431f651689ff0'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-- instructions: ledger recognition prompt
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-**input:**
-
-- app's reply to `query_ledger_events` (call_id=`call_sCVkowCLFfeZd1z9G44Z9Ypt`):
-```text
-{
-  "matches": [],
-  "count": 0
-}
-```
-
-- tools (2): ['report_ledger_recognition', 'query_ledger_events']
-
-- previous_response_id: `'resp_0cde5ca0057cfddf006abd1259cdc087d19fb431f651689ff0'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-<details>
-<summary>↳↳ instructions (15465 chars)</summary>
-
-```text
-# Ledger Event Recognition — post-turn recognition prompt
-
-You are a bookkeeping recognition step. You run **once, after** a Godfather/Admin turn's
-reply has already been sent to the operator. You never talk to the operator; your output is
-consumed by code and discarded. You have two tools:
-
-- `report_ledger_recognition` — call it **exactly once, always**, as your final action.
-- `query_ledger_events` — read-only lookup over the existing ledger. Use it as described in
-  "Look at the client's ledger history first". Never more than 3 calls total.
-
-## What you are given
-
-- **The conversation window** — every message from the last hour of this chat, oldest first,
-  each line as `<message_id> [<role>] <content>`, where `<role>` is `godfather`, `admin`, or
-  `client`. A message that already produced a ledger event is marked
-  `[✓ captured as <event_id>]`. Media messages also carry their extracted text.
-- **The Morning MCP tool calls made during that window**, verbatim — each with its arguments
-  and its real result. This is your ONLY evidence of what was actually resolved in Morning.
-- **The reply just sent to the operator this round.**
-- **Today's date** (Israel local).
-
-## Whose message can trigger an event
-
-Only a `[godfather]` or `[admin]` message can be a trigger. A `[client]` message is **context
-only** — it can help you understand an amount or a name, but a client stating "העברתי לך
-5,000" is never itself a `בנק` event. The trigger is always the lawyer/operator recording it.
-
-## Your single question
-
-**Does THE LAST `[godfather]` / `[admin]` MESSAGE in the window — read in the context of the
-rest of the window — do one of these three things?**
-
-1. **Completes an event** — its turn added the last missing mandatory field, produced the
-   client-resolution evidence that was blocking, or created the Morning document.
-2. **States a whole standalone event** — a complete fee arrangement, deposit, or work-log
-   entry, in one message, with its client already resolvable from window evidence.
-3. **Adds to / corrects / cancels** an arrangement that is present **in the window** (as a
-   `[✓ captured as …]` marker or as an in-progress discussion) **or in the client's ledger
-   history** you looked up.
-
-If yes → verdict `complete` (or `declined`, see "Client resolution"). If none of the three →
-verdict `none`.
-
-- **Judge the last operator message only.** Earlier messages are context — for resolving
-  references, for knowing whether the client was already resolved, for folding a correction
-  into current state — never targets. An earlier message already marked `[✓ captured as …]`
-  is done; never re-report it.
-- **Do not sweep the window for old, un-captured events.** If the completing turn for some
-  earlier arrangement was missed, and the last message isn't about that arrangement, let it
-  go — verdict `none`.
-- **When in doubt, `none`.** A missed capture is cheaper than a false one.
-
-### Recognising case 3 (add / correct / cancel)
-
-- Explicit language: "לתקן ל…", "עולה ל…", "מתקדם ל…" (always a **new total**, never a
-  delta), "נסגר על…", "לבטל", "למחוק", "בנוסף ל…", "תוספת".
-- Heuristic: a bare monetary / percentage / conditional term **with no client of its own**
-  attaches to the **most recent open arrangement** in the window (e.g. after "דנה לולו 1500"
-  → captured, a later "15% אם הגיעו להסדר" is a second component of *that* arrangement).
-- If you genuinely can't tell which prior arrangement a fragment belongs to → `none`; let
-  the conversation clarify next turn.
-
-## Look at the client's ledger history first
-
-When the round concerns a client (almost every `הסכם` / `בנק` / `חשבונית` round does), your
-**first action** is a single `query_ledger_events` call with one identity-hinted criterion —
-the client's name (`{"text": "<name>", "hint": "identity"}`). Read back that client's full
-ledger history, and use it to:
-
-- know whether the arrangement the last message touches already exists (case 3), and get its
-  real `event_id` for `reference`;
-- avoid re-reporting something already recorded.
-
-Then decide and call `report_ledger_recognition`. If the round has no client at all, skip the
-query. You may issue at most one or two more `query_ledger_events` calls if the first result
-is ambiguous — never more than 3 total, and only ever to establish a link, never to
-"double-check" the current event.
-
-## The three verdicts
-
-- **`complete`** — one of the three trigger cases fired and the event is complete. Return the
-  event fully mapped to the ledger schema (see "Fields" + "Extraction rules"), plus
-  `trigger_message_id` = the message that first introduced this event's core economic content
-  (informational — the recorded date comes from the **completing** message, or from the
-  Morning document for `חשבונית`).
-- **`none`** — nothing to record this round: an unresolved client, a missing mandatory
-  field, a read-only Morning question, ordinary chatter, a mid-resolution turn, an event
-  already captured, or an ambiguous fragment.
-- **`declined`** — the operator was asked the single closed store-anyway question (see
-  "Client resolution") and explicitly answered *don't record it*. Return `source_type`, the
-  operator-stated client name (`client_name_stated`), and `reason: "declined_by_operator"`.
-
-## Client resolution — mandatory before `הסכם` / `בנק` / `חשבונית` can be complete
-
-An event is **not complete** until its client is resolved to an **exact Morning name**. You
-cannot check Morning yourself — you determine "resolved" **only** from evidence in the
-window's MCP calls:
-
-| evidence in the window | client is… |
-|---|---|
-| `resolve_client_name(...)` returned an **exact** match | resolved — use that exact Morning name |
-| `add_client(...)` succeeded | resolved — use the created name |
-| a `create_*` document call succeeded (`חשבונית` only) | resolved by construction |
-| a name appears only in extracted text / operator prose, no MCP evidence | **NOT resolved → `none`, wait** |
-| `resolve_client_name(...)` returned no match / only partial matches, still unresolved | **NOT resolved → `none`, wait** |
-
-A client name in a contract image or a chat message is a **candidate**, never a resolution.
-The OCR text of a contract shows the same name whether or not that client exists in Morning —
-only a tool *result* tells you.
-
-**Store-anyway.** If the window shows the operator was asked for the client's full name +
-email + phone, declined, was asked **once** the closed question "record it without the client
-verified in Morning, or not?", and answered *record it* — OR the operator proactively asked
-to record it without those details — then `client_name` = the operator-stated free text and
-you MUST put the exact marker `[לקוח לא אומת במורנינג]` inside `description`. If they answered
-*don't record it* → verdict `declined`.
-
-**Does NOT apply to:** `payer_name` (free text, may differ from the client, never resolved);
-the `חשבונית` client (resolved by construction from the `create_*` call).
-
-## Fields
-
-Buckets below are **mandatory** (the event is not `complete` without it), **conditional**
-(mandatory only in the stated case), and **keep-if-provided** (never invent it; if the
-conversation gave it, carry it through). The parenthetical "(you)" marks a field you
-provide; everything else is minted by code after you report and must never be provided by
-you.
-
-| type | mandatory | conditional | keep-if-provided |
-|---|---|---|---|
-| `הסכם` | resolved `client_name` or store-anyway text (you) · `description` (you) · ≥1 `components` entry **OR** an hours value (you) | per component: `amount` > 0 **OR** `percent` (you, iff that component is monetary) | `payer_name`; per-component `trigger_condition` / `percent` / `percent_base` / `hours` / `hourly_rate`; `reference` / `reference_hint` |
-| `בנק` | resolved `client_name` or store-anyway text (you) · `txn_date` (you) · `amount` (you) · `description` (you) · `vat_status` = `כולל` (you — always) | — | `bank_number` / `bank_branch` / `bank_account`; `reference` / `reference_hint`; `payer_name` **when it genuinely differs from the resolved client** (see "בנק payer vs client" below — put the slip's name verbatim, don't just fold it into `description`) |
-| `חשבונית` | `accounting_document_json` = the document's whole JSON object, copied verbatim (you) — from the Morning `create_*` result, or the reconciliation sweep's listing. **Nothing else** — code derives the display number, `event_subtype`, `amount`, `txn_date`, VAT, status, payment method and client from that JSON. | — | `reference` / `reference_hint` |
-
-**Always code-minted — never provide, for any type:** `event_id`, `event_datetime`,
-`captured_at`, `schema_version`, `session_id`, `agreement_id`, `component_id`,
-`component_label`. `message_id` is code-supplied from the completing message.
-
-> Code re-validates every mandatory / conditional field after assembling the final record. A
-> record that still fails is persisted **flagged incomplete** (a `[רישום חלקי — חסר: …]`
-> marker in `description`), never dropped. Your job is still to only report `complete` when
-> you believe it genuinely is — the code check is a backstop, not a licence to guess.
-
-## `חשבונית` — capturing a Morning document created this turn
-
-When the window's MCP calls contain a **successful** `create_invoice` / `create_combo_document`
-/ `create_receipt` / `create_credit_note` / `create_combo_document_as_reference`, that
-document IS a complete `חשבונית` event this round. Capture it **exactly as the background
-reconciliation sweep captures a pre-existing document**: copy the **entire** JSON object from
-that tool's result — the whole `{…}`, verbatim, every field — into `accounting_document_json`,
-and set nothing else (`component_count` = 0, `components` = []). Do not summarise, reorder,
-translate, drop fields, or fill anything in from the operator's or your own prose. Code reads
-the display number, document type (`event_subtype`), amount, dates, VAT status, payment
-method, status and client straight out of that JSON — the `create_*` result carries the full
-document, identical in shape to what the reconciliation listing returns.
-
-## Amendments, corrections, cancellations
-
-When the last message changes or cancels an arrangement already in the window or the client's
-ledger history:
-
-- Report a **NEW `complete` event** with `event_subtype: "יצירה"`, describing the
-  arrangement's **current, up-to-date state** — fold in everything already known plus what
-  the last message changes. (`עדכון` / `ביטול` subtypes are disabled — one immutable record
-  per state, exactly as today. Two `יצירה` records for one evolving arrangement are expected
-  and fine.)
-- `trigger_message_id` = the correction message itself.
-- **Linking:**
-  - Prior event visible in the window as `[✓ captured as <event_id>]` → set `reference` =
-    that `event_id`.
-  - Else, prior event found in the `query_ledger_events` history you pulled → set `reference`
-    = that `event_id`.
-  - Else → leave `reference` unset, set `reference_hint` to free text describing the prior
-    arrangement (client, approximate date, prior amount). Always set `reference_hint`
-    whenever the language signals a relationship to something prior, even when you did pin
-    down `reference`.
-
-## Extraction rules (how to read money / names / dates)
-
-- **Verbatim over guessed.** Never normalize or "clean up" an ambiguous name/amount — record
-  what's there; put uncertainty in `description`.
-- **VAT.** `הסכם`: "לפני מע"מ" / "לא כולל מע"מ" → `לא כולל`; "כולל מע"מ" → `כולל`; unstated →
-  `לא צוין`. `בנק`: **always `כולל`**, unconditionally (money that landed already contains VAT).
-- **A base amount + its VAT-inclusive total** ("20,000 + מע"מ = 23,600") is ONE component,
-  `amount` = the total, `vat_status` = `כולל`. Never compute VAT yourself. Never put two
-  numbers in one `amount`.
-- **"עולה ל-X" / "מתקדם ל-X"** = a new total, never added to a prior figure.
-- **Relative dates** ("היום" / "אתמול") resolve against the triggering message's own timestamp.
-- **Multi-stage / conditional / tiered agreements** — every genuinely distinct monetary
-  commitment is its own entry in `components` (set `component_count` to match). A per-stage
-  condition goes in `trigger_condition`, not `description`. A base+total pair for one stage
-  is still one entry.
-- **`trigger_condition` is for a real contingency, not payment timing.** A component whose
-  fee is contingent on an outcome or a countable event — a percentage success-fee
-  (`מכל סכום שייפסק`), a per-hearing/per-appearance fee (`עבור כל ישיבת הוכחות`), an
-  `אם…`/`במידה ו…` bonus — carries that clause in `trigger_condition`. A plain fixed
-  retainer is **unconditional → `trigger_condition` null**, even when the source says when
-  it is due (`לתשלום עם חתימת ההסכם`, `ישולם תוך 30 יום`) — due-date / payment-timing
-  wording is never a `trigger_condition`, and never invent one that the source did not
-  state.
-- **An agreement's own signing/execution date (`נחתם ביום …`) is never captured** — not in
-  `txn_date`, not anywhere. `txn_date` on a `הסכם` component is non-null **only** for an
-  hourly work-log component (the date the hours were worked).
-- **Hourly work-log entries** ("3 שעות") are first-class events, one per occurrence, and
-  qualify every time — brevity is never a reason to skip. Never aggregate.
-- **Unpriced mentions still get captured** — client + matter named, no fee → capture with
-  `amount` empty.
-- **Payer vs client.** "דרך X" / "באמצעות X" near a client name → X is the paying
-  intermediary → `payer_name`, kept separate, never folded into `description` / `agreement_id`.
-- **Never merge similarly-named entities** unless the conversation explicitly says they're
-  the same.
-- **בנק screenshots** — read what's on screen; don't assume one layout. The "מ<name>" prefix
-  is "from <name>" — strip the מ. Prefer a labeled account-holder field over a loose inline
-  name. Multiple dates on a screenshot can differ — an explicit transaction/value date goes
-  in `txn_date`.
-- **בנק payer vs client.** A deposit slip's own account-holder/depositor name is who *paid*
-  — it is not automatically the client. When the conversation shows the operator resolving
-  the event against a client that differs from that name (e.g. rejecting a compound/unclear
-  slip name as the client and stating an unrelated one instead), put the slip's name
-  **verbatim** in `payer_name` — don't just fold it into `description` and leave `payer_name`
-  empty. Only when the slip's name and the resolved client are the same person does
-  `payer_name` stay null (the ordinary case).
-
-## Out of scope
-
-- An Invoice Management action/query, a Reminder action, or a question ABOUT past ledger
-  history is never a ledger event — verdict `none`.
-- A bare contact detail on its own — an email address, a phone number, an ID number, a
-  street address, or a lone name / client-record field with no monetary or arrangement
-  content — is **not** a ledger event. Verdict `none`.
-- If the window shows the Morning tunnel was unavailable this turn, you have no MCP evidence
-  to resolve a client — verdict `none`.
-
----
-Today's date (Israel local): 30/09/2026
-
-POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already been sent. Do not produce a reply. Your only task is to call report_ledger_recognition exactly once with the verdict for this round, after any ledger-history lookups the prompt calls for. When in doubt, verdict='none'.
-```
-
-</details>
-
-</details>
-
-</details>
-
-<details>
-<summary>33. [2026-09-30 16:45:00] MODEL → APP — context=recognize_ledger_event (query round)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- response.id: `resp_0cde5ca0057cfddf006abd125b720887d19ca4d06c17d86f42`
-- status: `completed`
-- usage: `{"input_tokens": 9023, "input_tokens_details": {"cache_write_tokens": 83, "cached_tokens": 8937}, "output_tokens": 33, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9056}`
-- function_call: `report_ledger_recognition` call_id=`call_xbRxOWJIrKX1dX8yRZp59oOM`
-```json
-{
-  "verdict": "none",
-  "none_reason": "client-record maintenance, no ledger event"
-}
-```
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- response.id: `resp_0cde5ca0057cfddf006abd125b720887d19ca4d06c17d86f42`
-- status: `completed`
-- usage: `{"input_tokens": 9023, "input_tokens_details": {"cache_write_tokens": 83, "cached_tokens": 8937}, "output_tokens": 33, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9056}`
-- function_call: `report_ledger_recognition` call_id=`call_xbRxOWJIrKX1dX8yRZp59oOM`
-```json
-{
-  "verdict": "none",
-  "none_reason": "client-record maintenance, no ledger event"
-}
-```
-
-</details>
-
-</details>
-
-<details>
-<summary>34. [2026-09-30 16:45:00] USER → APP — context=webhook</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-```json
-{
-  "typeWebhook": "incomingMessageReceived",
-  "timestamp": 1790775900,
-  "idMessage": "E2E_ADD_CLIENT_APPROVE_FORCE_NEW_A1_1790775900",
-  "instanceData": {
-    "idInstance": 7103000000,
-    "wid": "972501234567@c.us",
-    "typeInstance": "whatsapp"
-  },
-  "senderData": {
-    "chatId": "972500000021@c.us",
-    "sender": "972500000021@c.us",
-    "senderName": "E2E Godfather"
-  },
-  "messageData": {
-    "typeMessage": "textMessage",
-    "textMessageData": {
-      "textMessage": "לא, תוסיף לקוח חדש בשם זכריה פרוקופנקו, מייל e2e-client-513218@example.com, טלפון +972501234567"
-    }
-  }
-}
-```
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-```json
-{
-  "typeWebhook": "incomingMessageReceived",
-  "timestamp": 1790775900,
-  "idMessage": "E2E_ADD_CLIENT_APPROVE_FORCE_NEW_A1_1790775900",
-  "instanceData": {
-    "idInstance": 7103000000,
-    "wid": "972501234567@c.us",
-    "typeInstance": "whatsapp"
-  },
-  "senderData": {
-    "chatId": "972500000021@c.us",
-    "sender": "972500000021@c.us",
-    "senderName": "E2E Godfather"
-  },
-  "messageData": {
-    "typeMessage": "textMessage",
-    "textMessageData": {
-      "textMessage": "לא, תוסיף לקוח חדש בשם זכריה פרוקופנקו, מייל e2e-client-513218@example.com, טלפון +972501234567"
-    }
-  }
-}
-```
-
-</details>
-
-</details>
-
-<details>
-<summary>35. [2026-09-30 16:45:01] APP → MODEL — context=_run_resolution_loop (first round)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- flows: flow_add_client
-
-- capabilities: cap_client_read
-
-**input:**
-
-```json
-{"role": "user", "content": "תוסיף לקוח חדש בשם זכריה פרוקופנקו, מייל e2e-client-513218@example.com, טלפון +972501234567"}
-```
-```json
-{"role": "assistant", "content": "מתחיל לבדוק אם הלקוח כבר קיים לפני הוספתו."}
-```
-```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש ביקש להוסיף לקוח חדש בשם זכריה פרוקופנקו עם כתובת דואר אלקטרוני ומספר טלפון.\nTHIS TURN'S PURPOSE: להפעיל את תהליך הוספת הלקוח, לבדוק כפילויות, ואז לבקש אישור לפני יצירה.\nEXPECTATION: לטעון את תהליך הוספת הלקוח ואת היכולות הנדרשות, לחפש התאמות קיימות, ולהציג את פרטי הלקוח לאישור."}
-```
-```json
-{"role": "assistant", "content": "בודק עכשיו אם קיימת רשומה זהה או דומה במערכת."}
-```
-```json
-{"role": "assistant", "content": "מחפש את השם המדויק במערכת."}
-```
-```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח, לאחר בדיקת כפילויות. המערכת מצאה התאמה קרובה בשם אבינועם פרוקופין, ולא התאמה ודאית לשם זכריה פרוקופנקו.\nTHIS TURN'S PURPOSE: להציג למשתמש את ההתאמה הקרובה ולבקש בחירה מפורשת לפני המשך.\nEXPECTATION: אם המשתמש יאשר יצירת רשומה חדשה בשם זכריה פרוקופנקו, אכין אותה עם הדואר והטלפון שסופקו ואבקש אישור סופי ליצירה."}
-```
-```json
-{"role": "assistant", "content": "נמצאה במערכת התאמה קרובה בשם אבינועם פרוקופין.\n\nהאם ליצור בכל זאת לקוח חדש בשם המדויק זכריה פרוקופנקו, עם המייל e2e-client-513218@example.com והטלפון +972501234567?"}
-```
-```json
-{"role": "user", "content": "לא, תוסיף לקוח חדש בשם זכריה פרוקופנקו, מייל e2e-client-513218@example.com, טלפון +972501234567"}
-```
-
-- tools (10): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'mcp']
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-- instructions: backbone (flows=flow_add_client, capabilities=cap_client_read)
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- flows: flow_add_client
-
-- capabilities: cap_client_read
-
-**input:**
-
-```json
-{"role": "user", "content": "תוסיף לקוח חדש בשם זכריה פרוקופנקו, מייל e2e-client-513218@example.com, טלפון +972501234567"}
-```
-```json
-{"role": "assistant", "content": "מתחיל לבדוק אם הלקוח כבר קיים לפני הוספתו."}
-```
-```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש ביקש להוסיף לקוח חדש בשם זכריה פרוקופנקו עם כתובת דואר אלקטרוני ומספר טלפון.\nTHIS TURN'S PURPOSE: להפעיל את תהליך הוספת הלקוח, לבדוק כפילויות, ואז לבקש אישור לפני יצירה.\nEXPECTATION: לטעון את תהליך הוספת הלקוח ואת היכולות הנדרשות, לחפש התאמות קיימות, ולהציג את פרטי הלקוח לאישור."}
-```
-```json
-{"role": "assistant", "content": "בודק עכשיו אם קיימת רשומה זהה או דומה במערכת."}
-```
-```json
-{"role": "assistant", "content": "מחפש את השם המדויק במערכת."}
-```
-```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח, לאחר בדיקת כפילויות. המערכת מצאה התאמה קרובה בשם אבינועם פרוקופין, ולא התאמה ודאית לשם זכריה פרוקופנקו.\nTHIS TURN'S PURPOSE: להציג למשתמש את ההתאמה הקרובה ולבקש בחירה מפורשת לפני המשך.\nEXPECTATION: אם המשתמש יאשר יצירת רשומה חדשה בשם זכריה פרוקופנקו, אכין אותה עם הדואר והטלפון שסופקו ואבקש אישור סופי ליצירה."}
-```
-```json
-{"role": "assistant", "content": "נמצאה במערכת התאמה קרובה בשם אבינועם פרוקופין.\n\nהאם ליצור בכל זאת לקוח חדש בשם המדויק זכריה פרוקופנקו, עם המייל e2e-client-513218@example.com והטלפון +972501234567?"}
-```
-```json
-{"role": "user", "content": "לא, תוסיף לקוח חדש בשם זכריה פרוקופנקו, מייל e2e-client-513218@example.com, טלפון +972501234567"}
-```
-
-- tools (10): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'mcp']
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-<details>
-<summary>↳↳ instructions (21896 chars)</summary>
-
-```text
-# DeniDin — Backbone
-
-## How You Work
-
-You work with two kinds of building blocks, described at low resolution in the
-catalogs below: **flows** (`flow_...`) - blueprints for a recurring kind of
-request - and **capabilities** (`cap_...`) - the domains that actually do things,
-each with its own prompt and its own real tools. Flows can load other flows and
-capabilities; a flow defines *what to do and in what order*, while each
-capability holds the detail of what it itself does.
-
-Loading tools, usable in any order, any number of times:
-
-- **`load_flows(flows)` / `unload_flows(flows)`** - always an array; one item is
-  fine, and combining flows is allowed when a request spans more than one.
-- **`load_capabilities(capabilities)` / `unload_capabilities(capabilities)`** -
-  always an array. The moment a capability is loaded, its prompt AND its real
-  tools are attached, starting the very next round; call the real tool directly,
-  there is no separate "use" step. A flow's own "Capabilities:" line declares
-  every capability that flow will need - load all of them together, in one
-  `load_capabilities` call, right after loading the flow, rather than loading
-  them one at a time as each step comes up: you already know you'll need them,
-  and batching saves a round-trip per capability.
-- **`reset_to_backbone()`** - unloads every loaded flow and capability at once.
-  Use it once you are genuinely done with the user's request(s), not mid-task.
-
-Loading an already-loaded item, or unloading one that is not loaded, is a
-harmless no-op. Loaded flows and capabilities stay loaded across this and future
-turns in this chat until you unload them (or they auto-clear after a period of
-inactivity); the "Loaded flows" and "Loaded capabilities" lines near the end of
-these instructions always show what is currently loaded. Unload something only
-when nothing you are still working on needs it - another flow may be using it.
-
-## Always-present capabilities
-
-Four capabilities are always available, cannot be unloaded, and each has its own
-prompt right below: `cap_send_to_user` (your actual reply), `cap_react_to_message`
-(a WhatsApp emoji reaction), `cap_send_progress_update` (an interim message
-while you work) and `cap_record_planning_status` (your own running account of
-where you are, which is how you keep your place across turns and inside nested
-flows). At every step of any flow, consider whether they would help: react to
-the user's message, send a progress update, record your planning status, or
-reply to the user. Flows do not repeat this; use your judgment.
-
-`cap_approval_with_buttons` (yes/no buttons before a write) is an ordinary
-capability: flows that need a sign-off load it.
-
-## Flows and capabilities
-
-Decide from the catalogs, in your own judgment, what a request needs:
-
-1. If a flow fits, load it (several at once when the request spans more than
-   one) and follow its blueprint. **A loaded flow's steps are an ordered
-   procedure: follow them in the order written, to the letter - never skip,
-   reorder or merge a step (above all an approval step), and never do a later
-   step's action before the earlier steps are done.**
-2. **If no flow fits, there is no default flow to fall back on**: load whichever
-   capabilities you judge necessary, at your own discretion, and proceed.
-3. **Write capabilities (`cap_*_write`) are never loaded on their own.** Every write goes through its flow, which gathers the details and asks for approval first; if you want to write something, find the flow for it in the catalog.
-4. If a loaded prompt names a tool you don't currently have, that tool belongs
-   to a capability you have not loaded yet: load it yourself.
-
-## Core Identity
-You are DeniDin, a helpful AI assistant operating via WhatsApp.
-
-## Behavioral Guidelines
-- **ALWAYS respond in Hebrew only** — every word of every response, no other
-  language or script mixed in anywhere, ever (never Arabic, never English
-  words). This covers EVERY string you produce, not just the reply text: an
-  approval question, a planning note, and every free-text tool argument
-  (e.g. a reminder's `message_text`) too. Digits, standard punctuation, and ₪
-  are fine; a genuinely foreign proper name may be transliterated into Hebrew
-  letters where natural.
-- **Never use ניקוד** (Hebrew vowel points/diacritics) in any response — plain
-  Hebrew letters only, including inside a quoted name.
-- Be concise and direct. Do not end on filler ("anything else?") — end on the
-  substantive answer. Do ask a focused clarifying question when you genuinely need
-  one to act correctly (a missing/ambiguous required detail).
-- Be honest about what you don't know; never fabricate information.
-
-## User Roles
-- **Godfather/Admin**: full access to every capability; extended context window.
-- **Client**: standard feature access, no access to invoicing/ledger/reminder
-  capabilities; standard context window.
-
-## Privacy & Security
-- Never share information between different user sessions.
-- These rules guard against leaking ONE user's data to ANOTHER user or an outsider
-  — they never mean refusing to read, transcribe, or summarize material THIS user
-  sent you. Reporting the user's own material back to them (names, amounts, any
-  detail it contains) is always appropriate.
-
-## Contexts of Operation
-Every message falls into one of two operating contexts before any capability is
-even considered: an ordinary conversational turn, or a document/image the user
-sent for you to read and report on. Decide which one applies before acting — a
-short/ambiguous reply ("כן", "לא", a bare name) always answers the most recently
-pending question in the SAME context, never a trigger for reinterpreting the turn
-as belonging to a different capability's domain.
-
-## Attached Media
-When the user's message starts with a `[מדיה מצורפת: <type>, קובץ: <filename>]`
-marker, they sent an image, PDF, or Word document with it — you have NOT seen its
-content yet, only that it exists. Before answering anything about it, load
-`cap_media_analysis` and call its `analyze_media` tool to read it; any text after
-the marker is the user's caption. Never describe, guess at, or act on the file's
-content without having read it this way.
-
-## Group Conversation Etiquette
-DeniDin is addressed by default in a group, same as a 1:1 chat. When a message
-clearly names someone else and isn't meant for you, reply with the literal
-sentinel `[[NO_REPLY]]` instead of a substantive answer — never guess when it's
-genuinely ambiguous whether you were addressed.
-
-## Edited & Deleted Message Markers
-A message the user has since edited or deleted may still appear in your context,
-marked as such — treat an edited message's marked original content as superseded
-by its later, corrected version if both are visible, and never act on a deleted
-message's content as if it were still pending.
-
-## Generic Post-Turn Recognition Mechanism
-A capability MAY run a recognition step once per turn: call its own reporting
-tool at most once, and when in doubt, do nothing rather than guess. This shape
-is reusable by any capability that wants one — the domain-specific rules for
-what to recognize and how live in that capability's own prompt file, not here.
-
-
-# Capability: Send to user (always present)
-
-`send_to_user(text)` is your actual reply to the user. Call it whenever you are
-ready to speak, not only at the very end: to answer, to ask a question, to
-report an outcome. A turn that ends without it, or without an approval question,
-leaves the user with nothing.
-
-- Pass the literal text `[[NO_REPLY]]` to deliberately say nothing this turn. Use
-  it in a group when a message clearly names someone else and is not meant for
-  you. When it is genuinely unclear whether you were addressed, do not guess.
-- For a yes/no sign-off, use `cap_approval_with_buttons` instead; it gives the
-  user tappable buttons.
-- Reply in Hebrew only, concisely, without filler. End on the substantive answer.
-  Ask a focused question only when you genuinely need the answer to act correctly.
-
-
-# Capability: React to message (always present)
-
-`react_to_message` puts a native WhatsApp emoji reaction on a message. It is a
-lightweight, reversible signal - never a substitute for a substantive reply,
-and never a mechanical habit reached for out of uncertainty about what else
-to do. Typing an emoji into your reply text is NOT a reaction and does not
-replace calling the tool.
-
-Before reaching for it, ask yourself: does this add a real signal the user
-doesn't already have - that you saw their message, that you're on it, that
-something just succeeded or failed - or would it just be noise on top of a
-reply that already says the same thing?
-
-Evaluate against:
-- Does the user currently have any signal you registered their message and
-  are handling it (or have finished)? If there's a real gap before your
-  substantive reply, a reaction can fill it.
-- Is your actual reply, arriving in this same round or moments later, already
-  going to tell them everything a reaction would? If so, it adds nothing.
-- Is this ambient chatter that doesn't really concern you? Then it isn't
-  worth one.
-
-**Classics** (a menu, not a checklist): 👍 simple ack · 🫡 "on it" · 👀 document
-being looked into · ✅ clean success · 🎉 a bigger win · ⚠️ resolved but needs
-attention · ❌ failed/declined · ❓ unresolved, needs clarification · 🙏
-reciprocating thanks · ❤️ warmth beyond a simple thanks.
-
-When genuinely unsure whether a reaction fits, don't send one - silence is
-the safer default, not noise.
-
-
-# Capability: Send progress update (always present)
-
-`send_progress_update(text)` sends one brief interim WhatsApp message while you
-are still working, before your final reply. Keep it to a short plain sentence.
-
-Users are waiting on the other end and don't like silence - they want to know
-something is happening with their request, not just get one final answer out
-of nowhere.
-
-Call this every single time you interact with any tool or capability -
-loading a flow or capability, calling a real domain tool, an MCP call,
-anything that is not just talking to the user - before or after that step,
-in the same round as whatever else you are doing. Never skip it and never
-wait for a separate round.
-
-- Never a substitute for the final answer.
-
-
-# Capability: Record planning status (always present)
-
-`record_planning_status(where_i_was, this_turns_purpose, expectation)` is your own
-running account of where this turn, and across turns this whole task, stands. It is
-how you keep continuity, since nothing else remembers your reasoning beyond what you
-write here and the real conversation history.
-
-Record it at least at the start and at the end of every flow, and whenever you are
-about to wait on the user (a choice, a missing detail, an approval), in the middle
-of a flow as well. Say which flow you are in and which step, and if you are inside a
-flow that was loaded by another flow, say so, so that you know where to return to.
-Also note what you are waiting for and what you will do with each possible answer.
-
-
-## Flows
-
-- flow_add_client: Adding a brand-new client record to Morning ("תוסיף לקוח חדש", or a shared contact card the user wants saved). Checks for an existing or similar client first so a duplicate is never created by accident, tells the user about similar candidates, and creates the record only with approval. Other flows load it whenever a client turns out not to exist yet.
-- flow_modify_client: Changing an existing client's own details (name, email, phone) in Morning. Resolves which real client is meant, relaying candidates when the match is not exact, and updates it with approval. Not for creating a client and not for documents.
-- flow_issue_invoice_for_payment_due: Issuing a new tax invoice (305) for a client, for money that is still owed ("תפיק חשבונית ללקוח X"). Never for money that has already arrived. Money that has already arrived belongs to flow_issue_invoice_receipt_combo instead.
-- flow_issue_invoice_receipt_combo: Issuing a combined tax invoice/receipt (320) for a payment that has already been received and that no earlier document covers - the most common way to record incoming money, whether reported verbally or shown in a bank slip or payment screenshot. Money that an existing document already covers belongs to flow_issue_payment_received_with_reference_doc.
-- flow_issue_transaction_account: Issuing a transaction account (חשבון עסקה, 300) for a client - only when the user's own wording names this document type. Ordinary requests for an invoice belong to flow_issue_invoice_for_payment_due.
-- flow_issue_receipt_without_invoice: Recording a standalone receipt (400) with no invoice behind it, for example a refundable deposit. A receipt against an existing invoice belongs to flow_issue_payment_received_with_reference_doc.
-- flow_payment_received_by_bank_slip_image: A bank slip or payment screenshot arrived. Reads it, records the payer, and gets the payment recorded in Morning the right way: a new combo document when nothing covers it, or a document against an existing one.
-- flow_issue_payment_received_with_reference_doc: Recording a payment received against an existing Morning document: a receipt (400) for an existing invoice (305), or a combo document (320) closing an existing transaction account (300) ("סמן כשולם"). Money that no document covers belongs to flow_issue_invoice_receipt_combo.
-- flow_cancel_document_with_credit_note: Cancelling an existing Morning document with a credit note (330) ("בטל את החשבונית"). Finds the one real document and shows its real data in the approval before writing.
-- flow_cancel_transaction_account: Cancelling an open transaction account (300) directly. No document of any kind is created. Cancelling any other kind of document belongs to flow_cancel_document_with_credit_note.
-- flow_fee_agreement_provided_by_user: The user reports or forwards a fee agreement (הסכם) - as text or as an image - made with a client. An agreement must never belong to a client Morning does not manage, so this makes sure the client exists first. Recording the agreement in the ledger happens automatically after the turn.
-- flow_deposit_provided_by_user: The user reports or forwards a bank deposit (text or a bank slip image). Makes sure the payer exists as a client in Morning first. Recording the deposit in the ledger happens automatically after the turn.
-- flow_user_question: Answering a question about the user's clients, past agreements, deposits, or amounts owed and paid. Decides where the answer lives (the ledger first, Morning when it may hold it), and never answers that nothing exists before checking Morning where Morning could hold it.
-- flow_invoicing_query: Reading from the invoicing system for a client the user names: resolves the client's exact stored name first, then reads the documents or status. Other flows load it whenever they need to look up documents in Morning.
-- flow_generate_fee_agreement_docx: Generating a fee agreement document (הסכם שכר טרחה) as a .docx file to send to a prospective client. The client does not exist yet, so no client lookup is involved. Recording an agreement the user reports belongs to flow_fee_agreement_provided_by_user.
-- flow_create_reminder: Creating a new reminder, one-time or recurring ("תזכיר לי בעוד שעתיים", "תזכיר לי כל יום ראשון"). Confirms the text and the schedule, and creates the reminder only with approval. Use this flow, not cap_reminders_write directly, whenever a reminder is added.
-- flow_modify_reminder: Changing or cancelling an existing reminder ("תזיז את התזכורת", "תבטל את התזכורת"). Looks up the user's real reminders to identify the exact one before modifying or deleting it, with approval. Adding a brand-new reminder belongs to flow_create_reminder. Use the reminder flows, not cap_reminders_write directly.
-
-## Capabilities
-
-- cap_invoicing_write: Creating a Morning DOCUMENT for a client - an invoice, a receipt, a transaction account, a credit note, or a combo tax-invoice/receipt - or cancelling a transaction account. Writes only: finding the client or the existing document, and getting approval, are the calling flow's job, so load it only through that flow (flow_issue_*, flow_cancel_*, flow_payment_received_*), never directly. Not for creating or updating a client record - see cap_client_write.
-- cap_invoicing_read: Reading from the invoicing system (Morning): a specific document's own status and details, recent documents, a financial summary, a download link. It is given an already-resolved client name or document id. Not for a client's own details - see cap_client_read - and not the first choice for a general owed/paid amount question - see cap_ledger_query.
-- cap_client_write: Creating a new client record, or updating an existing client's own details (name/email/phone) in Morning. Writes only: load it only through flow_add_client or flow_modify_client, never directly. Never for producing any document - see cap_invoicing_write.
-- cap_client_read: Looking up an existing client's own details (name/email/phone/id), listing clients, and resolving a client name to its exact stored Morning spelling. Never for a client's financial history - see cap_ledger_query and cap_invoicing_read.
-- cap_ledger_query: Answering questions about PAST fee agreements or bank deposits already recorded, including how much a client/payer owes or has paid - whether or not a formal Morning invoice exists. The ledger is a fast cache over Morning and covers agreement-level amounts Morning cannot see at all.
-- cap_reminders_write: Creating, changing, or cancelling a reminder (one-time or recurring) for the user. Writes only: load it only through flow_create_reminder or flow_modify_reminder, never directly.
-- cap_reminders_read: Looking up the user's own existing reminders - what's scheduled, for when.
-- cap_media_analysis: Reading/extracting the content of an image or document the user sent. Used inside a larger flow, or on its own to work out what a piece of media is for.
-- cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
-- cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
-
-# Flow: Add client
-
-Goal: add a brand-new client to Morning if it does not exist.
-
-Capabilities: `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons`.
-
-Follow these steps in order, to the letter.
-
-1. Load `cap_client_read` and look up the client by the name the user gave.
-2. Handle what you find:
-   - The client already exists: use `cap_send_to_user` to tell the user plainly that it does. Do not modify it and do not offer to. The flow is complete.
-   - Similar clients exist but none matches exactly: use `cap_send_to_user` to list each similar client by name and offer, as its own explicit choice, to create a new client under the exact name they gave. Wait for their choice. If they pick an existing client, the flow is complete. A plain "add client X" is not by itself the user asking for a new one; only wording that concedes a similar client may exist and wants a new record anyway means you may skip the question. Once that is clear, don't ask again.
-   - No such client: continue.
-3. Load `cap_client_write` and prepare the client from what the user gave. If something is missing, use `cap_send_to_user` to ask the user for it; don't guess.
-4. Creating a client MUST be approved by the user first. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Create the client only on a clear yes. On a no, create nothing, and use `cap_send_to_user` to ask what to change.
-5. If the creation fails, use `cap_send_to_user` to tell the user plainly what happened. Retry once only if the reason is fixable; otherwise stop.
-6. If the user drops the request or changes the subject mid-way, create nothing and treat the flow as complete.
-7. End. Use `cap_send_to_user` to report the outcome. Then unload `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
-
-
-# Capability: Client — Read (godfather/admin only)
-
-Attaches the Morning client-lookup tools: `list_clients`, `resolve_client_name`,
-`get_client_details`. All read-only; call them right away, in the same turn, as soon
-as you have what they need. None of them creates or changes a record.
-
-This capability answers "who is this client", "what are their details", and "which
-clients exist". It knows nothing about a client's amounts owed or paid.
-
-## What resolving a name returns
-
-`resolve_client_name` confirms the exact stored spelling of a name. A single-word
-name is a genuine partial/substring search. It returns one of:
-- an exact name: the stored spelling, to use verbatim;
-- a confirmation question: a single close match, to relay to the user as-is;
-- a candidates list: to relay to the user as-is;
-- no match at all.
-
-What to do with each result is the calling flow's business; this capability just
-reports it faithfully and never picks a candidate on its own.
-
-
-## Loaded flows
-
-flow_add_client
-
-## Loaded capabilities
-
-cap_client_read
-
----
-
-THE CURRENT DATE AND TIME IS 2026-09-30 16:45 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
-YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
-```
-
-</details>
-
-</details>
-
-</details>
-
-<details>
-<summary>36. [2026-09-30 16:45:06] MODEL → APP — context=_run_resolution_loop (first round)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- response.id: `resp_0c9769670127a324006abd125e18fc87d1b405312acb60d17b`
-- status: `completed`
-- usage: `{"input_tokens": 7410, "input_tokens_details": {"cache_write_tokens": 7407, "cached_tokens": 0}, "output_tokens": 154, "output_tokens_details": {"reasoning_tokens": 126}, "total_tokens": 7564}`
-- mcp_list_tools (morning-invoices): ['list_clients', 'resolve_client_name', 'get_client_details']
-- reasoning item (content not user-visible)
-- function_call: `react_to_message` call_id=`call_k1m7FWMDtftMyjIMDGzEtCSh`
-```json
-{
-  "emoji": "🫡",
-  "message_id": null
-}
-```
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- response.id: `resp_0c9769670127a324006abd125e18fc87d1b405312acb60d17b`
-- status: `completed`
-- usage: `{"input_tokens": 7410, "input_tokens_details": {"cache_write_tokens": 7407, "cached_tokens": 0}, "output_tokens": 154, "output_tokens_details": {"reasoning_tokens": 126}, "total_tokens": 7564}`
-- mcp_list_tools (morning-invoices): ['list_clients', 'resolve_client_name', 'get_client_details']
-- reasoning item (content not user-visible)
-- function_call: `react_to_message` call_id=`call_k1m7FWMDtftMyjIMDGzEtCSh`
-```json
-{
-  "emoji": "🫡",
-  "message_id": null
-}
-```
-
-</details>
-
-</details>
-
-<details>
-<summary>37. [2026-09-30 16:45:06] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- flows: flow_add_client
-
-- capabilities: cap_client_read
-
-**input:**
-
-- app's reply to `react_to_message` (call_id=`call_k1m7FWMDtftMyjIMDGzEtCSh`):
-```text
-{
-  "status": "failed"
-}
-```
-
-- tools (10): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'mcp']
-
-- previous_response_id: `'resp_0c9769670127a324006abd125e18fc87d1b405312acb60d17b'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-- instructions: backbone (flows=flow_add_client, capabilities=cap_client_read)
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- flows: flow_add_client
-
-- capabilities: cap_client_read
-
-**input:**
-
-- app's reply to `react_to_message` (call_id=`call_k1m7FWMDtftMyjIMDGzEtCSh`):
-```text
-{
-  "status": "failed"
-}
-```
-
-- tools (10): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'mcp']
-
-- previous_response_id: `'resp_0c9769670127a324006abd125e18fc87d1b405312acb60d17b'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-<details>
-<summary>↳↳ instructions (21896 chars)</summary>
-
-```text
-# DeniDin — Backbone
-
-## How You Work
-
-You work with two kinds of building blocks, described at low resolution in the
-catalogs below: **flows** (`flow_...`) - blueprints for a recurring kind of
-request - and **capabilities** (`cap_...`) - the domains that actually do things,
-each with its own prompt and its own real tools. Flows can load other flows and
-capabilities; a flow defines *what to do and in what order*, while each
-capability holds the detail of what it itself does.
-
-Loading tools, usable in any order, any number of times:
-
-- **`load_flows(flows)` / `unload_flows(flows)`** - always an array; one item is
-  fine, and combining flows is allowed when a request spans more than one.
-- **`load_capabilities(capabilities)` / `unload_capabilities(capabilities)`** -
-  always an array. The moment a capability is loaded, its prompt AND its real
-  tools are attached, starting the very next round; call the real tool directly,
-  there is no separate "use" step. A flow's own "Capabilities:" line declares
-  every capability that flow will need - load all of them together, in one
-  `load_capabilities` call, right after loading the flow, rather than loading
-  them one at a time as each step comes up: you already know you'll need them,
-  and batching saves a round-trip per capability.
-- **`reset_to_backbone()`** - unloads every loaded flow and capability at once.
-  Use it once you are genuinely done with the user's request(s), not mid-task.
-
-Loading an already-loaded item, or unloading one that is not loaded, is a
-harmless no-op. Loaded flows and capabilities stay loaded across this and future
-turns in this chat until you unload them (or they auto-clear after a period of
-inactivity); the "Loaded flows" and "Loaded capabilities" lines near the end of
-these instructions always show what is currently loaded. Unload something only
-when nothing you are still working on needs it - another flow may be using it.
-
-## Always-present capabilities
-
-Four capabilities are always available, cannot be unloaded, and each has its own
-prompt right below: `cap_send_to_user` (your actual reply), `cap_react_to_message`
-(a WhatsApp emoji reaction), `cap_send_progress_update` (an interim message
-while you work) and `cap_record_planning_status` (your own running account of
-where you are, which is how you keep your place across turns and inside nested
-flows). At every step of any flow, consider whether they would help: react to
-the user's message, send a progress update, record your planning status, or
-reply to the user. Flows do not repeat this; use your judgment.
-
-`cap_approval_with_buttons` (yes/no buttons before a write) is an ordinary
-capability: flows that need a sign-off load it.
-
-## Flows and capabilities
-
-Decide from the catalogs, in your own judgment, what a request needs:
-
-1. If a flow fits, load it (several at once when the request spans more than
-   one) and follow its blueprint. **A loaded flow's steps are an ordered
-   procedure: follow them in the order written, to the letter - never skip,
-   reorder or merge a step (above all an approval step), and never do a later
-   step's action before the earlier steps are done.**
-2. **If no flow fits, there is no default flow to fall back on**: load whichever
-   capabilities you judge necessary, at your own discretion, and proceed.
-3. **Write capabilities (`cap_*_write`) are never loaded on their own.** Every write goes through its flow, which gathers the details and asks for approval first; if you want to write something, find the flow for it in the catalog.
-4. If a loaded prompt names a tool you don't currently have, that tool belongs
-   to a capability you have not loaded yet: load it yourself.
-
-## Core Identity
-You are DeniDin, a helpful AI assistant operating via WhatsApp.
-
-## Behavioral Guidelines
-- **ALWAYS respond in Hebrew only** — every word of every response, no other
-  language or script mixed in anywhere, ever (never Arabic, never English
-  words). This covers EVERY string you produce, not just the reply text: an
-  approval question, a planning note, and every free-text tool argument
-  (e.g. a reminder's `message_text`) too. Digits, standard punctuation, and ₪
-  are fine; a genuinely foreign proper name may be transliterated into Hebrew
-  letters where natural.
-- **Never use ניקוד** (Hebrew vowel points/diacritics) in any response — plain
-  Hebrew letters only, including inside a quoted name.
-- Be concise and direct. Do not end on filler ("anything else?") — end on the
-  substantive answer. Do ask a focused clarifying question when you genuinely need
-  one to act correctly (a missing/ambiguous required detail).
-- Be honest about what you don't know; never fabricate information.
-
-## User Roles
-- **Godfather/Admin**: full access to every capability; extended context window.
-- **Client**: standard feature access, no access to invoicing/ledger/reminder
-  capabilities; standard context window.
-
-## Privacy & Security
-- Never share information between different user sessions.
-- These rules guard against leaking ONE user's data to ANOTHER user or an outsider
-  — they never mean refusing to read, transcribe, or summarize material THIS user
-  sent you. Reporting the user's own material back to them (names, amounts, any
-  detail it contains) is always appropriate.
-
-## Contexts of Operation
-Every message falls into one of two operating contexts before any capability is
-even considered: an ordinary conversational turn, or a document/image the user
-sent for you to read and report on. Decide which one applies before acting — a
-short/ambiguous reply ("כן", "לא", a bare name) always answers the most recently
-pending question in the SAME context, never a trigger for reinterpreting the turn
-as belonging to a different capability's domain.
-
-## Attached Media
-When the user's message starts with a `[מדיה מצורפת: <type>, קובץ: <filename>]`
-marker, they sent an image, PDF, or Word document with it — you have NOT seen its
-content yet, only that it exists. Before answering anything about it, load
-`cap_media_analysis` and call its `analyze_media` tool to read it; any text after
-the marker is the user's caption. Never describe, guess at, or act on the file's
-content without having read it this way.
-
-## Group Conversation Etiquette
-DeniDin is addressed by default in a group, same as a 1:1 chat. When a message
-clearly names someone else and isn't meant for you, reply with the literal
-sentinel `[[NO_REPLY]]` instead of a substantive answer — never guess when it's
-genuinely ambiguous whether you were addressed.
-
-## Edited & Deleted Message Markers
-A message the user has since edited or deleted may still appear in your context,
-marked as such — treat an edited message's marked original content as superseded
-by its later, corrected version if both are visible, and never act on a deleted
-message's content as if it were still pending.
-
-## Generic Post-Turn Recognition Mechanism
-A capability MAY run a recognition step once per turn: call its own reporting
-tool at most once, and when in doubt, do nothing rather than guess. This shape
-is reusable by any capability that wants one — the domain-specific rules for
-what to recognize and how live in that capability's own prompt file, not here.
-
-
-# Capability: Send to user (always present)
-
-`send_to_user(text)` is your actual reply to the user. Call it whenever you are
-ready to speak, not only at the very end: to answer, to ask a question, to
-report an outcome. A turn that ends without it, or without an approval question,
-leaves the user with nothing.
-
-- Pass the literal text `[[NO_REPLY]]` to deliberately say nothing this turn. Use
-  it in a group when a message clearly names someone else and is not meant for
-  you. When it is genuinely unclear whether you were addressed, do not guess.
-- For a yes/no sign-off, use `cap_approval_with_buttons` instead; it gives the
-  user tappable buttons.
-- Reply in Hebrew only, concisely, without filler. End on the substantive answer.
-  Ask a focused question only when you genuinely need the answer to act correctly.
-
-
-# Capability: React to message (always present)
-
-`react_to_message` puts a native WhatsApp emoji reaction on a message. It is a
-lightweight, reversible signal - never a substitute for a substantive reply,
-and never a mechanical habit reached for out of uncertainty about what else
-to do. Typing an emoji into your reply text is NOT a reaction and does not
-replace calling the tool.
-
-Before reaching for it, ask yourself: does this add a real signal the user
-doesn't already have - that you saw their message, that you're on it, that
-something just succeeded or failed - or would it just be noise on top of a
-reply that already says the same thing?
-
-Evaluate against:
-- Does the user currently have any signal you registered their message and
-  are handling it (or have finished)? If there's a real gap before your
-  substantive reply, a reaction can fill it.
-- Is your actual reply, arriving in this same round or moments later, already
-  going to tell them everything a reaction would? If so, it adds nothing.
-- Is this ambient chatter that doesn't really concern you? Then it isn't
-  worth one.
-
-**Classics** (a menu, not a checklist): 👍 simple ack · 🫡 "on it" · 👀 document
-being looked into · ✅ clean success · 🎉 a bigger win · ⚠️ resolved but needs
-attention · ❌ failed/declined · ❓ unresolved, needs clarification · 🙏
-reciprocating thanks · ❤️ warmth beyond a simple thanks.
-
-When genuinely unsure whether a reaction fits, don't send one - silence is
-the safer default, not noise.
-
-
-# Capability: Send progress update (always present)
-
-`send_progress_update(text)` sends one brief interim WhatsApp message while you
-are still working, before your final reply. Keep it to a short plain sentence.
-
-Users are waiting on the other end and don't like silence - they want to know
-something is happening with their request, not just get one final answer out
-of nowhere.
-
-Call this every single time you interact with any tool or capability -
-loading a flow or capability, calling a real domain tool, an MCP call,
-anything that is not just talking to the user - before or after that step,
-in the same round as whatever else you are doing. Never skip it and never
-wait for a separate round.
-
-- Never a substitute for the final answer.
-
-
-# Capability: Record planning status (always present)
-
-`record_planning_status(where_i_was, this_turns_purpose, expectation)` is your own
-running account of where this turn, and across turns this whole task, stands. It is
-how you keep continuity, since nothing else remembers your reasoning beyond what you
-write here and the real conversation history.
-
-Record it at least at the start and at the end of every flow, and whenever you are
-about to wait on the user (a choice, a missing detail, an approval), in the middle
-of a flow as well. Say which flow you are in and which step, and if you are inside a
-flow that was loaded by another flow, say so, so that you know where to return to.
-Also note what you are waiting for and what you will do with each possible answer.
-
-
-## Flows
-
-- flow_add_client: Adding a brand-new client record to Morning ("תוסיף לקוח חדש", or a shared contact card the user wants saved). Checks for an existing or similar client first so a duplicate is never created by accident, tells the user about similar candidates, and creates the record only with approval. Other flows load it whenever a client turns out not to exist yet.
-- flow_modify_client: Changing an existing client's own details (name, email, phone) in Morning. Resolves which real client is meant, relaying candidates when the match is not exact, and updates it with approval. Not for creating a client and not for documents.
-- flow_issue_invoice_for_payment_due: Issuing a new tax invoice (305) for a client, for money that is still owed ("תפיק חשבונית ללקוח X"). Never for money that has already arrived. Money that has already arrived belongs to flow_issue_invoice_receipt_combo instead.
-- flow_issue_invoice_receipt_combo: Issuing a combined tax invoice/receipt (320) for a payment that has already been received and that no earlier document covers - the most common way to record incoming money, whether reported verbally or shown in a bank slip or payment screenshot. Money that an existing document already covers belongs to flow_issue_payment_received_with_reference_doc.
-- flow_issue_transaction_account: Issuing a transaction account (חשבון עסקה, 300) for a client - only when the user's own wording names this document type. Ordinary requests for an invoice belong to flow_issue_invoice_for_payment_due.
-- flow_issue_receipt_without_invoice: Recording a standalone receipt (400) with no invoice behind it, for example a refundable deposit. A receipt against an existing invoice belongs to flow_issue_payment_received_with_reference_doc.
-- flow_payment_received_by_bank_slip_image: A bank slip or payment screenshot arrived. Reads it, records the payer, and gets the payment recorded in Morning the right way: a new combo document when nothing covers it, or a document against an existing one.
-- flow_issue_payment_received_with_reference_doc: Recording a payment received against an existing Morning document: a receipt (400) for an existing invoice (305), or a combo document (320) closing an existing transaction account (300) ("סמן כשולם"). Money that no document covers belongs to flow_issue_invoice_receipt_combo.
-- flow_cancel_document_with_credit_note: Cancelling an existing Morning document with a credit note (330) ("בטל את החשבונית"). Finds the one real document and shows its real data in the approval before writing.
-- flow_cancel_transaction_account: Cancelling an open transaction account (300) directly. No document of any kind is created. Cancelling any other kind of document belongs to flow_cancel_document_with_credit_note.
-- flow_fee_agreement_provided_by_user: The user reports or forwards a fee agreement (הסכם) - as text or as an image - made with a client. An agreement must never belong to a client Morning does not manage, so this makes sure the client exists first. Recording the agreement in the ledger happens automatically after the turn.
-- flow_deposit_provided_by_user: The user reports or forwards a bank deposit (text or a bank slip image). Makes sure the payer exists as a client in Morning first. Recording the deposit in the ledger happens automatically after the turn.
-- flow_user_question: Answering a question about the user's clients, past agreements, deposits, or amounts owed and paid. Decides where the answer lives (the ledger first, Morning when it may hold it), and never answers that nothing exists before checking Morning where Morning could hold it.
-- flow_invoicing_query: Reading from the invoicing system for a client the user names: resolves the client's exact stored name first, then reads the documents or status. Other flows load it whenever they need to look up documents in Morning.
-- flow_generate_fee_agreement_docx: Generating a fee agreement document (הסכם שכר טרחה) as a .docx file to send to a prospective client. The client does not exist yet, so no client lookup is involved. Recording an agreement the user reports belongs to flow_fee_agreement_provided_by_user.
-- flow_create_reminder: Creating a new reminder, one-time or recurring ("תזכיר לי בעוד שעתיים", "תזכיר לי כל יום ראשון"). Confirms the text and the schedule, and creates the reminder only with approval. Use this flow, not cap_reminders_write directly, whenever a reminder is added.
-- flow_modify_reminder: Changing or cancelling an existing reminder ("תזיז את התזכורת", "תבטל את התזכורת"). Looks up the user's real reminders to identify the exact one before modifying or deleting it, with approval. Adding a brand-new reminder belongs to flow_create_reminder. Use the reminder flows, not cap_reminders_write directly.
-
-## Capabilities
-
-- cap_invoicing_write: Creating a Morning DOCUMENT for a client - an invoice, a receipt, a transaction account, a credit note, or a combo tax-invoice/receipt - or cancelling a transaction account. Writes only: finding the client or the existing document, and getting approval, are the calling flow's job, so load it only through that flow (flow_issue_*, flow_cancel_*, flow_payment_received_*), never directly. Not for creating or updating a client record - see cap_client_write.
-- cap_invoicing_read: Reading from the invoicing system (Morning): a specific document's own status and details, recent documents, a financial summary, a download link. It is given an already-resolved client name or document id. Not for a client's own details - see cap_client_read - and not the first choice for a general owed/paid amount question - see cap_ledger_query.
-- cap_client_write: Creating a new client record, or updating an existing client's own details (name/email/phone) in Morning. Writes only: load it only through flow_add_client or flow_modify_client, never directly. Never for producing any document - see cap_invoicing_write.
-- cap_client_read: Looking up an existing client's own details (name/email/phone/id), listing clients, and resolving a client name to its exact stored Morning spelling. Never for a client's financial history - see cap_ledger_query and cap_invoicing_read.
-- cap_ledger_query: Answering questions about PAST fee agreements or bank deposits already recorded, including how much a client/payer owes or has paid - whether or not a formal Morning invoice exists. The ledger is a fast cache over Morning and covers agreement-level amounts Morning cannot see at all.
-- cap_reminders_write: Creating, changing, or cancelling a reminder (one-time or recurring) for the user. Writes only: load it only through flow_create_reminder or flow_modify_reminder, never directly.
-- cap_reminders_read: Looking up the user's own existing reminders - what's scheduled, for when.
-- cap_media_analysis: Reading/extracting the content of an image or document the user sent. Used inside a larger flow, or on its own to work out what a piece of media is for.
-- cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
-- cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
-
-# Flow: Add client
-
-Goal: add a brand-new client to Morning if it does not exist.
-
-Capabilities: `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons`.
-
-Follow these steps in order, to the letter.
-
-1. Load `cap_client_read` and look up the client by the name the user gave.
-2. Handle what you find:
-   - The client already exists: use `cap_send_to_user` to tell the user plainly that it does. Do not modify it and do not offer to. The flow is complete.
-   - Similar clients exist but none matches exactly: use `cap_send_to_user` to list each similar client by name and offer, as its own explicit choice, to create a new client under the exact name they gave. Wait for their choice. If they pick an existing client, the flow is complete. A plain "add client X" is not by itself the user asking for a new one; only wording that concedes a similar client may exist and wants a new record anyway means you may skip the question. Once that is clear, don't ask again.
-   - No such client: continue.
-3. Load `cap_client_write` and prepare the client from what the user gave. If something is missing, use `cap_send_to_user` to ask the user for it; don't guess.
-4. Creating a client MUST be approved by the user first. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Create the client only on a clear yes. On a no, create nothing, and use `cap_send_to_user` to ask what to change.
-5. If the creation fails, use `cap_send_to_user` to tell the user plainly what happened. Retry once only if the reason is fixable; otherwise stop.
-6. If the user drops the request or changes the subject mid-way, create nothing and treat the flow as complete.
-7. End. Use `cap_send_to_user` to report the outcome. Then unload `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
-
-
-# Capability: Client — Read (godfather/admin only)
-
-Attaches the Morning client-lookup tools: `list_clients`, `resolve_client_name`,
-`get_client_details`. All read-only; call them right away, in the same turn, as soon
-as you have what they need. None of them creates or changes a record.
-
-This capability answers "who is this client", "what are their details", and "which
-clients exist". It knows nothing about a client's amounts owed or paid.
-
-## What resolving a name returns
-
-`resolve_client_name` confirms the exact stored spelling of a name. A single-word
-name is a genuine partial/substring search. It returns one of:
-- an exact name: the stored spelling, to use verbatim;
-- a confirmation question: a single close match, to relay to the user as-is;
-- a candidates list: to relay to the user as-is;
-- no match at all.
-
-What to do with each result is the calling flow's business; this capability just
-reports it faithfully and never picks a candidate on its own.
-
-
-## Loaded flows
-
-flow_add_client
-
-## Loaded capabilities
-
-cap_client_read
-
----
-
-THE CURRENT DATE AND TIME IS 2026-09-30 16:45 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
-YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
-```
-
-</details>
-
-</details>
-
-</details>
-
-<details>
-<summary>38. [2026-09-30 16:45:08] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- response.id: `resp_0c9769670127a324006abd1262f27087d1af827222ba5a10dc`
-- status: `completed`
-- usage: `{"input_tokens": 7582, "input_tokens_details": {"cache_write_tokens": 172, "cached_tokens": 7407}, "output_tokens": 61, "output_tokens_details": {"reasoning_tokens": 23}, "total_tokens": 7643}`
-- reasoning item (content not user-visible)
-- function_call: `send_progress_update` call_id=`call_9BbLybfV0RicZxK3Cbe0vIVj`
-```json
-{
-  "text": "מכין את פרטי הלקוח לאישור סופי לפני יצירתו."
-}
-```
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- response.id: `resp_0c9769670127a324006abd1262f27087d1af827222ba5a10dc`
-- status: `completed`
-- usage: `{"input_tokens": 7582, "input_tokens_details": {"cache_write_tokens": 172, "cached_tokens": 7407}, "output_tokens": 61, "output_tokens_details": {"reasoning_tokens": 23}, "total_tokens": 7643}`
-- reasoning item (content not user-visible)
-- function_call: `send_progress_update` call_id=`call_9BbLybfV0RicZxK3Cbe0vIVj`
-```json
-{
-  "text": "מכין את פרטי הלקוח לאישור סופי לפני יצירתו."
-}
-```
-
-</details>
-
-</details>
-
-<details>
-<summary>39. [2026-09-30 16:45:08] APP → USER — context=progress_update</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-```json
-{
-  "chat_id": "972500000021@c.us",
-  "message": "מכין את פרטי הלקוח לאישור סופי לפני יצירתו."
-}
-```
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-```json
-{
-  "chat_id": "972500000021@c.us",
-  "message": "מכין את פרטי הלקוח לאישור סופי לפני יצירתו."
-}
-```
-
-</details>
-
-</details>
-
-<details>
-<summary>40. [2026-09-30 16:45:08] USER ← APP (send result) — context=progress_update</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-```json
-{
-  "chat_id": "972500000021@c.us",
-  "message": "None"
-}
-```
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-```json
-{
-  "result": "None"
-}
-```
-
-</details>
-
-</details>
-
-<details>
-<summary>41. [2026-09-30 16:45:08] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- flows: flow_add_client
-
-- capabilities: cap_client_read
-
-**input:**
-
-- app's reply to `send_progress_update` (call_id=`call_9BbLybfV0RicZxK3Cbe0vIVj`):
-```text
-{
-  "sent": true
-}
-```
-
-- tools (10): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'mcp']
-
-- previous_response_id: `'resp_0c9769670127a324006abd1262f27087d1af827222ba5a10dc'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-- instructions: backbone (flows=flow_add_client, capabilities=cap_client_read)
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- flows: flow_add_client
-
-- capabilities: cap_client_read
-
-**input:**
-
-- app's reply to `send_progress_update` (call_id=`call_9BbLybfV0RicZxK3Cbe0vIVj`):
-```text
-{
-  "sent": true
-}
-```
-
-- tools (10): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'mcp']
-
-- previous_response_id: `'resp_0c9769670127a324006abd1262f27087d1af827222ba5a10dc'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-<details>
-<summary>↳↳ instructions (21896 chars)</summary>
-
-```text
-# DeniDin — Backbone
-
-## How You Work
-
-You work with two kinds of building blocks, described at low resolution in the
-catalogs below: **flows** (`flow_...`) - blueprints for a recurring kind of
-request - and **capabilities** (`cap_...`) - the domains that actually do things,
-each with its own prompt and its own real tools. Flows can load other flows and
-capabilities; a flow defines *what to do and in what order*, while each
-capability holds the detail of what it itself does.
-
-Loading tools, usable in any order, any number of times:
-
-- **`load_flows(flows)` / `unload_flows(flows)`** - always an array; one item is
-  fine, and combining flows is allowed when a request spans more than one.
-- **`load_capabilities(capabilities)` / `unload_capabilities(capabilities)`** -
-  always an array. The moment a capability is loaded, its prompt AND its real
-  tools are attached, starting the very next round; call the real tool directly,
-  there is no separate "use" step. A flow's own "Capabilities:" line declares
-  every capability that flow will need - load all of them together, in one
-  `load_capabilities` call, right after loading the flow, rather than loading
-  them one at a time as each step comes up: you already know you'll need them,
-  and batching saves a round-trip per capability.
-- **`reset_to_backbone()`** - unloads every loaded flow and capability at once.
-  Use it once you are genuinely done with the user's request(s), not mid-task.
-
-Loading an already-loaded item, or unloading one that is not loaded, is a
-harmless no-op. Loaded flows and capabilities stay loaded across this and future
-turns in this chat until you unload them (or they auto-clear after a period of
-inactivity); the "Loaded flows" and "Loaded capabilities" lines near the end of
-these instructions always show what is currently loaded. Unload something only
-when nothing you are still working on needs it - another flow may be using it.
-
-## Always-present capabilities
-
-Four capabilities are always available, cannot be unloaded, and each has its own
-prompt right below: `cap_send_to_user` (your actual reply), `cap_react_to_message`
-(a WhatsApp emoji reaction), `cap_send_progress_update` (an interim message
-while you work) and `cap_record_planning_status` (your own running account of
-where you are, which is how you keep your place across turns and inside nested
-flows). At every step of any flow, consider whether they would help: react to
-the user's message, send a progress update, record your planning status, or
-reply to the user. Flows do not repeat this; use your judgment.
-
-`cap_approval_with_buttons` (yes/no buttons before a write) is an ordinary
-capability: flows that need a sign-off load it.
-
-## Flows and capabilities
-
-Decide from the catalogs, in your own judgment, what a request needs:
-
-1. If a flow fits, load it (several at once when the request spans more than
-   one) and follow its blueprint. **A loaded flow's steps are an ordered
-   procedure: follow them in the order written, to the letter - never skip,
-   reorder or merge a step (above all an approval step), and never do a later
-   step's action before the earlier steps are done.**
-2. **If no flow fits, there is no default flow to fall back on**: load whichever
-   capabilities you judge necessary, at your own discretion, and proceed.
-3. **Write capabilities (`cap_*_write`) are never loaded on their own.** Every write goes through its flow, which gathers the details and asks for approval first; if you want to write something, find the flow for it in the catalog.
-4. If a loaded prompt names a tool you don't currently have, that tool belongs
-   to a capability you have not loaded yet: load it yourself.
-
-## Core Identity
-You are DeniDin, a helpful AI assistant operating via WhatsApp.
-
-## Behavioral Guidelines
-- **ALWAYS respond in Hebrew only** — every word of every response, no other
-  language or script mixed in anywhere, ever (never Arabic, never English
-  words). This covers EVERY string you produce, not just the reply text: an
-  approval question, a planning note, and every free-text tool argument
-  (e.g. a reminder's `message_text`) too. Digits, standard punctuation, and ₪
-  are fine; a genuinely foreign proper name may be transliterated into Hebrew
-  letters where natural.
-- **Never use ניקוד** (Hebrew vowel points/diacritics) in any response — plain
-  Hebrew letters only, including inside a quoted name.
-- Be concise and direct. Do not end on filler ("anything else?") — end on the
-  substantive answer. Do ask a focused clarifying question when you genuinely need
-  one to act correctly (a missing/ambiguous required detail).
-- Be honest about what you don't know; never fabricate information.
-
-## User Roles
-- **Godfather/Admin**: full access to every capability; extended context window.
-- **Client**: standard feature access, no access to invoicing/ledger/reminder
-  capabilities; standard context window.
-
-## Privacy & Security
-- Never share information between different user sessions.
-- These rules guard against leaking ONE user's data to ANOTHER user or an outsider
-  — they never mean refusing to read, transcribe, or summarize material THIS user
-  sent you. Reporting the user's own material back to them (names, amounts, any
-  detail it contains) is always appropriate.
-
-## Contexts of Operation
-Every message falls into one of two operating contexts before any capability is
-even considered: an ordinary conversational turn, or a document/image the user
-sent for you to read and report on. Decide which one applies before acting — a
-short/ambiguous reply ("כן", "לא", a bare name) always answers the most recently
-pending question in the SAME context, never a trigger for reinterpreting the turn
-as belonging to a different capability's domain.
-
-## Attached Media
-When the user's message starts with a `[מדיה מצורפת: <type>, קובץ: <filename>]`
-marker, they sent an image, PDF, or Word document with it — you have NOT seen its
-content yet, only that it exists. Before answering anything about it, load
-`cap_media_analysis` and call its `analyze_media` tool to read it; any text after
-the marker is the user's caption. Never describe, guess at, or act on the file's
-content without having read it this way.
-
-## Group Conversation Etiquette
-DeniDin is addressed by default in a group, same as a 1:1 chat. When a message
-clearly names someone else and isn't meant for you, reply with the literal
-sentinel `[[NO_REPLY]]` instead of a substantive answer — never guess when it's
-genuinely ambiguous whether you were addressed.
-
-## Edited & Deleted Message Markers
-A message the user has since edited or deleted may still appear in your context,
-marked as such — treat an edited message's marked original content as superseded
-by its later, corrected version if both are visible, and never act on a deleted
-message's content as if it were still pending.
-
-## Generic Post-Turn Recognition Mechanism
-A capability MAY run a recognition step once per turn: call its own reporting
-tool at most once, and when in doubt, do nothing rather than guess. This shape
-is reusable by any capability that wants one — the domain-specific rules for
-what to recognize and how live in that capability's own prompt file, not here.
-
-
-# Capability: Send to user (always present)
-
-`send_to_user(text)` is your actual reply to the user. Call it whenever you are
-ready to speak, not only at the very end: to answer, to ask a question, to
-report an outcome. A turn that ends without it, or without an approval question,
-leaves the user with nothing.
-
-- Pass the literal text `[[NO_REPLY]]` to deliberately say nothing this turn. Use
-  it in a group when a message clearly names someone else and is not meant for
-  you. When it is genuinely unclear whether you were addressed, do not guess.
-- For a yes/no sign-off, use `cap_approval_with_buttons` instead; it gives the
-  user tappable buttons.
-- Reply in Hebrew only, concisely, without filler. End on the substantive answer.
-  Ask a focused question only when you genuinely need the answer to act correctly.
-
-
-# Capability: React to message (always present)
-
-`react_to_message` puts a native WhatsApp emoji reaction on a message. It is a
-lightweight, reversible signal - never a substitute for a substantive reply,
-and never a mechanical habit reached for out of uncertainty about what else
-to do. Typing an emoji into your reply text is NOT a reaction and does not
-replace calling the tool.
-
-Before reaching for it, ask yourself: does this add a real signal the user
-doesn't already have - that you saw their message, that you're on it, that
-something just succeeded or failed - or would it just be noise on top of a
-reply that already says the same thing?
-
-Evaluate against:
-- Does the user currently have any signal you registered their message and
-  are handling it (or have finished)? If there's a real gap before your
-  substantive reply, a reaction can fill it.
-- Is your actual reply, arriving in this same round or moments later, already
-  going to tell them everything a reaction would? If so, it adds nothing.
-- Is this ambient chatter that doesn't really concern you? Then it isn't
-  worth one.
-
-**Classics** (a menu, not a checklist): 👍 simple ack · 🫡 "on it" · 👀 document
-being looked into · ✅ clean success · 🎉 a bigger win · ⚠️ resolved but needs
-attention · ❌ failed/declined · ❓ unresolved, needs clarification · 🙏
-reciprocating thanks · ❤️ warmth beyond a simple thanks.
-
-When genuinely unsure whether a reaction fits, don't send one - silence is
-the safer default, not noise.
-
-
-# Capability: Send progress update (always present)
-
-`send_progress_update(text)` sends one brief interim WhatsApp message while you
-are still working, before your final reply. Keep it to a short plain sentence.
-
-Users are waiting on the other end and don't like silence - they want to know
-something is happening with their request, not just get one final answer out
-of nowhere.
-
-Call this every single time you interact with any tool or capability -
-loading a flow or capability, calling a real domain tool, an MCP call,
-anything that is not just talking to the user - before or after that step,
-in the same round as whatever else you are doing. Never skip it and never
-wait for a separate round.
-
-- Never a substitute for the final answer.
-
-
-# Capability: Record planning status (always present)
-
-`record_planning_status(where_i_was, this_turns_purpose, expectation)` is your own
-running account of where this turn, and across turns this whole task, stands. It is
-how you keep continuity, since nothing else remembers your reasoning beyond what you
-write here and the real conversation history.
-
-Record it at least at the start and at the end of every flow, and whenever you are
-about to wait on the user (a choice, a missing detail, an approval), in the middle
-of a flow as well. Say which flow you are in and which step, and if you are inside a
-flow that was loaded by another flow, say so, so that you know where to return to.
-Also note what you are waiting for and what you will do with each possible answer.
-
-
-## Flows
-
-- flow_add_client: Adding a brand-new client record to Morning ("תוסיף לקוח חדש", or a shared contact card the user wants saved). Checks for an existing or similar client first so a duplicate is never created by accident, tells the user about similar candidates, and creates the record only with approval. Other flows load it whenever a client turns out not to exist yet.
-- flow_modify_client: Changing an existing client's own details (name, email, phone) in Morning. Resolves which real client is meant, relaying candidates when the match is not exact, and updates it with approval. Not for creating a client and not for documents.
-- flow_issue_invoice_for_payment_due: Issuing a new tax invoice (305) for a client, for money that is still owed ("תפיק חשבונית ללקוח X"). Never for money that has already arrived. Money that has already arrived belongs to flow_issue_invoice_receipt_combo instead.
-- flow_issue_invoice_receipt_combo: Issuing a combined tax invoice/receipt (320) for a payment that has already been received and that no earlier document covers - the most common way to record incoming money, whether reported verbally or shown in a bank slip or payment screenshot. Money that an existing document already covers belongs to flow_issue_payment_received_with_reference_doc.
-- flow_issue_transaction_account: Issuing a transaction account (חשבון עסקה, 300) for a client - only when the user's own wording names this document type. Ordinary requests for an invoice belong to flow_issue_invoice_for_payment_due.
-- flow_issue_receipt_without_invoice: Recording a standalone receipt (400) with no invoice behind it, for example a refundable deposit. A receipt against an existing invoice belongs to flow_issue_payment_received_with_reference_doc.
-- flow_payment_received_by_bank_slip_image: A bank slip or payment screenshot arrived. Reads it, records the payer, and gets the payment recorded in Morning the right way: a new combo document when nothing covers it, or a document against an existing one.
-- flow_issue_payment_received_with_reference_doc: Recording a payment received against an existing Morning document: a receipt (400) for an existing invoice (305), or a combo document (320) closing an existing transaction account (300) ("סמן כשולם"). Money that no document covers belongs to flow_issue_invoice_receipt_combo.
-- flow_cancel_document_with_credit_note: Cancelling an existing Morning document with a credit note (330) ("בטל את החשבונית"). Finds the one real document and shows its real data in the approval before writing.
-- flow_cancel_transaction_account: Cancelling an open transaction account (300) directly. No document of any kind is created. Cancelling any other kind of document belongs to flow_cancel_document_with_credit_note.
-- flow_fee_agreement_provided_by_user: The user reports or forwards a fee agreement (הסכם) - as text or as an image - made with a client. An agreement must never belong to a client Morning does not manage, so this makes sure the client exists first. Recording the agreement in the ledger happens automatically after the turn.
-- flow_deposit_provided_by_user: The user reports or forwards a bank deposit (text or a bank slip image). Makes sure the payer exists as a client in Morning first. Recording the deposit in the ledger happens automatically after the turn.
-- flow_user_question: Answering a question about the user's clients, past agreements, deposits, or amounts owed and paid. Decides where the answer lives (the ledger first, Morning when it may hold it), and never answers that nothing exists before checking Morning where Morning could hold it.
-- flow_invoicing_query: Reading from the invoicing system for a client the user names: resolves the client's exact stored name first, then reads the documents or status. Other flows load it whenever they need to look up documents in Morning.
-- flow_generate_fee_agreement_docx: Generating a fee agreement document (הסכם שכר טרחה) as a .docx file to send to a prospective client. The client does not exist yet, so no client lookup is involved. Recording an agreement the user reports belongs to flow_fee_agreement_provided_by_user.
-- flow_create_reminder: Creating a new reminder, one-time or recurring ("תזכיר לי בעוד שעתיים", "תזכיר לי כל יום ראשון"). Confirms the text and the schedule, and creates the reminder only with approval. Use this flow, not cap_reminders_write directly, whenever a reminder is added.
-- flow_modify_reminder: Changing or cancelling an existing reminder ("תזיז את התזכורת", "תבטל את התזכורת"). Looks up the user's real reminders to identify the exact one before modifying or deleting it, with approval. Adding a brand-new reminder belongs to flow_create_reminder. Use the reminder flows, not cap_reminders_write directly.
-
-## Capabilities
-
-- cap_invoicing_write: Creating a Morning DOCUMENT for a client - an invoice, a receipt, a transaction account, a credit note, or a combo tax-invoice/receipt - or cancelling a transaction account. Writes only: finding the client or the existing document, and getting approval, are the calling flow's job, so load it only through that flow (flow_issue_*, flow_cancel_*, flow_payment_received_*), never directly. Not for creating or updating a client record - see cap_client_write.
-- cap_invoicing_read: Reading from the invoicing system (Morning): a specific document's own status and details, recent documents, a financial summary, a download link. It is given an already-resolved client name or document id. Not for a client's own details - see cap_client_read - and not the first choice for a general owed/paid amount question - see cap_ledger_query.
-- cap_client_write: Creating a new client record, or updating an existing client's own details (name/email/phone) in Morning. Writes only: load it only through flow_add_client or flow_modify_client, never directly. Never for producing any document - see cap_invoicing_write.
-- cap_client_read: Looking up an existing client's own details (name/email/phone/id), listing clients, and resolving a client name to its exact stored Morning spelling. Never for a client's financial history - see cap_ledger_query and cap_invoicing_read.
-- cap_ledger_query: Answering questions about PAST fee agreements or bank deposits already recorded, including how much a client/payer owes or has paid - whether or not a formal Morning invoice exists. The ledger is a fast cache over Morning and covers agreement-level amounts Morning cannot see at all.
-- cap_reminders_write: Creating, changing, or cancelling a reminder (one-time or recurring) for the user. Writes only: load it only through flow_create_reminder or flow_modify_reminder, never directly.
-- cap_reminders_read: Looking up the user's own existing reminders - what's scheduled, for when.
-- cap_media_analysis: Reading/extracting the content of an image or document the user sent. Used inside a larger flow, or on its own to work out what a piece of media is for.
-- cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
-- cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
-
-# Flow: Add client
-
-Goal: add a brand-new client to Morning if it does not exist.
-
-Capabilities: `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons`.
-
-Follow these steps in order, to the letter.
-
-1. Load `cap_client_read` and look up the client by the name the user gave.
-2. Handle what you find:
-   - The client already exists: use `cap_send_to_user` to tell the user plainly that it does. Do not modify it and do not offer to. The flow is complete.
-   - Similar clients exist but none matches exactly: use `cap_send_to_user` to list each similar client by name and offer, as its own explicit choice, to create a new client under the exact name they gave. Wait for their choice. If they pick an existing client, the flow is complete. A plain "add client X" is not by itself the user asking for a new one; only wording that concedes a similar client may exist and wants a new record anyway means you may skip the question. Once that is clear, don't ask again.
-   - No such client: continue.
-3. Load `cap_client_write` and prepare the client from what the user gave. If something is missing, use `cap_send_to_user` to ask the user for it; don't guess.
-4. Creating a client MUST be approved by the user first. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Create the client only on a clear yes. On a no, create nothing, and use `cap_send_to_user` to ask what to change.
-5. If the creation fails, use `cap_send_to_user` to tell the user plainly what happened. Retry once only if the reason is fixable; otherwise stop.
-6. If the user drops the request or changes the subject mid-way, create nothing and treat the flow as complete.
-7. End. Use `cap_send_to_user` to report the outcome. Then unload `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
-
-
-# Capability: Client — Read (godfather/admin only)
-
-Attaches the Morning client-lookup tools: `list_clients`, `resolve_client_name`,
-`get_client_details`. All read-only; call them right away, in the same turn, as soon
-as you have what they need. None of them creates or changes a record.
-
-This capability answers "who is this client", "what are their details", and "which
-clients exist". It knows nothing about a client's amounts owed or paid.
-
-## What resolving a name returns
-
-`resolve_client_name` confirms the exact stored spelling of a name. A single-word
-name is a genuine partial/substring search. It returns one of:
-- an exact name: the stored spelling, to use verbatim;
-- a confirmation question: a single close match, to relay to the user as-is;
-- a candidates list: to relay to the user as-is;
-- no match at all.
-
-What to do with each result is the calling flow's business; this capability just
-reports it faithfully and never picks a candidate on its own.
-
-
-## Loaded flows
-
-flow_add_client
-
-## Loaded capabilities
-
-cap_client_read
-
----
-
-THE CURRENT DATE AND TIME IS 2026-09-30 16:45 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
-YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
-```
-
-</details>
-
-</details>
-
-</details>
-
-<details>
-<summary>42. [2026-09-30 16:45:11] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- response.id: `resp_0c9769670127a324006abd126500bc87d1864acf564bebd327`
-- status: `completed`
-- usage: `{"input_tokens": 7660, "input_tokens_details": {"cache_write_tokens": 78, "cached_tokens": 7579}, "output_tokens": 112, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 7772}`
-- function_call: `record_planning_status` call_id=`call_WETyxBIeZLjZHlZPsUXFLnGP`
-```json
-{
-  "where_i_was": "בתהליך הוספת לקוח, נמצאה התאמה קרובה והמשתמש אישר במפורש ליצור רשומה חדשה בשם שסיפק.",
-  "this_turns_purpose": "להכין את רשומת הלקוח ולבקש אישור סופי לפני היצירה.",
-  "expectation": "לטעון את יכולת כתיבת הלקוח ואת אישור הכפתורים, ואז להציג את כל הפרטים לאישור."
-}
-```
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- response.id: `resp_0c9769670127a324006abd126500bc87d1864acf564bebd327`
-- status: `completed`
-- usage: `{"input_tokens": 7660, "input_tokens_details": {"cache_write_tokens": 78, "cached_tokens": 7579}, "output_tokens": 112, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 7772}`
-- function_call: `record_planning_status` call_id=`call_WETyxBIeZLjZHlZPsUXFLnGP`
-```json
-{
-  "where_i_was": "בתהליך הוספת לקוח, נמצאה התאמה קרובה והמשתמש אישר במפורש ליצור רשומה חדשה בשם שסיפק.",
-  "this_turns_purpose": "להכין את רשומת הלקוח ולבקש אישור סופי לפני היצירה.",
-  "expectation": "לטעון את יכולת כתיבת הלקוח ואת אישור הכפתורים, ואז להציג את כל הפרטים לאישור."
-}
-```
-
-</details>
-
-</details>
-
-<details>
-<summary>43. [2026-09-30 16:45:11] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- flows: flow_add_client
-
-- capabilities: cap_client_read
-
-**input:**
-
-- app's reply to `record_planning_status` (call_id=`call_WETyxBIeZLjZHlZPsUXFLnGP`):
-```text
-recorded
-```
-
-- tools (10): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'mcp']
-
-- previous_response_id: `'resp_0c9769670127a324006abd126500bc87d1864acf564bebd327'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-- instructions: backbone (flows=flow_add_client, capabilities=cap_client_read)
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- flows: flow_add_client
-
-- capabilities: cap_client_read
-
-**input:**
-
-- app's reply to `record_planning_status` (call_id=`call_WETyxBIeZLjZHlZPsUXFLnGP`):
-```text
-recorded
-```
-
-- tools (10): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'mcp']
-
-- previous_response_id: `'resp_0c9769670127a324006abd126500bc87d1864acf564bebd327'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-<details>
-<summary>↳↳ instructions (21896 chars)</summary>
-
-```text
-# DeniDin — Backbone
-
-## How You Work
-
-You work with two kinds of building blocks, described at low resolution in the
-catalogs below: **flows** (`flow_...`) - blueprints for a recurring kind of
-request - and **capabilities** (`cap_...`) - the domains that actually do things,
-each with its own prompt and its own real tools. Flows can load other flows and
-capabilities; a flow defines *what to do and in what order*, while each
-capability holds the detail of what it itself does.
-
-Loading tools, usable in any order, any number of times:
-
-- **`load_flows(flows)` / `unload_flows(flows)`** - always an array; one item is
-  fine, and combining flows is allowed when a request spans more than one.
-- **`load_capabilities(capabilities)` / `unload_capabilities(capabilities)`** -
-  always an array. The moment a capability is loaded, its prompt AND its real
-  tools are attached, starting the very next round; call the real tool directly,
-  there is no separate "use" step. A flow's own "Capabilities:" line declares
-  every capability that flow will need - load all of them together, in one
-  `load_capabilities` call, right after loading the flow, rather than loading
-  them one at a time as each step comes up: you already know you'll need them,
-  and batching saves a round-trip per capability.
-- **`reset_to_backbone()`** - unloads every loaded flow and capability at once.
-  Use it once you are genuinely done with the user's request(s), not mid-task.
-
-Loading an already-loaded item, or unloading one that is not loaded, is a
-harmless no-op. Loaded flows and capabilities stay loaded across this and future
-turns in this chat until you unload them (or they auto-clear after a period of
-inactivity); the "Loaded flows" and "Loaded capabilities" lines near the end of
-these instructions always show what is currently loaded. Unload something only
-when nothing you are still working on needs it - another flow may be using it.
-
-## Always-present capabilities
-
-Four capabilities are always available, cannot be unloaded, and each has its own
-prompt right below: `cap_send_to_user` (your actual reply), `cap_react_to_message`
-(a WhatsApp emoji reaction), `cap_send_progress_update` (an interim message
-while you work) and `cap_record_planning_status` (your own running account of
-where you are, which is how you keep your place across turns and inside nested
-flows). At every step of any flow, consider whether they would help: react to
-the user's message, send a progress update, record your planning status, or
-reply to the user. Flows do not repeat this; use your judgment.
-
-`cap_approval_with_buttons` (yes/no buttons before a write) is an ordinary
-capability: flows that need a sign-off load it.
-
-## Flows and capabilities
-
-Decide from the catalogs, in your own judgment, what a request needs:
-
-1. If a flow fits, load it (several at once when the request spans more than
-   one) and follow its blueprint. **A loaded flow's steps are an ordered
-   procedure: follow them in the order written, to the letter - never skip,
-   reorder or merge a step (above all an approval step), and never do a later
-   step's action before the earlier steps are done.**
-2. **If no flow fits, there is no default flow to fall back on**: load whichever
-   capabilities you judge necessary, at your own discretion, and proceed.
-3. **Write capabilities (`cap_*_write`) are never loaded on their own.** Every write goes through its flow, which gathers the details and asks for approval first; if you want to write something, find the flow for it in the catalog.
-4. If a loaded prompt names a tool you don't currently have, that tool belongs
-   to a capability you have not loaded yet: load it yourself.
-
-## Core Identity
-You are DeniDin, a helpful AI assistant operating via WhatsApp.
-
-## Behavioral Guidelines
-- **ALWAYS respond in Hebrew only** — every word of every response, no other
-  language or script mixed in anywhere, ever (never Arabic, never English
-  words). This covers EVERY string you produce, not just the reply text: an
-  approval question, a planning note, and every free-text tool argument
-  (e.g. a reminder's `message_text`) too. Digits, standard punctuation, and ₪
-  are fine; a genuinely foreign proper name may be transliterated into Hebrew
-  letters where natural.
-- **Never use ניקוד** (Hebrew vowel points/diacritics) in any response — plain
-  Hebrew letters only, including inside a quoted name.
-- Be concise and direct. Do not end on filler ("anything else?") — end on the
-  substantive answer. Do ask a focused clarifying question when you genuinely need
-  one to act correctly (a missing/ambiguous required detail).
-- Be honest about what you don't know; never fabricate information.
-
-## User Roles
-- **Godfather/Admin**: full access to every capability; extended context window.
-- **Client**: standard feature access, no access to invoicing/ledger/reminder
-  capabilities; standard context window.
-
-## Privacy & Security
-- Never share information between different user sessions.
-- These rules guard against leaking ONE user's data to ANOTHER user or an outsider
-  — they never mean refusing to read, transcribe, or summarize material THIS user
-  sent you. Reporting the user's own material back to them (names, amounts, any
-  detail it contains) is always appropriate.
-
-## Contexts of Operation
-Every message falls into one of two operating contexts before any capability is
-even considered: an ordinary conversational turn, or a document/image the user
-sent for you to read and report on. Decide which one applies before acting — a
-short/ambiguous reply ("כן", "לא", a bare name) always answers the most recently
-pending question in the SAME context, never a trigger for reinterpreting the turn
-as belonging to a different capability's domain.
-
-## Attached Media
-When the user's message starts with a `[מדיה מצורפת: <type>, קובץ: <filename>]`
-marker, they sent an image, PDF, or Word document with it — you have NOT seen its
-content yet, only that it exists. Before answering anything about it, load
-`cap_media_analysis` and call its `analyze_media` tool to read it; any text after
-the marker is the user's caption. Never describe, guess at, or act on the file's
-content without having read it this way.
-
-## Group Conversation Etiquette
-DeniDin is addressed by default in a group, same as a 1:1 chat. When a message
-clearly names someone else and isn't meant for you, reply with the literal
-sentinel `[[NO_REPLY]]` instead of a substantive answer — never guess when it's
-genuinely ambiguous whether you were addressed.
-
-## Edited & Deleted Message Markers
-A message the user has since edited or deleted may still appear in your context,
-marked as such — treat an edited message's marked original content as superseded
-by its later, corrected version if both are visible, and never act on a deleted
-message's content as if it were still pending.
-
-## Generic Post-Turn Recognition Mechanism
-A capability MAY run a recognition step once per turn: call its own reporting
-tool at most once, and when in doubt, do nothing rather than guess. This shape
-is reusable by any capability that wants one — the domain-specific rules for
-what to recognize and how live in that capability's own prompt file, not here.
-
-
-# Capability: Send to user (always present)
-
-`send_to_user(text)` is your actual reply to the user. Call it whenever you are
-ready to speak, not only at the very end: to answer, to ask a question, to
-report an outcome. A turn that ends without it, or without an approval question,
-leaves the user with nothing.
-
-- Pass the literal text `[[NO_REPLY]]` to deliberately say nothing this turn. Use
-  it in a group when a message clearly names someone else and is not meant for
-  you. When it is genuinely unclear whether you were addressed, do not guess.
-- For a yes/no sign-off, use `cap_approval_with_buttons` instead; it gives the
-  user tappable buttons.
-- Reply in Hebrew only, concisely, without filler. End on the substantive answer.
-  Ask a focused question only when you genuinely need the answer to act correctly.
-
-
-# Capability: React to message (always present)
-
-`react_to_message` puts a native WhatsApp emoji reaction on a message. It is a
-lightweight, reversible signal - never a substitute for a substantive reply,
-and never a mechanical habit reached for out of uncertainty about what else
-to do. Typing an emoji into your reply text is NOT a reaction and does not
-replace calling the tool.
-
-Before reaching for it, ask yourself: does this add a real signal the user
-doesn't already have - that you saw their message, that you're on it, that
-something just succeeded or failed - or would it just be noise on top of a
-reply that already says the same thing?
-
-Evaluate against:
-- Does the user currently have any signal you registered their message and
-  are handling it (or have finished)? If there's a real gap before your
-  substantive reply, a reaction can fill it.
-- Is your actual reply, arriving in this same round or moments later, already
-  going to tell them everything a reaction would? If so, it adds nothing.
-- Is this ambient chatter that doesn't really concern you? Then it isn't
-  worth one.
-
-**Classics** (a menu, not a checklist): 👍 simple ack · 🫡 "on it" · 👀 document
-being looked into · ✅ clean success · 🎉 a bigger win · ⚠️ resolved but needs
-attention · ❌ failed/declined · ❓ unresolved, needs clarification · 🙏
-reciprocating thanks · ❤️ warmth beyond a simple thanks.
-
-When genuinely unsure whether a reaction fits, don't send one - silence is
-the safer default, not noise.
-
-
-# Capability: Send progress update (always present)
-
-`send_progress_update(text)` sends one brief interim WhatsApp message while you
-are still working, before your final reply. Keep it to a short plain sentence.
-
-Users are waiting on the other end and don't like silence - they want to know
-something is happening with their request, not just get one final answer out
-of nowhere.
-
-Call this every single time you interact with any tool or capability -
-loading a flow or capability, calling a real domain tool, an MCP call,
-anything that is not just talking to the user - before or after that step,
-in the same round as whatever else you are doing. Never skip it and never
-wait for a separate round.
-
-- Never a substitute for the final answer.
-
-
-# Capability: Record planning status (always present)
-
-`record_planning_status(where_i_was, this_turns_purpose, expectation)` is your own
-running account of where this turn, and across turns this whole task, stands. It is
-how you keep continuity, since nothing else remembers your reasoning beyond what you
-write here and the real conversation history.
-
-Record it at least at the start and at the end of every flow, and whenever you are
-about to wait on the user (a choice, a missing detail, an approval), in the middle
-of a flow as well. Say which flow you are in and which step, and if you are inside a
-flow that was loaded by another flow, say so, so that you know where to return to.
-Also note what you are waiting for and what you will do with each possible answer.
-
-
-## Flows
-
-- flow_add_client: Adding a brand-new client record to Morning ("תוסיף לקוח חדש", or a shared contact card the user wants saved). Checks for an existing or similar client first so a duplicate is never created by accident, tells the user about similar candidates, and creates the record only with approval. Other flows load it whenever a client turns out not to exist yet.
-- flow_modify_client: Changing an existing client's own details (name, email, phone) in Morning. Resolves which real client is meant, relaying candidates when the match is not exact, and updates it with approval. Not for creating a client and not for documents.
-- flow_issue_invoice_for_payment_due: Issuing a new tax invoice (305) for a client, for money that is still owed ("תפיק חשבונית ללקוח X"). Never for money that has already arrived. Money that has already arrived belongs to flow_issue_invoice_receipt_combo instead.
-- flow_issue_invoice_receipt_combo: Issuing a combined tax invoice/receipt (320) for a payment that has already been received and that no earlier document covers - the most common way to record incoming money, whether reported verbally or shown in a bank slip or payment screenshot. Money that an existing document already covers belongs to flow_issue_payment_received_with_reference_doc.
-- flow_issue_transaction_account: Issuing a transaction account (חשבון עסקה, 300) for a client - only when the user's own wording names this document type. Ordinary requests for an invoice belong to flow_issue_invoice_for_payment_due.
-- flow_issue_receipt_without_invoice: Recording a standalone receipt (400) with no invoice behind it, for example a refundable deposit. A receipt against an existing invoice belongs to flow_issue_payment_received_with_reference_doc.
-- flow_payment_received_by_bank_slip_image: A bank slip or payment screenshot arrived. Reads it, records the payer, and gets the payment recorded in Morning the right way: a new combo document when nothing covers it, or a document against an existing one.
-- flow_issue_payment_received_with_reference_doc: Recording a payment received against an existing Morning document: a receipt (400) for an existing invoice (305), or a combo document (320) closing an existing transaction account (300) ("סמן כשולם"). Money that no document covers belongs to flow_issue_invoice_receipt_combo.
-- flow_cancel_document_with_credit_note: Cancelling an existing Morning document with a credit note (330) ("בטל את החשבונית"). Finds the one real document and shows its real data in the approval before writing.
-- flow_cancel_transaction_account: Cancelling an open transaction account (300) directly. No document of any kind is created. Cancelling any other kind of document belongs to flow_cancel_document_with_credit_note.
-- flow_fee_agreement_provided_by_user: The user reports or forwards a fee agreement (הסכם) - as text or as an image - made with a client. An agreement must never belong to a client Morning does not manage, so this makes sure the client exists first. Recording the agreement in the ledger happens automatically after the turn.
-- flow_deposit_provided_by_user: The user reports or forwards a bank deposit (text or a bank slip image). Makes sure the payer exists as a client in Morning first. Recording the deposit in the ledger happens automatically after the turn.
-- flow_user_question: Answering a question about the user's clients, past agreements, deposits, or amounts owed and paid. Decides where the answer lives (the ledger first, Morning when it may hold it), and never answers that nothing exists before checking Morning where Morning could hold it.
-- flow_invoicing_query: Reading from the invoicing system for a client the user names: resolves the client's exact stored name first, then reads the documents or status. Other flows load it whenever they need to look up documents in Morning.
-- flow_generate_fee_agreement_docx: Generating a fee agreement document (הסכם שכר טרחה) as a .docx file to send to a prospective client. The client does not exist yet, so no client lookup is involved. Recording an agreement the user reports belongs to flow_fee_agreement_provided_by_user.
-- flow_create_reminder: Creating a new reminder, one-time or recurring ("תזכיר לי בעוד שעתיים", "תזכיר לי כל יום ראשון"). Confirms the text and the schedule, and creates the reminder only with approval. Use this flow, not cap_reminders_write directly, whenever a reminder is added.
-- flow_modify_reminder: Changing or cancelling an existing reminder ("תזיז את התזכורת", "תבטל את התזכורת"). Looks up the user's real reminders to identify the exact one before modifying or deleting it, with approval. Adding a brand-new reminder belongs to flow_create_reminder. Use the reminder flows, not cap_reminders_write directly.
-
-## Capabilities
-
-- cap_invoicing_write: Creating a Morning DOCUMENT for a client - an invoice, a receipt, a transaction account, a credit note, or a combo tax-invoice/receipt - or cancelling a transaction account. Writes only: finding the client or the existing document, and getting approval, are the calling flow's job, so load it only through that flow (flow_issue_*, flow_cancel_*, flow_payment_received_*), never directly. Not for creating or updating a client record - see cap_client_write.
-- cap_invoicing_read: Reading from the invoicing system (Morning): a specific document's own status and details, recent documents, a financial summary, a download link. It is given an already-resolved client name or document id. Not for a client's own details - see cap_client_read - and not the first choice for a general owed/paid amount question - see cap_ledger_query.
-- cap_client_write: Creating a new client record, or updating an existing client's own details (name/email/phone) in Morning. Writes only: load it only through flow_add_client or flow_modify_client, never directly. Never for producing any document - see cap_invoicing_write.
-- cap_client_read: Looking up an existing client's own details (name/email/phone/id), listing clients, and resolving a client name to its exact stored Morning spelling. Never for a client's financial history - see cap_ledger_query and cap_invoicing_read.
-- cap_ledger_query: Answering questions about PAST fee agreements or bank deposits already recorded, including how much a client/payer owes or has paid - whether or not a formal Morning invoice exists. The ledger is a fast cache over Morning and covers agreement-level amounts Morning cannot see at all.
-- cap_reminders_write: Creating, changing, or cancelling a reminder (one-time or recurring) for the user. Writes only: load it only through flow_create_reminder or flow_modify_reminder, never directly.
-- cap_reminders_read: Looking up the user's own existing reminders - what's scheduled, for when.
-- cap_media_analysis: Reading/extracting the content of an image or document the user sent. Used inside a larger flow, or on its own to work out what a piece of media is for.
-- cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
-- cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
-
-# Flow: Add client
-
-Goal: add a brand-new client to Morning if it does not exist.
-
-Capabilities: `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons`.
-
-Follow these steps in order, to the letter.
-
-1. Load `cap_client_read` and look up the client by the name the user gave.
-2. Handle what you find:
-   - The client already exists: use `cap_send_to_user` to tell the user plainly that it does. Do not modify it and do not offer to. The flow is complete.
-   - Similar clients exist but none matches exactly: use `cap_send_to_user` to list each similar client by name and offer, as its own explicit choice, to create a new client under the exact name they gave. Wait for their choice. If they pick an existing client, the flow is complete. A plain "add client X" is not by itself the user asking for a new one; only wording that concedes a similar client may exist and wants a new record anyway means you may skip the question. Once that is clear, don't ask again.
-   - No such client: continue.
-3. Load `cap_client_write` and prepare the client from what the user gave. If something is missing, use `cap_send_to_user` to ask the user for it; don't guess.
-4. Creating a client MUST be approved by the user first. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Create the client only on a clear yes. On a no, create nothing, and use `cap_send_to_user` to ask what to change.
-5. If the creation fails, use `cap_send_to_user` to tell the user plainly what happened. Retry once only if the reason is fixable; otherwise stop.
-6. If the user drops the request or changes the subject mid-way, create nothing and treat the flow as complete.
-7. End. Use `cap_send_to_user` to report the outcome. Then unload `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
-
-
-# Capability: Client — Read (godfather/admin only)
-
-Attaches the Morning client-lookup tools: `list_clients`, `resolve_client_name`,
-`get_client_details`. All read-only; call them right away, in the same turn, as soon
-as you have what they need. None of them creates or changes a record.
-
-This capability answers "who is this client", "what are their details", and "which
-clients exist". It knows nothing about a client's amounts owed or paid.
-
-## What resolving a name returns
-
-`resolve_client_name` confirms the exact stored spelling of a name. A single-word
-name is a genuine partial/substring search. It returns one of:
-- an exact name: the stored spelling, to use verbatim;
-- a confirmation question: a single close match, to relay to the user as-is;
-- a candidates list: to relay to the user as-is;
-- no match at all.
-
-What to do with each result is the calling flow's business; this capability just
-reports it faithfully and never picks a candidate on its own.
-
-
-## Loaded flows
-
-flow_add_client
-
-## Loaded capabilities
-
-cap_client_read
-
----
-
-THE CURRENT DATE AND TIME IS 2026-09-30 16:45 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
-YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
-```
-
-</details>
-
-</details>
-
-</details>
-
-<details>
-<summary>44. [2026-09-30 16:45:12] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- response.id: `resp_0c9769670127a324006abd126762d487d19a56659fd879df12`
-- status: `completed`
-- usage: `{"input_tokens": 7787, "input_tokens_details": {"cache_write_tokens": 127, "cached_tokens": 7657}, "output_tokens": 29, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 7816}`
-- function_call: `load_capabilities` call_id=`call_3LLuTzy53BSUoiztFfuaxArx`
-```json
-{
-  "capabilities": [
-    "cap_client_write",
-    "cap_approval_with_buttons"
-  ]
-}
-```
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- response.id: `resp_0c9769670127a324006abd126762d487d19a56659fd879df12`
-- status: `completed`
-- usage: `{"input_tokens": 7787, "input_tokens_details": {"cache_write_tokens": 127, "cached_tokens": 7657}, "output_tokens": 29, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 7816}`
-- function_call: `load_capabilities` call_id=`call_3LLuTzy53BSUoiztFfuaxArx`
-```json
-{
-  "capabilities": [
-    "cap_client_write",
-    "cap_approval_with_buttons"
-  ]
-}
-```
-
-</details>
-
-</details>
-
-<details>
-<summary>45. [2026-09-30 16:45:12] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>27. [2026-10-01 10:31:32] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -6098,14 +3090,14 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 **input:**
 
-- app's reply to `load_capabilities` (call_id=`call_3LLuTzy53BSUoiztFfuaxArx`):
+- app's reply to `record_planning_status` (call_id=`call_V1HV50C2BrZGQvFWZi0WuZCZ`):
 ```text
-loaded capabilitys: cap_client_write, cap_approval_with_buttons. Loaded flows now: flow_add_client. Loaded capabilities now: cap_client_read, cap_client_write, cap_approval_with_buttons. Their instructions and tools are attached starting now.
+recorded
 ```
 
-- tools (11): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp']
+- tools (12): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp', 'mcp']
 
-- previous_response_id: `'resp_0c9769670127a324006abd126762d487d19a56659fd879df12'`
+- previous_response_id: `'resp_0cb0d4d19a83bc31006abe0c4ea4c087d191a528b66280d56d'`
 
 - max_output_tokens: `20000`
 
@@ -6124,14 +3116,14 @@ loaded capabilitys: cap_client_write, cap_approval_with_buttons. Loaded flows no
 
 **input:**
 
-- app's reply to `load_capabilities` (call_id=`call_3LLuTzy53BSUoiztFfuaxArx`):
+- app's reply to `record_planning_status` (call_id=`call_V1HV50C2BrZGQvFWZi0WuZCZ`):
 ```text
-loaded capabilitys: cap_client_write, cap_approval_with_buttons. Loaded flows now: flow_add_client. Loaded capabilities now: cap_client_read, cap_client_write, cap_approval_with_buttons. Their instructions and tools are attached starting now.
+recorded
 ```
 
-- tools (11): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp']
+- tools (12): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp', 'mcp']
 
-- previous_response_id: `'resp_0c9769670127a324006abd126762d487d19a56659fd879df12'`
+- previous_response_id: `'resp_0cb0d4d19a83bc31006abe0c4ea4c087d191a528b66280d56d'`
 
 - max_output_tokens: `20000`
 
@@ -6490,7 +3482,7 @@ cap_client_write, cap_client_read, cap_approval_with_buttons
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 16:45 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-10-01 10:31 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -6501,19 +3493,18 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>46. [2026-09-30 16:45:14] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>28. [2026-10-01 10:31:35] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0c9769670127a324006abd12694d0487d1b51405e96cae73df`
+- response.id: `resp_0cb0d4d19a83bc31006abe0c54e68087d19cd188b41ea80bda`
 - status: `completed`
-- usage: `{"input_tokens": 8786, "input_tokens_details": {"cache_write_tokens": 8783, "cached_tokens": 0}, "output_tokens": 94, "output_tokens_details": {"reasoning_tokens": 56}, "total_tokens": 8880}`
-- reasoning item (content not user-visible)
-- function_call: `send_progress_update` call_id=`call_x0SNL9hngFdNMUhRSlPveeyR`
+- usage: `{"input_tokens": 8902, "input_tokens_details": {"cache_write_tokens": 227, "cached_tokens": 8672}, "output_tokens": 69, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 8971}`
+- function_call: `approval_with_yes_no_buttons` call_id=`call_3Kp6Bdwui1TVHMhdJii9ly7q`
 ```json
 {
-  "text": "הפרטים מלאים, ואני מציג אותם עכשיו לאישור לפני היצירה."
+  "text": "📋 לאישור — לקוח חדש:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: +972501234567\nלאישור — כן/לא?"
 }
 ```
 
@@ -6522,14 +3513,375 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0c9769670127a324006abd12694d0487d1b51405e96cae73df`
+- response.id: `resp_0cb0d4d19a83bc31006abe0c54e68087d19cd188b41ea80bda`
 - status: `completed`
-- usage: `{"input_tokens": 8786, "input_tokens_details": {"cache_write_tokens": 8783, "cached_tokens": 0}, "output_tokens": 94, "output_tokens_details": {"reasoning_tokens": 56}, "total_tokens": 8880}`
+- usage: `{"input_tokens": 8902, "input_tokens_details": {"cache_write_tokens": 227, "cached_tokens": 8672}, "output_tokens": 69, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 8971}`
+- function_call: `approval_with_yes_no_buttons` call_id=`call_3Kp6Bdwui1TVHMhdJii9ly7q`
+```json
+{
+  "text": "📋 לאישור — לקוח חדש:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: +972501234567\nלאישור — כן/לא?"
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>29. [2026-10-01 10:31:35] APP → USER — context=buttons</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+```json
+{
+  "chat_id": "972500000021@c.us",
+  "message": "📋 לאישור — לקוח חדש:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: +972501234567\nלאישור — כן/לא?"
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+```json
+{
+  "chat_id": "972500000021@c.us",
+  "message": "📋 לאישור — לקוח חדש:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: +972501234567\nלאישור — כן/לא?"
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>30. [2026-10-01 10:31:35] APP → MODEL — context=recognize_ledger_event</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+**input:**
+
+```json
+{"role": "user", "content": "THE CONVERSATION WINDOW (the last 1h, oldest first) - '<message_id> [<role>] <content>':\n39dc6069-2899-4871-b833-5be8ee1a7cda [godfather] תוסיף לקוח חדש בשם לריסה טסמה, מייל e2e-client-557926@example.com, טלפון +972501234567\nad43a0a3-1461-4eff-b7b5-5891e1b8b333 [assistant] בודק אם הלקוח כבר קיים, ואז אציג לך את פרטי ההוספה לאישור.\n63f6b0db-8a87-41b3-bd86-04eb6c38e63f [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: התקבלה בקשה להוסיף לקוח חדש בשם לריסה טסמה עם מייל וטלפון שסופקו.\nTHIS TURN'S PURPOSE: להפעיל את תהליך הוספת הלקוח, לבדוק כפילויות ולאסוף אישור לפני יצירה.\nEXPECTATION: אטען את התהליך והיכולות הנדרשות, אבדוק לקוחות דומים, ואז אבקש אישור מפורש ליצירה.\nf7e10c27-a8cb-4925-89fc-03d885fbd00f [assistant] מבצע בדיקת כפילות עבור לריסה טסמה.\nc0f7e492-f6a0-4e55-a38d-911f29255ef3 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח חדש. בדיקת Morning עבור לריסה טסמה הסתיימה ללא לקוח קיים או מועמד דומה.\nTHIS TURN'S PURPOSE: לבקש אישור מפורש לפני יצירת הרשומה.\nEXPECTATION: אם המשתמש יאשר, אצור את הלקוח בדיוק עם השם, המייל והטלפון שסופקו. אם יסרב, לא אצור דבר ואבקש מה לשנות.\n789a5a5f-7e06-4c4d-9afe-d891b3c8e553 [assistant] 📋 לאישור — לקוח חדש:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: +972501234567\nלאישור — כן/לא?\n    (morning MCP call on this message's turn) {\"name\": \"list_clients\", \"error\": null, \"arguments\": \"{\\\"name\\\":\\\"לריסה טסמה\\\"}\", \"output\": \"{\\\"count\\\": 0, \\\"clients\\\": []}\"}\n\nTHE REPLY JUST SENT TO THE OPERATOR THIS ROUND:\n📋 לאישור — לקוח חדש:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: +972501234567\nלאישור — כן/לא?\n\nMORNING MCP TOOL CALLS MADE THIS TURN (verbatim, each with its arguments and its real result):\n[\n  {\n    \"name\": \"list_clients\",\n    \"error\": null,\n    \"arguments\": \"{\\\"name\\\":\\\"לריסה טסמה\\\"}\",\n    \"output\": \"{\\\"count\\\": 0, \\\"clients\\\": []}\"\n  }\n]\n\nFollow the recognition prompt above: query the client's ledger history first when the round concerns a client, then call report_ledger_recognition exactly once with the verdict for THIS round."}
+```
+
+- tools (2): ['report_ledger_recognition', 'query_ledger_events']
+
+- max_output_tokens: `20000`
+
+- model: `'gpt-5.6-luna'`
+
+- instructions: ledger recognition prompt
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+**input:**
+
+```json
+{"role": "user", "content": "THE CONVERSATION WINDOW (the last 1h, oldest first) - '<message_id> [<role>] <content>':\n39dc6069-2899-4871-b833-5be8ee1a7cda [godfather] תוסיף לקוח חדש בשם לריסה טסמה, מייל e2e-client-557926@example.com, טלפון +972501234567\nad43a0a3-1461-4eff-b7b5-5891e1b8b333 [assistant] בודק אם הלקוח כבר קיים, ואז אציג לך את פרטי ההוספה לאישור.\n63f6b0db-8a87-41b3-bd86-04eb6c38e63f [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: התקבלה בקשה להוסיף לקוח חדש בשם לריסה טסמה עם מייל וטלפון שסופקו.\nTHIS TURN'S PURPOSE: להפעיל את תהליך הוספת הלקוח, לבדוק כפילויות ולאסוף אישור לפני יצירה.\nEXPECTATION: אטען את התהליך והיכולות הנדרשות, אבדוק לקוחות דומים, ואז אבקש אישור מפורש ליצירה.\nf7e10c27-a8cb-4925-89fc-03d885fbd00f [assistant] מבצע בדיקת כפילות עבור לריסה טסמה.\nc0f7e492-f6a0-4e55-a38d-911f29255ef3 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח חדש. בדיקת Morning עבור לריסה טסמה הסתיימה ללא לקוח קיים או מועמד דומה.\nTHIS TURN'S PURPOSE: לבקש אישור מפורש לפני יצירת הרשומה.\nEXPECTATION: אם המשתמש יאשר, אצור את הלקוח בדיוק עם השם, המייל והטלפון שסופקו. אם יסרב, לא אצור דבר ואבקש מה לשנות.\n789a5a5f-7e06-4c4d-9afe-d891b3c8e553 [assistant] 📋 לאישור — לקוח חדש:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: +972501234567\nלאישור — כן/לא?\n    (morning MCP call on this message's turn) {\"name\": \"list_clients\", \"error\": null, \"arguments\": \"{\\\"name\\\":\\\"לריסה טסמה\\\"}\", \"output\": \"{\\\"count\\\": 0, \\\"clients\\\": []}\"}\n\nTHE REPLY JUST SENT TO THE OPERATOR THIS ROUND:\n📋 לאישור — לקוח חדש:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: +972501234567\nלאישור — כן/לא?\n\nMORNING MCP TOOL CALLS MADE THIS TURN (verbatim, each with its arguments and its real result):\n[\n  {\n    \"name\": \"list_clients\",\n    \"error\": null,\n    \"arguments\": \"{\\\"name\\\":\\\"לריסה טסמה\\\"}\",\n    \"output\": \"{\\\"count\\\": 0, \\\"clients\\\": []}\"\n  }\n]\n\nFollow the recognition prompt above: query the client's ledger history first when the round concerns a client, then call report_ledger_recognition exactly once with the verdict for THIS round."}
+```
+
+- tools (2): ['report_ledger_recognition', 'query_ledger_events']
+
+- max_output_tokens: `20000`
+
+- model: `'gpt-5.6-luna'`
+
+<details>
+<summary>↳↳ instructions (15465 chars)</summary>
+
+```text
+# Ledger Event Recognition — post-turn recognition prompt
+
+You are a bookkeeping recognition step. You run **once, after** a Godfather/Admin turn's
+reply has already been sent to the operator. You never talk to the operator; your output is
+consumed by code and discarded. You have two tools:
+
+- `report_ledger_recognition` — call it **exactly once, always**, as your final action.
+- `query_ledger_events` — read-only lookup over the existing ledger. Use it as described in
+  "Look at the client's ledger history first". Never more than 3 calls total.
+
+## What you are given
+
+- **The conversation window** — every message from the last hour of this chat, oldest first,
+  each line as `<message_id> [<role>] <content>`, where `<role>` is `godfather`, `admin`, or
+  `client`. A message that already produced a ledger event is marked
+  `[✓ captured as <event_id>]`. Media messages also carry their extracted text.
+- **The Morning MCP tool calls made during that window**, verbatim — each with its arguments
+  and its real result. This is your ONLY evidence of what was actually resolved in Morning.
+- **The reply just sent to the operator this round.**
+- **Today's date** (Israel local).
+
+## Whose message can trigger an event
+
+Only a `[godfather]` or `[admin]` message can be a trigger. A `[client]` message is **context
+only** — it can help you understand an amount or a name, but a client stating "העברתי לך
+5,000" is never itself a `בנק` event. The trigger is always the lawyer/operator recording it.
+
+## Your single question
+
+**Does THE LAST `[godfather]` / `[admin]` MESSAGE in the window — read in the context of the
+rest of the window — do one of these three things?**
+
+1. **Completes an event** — its turn added the last missing mandatory field, produced the
+   client-resolution evidence that was blocking, or created the Morning document.
+2. **States a whole standalone event** — a complete fee arrangement, deposit, or work-log
+   entry, in one message, with its client already resolvable from window evidence.
+3. **Adds to / corrects / cancels** an arrangement that is present **in the window** (as a
+   `[✓ captured as …]` marker or as an in-progress discussion) **or in the client's ledger
+   history** you looked up.
+
+If yes → verdict `complete` (or `declined`, see "Client resolution"). If none of the three →
+verdict `none`.
+
+- **Judge the last operator message only.** Earlier messages are context — for resolving
+  references, for knowing whether the client was already resolved, for folding a correction
+  into current state — never targets. An earlier message already marked `[✓ captured as …]`
+  is done; never re-report it.
+- **Do not sweep the window for old, un-captured events.** If the completing turn for some
+  earlier arrangement was missed, and the last message isn't about that arrangement, let it
+  go — verdict `none`.
+- **When in doubt, `none`.** A missed capture is cheaper than a false one.
+
+### Recognising case 3 (add / correct / cancel)
+
+- Explicit language: "לתקן ל…", "עולה ל…", "מתקדם ל…" (always a **new total**, never a
+  delta), "נסגר על…", "לבטל", "למחוק", "בנוסף ל…", "תוספת".
+- Heuristic: a bare monetary / percentage / conditional term **with no client of its own**
+  attaches to the **most recent open arrangement** in the window (e.g. after "דנה לולו 1500"
+  → captured, a later "15% אם הגיעו להסדר" is a second component of *that* arrangement).
+- If you genuinely can't tell which prior arrangement a fragment belongs to → `none`; let
+  the conversation clarify next turn.
+
+## Look at the client's ledger history first
+
+When the round concerns a client (almost every `הסכם` / `בנק` / `חשבונית` round does), your
+**first action** is a single `query_ledger_events` call with one identity-hinted criterion —
+the client's name (`{"text": "<name>", "hint": "identity"}`). Read back that client's full
+ledger history, and use it to:
+
+- know whether the arrangement the last message touches already exists (case 3), and get its
+  real `event_id` for `reference`;
+- avoid re-reporting something already recorded.
+
+Then decide and call `report_ledger_recognition`. If the round has no client at all, skip the
+query. You may issue at most one or two more `query_ledger_events` calls if the first result
+is ambiguous — never more than 3 total, and only ever to establish a link, never to
+"double-check" the current event.
+
+## The three verdicts
+
+- **`complete`** — one of the three trigger cases fired and the event is complete. Return the
+  event fully mapped to the ledger schema (see "Fields" + "Extraction rules"), plus
+  `trigger_message_id` = the message that first introduced this event's core economic content
+  (informational — the recorded date comes from the **completing** message, or from the
+  Morning document for `חשבונית`).
+- **`none`** — nothing to record this round: an unresolved client, a missing mandatory
+  field, a read-only Morning question, ordinary chatter, a mid-resolution turn, an event
+  already captured, or an ambiguous fragment.
+- **`declined`** — the operator was asked the single closed store-anyway question (see
+  "Client resolution") and explicitly answered *don't record it*. Return `source_type`, the
+  operator-stated client name (`client_name_stated`), and `reason: "declined_by_operator"`.
+
+## Client resolution — mandatory before `הסכם` / `בנק` / `חשבונית` can be complete
+
+An event is **not complete** until its client is resolved to an **exact Morning name**. You
+cannot check Morning yourself — you determine "resolved" **only** from evidence in the
+window's MCP calls:
+
+| evidence in the window | client is… |
+|---|---|
+| `resolve_client_name(...)` returned an **exact** match | resolved — use that exact Morning name |
+| `add_client(...)` succeeded | resolved — use the created name |
+| a `create_*` document call succeeded (`חשבונית` only) | resolved by construction |
+| a name appears only in extracted text / operator prose, no MCP evidence | **NOT resolved → `none`, wait** |
+| `resolve_client_name(...)` returned no match / only partial matches, still unresolved | **NOT resolved → `none`, wait** |
+
+A client name in a contract image or a chat message is a **candidate**, never a resolution.
+The OCR text of a contract shows the same name whether or not that client exists in Morning —
+only a tool *result* tells you.
+
+**Store-anyway.** If the window shows the operator was asked for the client's full name +
+email + phone, declined, was asked **once** the closed question "record it without the client
+verified in Morning, or not?", and answered *record it* — OR the operator proactively asked
+to record it without those details — then `client_name` = the operator-stated free text and
+you MUST put the exact marker `[לקוח לא אומת במורנינג]` inside `description`. If they answered
+*don't record it* → verdict `declined`.
+
+**Does NOT apply to:** `payer_name` (free text, may differ from the client, never resolved);
+the `חשבונית` client (resolved by construction from the `create_*` call).
+
+## Fields
+
+Buckets below are **mandatory** (the event is not `complete` without it), **conditional**
+(mandatory only in the stated case), and **keep-if-provided** (never invent it; if the
+conversation gave it, carry it through). The parenthetical "(you)" marks a field you
+provide; everything else is minted by code after you report and must never be provided by
+you.
+
+| type | mandatory | conditional | keep-if-provided |
+|---|---|---|---|
+| `הסכם` | resolved `client_name` or store-anyway text (you) · `description` (you) · ≥1 `components` entry **OR** an hours value (you) | per component: `amount` > 0 **OR** `percent` (you, iff that component is monetary) | `payer_name`; per-component `trigger_condition` / `percent` / `percent_base` / `hours` / `hourly_rate`; `reference` / `reference_hint` |
+| `בנק` | resolved `client_name` or store-anyway text (you) · `txn_date` (you) · `amount` (you) · `description` (you) · `vat_status` = `כולל` (you — always) | — | `bank_number` / `bank_branch` / `bank_account`; `reference` / `reference_hint`; `payer_name` **when it genuinely differs from the resolved client** (see "בנק payer vs client" below — put the slip's name verbatim, don't just fold it into `description`) |
+| `חשבונית` | `accounting_document_json` = the document's whole JSON object, copied verbatim (you) — from the Morning `create_*` result, or the reconciliation sweep's listing. **Nothing else** — code derives the display number, `event_subtype`, `amount`, `txn_date`, VAT, status, payment method and client from that JSON. | — | `reference` / `reference_hint` |
+
+**Always code-minted — never provide, for any type:** `event_id`, `event_datetime`,
+`captured_at`, `schema_version`, `session_id`, `agreement_id`, `component_id`,
+`component_label`. `message_id` is code-supplied from the completing message.
+
+> Code re-validates every mandatory / conditional field after assembling the final record. A
+> record that still fails is persisted **flagged incomplete** (a `[רישום חלקי — חסר: …]`
+> marker in `description`), never dropped. Your job is still to only report `complete` when
+> you believe it genuinely is — the code check is a backstop, not a licence to guess.
+
+## `חשבונית` — capturing a Morning document created this turn
+
+When the window's MCP calls contain a **successful** `create_invoice` / `create_combo_document`
+/ `create_receipt` / `create_credit_note` / `create_combo_document_as_reference`, that
+document IS a complete `חשבונית` event this round. Capture it **exactly as the background
+reconciliation sweep captures a pre-existing document**: copy the **entire** JSON object from
+that tool's result — the whole `{…}`, verbatim, every field — into `accounting_document_json`,
+and set nothing else (`component_count` = 0, `components` = []). Do not summarise, reorder,
+translate, drop fields, or fill anything in from the operator's or your own prose. Code reads
+the display number, document type (`event_subtype`), amount, dates, VAT status, payment
+method, status and client straight out of that JSON — the `create_*` result carries the full
+document, identical in shape to what the reconciliation listing returns.
+
+## Amendments, corrections, cancellations
+
+When the last message changes or cancels an arrangement already in the window or the client's
+ledger history:
+
+- Report a **NEW `complete` event** with `event_subtype: "יצירה"`, describing the
+  arrangement's **current, up-to-date state** — fold in everything already known plus what
+  the last message changes. (`עדכון` / `ביטול` subtypes are disabled — one immutable record
+  per state, exactly as today. Two `יצירה` records for one evolving arrangement are expected
+  and fine.)
+- `trigger_message_id` = the correction message itself.
+- **Linking:**
+  - Prior event visible in the window as `[✓ captured as <event_id>]` → set `reference` =
+    that `event_id`.
+  - Else, prior event found in the `query_ledger_events` history you pulled → set `reference`
+    = that `event_id`.
+  - Else → leave `reference` unset, set `reference_hint` to free text describing the prior
+    arrangement (client, approximate date, prior amount). Always set `reference_hint`
+    whenever the language signals a relationship to something prior, even when you did pin
+    down `reference`.
+
+## Extraction rules (how to read money / names / dates)
+
+- **Verbatim over guessed.** Never normalize or "clean up" an ambiguous name/amount — record
+  what's there; put uncertainty in `description`.
+- **VAT.** `הסכם`: "לפני מע"מ" / "לא כולל מע"מ" → `לא כולל`; "כולל מע"מ" → `כולל`; unstated →
+  `לא צוין`. `בנק`: **always `כולל`**, unconditionally (money that landed already contains VAT).
+- **A base amount + its VAT-inclusive total** ("20,000 + מע"מ = 23,600") is ONE component,
+  `amount` = the total, `vat_status` = `כולל`. Never compute VAT yourself. Never put two
+  numbers in one `amount`.
+- **"עולה ל-X" / "מתקדם ל-X"** = a new total, never added to a prior figure.
+- **Relative dates** ("היום" / "אתמול") resolve against the triggering message's own timestamp.
+- **Multi-stage / conditional / tiered agreements** — every genuinely distinct monetary
+  commitment is its own entry in `components` (set `component_count` to match). A per-stage
+  condition goes in `trigger_condition`, not `description`. A base+total pair for one stage
+  is still one entry.
+- **`trigger_condition` is for a real contingency, not payment timing.** A component whose
+  fee is contingent on an outcome or a countable event — a percentage success-fee
+  (`מכל סכום שייפסק`), a per-hearing/per-appearance fee (`עבור כל ישיבת הוכחות`), an
+  `אם…`/`במידה ו…` bonus — carries that clause in `trigger_condition`. A plain fixed
+  retainer is **unconditional → `trigger_condition` null**, even when the source says when
+  it is due (`לתשלום עם חתימת ההסכם`, `ישולם תוך 30 יום`) — due-date / payment-timing
+  wording is never a `trigger_condition`, and never invent one that the source did not
+  state.
+- **An agreement's own signing/execution date (`נחתם ביום …`) is never captured** — not in
+  `txn_date`, not anywhere. `txn_date` on a `הסכם` component is non-null **only** for an
+  hourly work-log component (the date the hours were worked).
+- **Hourly work-log entries** ("3 שעות") are first-class events, one per occurrence, and
+  qualify every time — brevity is never a reason to skip. Never aggregate.
+- **Unpriced mentions still get captured** — client + matter named, no fee → capture with
+  `amount` empty.
+- **Payer vs client.** "דרך X" / "באמצעות X" near a client name → X is the paying
+  intermediary → `payer_name`, kept separate, never folded into `description` / `agreement_id`.
+- **Never merge similarly-named entities** unless the conversation explicitly says they're
+  the same.
+- **בנק screenshots** — read what's on screen; don't assume one layout. The "מ<name>" prefix
+  is "from <name>" — strip the מ. Prefer a labeled account-holder field over a loose inline
+  name. Multiple dates on a screenshot can differ — an explicit transaction/value date goes
+  in `txn_date`.
+- **בנק payer vs client.** A deposit slip's own account-holder/depositor name is who *paid*
+  — it is not automatically the client. When the conversation shows the operator resolving
+  the event against a client that differs from that name (e.g. rejecting a compound/unclear
+  slip name as the client and stating an unrelated one instead), put the slip's name
+  **verbatim** in `payer_name` — don't just fold it into `description` and leave `payer_name`
+  empty. Only when the slip's name and the resolved client are the same person does
+  `payer_name` stay null (the ordinary case).
+
+## Out of scope
+
+- An Invoice Management action/query, a Reminder action, or a question ABOUT past ledger
+  history is never a ledger event — verdict `none`.
+- A bare contact detail on its own — an email address, a phone number, an ID number, a
+  street address, or a lone name / client-record field with no monetary or arrangement
+  content — is **not** a ledger event. Verdict `none`.
+- If the window shows the Morning tunnel was unavailable this turn, you have no MCP evidence
+  to resolve a client — verdict `none`.
+
+---
+Today's date (Israel local): 01/10/2026
+
+POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already been sent. Do not produce a reply. Your only task is to call report_ledger_recognition exactly once with the verdict for this round, after any ledger-history lookups the prompt calls for. When in doubt, verdict='none'.
+```
+
+</details>
+
+</details>
+
+</details>
+
+<details>
+<summary>31. [2026-10-01 10:31:39] MODEL → APP — context=recognize_ledger_event</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+- response.id: `resp_0d747d6d2e939f9f006abe0c59f3c487d182d77b6847e4e411`
+- status: `completed`
+- usage: `{"input_tokens": 8687, "input_tokens_details": {"cache_write_tokens": 748, "cached_tokens": 7936}, "output_tokens": 66, "output_tokens_details": {"reasoning_tokens": 31}, "total_tokens": 8753}`
 - reasoning item (content not user-visible)
-- function_call: `send_progress_update` call_id=`call_x0SNL9hngFdNMUhRSlPveeyR`
+- function_call: `query_ledger_events` call_id=`call_U4aC9NaH0nEfK67Mtf31c4lf`
 ```json
 {
-  "text": "הפרטים מלאים, ואני מציג אותם עכשיו לאישור לפני היצירה."
+  "criteria": [
+    {
+      "text": "לריסה טסמה",
+      "hint": "identity"
+    }
+  ]
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+- response.id: `resp_0d747d6d2e939f9f006abe0c59f3c487d182d77b6847e4e411`
+- status: `completed`
+- usage: `{"input_tokens": 8687, "input_tokens_details": {"cache_write_tokens": 748, "cached_tokens": 7936}, "output_tokens": 66, "output_tokens_details": {"reasoning_tokens": 31}, "total_tokens": 8753}`
+- reasoning item (content not user-visible)
+- function_call: `query_ledger_events` call_id=`call_U4aC9NaH0nEfK67Mtf31c4lf`
+```json
+{
+  "criteria": [
+    {
+      "text": "לריסה טסמה",
+      "hint": "identity"
+    }
+  ]
 }
 ```
 
@@ -6538,15 +3890,367 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>47. [2026-09-30 16:45:14] APP → USER — context=progress_update</summary>
+<summary>32. [2026-10-01 10:31:39] APP → MODEL — context=recognize_ledger_event (query round)</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+**input:**
+
+- app's reply to `query_ledger_events` (call_id=`call_U4aC9NaH0nEfK67Mtf31c4lf`):
+```text
+{
+  "matches": [],
+  "count": 0
+}
+```
+
+- tools (2): ['report_ledger_recognition', 'query_ledger_events']
+
+- previous_response_id: `'resp_0d747d6d2e939f9f006abe0c59f3c487d182d77b6847e4e411'`
+
+- max_output_tokens: `20000`
+
+- model: `'gpt-5.6-luna'`
+
+- instructions: ledger recognition prompt
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+**input:**
+
+- app's reply to `query_ledger_events` (call_id=`call_U4aC9NaH0nEfK67Mtf31c4lf`):
+```text
+{
+  "matches": [],
+  "count": 0
+}
+```
+
+- tools (2): ['report_ledger_recognition', 'query_ledger_events']
+
+- previous_response_id: `'resp_0d747d6d2e939f9f006abe0c59f3c487d182d77b6847e4e411'`
+
+- max_output_tokens: `20000`
+
+- model: `'gpt-5.6-luna'`
+
+<details>
+<summary>↳↳ instructions (15465 chars)</summary>
+
+```text
+# Ledger Event Recognition — post-turn recognition prompt
+
+You are a bookkeeping recognition step. You run **once, after** a Godfather/Admin turn's
+reply has already been sent to the operator. You never talk to the operator; your output is
+consumed by code and discarded. You have two tools:
+
+- `report_ledger_recognition` — call it **exactly once, always**, as your final action.
+- `query_ledger_events` — read-only lookup over the existing ledger. Use it as described in
+  "Look at the client's ledger history first". Never more than 3 calls total.
+
+## What you are given
+
+- **The conversation window** — every message from the last hour of this chat, oldest first,
+  each line as `<message_id> [<role>] <content>`, where `<role>` is `godfather`, `admin`, or
+  `client`. A message that already produced a ledger event is marked
+  `[✓ captured as <event_id>]`. Media messages also carry their extracted text.
+- **The Morning MCP tool calls made during that window**, verbatim — each with its arguments
+  and its real result. This is your ONLY evidence of what was actually resolved in Morning.
+- **The reply just sent to the operator this round.**
+- **Today's date** (Israel local).
+
+## Whose message can trigger an event
+
+Only a `[godfather]` or `[admin]` message can be a trigger. A `[client]` message is **context
+only** — it can help you understand an amount or a name, but a client stating "העברתי לך
+5,000" is never itself a `בנק` event. The trigger is always the lawyer/operator recording it.
+
+## Your single question
+
+**Does THE LAST `[godfather]` / `[admin]` MESSAGE in the window — read in the context of the
+rest of the window — do one of these three things?**
+
+1. **Completes an event** — its turn added the last missing mandatory field, produced the
+   client-resolution evidence that was blocking, or created the Morning document.
+2. **States a whole standalone event** — a complete fee arrangement, deposit, or work-log
+   entry, in one message, with its client already resolvable from window evidence.
+3. **Adds to / corrects / cancels** an arrangement that is present **in the window** (as a
+   `[✓ captured as …]` marker or as an in-progress discussion) **or in the client's ledger
+   history** you looked up.
+
+If yes → verdict `complete` (or `declined`, see "Client resolution"). If none of the three →
+verdict `none`.
+
+- **Judge the last operator message only.** Earlier messages are context — for resolving
+  references, for knowing whether the client was already resolved, for folding a correction
+  into current state — never targets. An earlier message already marked `[✓ captured as …]`
+  is done; never re-report it.
+- **Do not sweep the window for old, un-captured events.** If the completing turn for some
+  earlier arrangement was missed, and the last message isn't about that arrangement, let it
+  go — verdict `none`.
+- **When in doubt, `none`.** A missed capture is cheaper than a false one.
+
+### Recognising case 3 (add / correct / cancel)
+
+- Explicit language: "לתקן ל…", "עולה ל…", "מתקדם ל…" (always a **new total**, never a
+  delta), "נסגר על…", "לבטל", "למחוק", "בנוסף ל…", "תוספת".
+- Heuristic: a bare monetary / percentage / conditional term **with no client of its own**
+  attaches to the **most recent open arrangement** in the window (e.g. after "דנה לולו 1500"
+  → captured, a later "15% אם הגיעו להסדר" is a second component of *that* arrangement).
+- If you genuinely can't tell which prior arrangement a fragment belongs to → `none`; let
+  the conversation clarify next turn.
+
+## Look at the client's ledger history first
+
+When the round concerns a client (almost every `הסכם` / `בנק` / `חשבונית` round does), your
+**first action** is a single `query_ledger_events` call with one identity-hinted criterion —
+the client's name (`{"text": "<name>", "hint": "identity"}`). Read back that client's full
+ledger history, and use it to:
+
+- know whether the arrangement the last message touches already exists (case 3), and get its
+  real `event_id` for `reference`;
+- avoid re-reporting something already recorded.
+
+Then decide and call `report_ledger_recognition`. If the round has no client at all, skip the
+query. You may issue at most one or two more `query_ledger_events` calls if the first result
+is ambiguous — never more than 3 total, and only ever to establish a link, never to
+"double-check" the current event.
+
+## The three verdicts
+
+- **`complete`** — one of the three trigger cases fired and the event is complete. Return the
+  event fully mapped to the ledger schema (see "Fields" + "Extraction rules"), plus
+  `trigger_message_id` = the message that first introduced this event's core economic content
+  (informational — the recorded date comes from the **completing** message, or from the
+  Morning document for `חשבונית`).
+- **`none`** — nothing to record this round: an unresolved client, a missing mandatory
+  field, a read-only Morning question, ordinary chatter, a mid-resolution turn, an event
+  already captured, or an ambiguous fragment.
+- **`declined`** — the operator was asked the single closed store-anyway question (see
+  "Client resolution") and explicitly answered *don't record it*. Return `source_type`, the
+  operator-stated client name (`client_name_stated`), and `reason: "declined_by_operator"`.
+
+## Client resolution — mandatory before `הסכם` / `בנק` / `חשבונית` can be complete
+
+An event is **not complete** until its client is resolved to an **exact Morning name**. You
+cannot check Morning yourself — you determine "resolved" **only** from evidence in the
+window's MCP calls:
+
+| evidence in the window | client is… |
+|---|---|
+| `resolve_client_name(...)` returned an **exact** match | resolved — use that exact Morning name |
+| `add_client(...)` succeeded | resolved — use the created name |
+| a `create_*` document call succeeded (`חשבונית` only) | resolved by construction |
+| a name appears only in extracted text / operator prose, no MCP evidence | **NOT resolved → `none`, wait** |
+| `resolve_client_name(...)` returned no match / only partial matches, still unresolved | **NOT resolved → `none`, wait** |
+
+A client name in a contract image or a chat message is a **candidate**, never a resolution.
+The OCR text of a contract shows the same name whether or not that client exists in Morning —
+only a tool *result* tells you.
+
+**Store-anyway.** If the window shows the operator was asked for the client's full name +
+email + phone, declined, was asked **once** the closed question "record it without the client
+verified in Morning, or not?", and answered *record it* — OR the operator proactively asked
+to record it without those details — then `client_name` = the operator-stated free text and
+you MUST put the exact marker `[לקוח לא אומת במורנינג]` inside `description`. If they answered
+*don't record it* → verdict `declined`.
+
+**Does NOT apply to:** `payer_name` (free text, may differ from the client, never resolved);
+the `חשבונית` client (resolved by construction from the `create_*` call).
+
+## Fields
+
+Buckets below are **mandatory** (the event is not `complete` without it), **conditional**
+(mandatory only in the stated case), and **keep-if-provided** (never invent it; if the
+conversation gave it, carry it through). The parenthetical "(you)" marks a field you
+provide; everything else is minted by code after you report and must never be provided by
+you.
+
+| type | mandatory | conditional | keep-if-provided |
+|---|---|---|---|
+| `הסכם` | resolved `client_name` or store-anyway text (you) · `description` (you) · ≥1 `components` entry **OR** an hours value (you) | per component: `amount` > 0 **OR** `percent` (you, iff that component is monetary) | `payer_name`; per-component `trigger_condition` / `percent` / `percent_base` / `hours` / `hourly_rate`; `reference` / `reference_hint` |
+| `בנק` | resolved `client_name` or store-anyway text (you) · `txn_date` (you) · `amount` (you) · `description` (you) · `vat_status` = `כולל` (you — always) | — | `bank_number` / `bank_branch` / `bank_account`; `reference` / `reference_hint`; `payer_name` **when it genuinely differs from the resolved client** (see "בנק payer vs client" below — put the slip's name verbatim, don't just fold it into `description`) |
+| `חשבונית` | `accounting_document_json` = the document's whole JSON object, copied verbatim (you) — from the Morning `create_*` result, or the reconciliation sweep's listing. **Nothing else** — code derives the display number, `event_subtype`, `amount`, `txn_date`, VAT, status, payment method and client from that JSON. | — | `reference` / `reference_hint` |
+
+**Always code-minted — never provide, for any type:** `event_id`, `event_datetime`,
+`captured_at`, `schema_version`, `session_id`, `agreement_id`, `component_id`,
+`component_label`. `message_id` is code-supplied from the completing message.
+
+> Code re-validates every mandatory / conditional field after assembling the final record. A
+> record that still fails is persisted **flagged incomplete** (a `[רישום חלקי — חסר: …]`
+> marker in `description`), never dropped. Your job is still to only report `complete` when
+> you believe it genuinely is — the code check is a backstop, not a licence to guess.
+
+## `חשבונית` — capturing a Morning document created this turn
+
+When the window's MCP calls contain a **successful** `create_invoice` / `create_combo_document`
+/ `create_receipt` / `create_credit_note` / `create_combo_document_as_reference`, that
+document IS a complete `חשבונית` event this round. Capture it **exactly as the background
+reconciliation sweep captures a pre-existing document**: copy the **entire** JSON object from
+that tool's result — the whole `{…}`, verbatim, every field — into `accounting_document_json`,
+and set nothing else (`component_count` = 0, `components` = []). Do not summarise, reorder,
+translate, drop fields, or fill anything in from the operator's or your own prose. Code reads
+the display number, document type (`event_subtype`), amount, dates, VAT status, payment
+method, status and client straight out of that JSON — the `create_*` result carries the full
+document, identical in shape to what the reconciliation listing returns.
+
+## Amendments, corrections, cancellations
+
+When the last message changes or cancels an arrangement already in the window or the client's
+ledger history:
+
+- Report a **NEW `complete` event** with `event_subtype: "יצירה"`, describing the
+  arrangement's **current, up-to-date state** — fold in everything already known plus what
+  the last message changes. (`עדכון` / `ביטול` subtypes are disabled — one immutable record
+  per state, exactly as today. Two `יצירה` records for one evolving arrangement are expected
+  and fine.)
+- `trigger_message_id` = the correction message itself.
+- **Linking:**
+  - Prior event visible in the window as `[✓ captured as <event_id>]` → set `reference` =
+    that `event_id`.
+  - Else, prior event found in the `query_ledger_events` history you pulled → set `reference`
+    = that `event_id`.
+  - Else → leave `reference` unset, set `reference_hint` to free text describing the prior
+    arrangement (client, approximate date, prior amount). Always set `reference_hint`
+    whenever the language signals a relationship to something prior, even when you did pin
+    down `reference`.
+
+## Extraction rules (how to read money / names / dates)
+
+- **Verbatim over guessed.** Never normalize or "clean up" an ambiguous name/amount — record
+  what's there; put uncertainty in `description`.
+- **VAT.** `הסכם`: "לפני מע"מ" / "לא כולל מע"מ" → `לא כולל`; "כולל מע"מ" → `כולל`; unstated →
+  `לא צוין`. `בנק`: **always `כולל`**, unconditionally (money that landed already contains VAT).
+- **A base amount + its VAT-inclusive total** ("20,000 + מע"מ = 23,600") is ONE component,
+  `amount` = the total, `vat_status` = `כולל`. Never compute VAT yourself. Never put two
+  numbers in one `amount`.
+- **"עולה ל-X" / "מתקדם ל-X"** = a new total, never added to a prior figure.
+- **Relative dates** ("היום" / "אתמול") resolve against the triggering message's own timestamp.
+- **Multi-stage / conditional / tiered agreements** — every genuinely distinct monetary
+  commitment is its own entry in `components` (set `component_count` to match). A per-stage
+  condition goes in `trigger_condition`, not `description`. A base+total pair for one stage
+  is still one entry.
+- **`trigger_condition` is for a real contingency, not payment timing.** A component whose
+  fee is contingent on an outcome or a countable event — a percentage success-fee
+  (`מכל סכום שייפסק`), a per-hearing/per-appearance fee (`עבור כל ישיבת הוכחות`), an
+  `אם…`/`במידה ו…` bonus — carries that clause in `trigger_condition`. A plain fixed
+  retainer is **unconditional → `trigger_condition` null**, even when the source says when
+  it is due (`לתשלום עם חתימת ההסכם`, `ישולם תוך 30 יום`) — due-date / payment-timing
+  wording is never a `trigger_condition`, and never invent one that the source did not
+  state.
+- **An agreement's own signing/execution date (`נחתם ביום …`) is never captured** — not in
+  `txn_date`, not anywhere. `txn_date` on a `הסכם` component is non-null **only** for an
+  hourly work-log component (the date the hours were worked).
+- **Hourly work-log entries** ("3 שעות") are first-class events, one per occurrence, and
+  qualify every time — brevity is never a reason to skip. Never aggregate.
+- **Unpriced mentions still get captured** — client + matter named, no fee → capture with
+  `amount` empty.
+- **Payer vs client.** "דרך X" / "באמצעות X" near a client name → X is the paying
+  intermediary → `payer_name`, kept separate, never folded into `description` / `agreement_id`.
+- **Never merge similarly-named entities** unless the conversation explicitly says they're
+  the same.
+- **בנק screenshots** — read what's on screen; don't assume one layout. The "מ<name>" prefix
+  is "from <name>" — strip the מ. Prefer a labeled account-holder field over a loose inline
+  name. Multiple dates on a screenshot can differ — an explicit transaction/value date goes
+  in `txn_date`.
+- **בנק payer vs client.** A deposit slip's own account-holder/depositor name is who *paid*
+  — it is not automatically the client. When the conversation shows the operator resolving
+  the event against a client that differs from that name (e.g. rejecting a compound/unclear
+  slip name as the client and stating an unrelated one instead), put the slip's name
+  **verbatim** in `payer_name` — don't just fold it into `description` and leave `payer_name`
+  empty. Only when the slip's name and the resolved client are the same person does
+  `payer_name` stay null (the ordinary case).
+
+## Out of scope
+
+- An Invoice Management action/query, a Reminder action, or a question ABOUT past ledger
+  history is never a ledger event — verdict `none`.
+- A bare contact detail on its own — an email address, a phone number, an ID number, a
+  street address, or a lone name / client-record field with no monetary or arrangement
+  content — is **not** a ledger event. Verdict `none`.
+- If the window shows the Morning tunnel was unavailable this turn, you have no MCP evidence
+  to resolve a client — verdict `none`.
+
+---
+Today's date (Israel local): 01/10/2026
+
+POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already been sent. Do not produce a reply. Your only task is to call report_ledger_recognition exactly once with the verdict for this round, after any ledger-history lookups the prompt calls for. When in doubt, verdict='none'.
+```
+
+</details>
+
+</details>
+
+</details>
+
+<details>
+<summary>33. [2026-10-01 10:31:42] MODEL → APP — context=recognize_ledger_event (query round)</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+- response.id: `resp_0d747d6d2e939f9f006abe0c5c199887d183370db37a1dd123`
+- status: `completed`
+- usage: `{"input_tokens": 8776, "input_tokens_details": {"cache_write_tokens": 89, "cached_tokens": 8684}, "output_tokens": 33, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 8809}`
+- function_call: `report_ledger_recognition` call_id=`call_d8DWLqlMo5nmKHjQJnVAN1Vn`
+```json
+{
+  "verdict": "none",
+  "none_reason": "client-record maintenance, no ledger event"
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+- response.id: `resp_0d747d6d2e939f9f006abe0c5c199887d183370db37a1dd123`
+- status: `completed`
+- usage: `{"input_tokens": 8776, "input_tokens_details": {"cache_write_tokens": 89, "cached_tokens": 8684}, "output_tokens": 33, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 8809}`
+- function_call: `report_ledger_recognition` call_id=`call_d8DWLqlMo5nmKHjQJnVAN1Vn`
+```json
+{
+  "verdict": "none",
+  "none_reason": "client-record maintenance, no ledger event"
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>34. [2026-10-01 10:31:42] USER → APP — context=webhook</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
 ```json
 {
-  "chat_id": "972500000021@c.us",
-  "message": "הפרטים מלאים, ואני מציג אותם עכשיו לאישור לפני היצירה."
+  "typeWebhook": "incomingMessageReceived",
+  "timestamp": 1790839902,
+  "idMessage": "E2E_ADD_CLIENT_APPROVE_FORCE_NEW_A1_1790839902",
+  "instanceData": {
+    "idInstance": 7103000000,
+    "wid": "972501234567@c.us",
+    "typeInstance": "whatsapp"
+  },
+  "senderData": {
+    "chatId": "972500000021@c.us",
+    "sender": "972500000021@c.us",
+    "senderName": "E2E Godfather"
+  },
+  "messageData": {
+    "typeMessage": "textMessage",
+    "textMessageData": {
+      "textMessage": "לא, תוסיף לקוח חדש בשם לריסה טסמה, מייל e2e-client-557926@example.com, טלפון +972501234567"
+    }
+  }
 }
 ```
 
@@ -6557,8 +4261,25 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 ```json
 {
-  "chat_id": "972500000021@c.us",
-  "message": "הפרטים מלאים, ואני מציג אותם עכשיו לאישור לפני היצירה."
+  "typeWebhook": "incomingMessageReceived",
+  "timestamp": 1790839902,
+  "idMessage": "E2E_ADD_CLIENT_APPROVE_FORCE_NEW_A1_1790839902",
+  "instanceData": {
+    "idInstance": 7103000000,
+    "wid": "972501234567@c.us",
+    "typeInstance": "whatsapp"
+  },
+  "senderData": {
+    "chatId": "972500000021@c.us",
+    "sender": "972500000021@c.us",
+    "senderName": "E2E Godfather"
+  },
+  "messageData": {
+    "typeMessage": "textMessage",
+    "textMessageData": {
+      "textMessage": "לא, תוסיף לקוח חדש בשם לריסה טסמה, מייל e2e-client-557926@example.com, טלפון +972501234567"
+    }
+  }
 }
 ```
 
@@ -6567,35 +4288,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>48. [2026-09-30 16:45:14] USER ← APP (send result) — context=progress_update</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-```json
-{
-  "chat_id": "972500000021@c.us",
-  "message": "None"
-}
-```
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-```json
-{
-  "result": "None"
-}
-```
-
-</details>
-
-</details>
-
-<details>
-<summary>49. [2026-09-30 16:45:14] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>35. [2026-10-01 10:31:43] APP → MODEL — context=_run_resolution_loop (first round)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -6606,16 +4299,29 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 **input:**
 
-- app's reply to `send_progress_update` (call_id=`call_x0SNL9hngFdNMUhRSlPveeyR`):
-```text
-{
-  "sent": true
-}
+```json
+{"role": "user", "content": "תוסיף לקוח חדש בשם לריסה טסמה, מייל e2e-client-557926@example.com, טלפון +972501234567"}
+```
+```json
+{"role": "assistant", "content": "בודק אם הלקוח כבר קיים, ואז אציג לך את פרטי ההוספה לאישור."}
+```
+```json
+{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: התקבלה בקשה להוסיף לקוח חדש בשם לריסה טסמה עם מייל וטלפון שסופקו.\nTHIS TURN'S PURPOSE: להפעיל את תהליך הוספת הלקוח, לבדוק כפילויות ולאסוף אישור לפני יצירה.\nEXPECTATION: אטען את התהליך והיכולות הנדרשות, אבדוק לקוחות דומים, ואז אבקש אישור מפורש ליצירה."}
+```
+```json
+{"role": "assistant", "content": "מבצע בדיקת כפילות עבור לריסה טסמה."}
+```
+```json
+{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח חדש. בדיקת Morning עבור לריסה טסמה הסתיימה ללא לקוח קיים או מועמד דומה.\nTHIS TURN'S PURPOSE: לבקש אישור מפורש לפני יצירת הרשומה.\nEXPECTATION: אם המשתמש יאשר, אצור את הלקוח בדיוק עם השם, המייל והטלפון שסופקו. אם יסרב, לא אצור דבר ואבקש מה לשנות."}
+```
+```json
+{"role": "assistant", "content": "📋 לאישור — לקוח חדש:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: +972501234567\nלאישור — כן/לא?"}
+```
+```json
+{"role": "user", "content": "לא, תוסיף לקוח חדש בשם לריסה טסמה, מייל e2e-client-557926@example.com, טלפון +972501234567"}
 ```
 
-- tools (11): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp']
-
-- previous_response_id: `'resp_0c9769670127a324006abd12694d0487d1b51405e96cae73df'`
+- tools (12): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp', 'mcp']
 
 - max_output_tokens: `20000`
 
@@ -6634,16 +4340,29 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 **input:**
 
-- app's reply to `send_progress_update` (call_id=`call_x0SNL9hngFdNMUhRSlPveeyR`):
-```text
-{
-  "sent": true
-}
+```json
+{"role": "user", "content": "תוסיף לקוח חדש בשם לריסה טסמה, מייל e2e-client-557926@example.com, טלפון +972501234567"}
+```
+```json
+{"role": "assistant", "content": "בודק אם הלקוח כבר קיים, ואז אציג לך את פרטי ההוספה לאישור."}
+```
+```json
+{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: התקבלה בקשה להוסיף לקוח חדש בשם לריסה טסמה עם מייל וטלפון שסופקו.\nTHIS TURN'S PURPOSE: להפעיל את תהליך הוספת הלקוח, לבדוק כפילויות ולאסוף אישור לפני יצירה.\nEXPECTATION: אטען את התהליך והיכולות הנדרשות, אבדוק לקוחות דומים, ואז אבקש אישור מפורש ליצירה."}
+```
+```json
+{"role": "assistant", "content": "מבצע בדיקת כפילות עבור לריסה טסמה."}
+```
+```json
+{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח חדש. בדיקת Morning עבור לריסה טסמה הסתיימה ללא לקוח קיים או מועמד דומה.\nTHIS TURN'S PURPOSE: לבקש אישור מפורש לפני יצירת הרשומה.\nEXPECTATION: אם המשתמש יאשר, אצור את הלקוח בדיוק עם השם, המייל והטלפון שסופקו. אם יסרב, לא אצור דבר ואבקש מה לשנות."}
+```
+```json
+{"role": "assistant", "content": "📋 לאישור — לקוח חדש:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: +972501234567\nלאישור — כן/לא?"}
+```
+```json
+{"role": "user", "content": "לא, תוסיף לקוח חדש בשם לריסה טסמה, מייל e2e-client-557926@example.com, טלפון +972501234567"}
 ```
 
-- tools (11): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp']
-
-- previous_response_id: `'resp_0c9769670127a324006abd12694d0487d1b51405e96cae73df'`
+- tools (12): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp', 'mcp']
 
 - max_output_tokens: `20000`
 
@@ -7002,7 +4721,7 @@ cap_client_write, cap_client_read, cap_approval_with_buttons
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 16:45 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-10-01 10:31 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -7013,18 +4732,22 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>50. [2026-09-30 16:45:17] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>36. [2026-10-01 10:31:49] MODEL → APP — context=_run_resolution_loop (first round)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0c9769670127a324006abd126b550487d190ff6cbfa47db9f2`
+- response.id: `resp_0877ebc57cf0ad87006abe0c5f7eb887d1a46a21183757ec9a`
 - status: `completed`
-- usage: `{"input_tokens": 8897, "input_tokens_details": {"cache_write_tokens": 111, "cached_tokens": 8783}, "output_tokens": 72, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 8969}`
-- function_call: `approval_with_yes_no_buttons` call_id=`call_1hRGJgM3FcipAh1lRZrrRxKf`
+- usage: `{"input_tokens": 8516, "input_tokens_details": {"cache_write_tokens": 406, "cached_tokens": 8107}, "output_tokens": 269, "output_tokens_details": {"reasoning_tokens": 241}, "total_tokens": 8785}`
+- mcp_list_tools (morning-invoices-client-read): ['list_clients', 'resolve_client_name', 'get_client_details']
+- mcp_list_tools (morning-invoices-client-write): ['add_client', 'update_client']
+- reasoning item (content not user-visible)
+- function_call: `react_to_message` call_id=`call_ya3sBkiP0zfUFZ4rE5tWfSIn`
 ```json
 {
-  "text": "📋 לאישור — לקוח חדש:\nשם: זכריה פרוקופנקו\nמייל: e2e-client-513218@example.com\nטלפון: +972501234567\nלאישור — כן/לא?"
+  "emoji": "🫡",
+  "message_id": null
 }
 ```
 
@@ -7033,13 +4756,17 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0c9769670127a324006abd126b550487d190ff6cbfa47db9f2`
+- response.id: `resp_0877ebc57cf0ad87006abe0c5f7eb887d1a46a21183757ec9a`
 - status: `completed`
-- usage: `{"input_tokens": 8897, "input_tokens_details": {"cache_write_tokens": 111, "cached_tokens": 8783}, "output_tokens": 72, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 8969}`
-- function_call: `approval_with_yes_no_buttons` call_id=`call_1hRGJgM3FcipAh1lRZrrRxKf`
+- usage: `{"input_tokens": 8516, "input_tokens_details": {"cache_write_tokens": 406, "cached_tokens": 8107}, "output_tokens": 269, "output_tokens_details": {"reasoning_tokens": 241}, "total_tokens": 8785}`
+- mcp_list_tools (morning-invoices-client-read): ['list_clients', 'resolve_client_name', 'get_client_details']
+- mcp_list_tools (morning-invoices-client-write): ['add_client', 'update_client']
+- reasoning item (content not user-visible)
+- function_call: `react_to_message` call_id=`call_ya3sBkiP0zfUFZ4rE5tWfSIn`
 ```json
 {
-  "text": "📋 לאישור — לקוח חדש:\nשם: זכריה פרוקופנקו\nמייל: e2e-client-513218@example.com\nטלפון: +972501234567\nלאישור — כן/לא?"
+  "emoji": "🫡",
+  "message_id": null
 }
 ```
 
@@ -7048,7 +4775,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>51. [2026-09-30 16:45:17] APP → USER — context=buttons</summary>
+<summary>37. [2026-10-01 10:31:49] APP → USER — context=reaction</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -7056,7 +4783,596 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 ```json
 {
   "chat_id": "972500000021@c.us",
-  "message": "📋 לאישור — לקוח חדש:\nשם: זכריה פרוקופנקו\nמייל: e2e-client-513218@example.com\nטלפון: +972501234567\nלאישור — כן/לא?"
+  "message": {
+    "chatId": "972500000021@c.us",
+    "idMessage": "E2E_ADD_CLIENT_APPROVE_FORCE_NEW_A1_1790839902",
+    "reaction": "🫡"
+  }
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+```json
+{
+  "chatId": "972500000021@c.us",
+  "idMessage": "E2E_ADD_CLIENT_APPROVE_FORCE_NEW_A1_1790839902",
+  "reaction": "🫡"
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>38. [2026-10-01 10:31:49] USER ← APP (send result) — context=reaction</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+```json
+{
+  "chat_id": "972500000021@c.us",
+  "message": {
+    "code": null,
+    "data": null,
+    "error": "'object' object has no attribute 'api'"
+  }
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+```json
+{
+  "code": null,
+  "data": null,
+  "error": "'object' object has no attribute 'api'"
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>39. [2026-10-01 10:31:50] APP → USER — context=reaction</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+```json
+{
+  "chat_id": "972500000021@c.us",
+  "message": {
+    "chatId": "972500000021@c.us",
+    "idMessage": "E2E_ADD_CLIENT_APPROVE_FORCE_NEW_A1_1790839902",
+    "reaction": "🫡"
+  }
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+```json
+{
+  "chatId": "972500000021@c.us",
+  "idMessage": "E2E_ADD_CLIENT_APPROVE_FORCE_NEW_A1_1790839902",
+  "reaction": "🫡"
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>40. [2026-10-01 10:31:50] USER ← APP (send result) — context=reaction</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+```json
+{
+  "chat_id": "972500000021@c.us",
+  "message": {
+    "code": null,
+    "data": null,
+    "error": "'object' object has no attribute 'api'"
+  }
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+```json
+{
+  "code": null,
+  "data": null,
+  "error": "'object' object has no attribute 'api'"
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>41. [2026-10-01 10:31:50] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+- flows: flow_add_client
+
+- capabilities: cap_client_write, cap_client_read, cap_approval_with_buttons
+
+**input:**
+
+- app's reply to `react_to_message` (call_id=`call_ya3sBkiP0zfUFZ4rE5tWfSIn`):
+```text
+{
+  "status": "failed"
+}
+```
+
+- tools (12): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp', 'mcp']
+
+- previous_response_id: `'resp_0877ebc57cf0ad87006abe0c5f7eb887d1a46a21183757ec9a'`
+
+- max_output_tokens: `20000`
+
+- model: `'gpt-5.6-luna'`
+
+- instructions: backbone (flows=flow_add_client, capabilities=cap_client_write, cap_client_read, cap_approval_with_buttons)
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+- flows: flow_add_client
+
+- capabilities: cap_client_write, cap_client_read, cap_approval_with_buttons
+
+**input:**
+
+- app's reply to `react_to_message` (call_id=`call_ya3sBkiP0zfUFZ4rE5tWfSIn`):
+```text
+{
+  "status": "failed"
+}
+```
+
+- tools (12): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp', 'mcp']
+
+- previous_response_id: `'resp_0877ebc57cf0ad87006abe0c5f7eb887d1a46a21183757ec9a'`
+
+- max_output_tokens: `20000`
+
+- model: `'gpt-5.6-luna'`
+
+<details>
+<summary>↳↳ instructions (25120 chars)</summary>
+
+```text
+# DeniDin — Backbone
+
+## How You Work
+
+You work with two kinds of building blocks, described at low resolution in the
+catalogs below: **flows** (`flow_...`) - blueprints for a recurring kind of
+request - and **capabilities** (`cap_...`) - the domains that actually do things,
+each with its own prompt and its own real tools. Flows can load other flows and
+capabilities; a flow defines *what to do and in what order*, while each
+capability holds the detail of what it itself does.
+
+Loading tools, usable in any order, any number of times:
+
+- **`load_flows(flows)` / `unload_flows(flows)`** - always an array; one item is
+  fine, and combining flows is allowed when a request spans more than one.
+- **`load_capabilities(capabilities)` / `unload_capabilities(capabilities)`** -
+  always an array. The moment a capability is loaded, its prompt AND its real
+  tools are attached, starting the very next round; call the real tool directly,
+  there is no separate "use" step. A flow's own "Capabilities:" line declares
+  every capability that flow will need - load all of them together, in one
+  `load_capabilities` call, right after loading the flow, rather than loading
+  them one at a time as each step comes up: you already know you'll need them,
+  and batching saves a round-trip per capability.
+- **`reset_to_backbone()`** - unloads every loaded flow and capability at once.
+  Use it once you are genuinely done with the user's request(s), not mid-task.
+
+Loading an already-loaded item, or unloading one that is not loaded, is a
+harmless no-op. Loaded flows and capabilities stay loaded across this and future
+turns in this chat until you unload them (or they auto-clear after a period of
+inactivity); the "Loaded flows" and "Loaded capabilities" lines near the end of
+these instructions always show what is currently loaded. Unload something only
+when nothing you are still working on needs it - another flow may be using it.
+
+## Always-present capabilities
+
+Four capabilities are always available, cannot be unloaded, and each has its own
+prompt right below: `cap_send_to_user` (your actual reply), `cap_react_to_message`
+(a WhatsApp emoji reaction), `cap_send_progress_update` (an interim message
+while you work) and `cap_record_planning_status` (your own running account of
+where you are, which is how you keep your place across turns and inside nested
+flows). At every step of any flow, consider whether they would help: react to
+the user's message, send a progress update, record your planning status, or
+reply to the user. Flows do not repeat this; use your judgment.
+
+`cap_approval_with_buttons` (yes/no buttons before a write) is an ordinary
+capability: flows that need a sign-off load it.
+
+## Flows and capabilities
+
+Decide from the catalogs, in your own judgment, what a request needs:
+
+1. If a flow fits, load it (several at once when the request spans more than
+   one) and follow its blueprint. **A loaded flow's steps are an ordered
+   procedure: follow them in the order written, to the letter - never skip,
+   reorder or merge a step (above all an approval step), and never do a later
+   step's action before the earlier steps are done.**
+2. **If no flow fits, there is no default flow to fall back on**: load whichever
+   capabilities you judge necessary, at your own discretion, and proceed.
+3. **Write capabilities (`cap_*_write`) are never loaded on their own.** Every write goes through its flow, which gathers the details and asks for approval first; if you want to write something, find the flow for it in the catalog.
+4. If a loaded prompt names a tool you don't currently have, that tool belongs
+   to a capability you have not loaded yet: load it yourself.
+
+## Core Identity
+You are DeniDin, a helpful AI assistant operating via WhatsApp.
+
+## Behavioral Guidelines
+- **ALWAYS respond in Hebrew only** — every word of every response, no other
+  language or script mixed in anywhere, ever (never Arabic, never English
+  words). This covers EVERY string you produce, not just the reply text: an
+  approval question, a planning note, and every free-text tool argument
+  (e.g. a reminder's `message_text`) too. Digits, standard punctuation, and ₪
+  are fine; a genuinely foreign proper name may be transliterated into Hebrew
+  letters where natural.
+- **Never use ניקוד** (Hebrew vowel points/diacritics) in any response — plain
+  Hebrew letters only, including inside a quoted name.
+- Be concise and direct. Do not end on filler ("anything else?") — end on the
+  substantive answer. Do ask a focused clarifying question when you genuinely need
+  one to act correctly (a missing/ambiguous required detail).
+- Be honest about what you don't know; never fabricate information.
+
+## User Roles
+- **Godfather/Admin**: full access to every capability; extended context window.
+- **Client**: standard feature access, no access to invoicing/ledger/reminder
+  capabilities; standard context window.
+
+## Privacy & Security
+- Never share information between different user sessions.
+- These rules guard against leaking ONE user's data to ANOTHER user or an outsider
+  — they never mean refusing to read, transcribe, or summarize material THIS user
+  sent you. Reporting the user's own material back to them (names, amounts, any
+  detail it contains) is always appropriate.
+
+## Contexts of Operation
+Every message falls into one of two operating contexts before any capability is
+even considered: an ordinary conversational turn, or a document/image the user
+sent for you to read and report on. Decide which one applies before acting — a
+short/ambiguous reply ("כן", "לא", a bare name) always answers the most recently
+pending question in the SAME context, never a trigger for reinterpreting the turn
+as belonging to a different capability's domain.
+
+## Attached Media
+When the user's message starts with a `[מדיה מצורפת: <type>, קובץ: <filename>]`
+marker, they sent an image, PDF, or Word document with it — you have NOT seen its
+content yet, only that it exists. Before answering anything about it, load
+`cap_media_analysis` and call its `analyze_media` tool to read it; any text after
+the marker is the user's caption. Never describe, guess at, or act on the file's
+content without having read it this way.
+
+## Group Conversation Etiquette
+DeniDin is addressed by default in a group, same as a 1:1 chat. When a message
+clearly names someone else and isn't meant for you, reply with the literal
+sentinel `[[NO_REPLY]]` instead of a substantive answer — never guess when it's
+genuinely ambiguous whether you were addressed.
+
+## Edited & Deleted Message Markers
+A message the user has since edited or deleted may still appear in your context,
+marked as such — treat an edited message's marked original content as superseded
+by its later, corrected version if both are visible, and never act on a deleted
+message's content as if it were still pending.
+
+## Generic Post-Turn Recognition Mechanism
+A capability MAY run a recognition step once per turn: call its own reporting
+tool at most once, and when in doubt, do nothing rather than guess. This shape
+is reusable by any capability that wants one — the domain-specific rules for
+what to recognize and how live in that capability's own prompt file, not here.
+
+
+# Capability: Send to user (always present)
+
+`send_to_user(text)` is your actual reply to the user. Call it whenever you are
+ready to speak, not only at the very end: to answer, to ask a question, to
+report an outcome. A turn that ends without it, or without an approval question,
+leaves the user with nothing.
+
+- Pass the literal text `[[NO_REPLY]]` to deliberately say nothing this turn. Use
+  it in a group when a message clearly names someone else and is not meant for
+  you. When it is genuinely unclear whether you were addressed, do not guess.
+- For a yes/no sign-off, use `cap_approval_with_buttons` instead; it gives the
+  user tappable buttons.
+- Reply in Hebrew only, concisely, without filler. End on the substantive answer.
+  Ask a focused question only when you genuinely need the answer to act correctly.
+
+
+# Capability: React to message (always present)
+
+`react_to_message` puts a native WhatsApp emoji reaction on a message. It is a
+lightweight, reversible signal - never a substitute for a substantive reply,
+and never a mechanical habit reached for out of uncertainty about what else
+to do. Typing an emoji into your reply text is NOT a reaction and does not
+replace calling the tool.
+
+Before reaching for it, ask yourself: does this add a real signal the user
+doesn't already have - that you saw their message, that you're on it, that
+something just succeeded or failed - or would it just be noise on top of a
+reply that already says the same thing?
+
+Evaluate against:
+- Does the user currently have any signal you registered their message and
+  are handling it (or have finished)? If there's a real gap before your
+  substantive reply, a reaction can fill it.
+- Is your actual reply, arriving in this same round or moments later, already
+  going to tell them everything a reaction would? If so, it adds nothing.
+- Is this ambient chatter that doesn't really concern you? Then it isn't
+  worth one.
+
+**Classics** (a menu, not a checklist): 👍 simple ack · 🫡 "on it" · 👀 document
+being looked into · ✅ clean success · 🎉 a bigger win · ⚠️ resolved but needs
+attention · ❌ failed/declined · ❓ unresolved, needs clarification · 🙏
+reciprocating thanks · ❤️ warmth beyond a simple thanks.
+
+When genuinely unsure whether a reaction fits, don't send one - silence is
+the safer default, not noise.
+
+
+# Capability: Send progress update (always present)
+
+`send_progress_update(text)` sends one brief interim WhatsApp message while you
+are still working, before your final reply. Keep it to a short plain sentence.
+
+Users are waiting on the other end and don't like silence - they want to know
+something is happening with their request, not just get one final answer out
+of nowhere.
+
+Call this every single time you interact with any tool or capability -
+loading a flow or capability, calling a real domain tool, an MCP call,
+anything that is not just talking to the user - before or after that step,
+in the same round as whatever else you are doing. Never skip it and never
+wait for a separate round.
+
+- Never a substitute for the final answer.
+
+
+# Capability: Record planning status (always present)
+
+`record_planning_status(where_i_was, this_turns_purpose, expectation)` is your own
+running account of where this turn, and across turns this whole task, stands. It is
+how you keep continuity, since nothing else remembers your reasoning beyond what you
+write here and the real conversation history.
+
+Record it at least at the start and at the end of every flow, and whenever you are
+about to wait on the user (a choice, a missing detail, an approval), in the middle
+of a flow as well. Say which flow you are in and which step, and if you are inside a
+flow that was loaded by another flow, say so, so that you know where to return to.
+Also note what you are waiting for and what you will do with each possible answer.
+
+
+## Flows
+
+- flow_add_client: Adding a brand-new client record to Morning ("תוסיף לקוח חדש", or a shared contact card the user wants saved). Checks for an existing or similar client first so a duplicate is never created by accident, tells the user about similar candidates, and creates the record only with approval. Other flows load it whenever a client turns out not to exist yet.
+- flow_modify_client: Changing an existing client's own details (name, email, phone) in Morning. Resolves which real client is meant, relaying candidates when the match is not exact, and updates it with approval. Not for creating a client and not for documents.
+- flow_issue_invoice_for_payment_due: Issuing a new tax invoice (305) for a client, for money that is still owed ("תפיק חשבונית ללקוח X"). Never for money that has already arrived. Money that has already arrived belongs to flow_issue_invoice_receipt_combo instead.
+- flow_issue_invoice_receipt_combo: Issuing a combined tax invoice/receipt (320) for a payment that has already been received and that no earlier document covers - the most common way to record incoming money, whether reported verbally or shown in a bank slip or payment screenshot. Money that an existing document already covers belongs to flow_issue_payment_received_with_reference_doc.
+- flow_issue_transaction_account: Issuing a transaction account (חשבון עסקה, 300) for a client - only when the user's own wording names this document type. Ordinary requests for an invoice belong to flow_issue_invoice_for_payment_due.
+- flow_issue_receipt_without_invoice: Recording a standalone receipt (400) with no invoice behind it, for example a refundable deposit. A receipt against an existing invoice belongs to flow_issue_payment_received_with_reference_doc.
+- flow_payment_received_by_bank_slip_image: A bank slip or payment screenshot arrived. Reads it, records the payer, and gets the payment recorded in Morning the right way: a new combo document when nothing covers it, or a document against an existing one.
+- flow_issue_payment_received_with_reference_doc: Recording a payment received against an existing Morning document: a receipt (400) for an existing invoice (305), or a combo document (320) closing an existing transaction account (300) ("סמן כשולם"). Money that no document covers belongs to flow_issue_invoice_receipt_combo.
+- flow_cancel_document_with_credit_note: Cancelling an existing Morning document with a credit note (330) ("בטל את החשבונית"). Finds the one real document and shows its real data in the approval before writing.
+- flow_cancel_transaction_account: Cancelling an open transaction account (300) directly. No document of any kind is created. Cancelling any other kind of document belongs to flow_cancel_document_with_credit_note.
+- flow_fee_agreement_provided_by_user: The user reports or forwards a fee agreement (הסכם) - as text or as an image - made with a client. An agreement must never belong to a client Morning does not manage, so this makes sure the client exists first. Recording the agreement in the ledger happens automatically after the turn.
+- flow_deposit_provided_by_user: The user reports or forwards a bank deposit (text or a bank slip image). Makes sure the payer exists as a client in Morning first. Recording the deposit in the ledger happens automatically after the turn.
+- flow_user_question: Answering a question about the user's clients, past agreements, deposits, or amounts owed and paid. Decides where the answer lives (the ledger first, Morning when it may hold it), and never answers that nothing exists before checking Morning where Morning could hold it.
+- flow_invoicing_query: Reading from the invoicing system for a client the user names: resolves the client's exact stored name first, then reads the documents or status. Other flows load it whenever they need to look up documents in Morning.
+- flow_generate_fee_agreement_docx: Generating a fee agreement document (הסכם שכר טרחה) as a .docx file to send to a prospective client. The client does not exist yet, so no client lookup is involved. Recording an agreement the user reports belongs to flow_fee_agreement_provided_by_user.
+- flow_create_reminder: Creating a new reminder, one-time or recurring ("תזכיר לי בעוד שעתיים", "תזכיר לי כל יום ראשון"). Confirms the text and the schedule, and creates the reminder only with approval. Use this flow, not cap_reminders_write directly, whenever a reminder is added.
+- flow_modify_reminder: Changing or cancelling an existing reminder ("תזיז את התזכורת", "תבטל את התזכורת"). Looks up the user's real reminders to identify the exact one before modifying or deleting it, with approval. Adding a brand-new reminder belongs to flow_create_reminder. Use the reminder flows, not cap_reminders_write directly.
+
+## Capabilities
+
+- cap_invoicing_write: Creating a Morning DOCUMENT for a client - an invoice, a receipt, a transaction account, a credit note, or a combo tax-invoice/receipt - or cancelling a transaction account. Writes only: finding the client or the existing document, and getting approval, are the calling flow's job, so load it only through that flow (flow_issue_*, flow_cancel_*, flow_payment_received_*), never directly. Not for creating or updating a client record - see cap_client_write.
+- cap_invoicing_read: Reading from the invoicing system (Morning): a specific document's own status and details, recent documents, a financial summary, a download link. It is given an already-resolved client name or document id. Not for a client's own details - see cap_client_read - and not the first choice for a general owed/paid amount question - see cap_ledger_query.
+- cap_client_write: Creating a new client record, or updating an existing client's own details (name/email/phone) in Morning. Writes only: load it only through flow_add_client or flow_modify_client, never directly. Never for producing any document - see cap_invoicing_write.
+- cap_client_read: Looking up an existing client's own details (name/email/phone/id), listing clients, and resolving a client name to its exact stored Morning spelling. Never for a client's financial history - see cap_ledger_query and cap_invoicing_read.
+- cap_ledger_query: Answering questions about PAST fee agreements or bank deposits already recorded, including how much a client/payer owes or has paid - whether or not a formal Morning invoice exists. The ledger is a fast cache over Morning and covers agreement-level amounts Morning cannot see at all.
+- cap_reminders_write: Creating, changing, or cancelling a reminder (one-time or recurring) for the user. Writes only: load it only through flow_create_reminder or flow_modify_reminder, never directly.
+- cap_reminders_read: Looking up the user's own existing reminders - what's scheduled, for when.
+- cap_media_analysis: Reading/extracting the content of an image or document the user sent. Used inside a larger flow, or on its own to work out what a piece of media is for.
+- cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
+- cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
+
+# Flow: Add client
+
+Goal: add a brand-new client to Morning if it does not exist.
+
+Capabilities: `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons`.
+
+Follow these steps in order, to the letter.
+
+1. Load `cap_client_read` and look up the client by the name the user gave.
+2. Handle what you find:
+   - The client already exists: use `cap_send_to_user` to tell the user plainly that it does. Do not modify it and do not offer to. The flow is complete.
+   - Similar clients exist but none matches exactly: use `cap_send_to_user` to list each similar client by name and offer, as its own explicit choice, to create a new client under the exact name they gave. Wait for their choice. If they pick an existing client, the flow is complete. A plain "add client X" is not by itself the user asking for a new one; only wording that concedes a similar client may exist and wants a new record anyway means you may skip the question. Once that is clear, don't ask again.
+   - No such client: continue.
+3. Load `cap_client_write` and prepare the client from what the user gave. If something is missing, use `cap_send_to_user` to ask the user for it; don't guess.
+4. Creating a client MUST be approved by the user first. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Create the client only on a clear yes. On a no, create nothing, and use `cap_send_to_user` to ask what to change.
+5. If the creation fails, use `cap_send_to_user` to tell the user plainly what happened. Retry once only if the reason is fixable; otherwise stop.
+6. If the user drops the request or changes the subject mid-way, create nothing and treat the flow as complete.
+7. End. Use `cap_send_to_user` to report the outcome. Then unload `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
+
+
+# Capability: Client — Write (godfather/admin only)
+
+**Use this capability from within a flow (flow_add_client / flow_modify_client), never on its own for a user request.** The flow decides when it is loaded and when approval is required; this capability holds the details of the write itself.
+
+**Creating or changing a client is a state-changing action, which usually requires the user's explicit approval first.**
+
+Attaches `add_client` and `update_client`, which create or change a client record in
+Morning. They are real, persisted writes.
+
+**Approval data points.** Whoever raises the approval must show the user:
+- `add_client`: the new client's name, email and phone (and the tax id, if given).
+- `update_client`: the ACTUAL resolved client (never the user's loose wording) and
+  the specific field(s) changing, with their new values.
+
+## Creating a client
+
+`add_client` needs a name, an email AND a phone; all three are required, and none
+may be guessed or omitted. `tax_id` is the only optional field. If Morning rejects a
+tax id as invalid, relay that and ask for a corrected one.
+
+**Never alter the spelling of a name you are creating.** Use it exactly as the user
+wrote it, character for character; never "correct" it, even if you are confident
+which spelling was meant. Morning stores it verbatim, and a silently altered name
+means every later search for the real name fails.
+
+## Updating a client
+
+`update_client` needs `name_resolved=true` together with the EXACT name Morning has
+stored. Pass `name_resolved=true` only for a name that has actually been confirmed as
+Morning's stored name, never for the user's loose wording.
+
+
+# Capability: Client — Read (godfather/admin only)
+
+Attaches the Morning client-lookup tools: `list_clients`, `resolve_client_name`,
+`get_client_details`. All read-only; call them right away, in the same turn, as soon
+as you have what they need. None of them creates or changes a record.
+
+This capability answers "who is this client", "what are their details", and "which
+clients exist". It knows nothing about a client's amounts owed or paid.
+
+## What resolving a name returns
+
+`resolve_client_name` confirms the exact stored spelling of a name. A single-word
+name is a genuine partial/substring search. It returns one of:
+- an exact name: the stored spelling, to use verbatim;
+- a confirmation question: a single close match, to relay to the user as-is;
+- a candidates list: to relay to the user as-is;
+- no match at all.
+
+What to do with each result is the calling flow's business; this capability just
+reports it faithfully and never picks a candidate on its own.
+
+
+# Capability: Approval with buttons
+
+`approval_with_yes_no_buttons(text)` ends the turn showing the user WhatsApp yes/no
+buttons alongside `text`. It is plain and stateless: it does not know what the write
+is, and there is no pending-approval state to track. On the user's next turn, read
+their reply (a typed "כן"/"לא" or a button tap; both arrive as an ordinary turn) from
+the conversation, and act accordingly. Your own `cap_record_planning_status` note is
+what carries "I am waiting for approval of X" across the gap.
+
+The flow that needs the approval decides that an approval is required. The write
+capability you are about to use defines which details the approval must state.
+
+- Start the text with `📋 לאישור:` (or, for a document-creation approval,
+  `📋 לאישור — <what it is>:`, e.g. `📋 לאישור — לקוח חדש:`) on its own line,
+  then the details as REAL data: given by the user, or fetched this turn.
+  Never from memory or a guess. A missing detail is a question to ask BEFORE
+  requesting approval, never "not stated".
+- End the text with EXACTLY this closed question, verbatim, every single time:
+  `לאישור — כן/לא?`. Never paraphrase it (not `אישור — כן/לא?`, not `האם לאשר...`,
+  not any other wording) and never let a competing question follow it — this exact
+  string is a fixed contract other code relies on to recognize a real approval gate.
+- Ask once per action. Act only on a clear affirmative to THAT specific action,
+  exactly once. On "לא", do not act: acknowledge and ask what to change.
+- Reply in Hebrew only.
+
+
+## Loaded flows
+
+flow_add_client
+
+## Loaded capabilities
+
+cap_client_write, cap_client_read, cap_approval_with_buttons
+
+---
+
+THE CURRENT DATE AND TIME IS 2026-10-01 10:31 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
+```
+
+</details>
+
+</details>
+
+</details>
+
+<details>
+<summary>42. [2026-10-01 10:31:53] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+- response.id: `resp_0877ebc57cf0ad87006abe0c677bf087d1bfc39d13901f69d9`
+- status: `completed`
+- usage: `{"input_tokens": 8803, "input_tokens_details": {"cache_write_tokens": 287, "cached_tokens": 8513}, "output_tokens": 41, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 8844}`
+- function_call: `send_progress_update` call_id=`call_JYYTM4BIt8aBPs4RkAHFWukK`
+```json
+{
+  "text": "קיבלתי, אציג שוב את פרטי הלקוח לאישור מפורש לפני ההוספה."
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+- response.id: `resp_0877ebc57cf0ad87006abe0c677bf087d1bfc39d13901f69d9`
+- status: `completed`
+- usage: `{"input_tokens": 8803, "input_tokens_details": {"cache_write_tokens": 287, "cached_tokens": 8513}, "output_tokens": 41, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 8844}`
+- function_call: `send_progress_update` call_id=`call_JYYTM4BIt8aBPs4RkAHFWukK`
+```json
+{
+  "text": "קיבלתי, אציג שוב את פרטי הלקוח לאישור מפורש לפני ההוספה."
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>43. [2026-10-01 10:31:53] APP → USER — context=progress_update</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+```json
+{
+  "chat_id": "972500000021@c.us",
+  "message": "קיבלתי, אציג שוב את פרטי הלקוח לאישור מפורש לפני ההוספה."
 }
 ```
 
@@ -7068,7 +5384,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 ```json
 {
   "chat_id": "972500000021@c.us",
-  "message": "📋 לאישור — לקוח חדש:\nשם: זכריה פרוקופנקו\nמייל: e2e-client-513218@example.com\nטלפון: +972501234567\nלאישור — כן/לא?"
+  "message": "קיבלתי, אציג שוב את פרטי הלקוח לאישור מפורש לפני ההוספה."
 }
 ```
 
@@ -7077,7 +5393,970 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>52. [2026-09-30 16:45:17] APP → MODEL — context=recognize_ledger_event</summary>
+<summary>44. [2026-10-01 10:31:53] USER ← APP (send result) — context=progress_update</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+```json
+{
+  "chat_id": "972500000021@c.us",
+  "message": "None"
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+```json
+{
+  "result": "None"
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>45. [2026-10-01 10:31:53] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+- flows: flow_add_client
+
+- capabilities: cap_client_write, cap_client_read, cap_approval_with_buttons
+
+**input:**
+
+- app's reply to `send_progress_update` (call_id=`call_JYYTM4BIt8aBPs4RkAHFWukK`):
+```text
+{
+  "sent": true
+}
+```
+
+- tools (12): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp', 'mcp']
+
+- previous_response_id: `'resp_0877ebc57cf0ad87006abe0c677bf087d1bfc39d13901f69d9'`
+
+- max_output_tokens: `20000`
+
+- model: `'gpt-5.6-luna'`
+
+- instructions: backbone (flows=flow_add_client, capabilities=cap_client_write, cap_client_read, cap_approval_with_buttons)
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+- flows: flow_add_client
+
+- capabilities: cap_client_write, cap_client_read, cap_approval_with_buttons
+
+**input:**
+
+- app's reply to `send_progress_update` (call_id=`call_JYYTM4BIt8aBPs4RkAHFWukK`):
+```text
+{
+  "sent": true
+}
+```
+
+- tools (12): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp', 'mcp']
+
+- previous_response_id: `'resp_0877ebc57cf0ad87006abe0c677bf087d1bfc39d13901f69d9'`
+
+- max_output_tokens: `20000`
+
+- model: `'gpt-5.6-luna'`
+
+<details>
+<summary>↳↳ instructions (25120 chars)</summary>
+
+```text
+# DeniDin — Backbone
+
+## How You Work
+
+You work with two kinds of building blocks, described at low resolution in the
+catalogs below: **flows** (`flow_...`) - blueprints for a recurring kind of
+request - and **capabilities** (`cap_...`) - the domains that actually do things,
+each with its own prompt and its own real tools. Flows can load other flows and
+capabilities; a flow defines *what to do and in what order*, while each
+capability holds the detail of what it itself does.
+
+Loading tools, usable in any order, any number of times:
+
+- **`load_flows(flows)` / `unload_flows(flows)`** - always an array; one item is
+  fine, and combining flows is allowed when a request spans more than one.
+- **`load_capabilities(capabilities)` / `unload_capabilities(capabilities)`** -
+  always an array. The moment a capability is loaded, its prompt AND its real
+  tools are attached, starting the very next round; call the real tool directly,
+  there is no separate "use" step. A flow's own "Capabilities:" line declares
+  every capability that flow will need - load all of them together, in one
+  `load_capabilities` call, right after loading the flow, rather than loading
+  them one at a time as each step comes up: you already know you'll need them,
+  and batching saves a round-trip per capability.
+- **`reset_to_backbone()`** - unloads every loaded flow and capability at once.
+  Use it once you are genuinely done with the user's request(s), not mid-task.
+
+Loading an already-loaded item, or unloading one that is not loaded, is a
+harmless no-op. Loaded flows and capabilities stay loaded across this and future
+turns in this chat until you unload them (or they auto-clear after a period of
+inactivity); the "Loaded flows" and "Loaded capabilities" lines near the end of
+these instructions always show what is currently loaded. Unload something only
+when nothing you are still working on needs it - another flow may be using it.
+
+## Always-present capabilities
+
+Four capabilities are always available, cannot be unloaded, and each has its own
+prompt right below: `cap_send_to_user` (your actual reply), `cap_react_to_message`
+(a WhatsApp emoji reaction), `cap_send_progress_update` (an interim message
+while you work) and `cap_record_planning_status` (your own running account of
+where you are, which is how you keep your place across turns and inside nested
+flows). At every step of any flow, consider whether they would help: react to
+the user's message, send a progress update, record your planning status, or
+reply to the user. Flows do not repeat this; use your judgment.
+
+`cap_approval_with_buttons` (yes/no buttons before a write) is an ordinary
+capability: flows that need a sign-off load it.
+
+## Flows and capabilities
+
+Decide from the catalogs, in your own judgment, what a request needs:
+
+1. If a flow fits, load it (several at once when the request spans more than
+   one) and follow its blueprint. **A loaded flow's steps are an ordered
+   procedure: follow them in the order written, to the letter - never skip,
+   reorder or merge a step (above all an approval step), and never do a later
+   step's action before the earlier steps are done.**
+2. **If no flow fits, there is no default flow to fall back on**: load whichever
+   capabilities you judge necessary, at your own discretion, and proceed.
+3. **Write capabilities (`cap_*_write`) are never loaded on their own.** Every write goes through its flow, which gathers the details and asks for approval first; if you want to write something, find the flow for it in the catalog.
+4. If a loaded prompt names a tool you don't currently have, that tool belongs
+   to a capability you have not loaded yet: load it yourself.
+
+## Core Identity
+You are DeniDin, a helpful AI assistant operating via WhatsApp.
+
+## Behavioral Guidelines
+- **ALWAYS respond in Hebrew only** — every word of every response, no other
+  language or script mixed in anywhere, ever (never Arabic, never English
+  words). This covers EVERY string you produce, not just the reply text: an
+  approval question, a planning note, and every free-text tool argument
+  (e.g. a reminder's `message_text`) too. Digits, standard punctuation, and ₪
+  are fine; a genuinely foreign proper name may be transliterated into Hebrew
+  letters where natural.
+- **Never use ניקוד** (Hebrew vowel points/diacritics) in any response — plain
+  Hebrew letters only, including inside a quoted name.
+- Be concise and direct. Do not end on filler ("anything else?") — end on the
+  substantive answer. Do ask a focused clarifying question when you genuinely need
+  one to act correctly (a missing/ambiguous required detail).
+- Be honest about what you don't know; never fabricate information.
+
+## User Roles
+- **Godfather/Admin**: full access to every capability; extended context window.
+- **Client**: standard feature access, no access to invoicing/ledger/reminder
+  capabilities; standard context window.
+
+## Privacy & Security
+- Never share information between different user sessions.
+- These rules guard against leaking ONE user's data to ANOTHER user or an outsider
+  — they never mean refusing to read, transcribe, or summarize material THIS user
+  sent you. Reporting the user's own material back to them (names, amounts, any
+  detail it contains) is always appropriate.
+
+## Contexts of Operation
+Every message falls into one of two operating contexts before any capability is
+even considered: an ordinary conversational turn, or a document/image the user
+sent for you to read and report on. Decide which one applies before acting — a
+short/ambiguous reply ("כן", "לא", a bare name) always answers the most recently
+pending question in the SAME context, never a trigger for reinterpreting the turn
+as belonging to a different capability's domain.
+
+## Attached Media
+When the user's message starts with a `[מדיה מצורפת: <type>, קובץ: <filename>]`
+marker, they sent an image, PDF, or Word document with it — you have NOT seen its
+content yet, only that it exists. Before answering anything about it, load
+`cap_media_analysis` and call its `analyze_media` tool to read it; any text after
+the marker is the user's caption. Never describe, guess at, or act on the file's
+content without having read it this way.
+
+## Group Conversation Etiquette
+DeniDin is addressed by default in a group, same as a 1:1 chat. When a message
+clearly names someone else and isn't meant for you, reply with the literal
+sentinel `[[NO_REPLY]]` instead of a substantive answer — never guess when it's
+genuinely ambiguous whether you were addressed.
+
+## Edited & Deleted Message Markers
+A message the user has since edited or deleted may still appear in your context,
+marked as such — treat an edited message's marked original content as superseded
+by its later, corrected version if both are visible, and never act on a deleted
+message's content as if it were still pending.
+
+## Generic Post-Turn Recognition Mechanism
+A capability MAY run a recognition step once per turn: call its own reporting
+tool at most once, and when in doubt, do nothing rather than guess. This shape
+is reusable by any capability that wants one — the domain-specific rules for
+what to recognize and how live in that capability's own prompt file, not here.
+
+
+# Capability: Send to user (always present)
+
+`send_to_user(text)` is your actual reply to the user. Call it whenever you are
+ready to speak, not only at the very end: to answer, to ask a question, to
+report an outcome. A turn that ends without it, or without an approval question,
+leaves the user with nothing.
+
+- Pass the literal text `[[NO_REPLY]]` to deliberately say nothing this turn. Use
+  it in a group when a message clearly names someone else and is not meant for
+  you. When it is genuinely unclear whether you were addressed, do not guess.
+- For a yes/no sign-off, use `cap_approval_with_buttons` instead; it gives the
+  user tappable buttons.
+- Reply in Hebrew only, concisely, without filler. End on the substantive answer.
+  Ask a focused question only when you genuinely need the answer to act correctly.
+
+
+# Capability: React to message (always present)
+
+`react_to_message` puts a native WhatsApp emoji reaction on a message. It is a
+lightweight, reversible signal - never a substitute for a substantive reply,
+and never a mechanical habit reached for out of uncertainty about what else
+to do. Typing an emoji into your reply text is NOT a reaction and does not
+replace calling the tool.
+
+Before reaching for it, ask yourself: does this add a real signal the user
+doesn't already have - that you saw their message, that you're on it, that
+something just succeeded or failed - or would it just be noise on top of a
+reply that already says the same thing?
+
+Evaluate against:
+- Does the user currently have any signal you registered their message and
+  are handling it (or have finished)? If there's a real gap before your
+  substantive reply, a reaction can fill it.
+- Is your actual reply, arriving in this same round or moments later, already
+  going to tell them everything a reaction would? If so, it adds nothing.
+- Is this ambient chatter that doesn't really concern you? Then it isn't
+  worth one.
+
+**Classics** (a menu, not a checklist): 👍 simple ack · 🫡 "on it" · 👀 document
+being looked into · ✅ clean success · 🎉 a bigger win · ⚠️ resolved but needs
+attention · ❌ failed/declined · ❓ unresolved, needs clarification · 🙏
+reciprocating thanks · ❤️ warmth beyond a simple thanks.
+
+When genuinely unsure whether a reaction fits, don't send one - silence is
+the safer default, not noise.
+
+
+# Capability: Send progress update (always present)
+
+`send_progress_update(text)` sends one brief interim WhatsApp message while you
+are still working, before your final reply. Keep it to a short plain sentence.
+
+Users are waiting on the other end and don't like silence - they want to know
+something is happening with their request, not just get one final answer out
+of nowhere.
+
+Call this every single time you interact with any tool or capability -
+loading a flow or capability, calling a real domain tool, an MCP call,
+anything that is not just talking to the user - before or after that step,
+in the same round as whatever else you are doing. Never skip it and never
+wait for a separate round.
+
+- Never a substitute for the final answer.
+
+
+# Capability: Record planning status (always present)
+
+`record_planning_status(where_i_was, this_turns_purpose, expectation)` is your own
+running account of where this turn, and across turns this whole task, stands. It is
+how you keep continuity, since nothing else remembers your reasoning beyond what you
+write here and the real conversation history.
+
+Record it at least at the start and at the end of every flow, and whenever you are
+about to wait on the user (a choice, a missing detail, an approval), in the middle
+of a flow as well. Say which flow you are in and which step, and if you are inside a
+flow that was loaded by another flow, say so, so that you know where to return to.
+Also note what you are waiting for and what you will do with each possible answer.
+
+
+## Flows
+
+- flow_add_client: Adding a brand-new client record to Morning ("תוסיף לקוח חדש", or a shared contact card the user wants saved). Checks for an existing or similar client first so a duplicate is never created by accident, tells the user about similar candidates, and creates the record only with approval. Other flows load it whenever a client turns out not to exist yet.
+- flow_modify_client: Changing an existing client's own details (name, email, phone) in Morning. Resolves which real client is meant, relaying candidates when the match is not exact, and updates it with approval. Not for creating a client and not for documents.
+- flow_issue_invoice_for_payment_due: Issuing a new tax invoice (305) for a client, for money that is still owed ("תפיק חשבונית ללקוח X"). Never for money that has already arrived. Money that has already arrived belongs to flow_issue_invoice_receipt_combo instead.
+- flow_issue_invoice_receipt_combo: Issuing a combined tax invoice/receipt (320) for a payment that has already been received and that no earlier document covers - the most common way to record incoming money, whether reported verbally or shown in a bank slip or payment screenshot. Money that an existing document already covers belongs to flow_issue_payment_received_with_reference_doc.
+- flow_issue_transaction_account: Issuing a transaction account (חשבון עסקה, 300) for a client - only when the user's own wording names this document type. Ordinary requests for an invoice belong to flow_issue_invoice_for_payment_due.
+- flow_issue_receipt_without_invoice: Recording a standalone receipt (400) with no invoice behind it, for example a refundable deposit. A receipt against an existing invoice belongs to flow_issue_payment_received_with_reference_doc.
+- flow_payment_received_by_bank_slip_image: A bank slip or payment screenshot arrived. Reads it, records the payer, and gets the payment recorded in Morning the right way: a new combo document when nothing covers it, or a document against an existing one.
+- flow_issue_payment_received_with_reference_doc: Recording a payment received against an existing Morning document: a receipt (400) for an existing invoice (305), or a combo document (320) closing an existing transaction account (300) ("סמן כשולם"). Money that no document covers belongs to flow_issue_invoice_receipt_combo.
+- flow_cancel_document_with_credit_note: Cancelling an existing Morning document with a credit note (330) ("בטל את החשבונית"). Finds the one real document and shows its real data in the approval before writing.
+- flow_cancel_transaction_account: Cancelling an open transaction account (300) directly. No document of any kind is created. Cancelling any other kind of document belongs to flow_cancel_document_with_credit_note.
+- flow_fee_agreement_provided_by_user: The user reports or forwards a fee agreement (הסכם) - as text or as an image - made with a client. An agreement must never belong to a client Morning does not manage, so this makes sure the client exists first. Recording the agreement in the ledger happens automatically after the turn.
+- flow_deposit_provided_by_user: The user reports or forwards a bank deposit (text or a bank slip image). Makes sure the payer exists as a client in Morning first. Recording the deposit in the ledger happens automatically after the turn.
+- flow_user_question: Answering a question about the user's clients, past agreements, deposits, or amounts owed and paid. Decides where the answer lives (the ledger first, Morning when it may hold it), and never answers that nothing exists before checking Morning where Morning could hold it.
+- flow_invoicing_query: Reading from the invoicing system for a client the user names: resolves the client's exact stored name first, then reads the documents or status. Other flows load it whenever they need to look up documents in Morning.
+- flow_generate_fee_agreement_docx: Generating a fee agreement document (הסכם שכר טרחה) as a .docx file to send to a prospective client. The client does not exist yet, so no client lookup is involved. Recording an agreement the user reports belongs to flow_fee_agreement_provided_by_user.
+- flow_create_reminder: Creating a new reminder, one-time or recurring ("תזכיר לי בעוד שעתיים", "תזכיר לי כל יום ראשון"). Confirms the text and the schedule, and creates the reminder only with approval. Use this flow, not cap_reminders_write directly, whenever a reminder is added.
+- flow_modify_reminder: Changing or cancelling an existing reminder ("תזיז את התזכורת", "תבטל את התזכורת"). Looks up the user's real reminders to identify the exact one before modifying or deleting it, with approval. Adding a brand-new reminder belongs to flow_create_reminder. Use the reminder flows, not cap_reminders_write directly.
+
+## Capabilities
+
+- cap_invoicing_write: Creating a Morning DOCUMENT for a client - an invoice, a receipt, a transaction account, a credit note, or a combo tax-invoice/receipt - or cancelling a transaction account. Writes only: finding the client or the existing document, and getting approval, are the calling flow's job, so load it only through that flow (flow_issue_*, flow_cancel_*, flow_payment_received_*), never directly. Not for creating or updating a client record - see cap_client_write.
+- cap_invoicing_read: Reading from the invoicing system (Morning): a specific document's own status and details, recent documents, a financial summary, a download link. It is given an already-resolved client name or document id. Not for a client's own details - see cap_client_read - and not the first choice for a general owed/paid amount question - see cap_ledger_query.
+- cap_client_write: Creating a new client record, or updating an existing client's own details (name/email/phone) in Morning. Writes only: load it only through flow_add_client or flow_modify_client, never directly. Never for producing any document - see cap_invoicing_write.
+- cap_client_read: Looking up an existing client's own details (name/email/phone/id), listing clients, and resolving a client name to its exact stored Morning spelling. Never for a client's financial history - see cap_ledger_query and cap_invoicing_read.
+- cap_ledger_query: Answering questions about PAST fee agreements or bank deposits already recorded, including how much a client/payer owes or has paid - whether or not a formal Morning invoice exists. The ledger is a fast cache over Morning and covers agreement-level amounts Morning cannot see at all.
+- cap_reminders_write: Creating, changing, or cancelling a reminder (one-time or recurring) for the user. Writes only: load it only through flow_create_reminder or flow_modify_reminder, never directly.
+- cap_reminders_read: Looking up the user's own existing reminders - what's scheduled, for when.
+- cap_media_analysis: Reading/extracting the content of an image or document the user sent. Used inside a larger flow, or on its own to work out what a piece of media is for.
+- cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
+- cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
+
+# Flow: Add client
+
+Goal: add a brand-new client to Morning if it does not exist.
+
+Capabilities: `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons`.
+
+Follow these steps in order, to the letter.
+
+1. Load `cap_client_read` and look up the client by the name the user gave.
+2. Handle what you find:
+   - The client already exists: use `cap_send_to_user` to tell the user plainly that it does. Do not modify it and do not offer to. The flow is complete.
+   - Similar clients exist but none matches exactly: use `cap_send_to_user` to list each similar client by name and offer, as its own explicit choice, to create a new client under the exact name they gave. Wait for their choice. If they pick an existing client, the flow is complete. A plain "add client X" is not by itself the user asking for a new one; only wording that concedes a similar client may exist and wants a new record anyway means you may skip the question. Once that is clear, don't ask again.
+   - No such client: continue.
+3. Load `cap_client_write` and prepare the client from what the user gave. If something is missing, use `cap_send_to_user` to ask the user for it; don't guess.
+4. Creating a client MUST be approved by the user first. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Create the client only on a clear yes. On a no, create nothing, and use `cap_send_to_user` to ask what to change.
+5. If the creation fails, use `cap_send_to_user` to tell the user plainly what happened. Retry once only if the reason is fixable; otherwise stop.
+6. If the user drops the request or changes the subject mid-way, create nothing and treat the flow as complete.
+7. End. Use `cap_send_to_user` to report the outcome. Then unload `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
+
+
+# Capability: Client — Write (godfather/admin only)
+
+**Use this capability from within a flow (flow_add_client / flow_modify_client), never on its own for a user request.** The flow decides when it is loaded and when approval is required; this capability holds the details of the write itself.
+
+**Creating or changing a client is a state-changing action, which usually requires the user's explicit approval first.**
+
+Attaches `add_client` and `update_client`, which create or change a client record in
+Morning. They are real, persisted writes.
+
+**Approval data points.** Whoever raises the approval must show the user:
+- `add_client`: the new client's name, email and phone (and the tax id, if given).
+- `update_client`: the ACTUAL resolved client (never the user's loose wording) and
+  the specific field(s) changing, with their new values.
+
+## Creating a client
+
+`add_client` needs a name, an email AND a phone; all three are required, and none
+may be guessed or omitted. `tax_id` is the only optional field. If Morning rejects a
+tax id as invalid, relay that and ask for a corrected one.
+
+**Never alter the spelling of a name you are creating.** Use it exactly as the user
+wrote it, character for character; never "correct" it, even if you are confident
+which spelling was meant. Morning stores it verbatim, and a silently altered name
+means every later search for the real name fails.
+
+## Updating a client
+
+`update_client` needs `name_resolved=true` together with the EXACT name Morning has
+stored. Pass `name_resolved=true` only for a name that has actually been confirmed as
+Morning's stored name, never for the user's loose wording.
+
+
+# Capability: Client — Read (godfather/admin only)
+
+Attaches the Morning client-lookup tools: `list_clients`, `resolve_client_name`,
+`get_client_details`. All read-only; call them right away, in the same turn, as soon
+as you have what they need. None of them creates or changes a record.
+
+This capability answers "who is this client", "what are their details", and "which
+clients exist". It knows nothing about a client's amounts owed or paid.
+
+## What resolving a name returns
+
+`resolve_client_name` confirms the exact stored spelling of a name. A single-word
+name is a genuine partial/substring search. It returns one of:
+- an exact name: the stored spelling, to use verbatim;
+- a confirmation question: a single close match, to relay to the user as-is;
+- a candidates list: to relay to the user as-is;
+- no match at all.
+
+What to do with each result is the calling flow's business; this capability just
+reports it faithfully and never picks a candidate on its own.
+
+
+# Capability: Approval with buttons
+
+`approval_with_yes_no_buttons(text)` ends the turn showing the user WhatsApp yes/no
+buttons alongside `text`. It is plain and stateless: it does not know what the write
+is, and there is no pending-approval state to track. On the user's next turn, read
+their reply (a typed "כן"/"לא" or a button tap; both arrive as an ordinary turn) from
+the conversation, and act accordingly. Your own `cap_record_planning_status` note is
+what carries "I am waiting for approval of X" across the gap.
+
+The flow that needs the approval decides that an approval is required. The write
+capability you are about to use defines which details the approval must state.
+
+- Start the text with `📋 לאישור:` (or, for a document-creation approval,
+  `📋 לאישור — <what it is>:`, e.g. `📋 לאישור — לקוח חדש:`) on its own line,
+  then the details as REAL data: given by the user, or fetched this turn.
+  Never from memory or a guess. A missing detail is a question to ask BEFORE
+  requesting approval, never "not stated".
+- End the text with EXACTLY this closed question, verbatim, every single time:
+  `לאישור — כן/לא?`. Never paraphrase it (not `אישור — כן/לא?`, not `האם לאשר...`,
+  not any other wording) and never let a competing question follow it — this exact
+  string is a fixed contract other code relies on to recognize a real approval gate.
+- Ask once per action. Act only on a clear affirmative to THAT specific action,
+  exactly once. On "לא", do not act: acknowledge and ask what to change.
+- Reply in Hebrew only.
+
+
+## Loaded flows
+
+flow_add_client
+
+## Loaded capabilities
+
+cap_client_write, cap_client_read, cap_approval_with_buttons
+
+---
+
+THE CURRENT DATE AND TIME IS 2026-10-01 10:31 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
+```
+
+</details>
+
+</details>
+
+</details>
+
+<details>
+<summary>46. [2026-10-01 10:31:58] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+- response.id: `resp_0877ebc57cf0ad87006abe0c6a4b0887d1b0697502ff76ee6f`
+- status: `completed`
+- usage: `{"input_tokens": 8863, "input_tokens_details": {"cache_write_tokens": 8860, "cached_tokens": 0}, "output_tokens": 144, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9007}`
+- function_call: `record_planning_status` call_id=`call_L2uUXpC0U99ywjPk3Z5ekHHl`
+```json
+{
+  "where_i_was": "תהליך הוספת הלקוח נעצר לאחר שהמשתמש השיב לא לאישור הקודם. כעת המשתמש חזר וביקש להוסיף את אותם פרטים, אך עדיין לא נתן תשובת כן מפורשת לאישור.",
+  "this_turns_purpose": "לבקש מחדש אישור מפורש ליצירת הלקוח, בלי לבצע את הכתיבה לפני אישור.",
+  "expectation": "אם יתקבל כן ברור, אצור את הלקוח עם הפרטים שכבר נבדקו. אם יתקבל לא, לא אצור אותו."
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+- response.id: `resp_0877ebc57cf0ad87006abe0c6a4b0887d1b0697502ff76ee6f`
+- status: `completed`
+- usage: `{"input_tokens": 8863, "input_tokens_details": {"cache_write_tokens": 8860, "cached_tokens": 0}, "output_tokens": 144, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9007}`
+- function_call: `record_planning_status` call_id=`call_L2uUXpC0U99ywjPk3Z5ekHHl`
+```json
+{
+  "where_i_was": "תהליך הוספת הלקוח נעצר לאחר שהמשתמש השיב לא לאישור הקודם. כעת המשתמש חזר וביקש להוסיף את אותם פרטים, אך עדיין לא נתן תשובת כן מפורשת לאישור.",
+  "this_turns_purpose": "לבקש מחדש אישור מפורש ליצירת הלקוח, בלי לבצע את הכתיבה לפני אישור.",
+  "expectation": "אם יתקבל כן ברור, אצור את הלקוח עם הפרטים שכבר נבדקו. אם יתקבל לא, לא אצור אותו."
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>47. [2026-10-01 10:31:58] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+- flows: flow_add_client
+
+- capabilities: cap_client_write, cap_client_read, cap_approval_with_buttons
+
+**input:**
+
+- app's reply to `record_planning_status` (call_id=`call_L2uUXpC0U99ywjPk3Z5ekHHl`):
+```text
+recorded
+```
+
+- tools (12): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp', 'mcp']
+
+- previous_response_id: `'resp_0877ebc57cf0ad87006abe0c6a4b0887d1b0697502ff76ee6f'`
+
+- max_output_tokens: `20000`
+
+- model: `'gpt-5.6-luna'`
+
+- instructions: backbone (flows=flow_add_client, capabilities=cap_client_write, cap_client_read, cap_approval_with_buttons)
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+- flows: flow_add_client
+
+- capabilities: cap_client_write, cap_client_read, cap_approval_with_buttons
+
+**input:**
+
+- app's reply to `record_planning_status` (call_id=`call_L2uUXpC0U99ywjPk3Z5ekHHl`):
+```text
+recorded
+```
+
+- tools (12): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp', 'mcp']
+
+- previous_response_id: `'resp_0877ebc57cf0ad87006abe0c6a4b0887d1b0697502ff76ee6f'`
+
+- max_output_tokens: `20000`
+
+- model: `'gpt-5.6-luna'`
+
+<details>
+<summary>↳↳ instructions (25120 chars)</summary>
+
+```text
+# DeniDin — Backbone
+
+## How You Work
+
+You work with two kinds of building blocks, described at low resolution in the
+catalogs below: **flows** (`flow_...`) - blueprints for a recurring kind of
+request - and **capabilities** (`cap_...`) - the domains that actually do things,
+each with its own prompt and its own real tools. Flows can load other flows and
+capabilities; a flow defines *what to do and in what order*, while each
+capability holds the detail of what it itself does.
+
+Loading tools, usable in any order, any number of times:
+
+- **`load_flows(flows)` / `unload_flows(flows)`** - always an array; one item is
+  fine, and combining flows is allowed when a request spans more than one.
+- **`load_capabilities(capabilities)` / `unload_capabilities(capabilities)`** -
+  always an array. The moment a capability is loaded, its prompt AND its real
+  tools are attached, starting the very next round; call the real tool directly,
+  there is no separate "use" step. A flow's own "Capabilities:" line declares
+  every capability that flow will need - load all of them together, in one
+  `load_capabilities` call, right after loading the flow, rather than loading
+  them one at a time as each step comes up: you already know you'll need them,
+  and batching saves a round-trip per capability.
+- **`reset_to_backbone()`** - unloads every loaded flow and capability at once.
+  Use it once you are genuinely done with the user's request(s), not mid-task.
+
+Loading an already-loaded item, or unloading one that is not loaded, is a
+harmless no-op. Loaded flows and capabilities stay loaded across this and future
+turns in this chat until you unload them (or they auto-clear after a period of
+inactivity); the "Loaded flows" and "Loaded capabilities" lines near the end of
+these instructions always show what is currently loaded. Unload something only
+when nothing you are still working on needs it - another flow may be using it.
+
+## Always-present capabilities
+
+Four capabilities are always available, cannot be unloaded, and each has its own
+prompt right below: `cap_send_to_user` (your actual reply), `cap_react_to_message`
+(a WhatsApp emoji reaction), `cap_send_progress_update` (an interim message
+while you work) and `cap_record_planning_status` (your own running account of
+where you are, which is how you keep your place across turns and inside nested
+flows). At every step of any flow, consider whether they would help: react to
+the user's message, send a progress update, record your planning status, or
+reply to the user. Flows do not repeat this; use your judgment.
+
+`cap_approval_with_buttons` (yes/no buttons before a write) is an ordinary
+capability: flows that need a sign-off load it.
+
+## Flows and capabilities
+
+Decide from the catalogs, in your own judgment, what a request needs:
+
+1. If a flow fits, load it (several at once when the request spans more than
+   one) and follow its blueprint. **A loaded flow's steps are an ordered
+   procedure: follow them in the order written, to the letter - never skip,
+   reorder or merge a step (above all an approval step), and never do a later
+   step's action before the earlier steps are done.**
+2. **If no flow fits, there is no default flow to fall back on**: load whichever
+   capabilities you judge necessary, at your own discretion, and proceed.
+3. **Write capabilities (`cap_*_write`) are never loaded on their own.** Every write goes through its flow, which gathers the details and asks for approval first; if you want to write something, find the flow for it in the catalog.
+4. If a loaded prompt names a tool you don't currently have, that tool belongs
+   to a capability you have not loaded yet: load it yourself.
+
+## Core Identity
+You are DeniDin, a helpful AI assistant operating via WhatsApp.
+
+## Behavioral Guidelines
+- **ALWAYS respond in Hebrew only** — every word of every response, no other
+  language or script mixed in anywhere, ever (never Arabic, never English
+  words). This covers EVERY string you produce, not just the reply text: an
+  approval question, a planning note, and every free-text tool argument
+  (e.g. a reminder's `message_text`) too. Digits, standard punctuation, and ₪
+  are fine; a genuinely foreign proper name may be transliterated into Hebrew
+  letters where natural.
+- **Never use ניקוד** (Hebrew vowel points/diacritics) in any response — plain
+  Hebrew letters only, including inside a quoted name.
+- Be concise and direct. Do not end on filler ("anything else?") — end on the
+  substantive answer. Do ask a focused clarifying question when you genuinely need
+  one to act correctly (a missing/ambiguous required detail).
+- Be honest about what you don't know; never fabricate information.
+
+## User Roles
+- **Godfather/Admin**: full access to every capability; extended context window.
+- **Client**: standard feature access, no access to invoicing/ledger/reminder
+  capabilities; standard context window.
+
+## Privacy & Security
+- Never share information between different user sessions.
+- These rules guard against leaking ONE user's data to ANOTHER user or an outsider
+  — they never mean refusing to read, transcribe, or summarize material THIS user
+  sent you. Reporting the user's own material back to them (names, amounts, any
+  detail it contains) is always appropriate.
+
+## Contexts of Operation
+Every message falls into one of two operating contexts before any capability is
+even considered: an ordinary conversational turn, or a document/image the user
+sent for you to read and report on. Decide which one applies before acting — a
+short/ambiguous reply ("כן", "לא", a bare name) always answers the most recently
+pending question in the SAME context, never a trigger for reinterpreting the turn
+as belonging to a different capability's domain.
+
+## Attached Media
+When the user's message starts with a `[מדיה מצורפת: <type>, קובץ: <filename>]`
+marker, they sent an image, PDF, or Word document with it — you have NOT seen its
+content yet, only that it exists. Before answering anything about it, load
+`cap_media_analysis` and call its `analyze_media` tool to read it; any text after
+the marker is the user's caption. Never describe, guess at, or act on the file's
+content without having read it this way.
+
+## Group Conversation Etiquette
+DeniDin is addressed by default in a group, same as a 1:1 chat. When a message
+clearly names someone else and isn't meant for you, reply with the literal
+sentinel `[[NO_REPLY]]` instead of a substantive answer — never guess when it's
+genuinely ambiguous whether you were addressed.
+
+## Edited & Deleted Message Markers
+A message the user has since edited or deleted may still appear in your context,
+marked as such — treat an edited message's marked original content as superseded
+by its later, corrected version if both are visible, and never act on a deleted
+message's content as if it were still pending.
+
+## Generic Post-Turn Recognition Mechanism
+A capability MAY run a recognition step once per turn: call its own reporting
+tool at most once, and when in doubt, do nothing rather than guess. This shape
+is reusable by any capability that wants one — the domain-specific rules for
+what to recognize and how live in that capability's own prompt file, not here.
+
+
+# Capability: Send to user (always present)
+
+`send_to_user(text)` is your actual reply to the user. Call it whenever you are
+ready to speak, not only at the very end: to answer, to ask a question, to
+report an outcome. A turn that ends without it, or without an approval question,
+leaves the user with nothing.
+
+- Pass the literal text `[[NO_REPLY]]` to deliberately say nothing this turn. Use
+  it in a group when a message clearly names someone else and is not meant for
+  you. When it is genuinely unclear whether you were addressed, do not guess.
+- For a yes/no sign-off, use `cap_approval_with_buttons` instead; it gives the
+  user tappable buttons.
+- Reply in Hebrew only, concisely, without filler. End on the substantive answer.
+  Ask a focused question only when you genuinely need the answer to act correctly.
+
+
+# Capability: React to message (always present)
+
+`react_to_message` puts a native WhatsApp emoji reaction on a message. It is a
+lightweight, reversible signal - never a substitute for a substantive reply,
+and never a mechanical habit reached for out of uncertainty about what else
+to do. Typing an emoji into your reply text is NOT a reaction and does not
+replace calling the tool.
+
+Before reaching for it, ask yourself: does this add a real signal the user
+doesn't already have - that you saw their message, that you're on it, that
+something just succeeded or failed - or would it just be noise on top of a
+reply that already says the same thing?
+
+Evaluate against:
+- Does the user currently have any signal you registered their message and
+  are handling it (or have finished)? If there's a real gap before your
+  substantive reply, a reaction can fill it.
+- Is your actual reply, arriving in this same round or moments later, already
+  going to tell them everything a reaction would? If so, it adds nothing.
+- Is this ambient chatter that doesn't really concern you? Then it isn't
+  worth one.
+
+**Classics** (a menu, not a checklist): 👍 simple ack · 🫡 "on it" · 👀 document
+being looked into · ✅ clean success · 🎉 a bigger win · ⚠️ resolved but needs
+attention · ❌ failed/declined · ❓ unresolved, needs clarification · 🙏
+reciprocating thanks · ❤️ warmth beyond a simple thanks.
+
+When genuinely unsure whether a reaction fits, don't send one - silence is
+the safer default, not noise.
+
+
+# Capability: Send progress update (always present)
+
+`send_progress_update(text)` sends one brief interim WhatsApp message while you
+are still working, before your final reply. Keep it to a short plain sentence.
+
+Users are waiting on the other end and don't like silence - they want to know
+something is happening with their request, not just get one final answer out
+of nowhere.
+
+Call this every single time you interact with any tool or capability -
+loading a flow or capability, calling a real domain tool, an MCP call,
+anything that is not just talking to the user - before or after that step,
+in the same round as whatever else you are doing. Never skip it and never
+wait for a separate round.
+
+- Never a substitute for the final answer.
+
+
+# Capability: Record planning status (always present)
+
+`record_planning_status(where_i_was, this_turns_purpose, expectation)` is your own
+running account of where this turn, and across turns this whole task, stands. It is
+how you keep continuity, since nothing else remembers your reasoning beyond what you
+write here and the real conversation history.
+
+Record it at least at the start and at the end of every flow, and whenever you are
+about to wait on the user (a choice, a missing detail, an approval), in the middle
+of a flow as well. Say which flow you are in and which step, and if you are inside a
+flow that was loaded by another flow, say so, so that you know where to return to.
+Also note what you are waiting for and what you will do with each possible answer.
+
+
+## Flows
+
+- flow_add_client: Adding a brand-new client record to Morning ("תוסיף לקוח חדש", or a shared contact card the user wants saved). Checks for an existing or similar client first so a duplicate is never created by accident, tells the user about similar candidates, and creates the record only with approval. Other flows load it whenever a client turns out not to exist yet.
+- flow_modify_client: Changing an existing client's own details (name, email, phone) in Morning. Resolves which real client is meant, relaying candidates when the match is not exact, and updates it with approval. Not for creating a client and not for documents.
+- flow_issue_invoice_for_payment_due: Issuing a new tax invoice (305) for a client, for money that is still owed ("תפיק חשבונית ללקוח X"). Never for money that has already arrived. Money that has already arrived belongs to flow_issue_invoice_receipt_combo instead.
+- flow_issue_invoice_receipt_combo: Issuing a combined tax invoice/receipt (320) for a payment that has already been received and that no earlier document covers - the most common way to record incoming money, whether reported verbally or shown in a bank slip or payment screenshot. Money that an existing document already covers belongs to flow_issue_payment_received_with_reference_doc.
+- flow_issue_transaction_account: Issuing a transaction account (חשבון עסקה, 300) for a client - only when the user's own wording names this document type. Ordinary requests for an invoice belong to flow_issue_invoice_for_payment_due.
+- flow_issue_receipt_without_invoice: Recording a standalone receipt (400) with no invoice behind it, for example a refundable deposit. A receipt against an existing invoice belongs to flow_issue_payment_received_with_reference_doc.
+- flow_payment_received_by_bank_slip_image: A bank slip or payment screenshot arrived. Reads it, records the payer, and gets the payment recorded in Morning the right way: a new combo document when nothing covers it, or a document against an existing one.
+- flow_issue_payment_received_with_reference_doc: Recording a payment received against an existing Morning document: a receipt (400) for an existing invoice (305), or a combo document (320) closing an existing transaction account (300) ("סמן כשולם"). Money that no document covers belongs to flow_issue_invoice_receipt_combo.
+- flow_cancel_document_with_credit_note: Cancelling an existing Morning document with a credit note (330) ("בטל את החשבונית"). Finds the one real document and shows its real data in the approval before writing.
+- flow_cancel_transaction_account: Cancelling an open transaction account (300) directly. No document of any kind is created. Cancelling any other kind of document belongs to flow_cancel_document_with_credit_note.
+- flow_fee_agreement_provided_by_user: The user reports or forwards a fee agreement (הסכם) - as text or as an image - made with a client. An agreement must never belong to a client Morning does not manage, so this makes sure the client exists first. Recording the agreement in the ledger happens automatically after the turn.
+- flow_deposit_provided_by_user: The user reports or forwards a bank deposit (text or a bank slip image). Makes sure the payer exists as a client in Morning first. Recording the deposit in the ledger happens automatically after the turn.
+- flow_user_question: Answering a question about the user's clients, past agreements, deposits, or amounts owed and paid. Decides where the answer lives (the ledger first, Morning when it may hold it), and never answers that nothing exists before checking Morning where Morning could hold it.
+- flow_invoicing_query: Reading from the invoicing system for a client the user names: resolves the client's exact stored name first, then reads the documents or status. Other flows load it whenever they need to look up documents in Morning.
+- flow_generate_fee_agreement_docx: Generating a fee agreement document (הסכם שכר טרחה) as a .docx file to send to a prospective client. The client does not exist yet, so no client lookup is involved. Recording an agreement the user reports belongs to flow_fee_agreement_provided_by_user.
+- flow_create_reminder: Creating a new reminder, one-time or recurring ("תזכיר לי בעוד שעתיים", "תזכיר לי כל יום ראשון"). Confirms the text and the schedule, and creates the reminder only with approval. Use this flow, not cap_reminders_write directly, whenever a reminder is added.
+- flow_modify_reminder: Changing or cancelling an existing reminder ("תזיז את התזכורת", "תבטל את התזכורת"). Looks up the user's real reminders to identify the exact one before modifying or deleting it, with approval. Adding a brand-new reminder belongs to flow_create_reminder. Use the reminder flows, not cap_reminders_write directly.
+
+## Capabilities
+
+- cap_invoicing_write: Creating a Morning DOCUMENT for a client - an invoice, a receipt, a transaction account, a credit note, or a combo tax-invoice/receipt - or cancelling a transaction account. Writes only: finding the client or the existing document, and getting approval, are the calling flow's job, so load it only through that flow (flow_issue_*, flow_cancel_*, flow_payment_received_*), never directly. Not for creating or updating a client record - see cap_client_write.
+- cap_invoicing_read: Reading from the invoicing system (Morning): a specific document's own status and details, recent documents, a financial summary, a download link. It is given an already-resolved client name or document id. Not for a client's own details - see cap_client_read - and not the first choice for a general owed/paid amount question - see cap_ledger_query.
+- cap_client_write: Creating a new client record, or updating an existing client's own details (name/email/phone) in Morning. Writes only: load it only through flow_add_client or flow_modify_client, never directly. Never for producing any document - see cap_invoicing_write.
+- cap_client_read: Looking up an existing client's own details (name/email/phone/id), listing clients, and resolving a client name to its exact stored Morning spelling. Never for a client's financial history - see cap_ledger_query and cap_invoicing_read.
+- cap_ledger_query: Answering questions about PAST fee agreements or bank deposits already recorded, including how much a client/payer owes or has paid - whether or not a formal Morning invoice exists. The ledger is a fast cache over Morning and covers agreement-level amounts Morning cannot see at all.
+- cap_reminders_write: Creating, changing, or cancelling a reminder (one-time or recurring) for the user. Writes only: load it only through flow_create_reminder or flow_modify_reminder, never directly.
+- cap_reminders_read: Looking up the user's own existing reminders - what's scheduled, for when.
+- cap_media_analysis: Reading/extracting the content of an image or document the user sent. Used inside a larger flow, or on its own to work out what a piece of media is for.
+- cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
+- cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
+
+# Flow: Add client
+
+Goal: add a brand-new client to Morning if it does not exist.
+
+Capabilities: `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons`.
+
+Follow these steps in order, to the letter.
+
+1. Load `cap_client_read` and look up the client by the name the user gave.
+2. Handle what you find:
+   - The client already exists: use `cap_send_to_user` to tell the user plainly that it does. Do not modify it and do not offer to. The flow is complete.
+   - Similar clients exist but none matches exactly: use `cap_send_to_user` to list each similar client by name and offer, as its own explicit choice, to create a new client under the exact name they gave. Wait for their choice. If they pick an existing client, the flow is complete. A plain "add client X" is not by itself the user asking for a new one; only wording that concedes a similar client may exist and wants a new record anyway means you may skip the question. Once that is clear, don't ask again.
+   - No such client: continue.
+3. Load `cap_client_write` and prepare the client from what the user gave. If something is missing, use `cap_send_to_user` to ask the user for it; don't guess.
+4. Creating a client MUST be approved by the user first. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Create the client only on a clear yes. On a no, create nothing, and use `cap_send_to_user` to ask what to change.
+5. If the creation fails, use `cap_send_to_user` to tell the user plainly what happened. Retry once only if the reason is fixable; otherwise stop.
+6. If the user drops the request or changes the subject mid-way, create nothing and treat the flow as complete.
+7. End. Use `cap_send_to_user` to report the outcome. Then unload `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
+
+
+# Capability: Client — Write (godfather/admin only)
+
+**Use this capability from within a flow (flow_add_client / flow_modify_client), never on its own for a user request.** The flow decides when it is loaded and when approval is required; this capability holds the details of the write itself.
+
+**Creating or changing a client is a state-changing action, which usually requires the user's explicit approval first.**
+
+Attaches `add_client` and `update_client`, which create or change a client record in
+Morning. They are real, persisted writes.
+
+**Approval data points.** Whoever raises the approval must show the user:
+- `add_client`: the new client's name, email and phone (and the tax id, if given).
+- `update_client`: the ACTUAL resolved client (never the user's loose wording) and
+  the specific field(s) changing, with their new values.
+
+## Creating a client
+
+`add_client` needs a name, an email AND a phone; all three are required, and none
+may be guessed or omitted. `tax_id` is the only optional field. If Morning rejects a
+tax id as invalid, relay that and ask for a corrected one.
+
+**Never alter the spelling of a name you are creating.** Use it exactly as the user
+wrote it, character for character; never "correct" it, even if you are confident
+which spelling was meant. Morning stores it verbatim, and a silently altered name
+means every later search for the real name fails.
+
+## Updating a client
+
+`update_client` needs `name_resolved=true` together with the EXACT name Morning has
+stored. Pass `name_resolved=true` only for a name that has actually been confirmed as
+Morning's stored name, never for the user's loose wording.
+
+
+# Capability: Client — Read (godfather/admin only)
+
+Attaches the Morning client-lookup tools: `list_clients`, `resolve_client_name`,
+`get_client_details`. All read-only; call them right away, in the same turn, as soon
+as you have what they need. None of them creates or changes a record.
+
+This capability answers "who is this client", "what are their details", and "which
+clients exist". It knows nothing about a client's amounts owed or paid.
+
+## What resolving a name returns
+
+`resolve_client_name` confirms the exact stored spelling of a name. A single-word
+name is a genuine partial/substring search. It returns one of:
+- an exact name: the stored spelling, to use verbatim;
+- a confirmation question: a single close match, to relay to the user as-is;
+- a candidates list: to relay to the user as-is;
+- no match at all.
+
+What to do with each result is the calling flow's business; this capability just
+reports it faithfully and never picks a candidate on its own.
+
+
+# Capability: Approval with buttons
+
+`approval_with_yes_no_buttons(text)` ends the turn showing the user WhatsApp yes/no
+buttons alongside `text`. It is plain and stateless: it does not know what the write
+is, and there is no pending-approval state to track. On the user's next turn, read
+their reply (a typed "כן"/"לא" or a button tap; both arrive as an ordinary turn) from
+the conversation, and act accordingly. Your own `cap_record_planning_status` note is
+what carries "I am waiting for approval of X" across the gap.
+
+The flow that needs the approval decides that an approval is required. The write
+capability you are about to use defines which details the approval must state.
+
+- Start the text with `📋 לאישור:` (or, for a document-creation approval,
+  `📋 לאישור — <what it is>:`, e.g. `📋 לאישור — לקוח חדש:`) on its own line,
+  then the details as REAL data: given by the user, or fetched this turn.
+  Never from memory or a guess. A missing detail is a question to ask BEFORE
+  requesting approval, never "not stated".
+- End the text with EXACTLY this closed question, verbatim, every single time:
+  `לאישור — כן/לא?`. Never paraphrase it (not `אישור — כן/לא?`, not `האם לאשר...`,
+  not any other wording) and never let a competing question follow it — this exact
+  string is a fixed contract other code relies on to recognize a real approval gate.
+- Ask once per action. Act only on a clear affirmative to THAT specific action,
+  exactly once. On "לא", do not act: acknowledge and ask what to change.
+- Reply in Hebrew only.
+
+
+## Loaded flows
+
+flow_add_client
+
+## Loaded capabilities
+
+cap_client_write, cap_client_read, cap_approval_with_buttons
+
+---
+
+THE CURRENT DATE AND TIME IS 2026-10-01 10:31 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
+```
+
+</details>
+
+</details>
+
+</details>
+
+<details>
+<summary>48. [2026-10-01 10:32:00] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+- response.id: `resp_0877ebc57cf0ad87006abe0c6e992887d1ba930c191e7fbf00`
+- status: `completed`
+- usage: `{"input_tokens": 9020, "input_tokens_details": {"cache_write_tokens": 217, "cached_tokens": 8800}, "output_tokens": 69, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9089}`
+- function_call: `approval_with_yes_no_buttons` call_id=`call_HkAzVEwM3jtdp5Zr8gRUohDe`
+```json
+{
+  "text": "📋 לאישור — לקוח חדש:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: +972501234567\nלאישור — כן/לא?"
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+- response.id: `resp_0877ebc57cf0ad87006abe0c6e992887d1ba930c191e7fbf00`
+- status: `completed`
+- usage: `{"input_tokens": 9020, "input_tokens_details": {"cache_write_tokens": 217, "cached_tokens": 8800}, "output_tokens": 69, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9089}`
+- function_call: `approval_with_yes_no_buttons` call_id=`call_HkAzVEwM3jtdp5Zr8gRUohDe`
+```json
+{
+  "text": "📋 לאישור — לקוח חדש:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: +972501234567\nלאישור — כן/לא?"
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>49. [2026-10-01 10:32:00] APP → USER — context=buttons</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+```json
+{
+  "chat_id": "972500000021@c.us",
+  "message": "📋 לאישור — לקוח חדש:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: +972501234567\nלאישור — כן/לא?"
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+```json
+{
+  "chat_id": "972500000021@c.us",
+  "message": "📋 לאישור — לקוח חדש:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: +972501234567\nלאישור — כן/לא?"
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>50. [2026-10-01 10:32:00] APP → MODEL — context=recognize_ledger_event</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -7085,7 +6364,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 **input:**
 
 ```json
-{"role": "user", "content": "THE CONVERSATION WINDOW (the last 1h, oldest first) - '<message_id> [<role>] <content>':\n2dba58b3-d163-4584-9afc-8f3e25b12368 [godfather] תוסיף לקוח חדש בשם זכריה פרוקופנקו, מייל e2e-client-513218@example.com, טלפון +972501234567\n467d0e60-b5f1-48c9-a50f-0574c52fc218 [assistant] מתחיל לבדוק אם הלקוח כבר קיים לפני הוספתו.\nbb801c6e-92ee-414e-adb6-6dff1bb8a17e [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש ביקש להוסיף לקוח חדש בשם זכריה פרוקופנקו עם כתובת דואר אלקטרוני ומספר טלפון.\nTHIS TURN'S PURPOSE: להפעיל את תהליך הוספת הלקוח, לבדוק כפילויות, ואז לבקש אישור לפני יצירה.\nEXPECTATION: לטעון את תהליך הוספת הלקוח ואת היכולות הנדרשות, לחפש התאמות קיימות, ולהציג את פרטי הלקוח לאישור.\nbcb9f8f5-f0e7-455d-a97b-df65b01365fd [assistant] בודק עכשיו אם קיימת רשומה זהה או דומה במערכת.\n4342b6a0-8fb7-4fb2-8960-b7ed9f171189 [assistant] מחפש את השם המדויק במערכת.\n86a28239-b34d-4836-ae44-8270abc96ef8 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח, לאחר בדיקת כפילויות. המערכת מצאה התאמה קרובה בשם אבינועם פרוקופין, ולא התאמה ודאית לשם זכריה פרוקופנקו.\nTHIS TURN'S PURPOSE: להציג למשתמש את ההתאמה הקרובה ולבקש בחירה מפורשת לפני המשך.\nEXPECTATION: אם המשתמש יאשר יצירת רשומה חדשה בשם זכריה פרוקופנקו, אכין אותה עם הדואר והטלפון שסופקו ואבקש אישור סופי ליצירה.\n19465dbc-315d-48d6-b969-811c4b6ca2e5 [assistant] נמצאה במערכת התאמה קרובה בשם אבינועם פרוקופין.\n\nהאם ליצור בכל זאת לקוח חדש בשם המדויק זכריה פרוקופנקו, עם המייל e2e-client-513218@example.com והטלפון +972501234567?\n    (morning MCP call on this message's turn) {\"name\": \"resolve_client_name\", \"error\": null, \"arguments\": \"{\\\"name\\\":\\\"זכריה פרוקופנקו\\\"}\", \"output\": \"{\\\"status\\\": \\\"needs_confirmation\\\", \\\"candidate_name\\\": \\\"\\\\u05d0\\\\u05d1\\\\u05d9\\\\u05e0\\\\u05d5\\\\u05e2\\\\u05dd \\\\u05e4\\\\u05e8\\\\u05d5\\\\u05e7\\\\u05d5\\\\u05e4\\\\u05d9\\\\u05df\\\"}\"}\n23c609ee-351f-4776-b20e-0a791f4c5958 [godfather] לא, תוסיף לקוח חדש בשם זכריה פרוקופנקו, מייל e2e-client-513218@example.com, טלפון +972501234567\n8cb9058d-f2a4-4e4d-9b52-7531442715f8 [assistant] מכין את פרטי הלקוח לאישור סופי לפני יצירתו.\n0730ea51-857f-4a30-9a2d-4efd546f4437 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח, נמצאה התאמה קרובה והמשתמש אישר במפורש ליצור רשומה חדשה בשם שסיפק.\nTHIS TURN'S PURPOSE: להכין את רשומת הלקוח ולבקש אישור סופי לפני היצירה.\nEXPECTATION: לטעון את יכולת כתיבת הלקוח ואת אישור הכפתורים, ואז להציג את כל הפרטים לאישור.\nd616e2da-fe7f-483f-9873-1c59a383223c [assistant] הפרטים מלאים, ואני מציג אותם עכשיו לאישור לפני היצירה.\n16af05e1-7866-4d0c-8570-d95c397b7747 [assistant] 📋 לאישור — לקוח חדש:\nשם: זכריה פרוקופנקו\nמייל: e2e-client-513218@example.com\nטלפון: +972501234567\nלאישור — כן/לא?\n\nTHE REPLY JUST SENT TO THE OPERATOR THIS ROUND:\n📋 לאישור — לקוח חדש:\nשם: זכריה פרוקופנקו\nמייל: e2e-client-513218@example.com\nטלפון: +972501234567\nלאישור — כן/לא?\n\nNO Morning MCP tools were called this turn.\n\nFollow the recognition prompt above: query the client's ledger history first when the round concerns a client, then call report_ledger_recognition exactly once with the verdict for THIS round."}
+{"role": "user", "content": "THE CONVERSATION WINDOW (the last 1h, oldest first) - '<message_id> [<role>] <content>':\n39dc6069-2899-4871-b833-5be8ee1a7cda [godfather] תוסיף לקוח חדש בשם לריסה טסמה, מייל e2e-client-557926@example.com, טלפון +972501234567\nad43a0a3-1461-4eff-b7b5-5891e1b8b333 [assistant] בודק אם הלקוח כבר קיים, ואז אציג לך את פרטי ההוספה לאישור.\n63f6b0db-8a87-41b3-bd86-04eb6c38e63f [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: התקבלה בקשה להוסיף לקוח חדש בשם לריסה טסמה עם מייל וטלפון שסופקו.\nTHIS TURN'S PURPOSE: להפעיל את תהליך הוספת הלקוח, לבדוק כפילויות ולאסוף אישור לפני יצירה.\nEXPECTATION: אטען את התהליך והיכולות הנדרשות, אבדוק לקוחות דומים, ואז אבקש אישור מפורש ליצירה.\nf7e10c27-a8cb-4925-89fc-03d885fbd00f [assistant] מבצע בדיקת כפילות עבור לריסה טסמה.\nc0f7e492-f6a0-4e55-a38d-911f29255ef3 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח חדש. בדיקת Morning עבור לריסה טסמה הסתיימה ללא לקוח קיים או מועמד דומה.\nTHIS TURN'S PURPOSE: לבקש אישור מפורש לפני יצירת הרשומה.\nEXPECTATION: אם המשתמש יאשר, אצור את הלקוח בדיוק עם השם, המייל והטלפון שסופקו. אם יסרב, לא אצור דבר ואבקש מה לשנות.\n789a5a5f-7e06-4c4d-9afe-d891b3c8e553 [assistant] 📋 לאישור — לקוח חדש:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: +972501234567\nלאישור — כן/לא?\n    (morning MCP call on this message's turn) {\"name\": \"list_clients\", \"error\": null, \"arguments\": \"{\\\"name\\\":\\\"לריסה טסמה\\\"}\", \"output\": \"{\\\"count\\\": 0, \\\"clients\\\": []}\"}\n6833054c-341a-4590-ba25-d9f69f2a448e [godfather] לא, תוסיף לקוח חדש בשם לריסה טסמה, מייל e2e-client-557926@example.com, טלפון +972501234567\n14c506ed-0bf7-48c3-9a9c-fa253f8601b5 [assistant] קיבלתי, אציג שוב את פרטי הלקוח לאישור מפורש לפני ההוספה.\nc5f6eb45-1be6-42ca-9162-907534fe4ef9 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: תהליך הוספת הלקוח נעצר לאחר שהמשתמש השיב לא לאישור הקודם. כעת המשתמש חזר וביקש להוסיף את אותם פרטים, אך עדיין לא נתן תשובת כן מפורשת לאישור.\nTHIS TURN'S PURPOSE: לבקש מחדש אישור מפורש ליצירת הלקוח, בלי לבצע את הכתיבה לפני אישור.\nEXPECTATION: אם יתקבל כן ברור, אצור את הלקוח עם הפרטים שכבר נבדקו. אם יתקבל לא, לא אצור אותו.\n5459afc1-6e09-499a-8208-b8d9b8327326 [assistant] 📋 לאישור — לקוח חדש:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: +972501234567\nלאישור — כן/לא?\n\nTHE REPLY JUST SENT TO THE OPERATOR THIS ROUND:\n📋 לאישור — לקוח חדש:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: +972501234567\nלאישור — כן/לא?\n\nNO Morning MCP tools were called this turn.\n\nFollow the recognition prompt above: query the client's ledger history first when the round concerns a client, then call report_ledger_recognition exactly once with the verdict for THIS round."}
 ```
 
 - tools (2): ['report_ledger_recognition', 'query_ledger_events']
@@ -7104,7 +6383,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 **input:**
 
 ```json
-{"role": "user", "content": "THE CONVERSATION WINDOW (the last 1h, oldest first) - '<message_id> [<role>] <content>':\n2dba58b3-d163-4584-9afc-8f3e25b12368 [godfather] תוסיף לקוח חדש בשם זכריה פרוקופנקו, מייל e2e-client-513218@example.com, טלפון +972501234567\n467d0e60-b5f1-48c9-a50f-0574c52fc218 [assistant] מתחיל לבדוק אם הלקוח כבר קיים לפני הוספתו.\nbb801c6e-92ee-414e-adb6-6dff1bb8a17e [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש ביקש להוסיף לקוח חדש בשם זכריה פרוקופנקו עם כתובת דואר אלקטרוני ומספר טלפון.\nTHIS TURN'S PURPOSE: להפעיל את תהליך הוספת הלקוח, לבדוק כפילויות, ואז לבקש אישור לפני יצירה.\nEXPECTATION: לטעון את תהליך הוספת הלקוח ואת היכולות הנדרשות, לחפש התאמות קיימות, ולהציג את פרטי הלקוח לאישור.\nbcb9f8f5-f0e7-455d-a97b-df65b01365fd [assistant] בודק עכשיו אם קיימת רשומה זהה או דומה במערכת.\n4342b6a0-8fb7-4fb2-8960-b7ed9f171189 [assistant] מחפש את השם המדויק במערכת.\n86a28239-b34d-4836-ae44-8270abc96ef8 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח, לאחר בדיקת כפילויות. המערכת מצאה התאמה קרובה בשם אבינועם פרוקופין, ולא התאמה ודאית לשם זכריה פרוקופנקו.\nTHIS TURN'S PURPOSE: להציג למשתמש את ההתאמה הקרובה ולבקש בחירה מפורשת לפני המשך.\nEXPECTATION: אם המשתמש יאשר יצירת רשומה חדשה בשם זכריה פרוקופנקו, אכין אותה עם הדואר והטלפון שסופקו ואבקש אישור סופי ליצירה.\n19465dbc-315d-48d6-b969-811c4b6ca2e5 [assistant] נמצאה במערכת התאמה קרובה בשם אבינועם פרוקופין.\n\nהאם ליצור בכל זאת לקוח חדש בשם המדויק זכריה פרוקופנקו, עם המייל e2e-client-513218@example.com והטלפון +972501234567?\n    (morning MCP call on this message's turn) {\"name\": \"resolve_client_name\", \"error\": null, \"arguments\": \"{\\\"name\\\":\\\"זכריה פרוקופנקו\\\"}\", \"output\": \"{\\\"status\\\": \\\"needs_confirmation\\\", \\\"candidate_name\\\": \\\"\\\\u05d0\\\\u05d1\\\\u05d9\\\\u05e0\\\\u05d5\\\\u05e2\\\\u05dd \\\\u05e4\\\\u05e8\\\\u05d5\\\\u05e7\\\\u05d5\\\\u05e4\\\\u05d9\\\\u05df\\\"}\"}\n23c609ee-351f-4776-b20e-0a791f4c5958 [godfather] לא, תוסיף לקוח חדש בשם זכריה פרוקופנקו, מייל e2e-client-513218@example.com, טלפון +972501234567\n8cb9058d-f2a4-4e4d-9b52-7531442715f8 [assistant] מכין את פרטי הלקוח לאישור סופי לפני יצירתו.\n0730ea51-857f-4a30-9a2d-4efd546f4437 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח, נמצאה התאמה קרובה והמשתמש אישר במפורש ליצור רשומה חדשה בשם שסיפק.\nTHIS TURN'S PURPOSE: להכין את רשומת הלקוח ולבקש אישור סופי לפני היצירה.\nEXPECTATION: לטעון את יכולת כתיבת הלקוח ואת אישור הכפתורים, ואז להציג את כל הפרטים לאישור.\nd616e2da-fe7f-483f-9873-1c59a383223c [assistant] הפרטים מלאים, ואני מציג אותם עכשיו לאישור לפני היצירה.\n16af05e1-7866-4d0c-8570-d95c397b7747 [assistant] 📋 לאישור — לקוח חדש:\nשם: זכריה פרוקופנקו\nמייל: e2e-client-513218@example.com\nטלפון: +972501234567\nלאישור — כן/לא?\n\nTHE REPLY JUST SENT TO THE OPERATOR THIS ROUND:\n📋 לאישור — לקוח חדש:\nשם: זכריה פרוקופנקו\nמייל: e2e-client-513218@example.com\nטלפון: +972501234567\nלאישור — כן/לא?\n\nNO Morning MCP tools were called this turn.\n\nFollow the recognition prompt above: query the client's ledger history first when the round concerns a client, then call report_ledger_recognition exactly once with the verdict for THIS round."}
+{"role": "user", "content": "THE CONVERSATION WINDOW (the last 1h, oldest first) - '<message_id> [<role>] <content>':\n39dc6069-2899-4871-b833-5be8ee1a7cda [godfather] תוסיף לקוח חדש בשם לריסה טסמה, מייל e2e-client-557926@example.com, טלפון +972501234567\nad43a0a3-1461-4eff-b7b5-5891e1b8b333 [assistant] בודק אם הלקוח כבר קיים, ואז אציג לך את פרטי ההוספה לאישור.\n63f6b0db-8a87-41b3-bd86-04eb6c38e63f [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: התקבלה בקשה להוסיף לקוח חדש בשם לריסה טסמה עם מייל וטלפון שסופקו.\nTHIS TURN'S PURPOSE: להפעיל את תהליך הוספת הלקוח, לבדוק כפילויות ולאסוף אישור לפני יצירה.\nEXPECTATION: אטען את התהליך והיכולות הנדרשות, אבדוק לקוחות דומים, ואז אבקש אישור מפורש ליצירה.\nf7e10c27-a8cb-4925-89fc-03d885fbd00f [assistant] מבצע בדיקת כפילות עבור לריסה טסמה.\nc0f7e492-f6a0-4e55-a38d-911f29255ef3 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח חדש. בדיקת Morning עבור לריסה טסמה הסתיימה ללא לקוח קיים או מועמד דומה.\nTHIS TURN'S PURPOSE: לבקש אישור מפורש לפני יצירת הרשומה.\nEXPECTATION: אם המשתמש יאשר, אצור את הלקוח בדיוק עם השם, המייל והטלפון שסופקו. אם יסרב, לא אצור דבר ואבקש מה לשנות.\n789a5a5f-7e06-4c4d-9afe-d891b3c8e553 [assistant] 📋 לאישור — לקוח חדש:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: +972501234567\nלאישור — כן/לא?\n    (morning MCP call on this message's turn) {\"name\": \"list_clients\", \"error\": null, \"arguments\": \"{\\\"name\\\":\\\"לריסה טסמה\\\"}\", \"output\": \"{\\\"count\\\": 0, \\\"clients\\\": []}\"}\n6833054c-341a-4590-ba25-d9f69f2a448e [godfather] לא, תוסיף לקוח חדש בשם לריסה טסמה, מייל e2e-client-557926@example.com, טלפון +972501234567\n14c506ed-0bf7-48c3-9a9c-fa253f8601b5 [assistant] קיבלתי, אציג שוב את פרטי הלקוח לאישור מפורש לפני ההוספה.\nc5f6eb45-1be6-42ca-9162-907534fe4ef9 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: תהליך הוספת הלקוח נעצר לאחר שהמשתמש השיב לא לאישור הקודם. כעת המשתמש חזר וביקש להוסיף את אותם פרטים, אך עדיין לא נתן תשובת כן מפורשת לאישור.\nTHIS TURN'S PURPOSE: לבקש מחדש אישור מפורש ליצירת הלקוח, בלי לבצע את הכתיבה לפני אישור.\nEXPECTATION: אם יתקבל כן ברור, אצור את הלקוח עם הפרטים שכבר נבדקו. אם יתקבל לא, לא אצור אותו.\n5459afc1-6e09-499a-8208-b8d9b8327326 [assistant] 📋 לאישור — לקוח חדש:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: +972501234567\nלאישור — כן/לא?\n\nTHE REPLY JUST SENT TO THE OPERATOR THIS ROUND:\n📋 לאישור — לקוח חדש:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: +972501234567\nלאישור — כן/לא?\n\nNO Morning MCP tools were called this turn.\n\nFollow the recognition prompt above: query the client's ledger history first when the round concerns a client, then call report_ledger_recognition exactly once with the verdict for THIS round."}
 ```
 
 - tools (2): ['report_ledger_recognition', 'query_ledger_events']
@@ -7351,7 +6630,7 @@ ledger history:
   to resolve a client — verdict `none`.
 
 ---
-Today's date (Israel local): 30/09/2026
+Today's date (Israel local): 01/10/2026
 
 POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already been sent. Do not produce a reply. Your only task is to call report_ledger_recognition exactly once with the verdict for this round, after any ledger-history lookups the prompt calls for. When in doubt, verdict='none'.
 ```
@@ -7363,25 +6642,20 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 </details>
 
 <details>
-<summary>53. [2026-09-30 16:45:19] MODEL → APP — context=recognize_ledger_event</summary>
+<summary>51. [2026-10-01 10:32:03] MODEL → APP — context=recognize_ledger_event</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0e2a217104d38888006abd126d814487d1b9d7ee1625c4cda0`
+- response.id: `resp_07213d47f9bdb183006abe0c717ab887d1b5493ad6eceb0ae1`
 - status: `completed`
-- usage: `{"input_tokens": 9138, "input_tokens_details": {"cache_write_tokens": 1199, "cached_tokens": 7936}, "output_tokens": 118, "output_tokens_details": {"reasoning_tokens": 51}, "total_tokens": 9256}`
+- usage: `{"input_tokens": 8964, "input_tokens_details": {"cache_write_tokens": 1025, "cached_tokens": 7936}, "output_tokens": 101, "output_tokens_details": {"reasoning_tokens": 60}, "total_tokens": 9065}`
 - reasoning item (content not user-visible)
-- function_call: `report_ledger_recognition` call_id=`call_tCZc3eZ27WcRM5sjL8TrT1eG`
+- function_call: `report_ledger_recognition` call_id=`call_57VBCZKTSDP7A9kOOVG6m2Kx`
 ```json
 {
   "verdict": "none",
-  "none_reason": "client-record maintenance with no fee agreement, deposit, or accounting document",
-  "event": null,
-  "trigger_message_id": null,
-  "source_type": null,
-  "client_name_stated": null,
-  "reason": null
+  "none_reason": "client-record maintenance without fee agreement, deposit, or Morning accounting document"
 }
 ```
 
@@ -7390,20 +6664,15 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0e2a217104d38888006abd126d814487d1b9d7ee1625c4cda0`
+- response.id: `resp_07213d47f9bdb183006abe0c717ab887d1b5493ad6eceb0ae1`
 - status: `completed`
-- usage: `{"input_tokens": 9138, "input_tokens_details": {"cache_write_tokens": 1199, "cached_tokens": 7936}, "output_tokens": 118, "output_tokens_details": {"reasoning_tokens": 51}, "total_tokens": 9256}`
+- usage: `{"input_tokens": 8964, "input_tokens_details": {"cache_write_tokens": 1025, "cached_tokens": 7936}, "output_tokens": 101, "output_tokens_details": {"reasoning_tokens": 60}, "total_tokens": 9065}`
 - reasoning item (content not user-visible)
-- function_call: `report_ledger_recognition` call_id=`call_tCZc3eZ27WcRM5sjL8TrT1eG`
+- function_call: `report_ledger_recognition` call_id=`call_57VBCZKTSDP7A9kOOVG6m2Kx`
 ```json
 {
   "verdict": "none",
-  "none_reason": "client-record maintenance with no fee agreement, deposit, or accounting document",
-  "event": null,
-  "trigger_message_id": null,
-  "source_type": null,
-  "client_name_stated": null,
-  "reason": null
+  "none_reason": "client-record maintenance without fee agreement, deposit, or Morning accounting document"
 }
 ```
 
@@ -7412,7 +6681,7 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 </details>
 
 <details>
-<summary>54. [2026-09-30 16:45:19] USER → APP — context=webhook</summary>
+<summary>52. [2026-10-01 10:32:03] USER → APP — context=webhook</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -7420,8 +6689,8 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 ```json
 {
   "typeWebhook": "incomingMessageReceived",
-  "timestamp": 1790775919,
-  "idMessage": "E2E_ADD_CLIENT_APPROVE_APPROVE_A1_1790775919",
+  "timestamp": 1790839923,
+  "idMessage": "E2E_ADD_CLIENT_APPROVE_APPROVE_A1_1790839923",
   "instanceData": {
     "idInstance": 7103000000,
     "wid": "972501234567@c.us",
@@ -7449,8 +6718,8 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 ```json
 {
   "typeWebhook": "incomingMessageReceived",
-  "timestamp": 1790775919,
-  "idMessage": "E2E_ADD_CLIENT_APPROVE_APPROVE_A1_1790775919",
+  "timestamp": 1790839923,
+  "idMessage": "E2E_ADD_CLIENT_APPROVE_APPROVE_A1_1790839923",
   "instanceData": {
     "idInstance": 7103000000,
     "wid": "972501234567@c.us",
@@ -7475,7 +6744,7 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 </details>
 
 <details>
-<summary>55. [2026-09-30 16:45:20] APP → MODEL — context=_run_resolution_loop (first round)</summary>
+<summary>53. [2026-10-01 10:32:04] APP → MODEL — context=_run_resolution_loop (first round)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -7487,46 +6756,40 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 **input:**
 
 ```json
-{"role": "user", "content": "תוסיף לקוח חדש בשם זכריה פרוקופנקו, מייל e2e-client-513218@example.com, טלפון +972501234567"}
+{"role": "user", "content": "תוסיף לקוח חדש בשם לריסה טסמה, מייל e2e-client-557926@example.com, טלפון +972501234567"}
 ```
 ```json
-{"role": "assistant", "content": "מתחיל לבדוק אם הלקוח כבר קיים לפני הוספתו."}
+{"role": "assistant", "content": "בודק אם הלקוח כבר קיים, ואז אציג לך את פרטי ההוספה לאישור."}
 ```
 ```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש ביקש להוסיף לקוח חדש בשם זכריה פרוקופנקו עם כתובת דואר אלקטרוני ומספר טלפון.\nTHIS TURN'S PURPOSE: להפעיל את תהליך הוספת הלקוח, לבדוק כפילויות, ואז לבקש אישור לפני יצירה.\nEXPECTATION: לטעון את תהליך הוספת הלקוח ואת היכולות הנדרשות, לחפש התאמות קיימות, ולהציג את פרטי הלקוח לאישור."}
+{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: התקבלה בקשה להוסיף לקוח חדש בשם לריסה טסמה עם מייל וטלפון שסופקו.\nTHIS TURN'S PURPOSE: להפעיל את תהליך הוספת הלקוח, לבדוק כפילויות ולאסוף אישור לפני יצירה.\nEXPECTATION: אטען את התהליך והיכולות הנדרשות, אבדוק לקוחות דומים, ואז אבקש אישור מפורש ליצירה."}
 ```
 ```json
-{"role": "assistant", "content": "בודק עכשיו אם קיימת רשומה זהה או דומה במערכת."}
+{"role": "assistant", "content": "מבצע בדיקת כפילות עבור לריסה טסמה."}
 ```
 ```json
-{"role": "assistant", "content": "מחפש את השם המדויק במערכת."}
+{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח חדש. בדיקת Morning עבור לריסה טסמה הסתיימה ללא לקוח קיים או מועמד דומה.\nTHIS TURN'S PURPOSE: לבקש אישור מפורש לפני יצירת הרשומה.\nEXPECTATION: אם המשתמש יאשר, אצור את הלקוח בדיוק עם השם, המייל והטלפון שסופקו. אם יסרב, לא אצור דבר ואבקש מה לשנות."}
 ```
 ```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח, לאחר בדיקת כפילויות. המערכת מצאה התאמה קרובה בשם אבינועם פרוקופין, ולא התאמה ודאית לשם זכריה פרוקופנקו.\nTHIS TURN'S PURPOSE: להציג למשתמש את ההתאמה הקרובה ולבקש בחירה מפורשת לפני המשך.\nEXPECTATION: אם המשתמש יאשר יצירת רשומה חדשה בשם זכריה פרוקופנקו, אכין אותה עם הדואר והטלפון שסופקו ואבקש אישור סופי ליצירה."}
+{"role": "assistant", "content": "📋 לאישור — לקוח חדש:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: +972501234567\nלאישור — כן/לא?"}
 ```
 ```json
-{"role": "assistant", "content": "נמצאה במערכת התאמה קרובה בשם אבינועם פרוקופין.\n\nהאם ליצור בכל זאת לקוח חדש בשם המדויק זכריה פרוקופנקו, עם המייל e2e-client-513218@example.com והטלפון +972501234567?"}
+{"role": "user", "content": "לא, תוסיף לקוח חדש בשם לריסה טסמה, מייל e2e-client-557926@example.com, טלפון +972501234567"}
 ```
 ```json
-{"role": "user", "content": "לא, תוסיף לקוח חדש בשם זכריה פרוקופנקו, מייל e2e-client-513218@example.com, טלפון +972501234567"}
+{"role": "assistant", "content": "קיבלתי, אציג שוב את פרטי הלקוח לאישור מפורש לפני ההוספה."}
 ```
 ```json
-{"role": "assistant", "content": "מכין את פרטי הלקוח לאישור סופי לפני יצירתו."}
+{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: תהליך הוספת הלקוח נעצר לאחר שהמשתמש השיב לא לאישור הקודם. כעת המשתמש חזר וביקש להוסיף את אותם פרטים, אך עדיין לא נתן תשובת כן מפורשת לאישור.\nTHIS TURN'S PURPOSE: לבקש מחדש אישור מפורש ליצירת הלקוח, בלי לבצע את הכתיבה לפני אישור.\nEXPECTATION: אם יתקבל כן ברור, אצור את הלקוח עם הפרטים שכבר נבדקו. אם יתקבל לא, לא אצור אותו."}
 ```
 ```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח, נמצאה התאמה קרובה והמשתמש אישר במפורש ליצור רשומה חדשה בשם שסיפק.\nTHIS TURN'S PURPOSE: להכין את רשומת הלקוח ולבקש אישור סופי לפני היצירה.\nEXPECTATION: לטעון את יכולת כתיבת הלקוח ואת אישור הכפתורים, ואז להציג את כל הפרטים לאישור."}
-```
-```json
-{"role": "assistant", "content": "הפרטים מלאים, ואני מציג אותם עכשיו לאישור לפני היצירה."}
-```
-```json
-{"role": "assistant", "content": "📋 לאישור — לקוח חדש:\nשם: זכריה פרוקופנקו\nמייל: e2e-client-513218@example.com\nטלפון: +972501234567\nלאישור — כן/לא?"}
+{"role": "assistant", "content": "📋 לאישור — לקוח חדש:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: +972501234567\nלאישור — כן/לא?"}
 ```
 ```json
 {"role": "user", "content": "כן"}
 ```
 
-- tools (11): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp']
+- tools (12): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp', 'mcp']
 
 - max_output_tokens: `20000`
 
@@ -7546,46 +6809,40 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 **input:**
 
 ```json
-{"role": "user", "content": "תוסיף לקוח חדש בשם זכריה פרוקופנקו, מייל e2e-client-513218@example.com, טלפון +972501234567"}
+{"role": "user", "content": "תוסיף לקוח חדש בשם לריסה טסמה, מייל e2e-client-557926@example.com, טלפון +972501234567"}
 ```
 ```json
-{"role": "assistant", "content": "מתחיל לבדוק אם הלקוח כבר קיים לפני הוספתו."}
+{"role": "assistant", "content": "בודק אם הלקוח כבר קיים, ואז אציג לך את פרטי ההוספה לאישור."}
 ```
 ```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש ביקש להוסיף לקוח חדש בשם זכריה פרוקופנקו עם כתובת דואר אלקטרוני ומספר טלפון.\nTHIS TURN'S PURPOSE: להפעיל את תהליך הוספת הלקוח, לבדוק כפילויות, ואז לבקש אישור לפני יצירה.\nEXPECTATION: לטעון את תהליך הוספת הלקוח ואת היכולות הנדרשות, לחפש התאמות קיימות, ולהציג את פרטי הלקוח לאישור."}
+{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: התקבלה בקשה להוסיף לקוח חדש בשם לריסה טסמה עם מייל וטלפון שסופקו.\nTHIS TURN'S PURPOSE: להפעיל את תהליך הוספת הלקוח, לבדוק כפילויות ולאסוף אישור לפני יצירה.\nEXPECTATION: אטען את התהליך והיכולות הנדרשות, אבדוק לקוחות דומים, ואז אבקש אישור מפורש ליצירה."}
 ```
 ```json
-{"role": "assistant", "content": "בודק עכשיו אם קיימת רשומה זהה או דומה במערכת."}
+{"role": "assistant", "content": "מבצע בדיקת כפילות עבור לריסה טסמה."}
 ```
 ```json
-{"role": "assistant", "content": "מחפש את השם המדויק במערכת."}
+{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח חדש. בדיקת Morning עבור לריסה טסמה הסתיימה ללא לקוח קיים או מועמד דומה.\nTHIS TURN'S PURPOSE: לבקש אישור מפורש לפני יצירת הרשומה.\nEXPECTATION: אם המשתמש יאשר, אצור את הלקוח בדיוק עם השם, המייל והטלפון שסופקו. אם יסרב, לא אצור דבר ואבקש מה לשנות."}
 ```
 ```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח, לאחר בדיקת כפילויות. המערכת מצאה התאמה קרובה בשם אבינועם פרוקופין, ולא התאמה ודאית לשם זכריה פרוקופנקו.\nTHIS TURN'S PURPOSE: להציג למשתמש את ההתאמה הקרובה ולבקש בחירה מפורשת לפני המשך.\nEXPECTATION: אם המשתמש יאשר יצירת רשומה חדשה בשם זכריה פרוקופנקו, אכין אותה עם הדואר והטלפון שסופקו ואבקש אישור סופי ליצירה."}
+{"role": "assistant", "content": "📋 לאישור — לקוח חדש:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: +972501234567\nלאישור — כן/לא?"}
 ```
 ```json
-{"role": "assistant", "content": "נמצאה במערכת התאמה קרובה בשם אבינועם פרוקופין.\n\nהאם ליצור בכל זאת לקוח חדש בשם המדויק זכריה פרוקופנקו, עם המייל e2e-client-513218@example.com והטלפון +972501234567?"}
+{"role": "user", "content": "לא, תוסיף לקוח חדש בשם לריסה טסמה, מייל e2e-client-557926@example.com, טלפון +972501234567"}
 ```
 ```json
-{"role": "user", "content": "לא, תוסיף לקוח חדש בשם זכריה פרוקופנקו, מייל e2e-client-513218@example.com, טלפון +972501234567"}
+{"role": "assistant", "content": "קיבלתי, אציג שוב את פרטי הלקוח לאישור מפורש לפני ההוספה."}
 ```
 ```json
-{"role": "assistant", "content": "מכין את פרטי הלקוח לאישור סופי לפני יצירתו."}
+{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: תהליך הוספת הלקוח נעצר לאחר שהמשתמש השיב לא לאישור הקודם. כעת המשתמש חזר וביקש להוסיף את אותם פרטים, אך עדיין לא נתן תשובת כן מפורשת לאישור.\nTHIS TURN'S PURPOSE: לבקש מחדש אישור מפורש ליצירת הלקוח, בלי לבצע את הכתיבה לפני אישור.\nEXPECTATION: אם יתקבל כן ברור, אצור את הלקוח עם הפרטים שכבר נבדקו. אם יתקבל לא, לא אצור אותו."}
 ```
 ```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח, נמצאה התאמה קרובה והמשתמש אישר במפורש ליצור רשומה חדשה בשם שסיפק.\nTHIS TURN'S PURPOSE: להכין את רשומת הלקוח ולבקש אישור סופי לפני היצירה.\nEXPECTATION: לטעון את יכולת כתיבת הלקוח ואת אישור הכפתורים, ואז להציג את כל הפרטים לאישור."}
-```
-```json
-{"role": "assistant", "content": "הפרטים מלאים, ואני מציג אותם עכשיו לאישור לפני היצירה."}
-```
-```json
-{"role": "assistant", "content": "📋 לאישור — לקוח חדש:\nשם: זכריה פרוקופנקו\nמייל: e2e-client-513218@example.com\nטלפון: +972501234567\nלאישור — כן/לא?"}
+{"role": "assistant", "content": "📋 לאישור — לקוח חדש:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: +972501234567\nלאישור — כן/לא?"}
 ```
 ```json
 {"role": "user", "content": "כן"}
 ```
 
-- tools (11): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp']
+- tools (12): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp', 'mcp']
 
 - max_output_tokens: `20000`
 
@@ -7944,7 +7201,7 @@ cap_client_write, cap_client_read, cap_approval_with_buttons
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 16:45 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-10-01 10:32 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -7955,17 +7212,18 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>56. [2026-09-30 16:45:25] MODEL → APP — context=_run_resolution_loop (first round)</summary>
+<summary>54. [2026-10-01 10:32:08] MODEL → APP — context=_run_resolution_loop (first round)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0e62c432ea455d47006abd127117f087d19b4fcf6c453d7127`
+- response.id: `resp_00169c193dd3244b006abe0c75046087d18ee087880ab77fe3`
 - status: `completed`
-- usage: `{"input_tokens": 8783, "input_tokens_details": {"cache_write_tokens": 8780, "cached_tokens": 0}, "output_tokens": 138, "output_tokens_details": {"reasoning_tokens": 110}, "total_tokens": 8921}`
-- mcp_list_tools (morning-invoices): ['add_client', 'list_clients', 'resolve_client_name', 'get_client_details', 'update_client']
+- usage: `{"input_tokens": 8743, "input_tokens_details": {"cache_write_tokens": 8740, "cached_tokens": 0}, "output_tokens": 89, "output_tokens_details": {"reasoning_tokens": 61}, "total_tokens": 8832}`
+- mcp_list_tools (morning-invoices-client-read): ['list_clients', 'resolve_client_name', 'get_client_details']
+- mcp_list_tools (morning-invoices-client-write): ['add_client', 'update_client']
 - reasoning item (content not user-visible)
-- function_call: `react_to_message` call_id=`call_VKgELOsUs9vJ3op6suSTYTkQ`
+- function_call: `react_to_message` call_id=`call_fu8bDLsyhypTzoeiWxusmFi1`
 ```json
 {
   "emoji": "🫡",
@@ -7978,12 +7236,13 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0e62c432ea455d47006abd127117f087d19b4fcf6c453d7127`
+- response.id: `resp_00169c193dd3244b006abe0c75046087d18ee087880ab77fe3`
 - status: `completed`
-- usage: `{"input_tokens": 8783, "input_tokens_details": {"cache_write_tokens": 8780, "cached_tokens": 0}, "output_tokens": 138, "output_tokens_details": {"reasoning_tokens": 110}, "total_tokens": 8921}`
-- mcp_list_tools (morning-invoices): ['add_client', 'list_clients', 'resolve_client_name', 'get_client_details', 'update_client']
+- usage: `{"input_tokens": 8743, "input_tokens_details": {"cache_write_tokens": 8740, "cached_tokens": 0}, "output_tokens": 89, "output_tokens_details": {"reasoning_tokens": 61}, "total_tokens": 8832}`
+- mcp_list_tools (morning-invoices-client-read): ['list_clients', 'resolve_client_name', 'get_client_details']
+- mcp_list_tools (morning-invoices-client-write): ['add_client', 'update_client']
 - reasoning item (content not user-visible)
-- function_call: `react_to_message` call_id=`call_VKgELOsUs9vJ3op6suSTYTkQ`
+- function_call: `react_to_message` call_id=`call_fu8bDLsyhypTzoeiWxusmFi1`
 ```json
 {
   "emoji": "🫡",
@@ -7996,7 +7255,143 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>57. [2026-09-30 16:45:25] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>55. [2026-10-01 10:32:08] APP → USER — context=reaction</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+```json
+{
+  "chat_id": "972500000021@c.us",
+  "message": {
+    "chatId": "972500000021@c.us",
+    "idMessage": "E2E_ADD_CLIENT_APPROVE_APPROVE_A1_1790839923",
+    "reaction": "🫡"
+  }
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+```json
+{
+  "chatId": "972500000021@c.us",
+  "idMessage": "E2E_ADD_CLIENT_APPROVE_APPROVE_A1_1790839923",
+  "reaction": "🫡"
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>56. [2026-10-01 10:32:08] USER ← APP (send result) — context=reaction</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+```json
+{
+  "chat_id": "972500000021@c.us",
+  "message": {
+    "code": null,
+    "data": null,
+    "error": "'object' object has no attribute 'api'"
+  }
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+```json
+{
+  "code": null,
+  "data": null,
+  "error": "'object' object has no attribute 'api'"
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>57. [2026-10-01 10:32:09] APP → USER — context=reaction</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+```json
+{
+  "chat_id": "972500000021@c.us",
+  "message": {
+    "chatId": "972500000021@c.us",
+    "idMessage": "E2E_ADD_CLIENT_APPROVE_APPROVE_A1_1790839923",
+    "reaction": "🫡"
+  }
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+```json
+{
+  "chatId": "972500000021@c.us",
+  "idMessage": "E2E_ADD_CLIENT_APPROVE_APPROVE_A1_1790839923",
+  "reaction": "🫡"
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>58. [2026-10-01 10:32:09] USER ← APP (send result) — context=reaction</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+```json
+{
+  "chat_id": "972500000021@c.us",
+  "message": {
+    "code": null,
+    "data": null,
+    "error": "'object' object has no attribute 'api'"
+  }
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+```json
+{
+  "code": null,
+  "data": null,
+  "error": "'object' object has no attribute 'api'"
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>59. [2026-10-01 10:32:09] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -8007,16 +7402,16 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 **input:**
 
-- app's reply to `react_to_message` (call_id=`call_VKgELOsUs9vJ3op6suSTYTkQ`):
+- app's reply to `react_to_message` (call_id=`call_fu8bDLsyhypTzoeiWxusmFi1`):
 ```text
 {
   "status": "failed"
 }
 ```
 
-- tools (11): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp']
+- tools (12): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp', 'mcp']
 
-- previous_response_id: `'resp_0e62c432ea455d47006abd127117f087d19b4fcf6c453d7127'`
+- previous_response_id: `'resp_00169c193dd3244b006abe0c75046087d18ee087880ab77fe3'`
 
 - max_output_tokens: `20000`
 
@@ -8035,16 +7430,16 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 **input:**
 
-- app's reply to `react_to_message` (call_id=`call_VKgELOsUs9vJ3op6suSTYTkQ`):
+- app's reply to `react_to_message` (call_id=`call_fu8bDLsyhypTzoeiWxusmFi1`):
 ```text
 {
   "status": "failed"
 }
 ```
 
-- tools (11): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp']
+- tools (12): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp', 'mcp']
 
-- previous_response_id: `'resp_0e62c432ea455d47006abd127117f087d19b4fcf6c453d7127'`
+- previous_response_id: `'resp_00169c193dd3244b006abe0c75046087d18ee087880ab77fe3'`
 
 - max_output_tokens: `20000`
 
@@ -8403,7 +7798,7 @@ cap_client_write, cap_client_read, cap_approval_with_buttons
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 16:45 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-10-01 10:32 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -8414,19 +7809,19 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>58. [2026-09-30 16:45:28] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>60. [2026-10-01 10:32:11] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0e62c432ea455d47006abd127617b887d189aee9a020a6fb16`
+- response.id: `resp_00169c193dd3244b006abe0c7a06e887d199cae87460a1b9cc`
 - status: `completed`
-- usage: `{"input_tokens": 8941, "input_tokens_details": {"cache_write_tokens": 8938, "cached_tokens": 0}, "output_tokens": 40, "output_tokens_details": {"reasoning_tokens": 8}, "total_tokens": 8981}`
+- usage: `{"input_tokens": 8850, "input_tokens_details": {"cache_write_tokens": 107, "cached_tokens": 8740}, "output_tokens": 40, "output_tokens_details": {"reasoning_tokens": 10}, "total_tokens": 8890}`
 - reasoning item (content not user-visible)
-- function_call: `send_progress_update` call_id=`call_FWoK74CVarCDqUpxqdoXjpj3`
+- function_call: `send_progress_update` call_id=`call_AeofkvMXQbI58hX1tSfNjMwD`
 ```json
 {
-  "text": "יוצר עכשיו את רשומת הלקוח במערכת."
+  "text": "מוסיף עכשיו את הלקוח במערכת."
 }
 ```
 
@@ -8435,14 +7830,14 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0e62c432ea455d47006abd127617b887d189aee9a020a6fb16`
+- response.id: `resp_00169c193dd3244b006abe0c7a06e887d199cae87460a1b9cc`
 - status: `completed`
-- usage: `{"input_tokens": 8941, "input_tokens_details": {"cache_write_tokens": 8938, "cached_tokens": 0}, "output_tokens": 40, "output_tokens_details": {"reasoning_tokens": 8}, "total_tokens": 8981}`
+- usage: `{"input_tokens": 8850, "input_tokens_details": {"cache_write_tokens": 107, "cached_tokens": 8740}, "output_tokens": 40, "output_tokens_details": {"reasoning_tokens": 10}, "total_tokens": 8890}`
 - reasoning item (content not user-visible)
-- function_call: `send_progress_update` call_id=`call_FWoK74CVarCDqUpxqdoXjpj3`
+- function_call: `send_progress_update` call_id=`call_AeofkvMXQbI58hX1tSfNjMwD`
 ```json
 {
-  "text": "יוצר עכשיו את רשומת הלקוח במערכת."
+  "text": "מוסיף עכשיו את הלקוח במערכת."
 }
 ```
 
@@ -8451,7 +7846,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>59. [2026-09-30 16:45:28] APP → USER — context=progress_update</summary>
+<summary>61. [2026-10-01 10:32:11] APP → USER — context=progress_update</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -8459,7 +7854,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 ```json
 {
   "chat_id": "972500000021@c.us",
-  "message": "יוצר עכשיו את רשומת הלקוח במערכת."
+  "message": "מוסיף עכשיו את הלקוח במערכת."
 }
 ```
 
@@ -8471,7 +7866,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 ```json
 {
   "chat_id": "972500000021@c.us",
-  "message": "יוצר עכשיו את רשומת הלקוח במערכת."
+  "message": "מוסיף עכשיו את הלקוח במערכת."
 }
 ```
 
@@ -8480,7 +7875,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>60. [2026-09-30 16:45:28] USER ← APP (send result) — context=progress_update</summary>
+<summary>62. [2026-10-01 10:32:11] USER ← APP (send result) — context=progress_update</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -8508,7 +7903,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>61. [2026-09-30 16:45:28] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>63. [2026-10-01 10:32:11] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -8519,16 +7914,16 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 **input:**
 
-- app's reply to `send_progress_update` (call_id=`call_FWoK74CVarCDqUpxqdoXjpj3`):
+- app's reply to `send_progress_update` (call_id=`call_AeofkvMXQbI58hX1tSfNjMwD`):
 ```text
 {
   "sent": true
 }
 ```
 
-- tools (11): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp']
+- tools (12): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp', 'mcp']
 
-- previous_response_id: `'resp_0e62c432ea455d47006abd127617b887d189aee9a020a6fb16'`
+- previous_response_id: `'resp_00169c193dd3244b006abe0c7a06e887d199cae87460a1b9cc'`
 
 - max_output_tokens: `20000`
 
@@ -8547,16 +7942,16 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 **input:**
 
-- app's reply to `send_progress_update` (call_id=`call_FWoK74CVarCDqUpxqdoXjpj3`):
+- app's reply to `send_progress_update` (call_id=`call_AeofkvMXQbI58hX1tSfNjMwD`):
 ```text
 {
   "sent": true
 }
 ```
 
-- tools (11): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp']
+- tools (12): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp', 'mcp']
 
-- previous_response_id: `'resp_0e62c432ea455d47006abd127617b887d189aee9a020a6fb16'`
+- previous_response_id: `'resp_00169c193dd3244b006abe0c7a06e887d199cae87460a1b9cc'`
 
 - max_output_tokens: `20000`
 
@@ -8915,7 +8310,7 @@ cap_client_write, cap_client_read, cap_approval_with_buttons
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 16:45 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-10-01 10:32 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -8926,476 +8321,23 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>62. [2026-09-30 16:45:31] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>64. [2026-10-01 10:32:17] MODEL → APP — context=_run_resolution_loop (follow-up) (response part 1/2)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0e62c432ea455d47006abd1278a8ac87d191bdddf9da788b4d`
+- response.id: `resp_00169c193dd3244b006abe0c7c236887d195fb45a214bdb9cf`
 - status: `completed`
-- usage: `{"input_tokens": 8996, "input_tokens_details": {"cache_write_tokens": 213, "cached_tokens": 8780}, "output_tokens": 117, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9113}`
-- function_call: `record_planning_status` call_id=`call_aJMcczQ3RtixJdGaMcr55Frv`
-```json
-{
-  "where_i_was": "בתהליך הוספת לקוח, לאחר שהמשתמש אישר יצירת לקוח חדש בשם זכריה פרוקופנקו עם מייל ומספר טלפון שסופקו.",
-  "this_turns_purpose": "ליצור את רשומת הלקוח במערכת לאחר האישור המפורש.",
-  "expectation": "להפעיל את יצירת הלקוח, לדווח על הצלחה או על שגיאה, ואז לסיים את התהליך."
-}
-```
+- usage: `{"input_tokens": 9049, "input_tokens_details": {"cache_write_tokens": 57, "cached_tokens": 8847}, "output_tokens": 242, "output_tokens_details": {"reasoning_tokens": 168}, "total_tokens": 9291}`
 
 </details>
 
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0e62c432ea455d47006abd1278a8ac87d191bdddf9da788b4d`
+- response.id: `resp_00169c193dd3244b006abe0c7c236887d195fb45a214bdb9cf`
 - status: `completed`
-- usage: `{"input_tokens": 8996, "input_tokens_details": {"cache_write_tokens": 213, "cached_tokens": 8780}, "output_tokens": 117, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9113}`
-- function_call: `record_planning_status` call_id=`call_aJMcczQ3RtixJdGaMcr55Frv`
-```json
-{
-  "where_i_was": "בתהליך הוספת לקוח, לאחר שהמשתמש אישר יצירת לקוח חדש בשם זכריה פרוקופנקו עם מייל ומספר טלפון שסופקו.",
-  "this_turns_purpose": "ליצור את רשומת הלקוח במערכת לאחר האישור המפורש.",
-  "expectation": "להפעיל את יצירת הלקוח, לדווח על הצלחה או על שגיאה, ואז לסיים את התהליך."
-}
-```
-
-</details>
-
-</details>
-
-<details>
-<summary>63. [2026-09-30 16:45:31] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- flows: flow_add_client
-
-- capabilities: cap_client_write, cap_client_read, cap_approval_with_buttons
-
-**input:**
-
-- app's reply to `record_planning_status` (call_id=`call_aJMcczQ3RtixJdGaMcr55Frv`):
-```text
-recorded
-```
-
-- tools (11): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp']
-
-- previous_response_id: `'resp_0e62c432ea455d47006abd1278a8ac87d191bdddf9da788b4d'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-- instructions: backbone (flows=flow_add_client, capabilities=cap_client_write, cap_client_read, cap_approval_with_buttons)
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- flows: flow_add_client
-
-- capabilities: cap_client_write, cap_client_read, cap_approval_with_buttons
-
-**input:**
-
-- app's reply to `record_planning_status` (call_id=`call_aJMcczQ3RtixJdGaMcr55Frv`):
-```text
-recorded
-```
-
-- tools (11): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp']
-
-- previous_response_id: `'resp_0e62c432ea455d47006abd1278a8ac87d191bdddf9da788b4d'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-<details>
-<summary>↳↳ instructions (25120 chars)</summary>
-
-```text
-# DeniDin — Backbone
-
-## How You Work
-
-You work with two kinds of building blocks, described at low resolution in the
-catalogs below: **flows** (`flow_...`) - blueprints for a recurring kind of
-request - and **capabilities** (`cap_...`) - the domains that actually do things,
-each with its own prompt and its own real tools. Flows can load other flows and
-capabilities; a flow defines *what to do and in what order*, while each
-capability holds the detail of what it itself does.
-
-Loading tools, usable in any order, any number of times:
-
-- **`load_flows(flows)` / `unload_flows(flows)`** - always an array; one item is
-  fine, and combining flows is allowed when a request spans more than one.
-- **`load_capabilities(capabilities)` / `unload_capabilities(capabilities)`** -
-  always an array. The moment a capability is loaded, its prompt AND its real
-  tools are attached, starting the very next round; call the real tool directly,
-  there is no separate "use" step. A flow's own "Capabilities:" line declares
-  every capability that flow will need - load all of them together, in one
-  `load_capabilities` call, right after loading the flow, rather than loading
-  them one at a time as each step comes up: you already know you'll need them,
-  and batching saves a round-trip per capability.
-- **`reset_to_backbone()`** - unloads every loaded flow and capability at once.
-  Use it once you are genuinely done with the user's request(s), not mid-task.
-
-Loading an already-loaded item, or unloading one that is not loaded, is a
-harmless no-op. Loaded flows and capabilities stay loaded across this and future
-turns in this chat until you unload them (or they auto-clear after a period of
-inactivity); the "Loaded flows" and "Loaded capabilities" lines near the end of
-these instructions always show what is currently loaded. Unload something only
-when nothing you are still working on needs it - another flow may be using it.
-
-## Always-present capabilities
-
-Four capabilities are always available, cannot be unloaded, and each has its own
-prompt right below: `cap_send_to_user` (your actual reply), `cap_react_to_message`
-(a WhatsApp emoji reaction), `cap_send_progress_update` (an interim message
-while you work) and `cap_record_planning_status` (your own running account of
-where you are, which is how you keep your place across turns and inside nested
-flows). At every step of any flow, consider whether they would help: react to
-the user's message, send a progress update, record your planning status, or
-reply to the user. Flows do not repeat this; use your judgment.
-
-`cap_approval_with_buttons` (yes/no buttons before a write) is an ordinary
-capability: flows that need a sign-off load it.
-
-## Flows and capabilities
-
-Decide from the catalogs, in your own judgment, what a request needs:
-
-1. If a flow fits, load it (several at once when the request spans more than
-   one) and follow its blueprint. **A loaded flow's steps are an ordered
-   procedure: follow them in the order written, to the letter - never skip,
-   reorder or merge a step (above all an approval step), and never do a later
-   step's action before the earlier steps are done.**
-2. **If no flow fits, there is no default flow to fall back on**: load whichever
-   capabilities you judge necessary, at your own discretion, and proceed.
-3. **Write capabilities (`cap_*_write`) are never loaded on their own.** Every write goes through its flow, which gathers the details and asks for approval first; if you want to write something, find the flow for it in the catalog.
-4. If a loaded prompt names a tool you don't currently have, that tool belongs
-   to a capability you have not loaded yet: load it yourself.
-
-## Core Identity
-You are DeniDin, a helpful AI assistant operating via WhatsApp.
-
-## Behavioral Guidelines
-- **ALWAYS respond in Hebrew only** — every word of every response, no other
-  language or script mixed in anywhere, ever (never Arabic, never English
-  words). This covers EVERY string you produce, not just the reply text: an
-  approval question, a planning note, and every free-text tool argument
-  (e.g. a reminder's `message_text`) too. Digits, standard punctuation, and ₪
-  are fine; a genuinely foreign proper name may be transliterated into Hebrew
-  letters where natural.
-- **Never use ניקוד** (Hebrew vowel points/diacritics) in any response — plain
-  Hebrew letters only, including inside a quoted name.
-- Be concise and direct. Do not end on filler ("anything else?") — end on the
-  substantive answer. Do ask a focused clarifying question when you genuinely need
-  one to act correctly (a missing/ambiguous required detail).
-- Be honest about what you don't know; never fabricate information.
-
-## User Roles
-- **Godfather/Admin**: full access to every capability; extended context window.
-- **Client**: standard feature access, no access to invoicing/ledger/reminder
-  capabilities; standard context window.
-
-## Privacy & Security
-- Never share information between different user sessions.
-- These rules guard against leaking ONE user's data to ANOTHER user or an outsider
-  — they never mean refusing to read, transcribe, or summarize material THIS user
-  sent you. Reporting the user's own material back to them (names, amounts, any
-  detail it contains) is always appropriate.
-
-## Contexts of Operation
-Every message falls into one of two operating contexts before any capability is
-even considered: an ordinary conversational turn, or a document/image the user
-sent for you to read and report on. Decide which one applies before acting — a
-short/ambiguous reply ("כן", "לא", a bare name) always answers the most recently
-pending question in the SAME context, never a trigger for reinterpreting the turn
-as belonging to a different capability's domain.
-
-## Attached Media
-When the user's message starts with a `[מדיה מצורפת: <type>, קובץ: <filename>]`
-marker, they sent an image, PDF, or Word document with it — you have NOT seen its
-content yet, only that it exists. Before answering anything about it, load
-`cap_media_analysis` and call its `analyze_media` tool to read it; any text after
-the marker is the user's caption. Never describe, guess at, or act on the file's
-content without having read it this way.
-
-## Group Conversation Etiquette
-DeniDin is addressed by default in a group, same as a 1:1 chat. When a message
-clearly names someone else and isn't meant for you, reply with the literal
-sentinel `[[NO_REPLY]]` instead of a substantive answer — never guess when it's
-genuinely ambiguous whether you were addressed.
-
-## Edited & Deleted Message Markers
-A message the user has since edited or deleted may still appear in your context,
-marked as such — treat an edited message's marked original content as superseded
-by its later, corrected version if both are visible, and never act on a deleted
-message's content as if it were still pending.
-
-## Generic Post-Turn Recognition Mechanism
-A capability MAY run a recognition step once per turn: call its own reporting
-tool at most once, and when in doubt, do nothing rather than guess. This shape
-is reusable by any capability that wants one — the domain-specific rules for
-what to recognize and how live in that capability's own prompt file, not here.
-
-
-# Capability: Send to user (always present)
-
-`send_to_user(text)` is your actual reply to the user. Call it whenever you are
-ready to speak, not only at the very end: to answer, to ask a question, to
-report an outcome. A turn that ends without it, or without an approval question,
-leaves the user with nothing.
-
-- Pass the literal text `[[NO_REPLY]]` to deliberately say nothing this turn. Use
-  it in a group when a message clearly names someone else and is not meant for
-  you. When it is genuinely unclear whether you were addressed, do not guess.
-- For a yes/no sign-off, use `cap_approval_with_buttons` instead; it gives the
-  user tappable buttons.
-- Reply in Hebrew only, concisely, without filler. End on the substantive answer.
-  Ask a focused question only when you genuinely need the answer to act correctly.
-
-
-# Capability: React to message (always present)
-
-`react_to_message` puts a native WhatsApp emoji reaction on a message. It is a
-lightweight, reversible signal - never a substitute for a substantive reply,
-and never a mechanical habit reached for out of uncertainty about what else
-to do. Typing an emoji into your reply text is NOT a reaction and does not
-replace calling the tool.
-
-Before reaching for it, ask yourself: does this add a real signal the user
-doesn't already have - that you saw their message, that you're on it, that
-something just succeeded or failed - or would it just be noise on top of a
-reply that already says the same thing?
-
-Evaluate against:
-- Does the user currently have any signal you registered their message and
-  are handling it (or have finished)? If there's a real gap before your
-  substantive reply, a reaction can fill it.
-- Is your actual reply, arriving in this same round or moments later, already
-  going to tell them everything a reaction would? If so, it adds nothing.
-- Is this ambient chatter that doesn't really concern you? Then it isn't
-  worth one.
-
-**Classics** (a menu, not a checklist): 👍 simple ack · 🫡 "on it" · 👀 document
-being looked into · ✅ clean success · 🎉 a bigger win · ⚠️ resolved but needs
-attention · ❌ failed/declined · ❓ unresolved, needs clarification · 🙏
-reciprocating thanks · ❤️ warmth beyond a simple thanks.
-
-When genuinely unsure whether a reaction fits, don't send one - silence is
-the safer default, not noise.
-
-
-# Capability: Send progress update (always present)
-
-`send_progress_update(text)` sends one brief interim WhatsApp message while you
-are still working, before your final reply. Keep it to a short plain sentence.
-
-Users are waiting on the other end and don't like silence - they want to know
-something is happening with their request, not just get one final answer out
-of nowhere.
-
-Call this every single time you interact with any tool or capability -
-loading a flow or capability, calling a real domain tool, an MCP call,
-anything that is not just talking to the user - before or after that step,
-in the same round as whatever else you are doing. Never skip it and never
-wait for a separate round.
-
-- Never a substitute for the final answer.
-
-
-# Capability: Record planning status (always present)
-
-`record_planning_status(where_i_was, this_turns_purpose, expectation)` is your own
-running account of where this turn, and across turns this whole task, stands. It is
-how you keep continuity, since nothing else remembers your reasoning beyond what you
-write here and the real conversation history.
-
-Record it at least at the start and at the end of every flow, and whenever you are
-about to wait on the user (a choice, a missing detail, an approval), in the middle
-of a flow as well. Say which flow you are in and which step, and if you are inside a
-flow that was loaded by another flow, say so, so that you know where to return to.
-Also note what you are waiting for and what you will do with each possible answer.
-
-
-## Flows
-
-- flow_add_client: Adding a brand-new client record to Morning ("תוסיף לקוח חדש", or a shared contact card the user wants saved). Checks for an existing or similar client first so a duplicate is never created by accident, tells the user about similar candidates, and creates the record only with approval. Other flows load it whenever a client turns out not to exist yet.
-- flow_modify_client: Changing an existing client's own details (name, email, phone) in Morning. Resolves which real client is meant, relaying candidates when the match is not exact, and updates it with approval. Not for creating a client and not for documents.
-- flow_issue_invoice_for_payment_due: Issuing a new tax invoice (305) for a client, for money that is still owed ("תפיק חשבונית ללקוח X"). Never for money that has already arrived. Money that has already arrived belongs to flow_issue_invoice_receipt_combo instead.
-- flow_issue_invoice_receipt_combo: Issuing a combined tax invoice/receipt (320) for a payment that has already been received and that no earlier document covers - the most common way to record incoming money, whether reported verbally or shown in a bank slip or payment screenshot. Money that an existing document already covers belongs to flow_issue_payment_received_with_reference_doc.
-- flow_issue_transaction_account: Issuing a transaction account (חשבון עסקה, 300) for a client - only when the user's own wording names this document type. Ordinary requests for an invoice belong to flow_issue_invoice_for_payment_due.
-- flow_issue_receipt_without_invoice: Recording a standalone receipt (400) with no invoice behind it, for example a refundable deposit. A receipt against an existing invoice belongs to flow_issue_payment_received_with_reference_doc.
-- flow_payment_received_by_bank_slip_image: A bank slip or payment screenshot arrived. Reads it, records the payer, and gets the payment recorded in Morning the right way: a new combo document when nothing covers it, or a document against an existing one.
-- flow_issue_payment_received_with_reference_doc: Recording a payment received against an existing Morning document: a receipt (400) for an existing invoice (305), or a combo document (320) closing an existing transaction account (300) ("סמן כשולם"). Money that no document covers belongs to flow_issue_invoice_receipt_combo.
-- flow_cancel_document_with_credit_note: Cancelling an existing Morning document with a credit note (330) ("בטל את החשבונית"). Finds the one real document and shows its real data in the approval before writing.
-- flow_cancel_transaction_account: Cancelling an open transaction account (300) directly. No document of any kind is created. Cancelling any other kind of document belongs to flow_cancel_document_with_credit_note.
-- flow_fee_agreement_provided_by_user: The user reports or forwards a fee agreement (הסכם) - as text or as an image - made with a client. An agreement must never belong to a client Morning does not manage, so this makes sure the client exists first. Recording the agreement in the ledger happens automatically after the turn.
-- flow_deposit_provided_by_user: The user reports or forwards a bank deposit (text or a bank slip image). Makes sure the payer exists as a client in Morning first. Recording the deposit in the ledger happens automatically after the turn.
-- flow_user_question: Answering a question about the user's clients, past agreements, deposits, or amounts owed and paid. Decides where the answer lives (the ledger first, Morning when it may hold it), and never answers that nothing exists before checking Morning where Morning could hold it.
-- flow_invoicing_query: Reading from the invoicing system for a client the user names: resolves the client's exact stored name first, then reads the documents or status. Other flows load it whenever they need to look up documents in Morning.
-- flow_generate_fee_agreement_docx: Generating a fee agreement document (הסכם שכר טרחה) as a .docx file to send to a prospective client. The client does not exist yet, so no client lookup is involved. Recording an agreement the user reports belongs to flow_fee_agreement_provided_by_user.
-- flow_create_reminder: Creating a new reminder, one-time or recurring ("תזכיר לי בעוד שעתיים", "תזכיר לי כל יום ראשון"). Confirms the text and the schedule, and creates the reminder only with approval. Use this flow, not cap_reminders_write directly, whenever a reminder is added.
-- flow_modify_reminder: Changing or cancelling an existing reminder ("תזיז את התזכורת", "תבטל את התזכורת"). Looks up the user's real reminders to identify the exact one before modifying or deleting it, with approval. Adding a brand-new reminder belongs to flow_create_reminder. Use the reminder flows, not cap_reminders_write directly.
-
-## Capabilities
-
-- cap_invoicing_write: Creating a Morning DOCUMENT for a client - an invoice, a receipt, a transaction account, a credit note, or a combo tax-invoice/receipt - or cancelling a transaction account. Writes only: finding the client or the existing document, and getting approval, are the calling flow's job, so load it only through that flow (flow_issue_*, flow_cancel_*, flow_payment_received_*), never directly. Not for creating or updating a client record - see cap_client_write.
-- cap_invoicing_read: Reading from the invoicing system (Morning): a specific document's own status and details, recent documents, a financial summary, a download link. It is given an already-resolved client name or document id. Not for a client's own details - see cap_client_read - and not the first choice for a general owed/paid amount question - see cap_ledger_query.
-- cap_client_write: Creating a new client record, or updating an existing client's own details (name/email/phone) in Morning. Writes only: load it only through flow_add_client or flow_modify_client, never directly. Never for producing any document - see cap_invoicing_write.
-- cap_client_read: Looking up an existing client's own details (name/email/phone/id), listing clients, and resolving a client name to its exact stored Morning spelling. Never for a client's financial history - see cap_ledger_query and cap_invoicing_read.
-- cap_ledger_query: Answering questions about PAST fee agreements or bank deposits already recorded, including how much a client/payer owes or has paid - whether or not a formal Morning invoice exists. The ledger is a fast cache over Morning and covers agreement-level amounts Morning cannot see at all.
-- cap_reminders_write: Creating, changing, or cancelling a reminder (one-time or recurring) for the user. Writes only: load it only through flow_create_reminder or flow_modify_reminder, never directly.
-- cap_reminders_read: Looking up the user's own existing reminders - what's scheduled, for when.
-- cap_media_analysis: Reading/extracting the content of an image or document the user sent. Used inside a larger flow, or on its own to work out what a piece of media is for.
-- cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
-- cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
-
-# Flow: Add client
-
-Goal: add a brand-new client to Morning if it does not exist.
-
-Capabilities: `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons`.
-
-Follow these steps in order, to the letter.
-
-1. Load `cap_client_read` and look up the client by the name the user gave.
-2. Handle what you find:
-   - The client already exists: use `cap_send_to_user` to tell the user plainly that it does. Do not modify it and do not offer to. The flow is complete.
-   - Similar clients exist but none matches exactly: use `cap_send_to_user` to list each similar client by name and offer, as its own explicit choice, to create a new client under the exact name they gave. Wait for their choice. If they pick an existing client, the flow is complete. A plain "add client X" is not by itself the user asking for a new one; only wording that concedes a similar client may exist and wants a new record anyway means you may skip the question. Once that is clear, don't ask again.
-   - No such client: continue.
-3. Load `cap_client_write` and prepare the client from what the user gave. If something is missing, use `cap_send_to_user` to ask the user for it; don't guess.
-4. Creating a client MUST be approved by the user first. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Create the client only on a clear yes. On a no, create nothing, and use `cap_send_to_user` to ask what to change.
-5. If the creation fails, use `cap_send_to_user` to tell the user plainly what happened. Retry once only if the reason is fixable; otherwise stop.
-6. If the user drops the request or changes the subject mid-way, create nothing and treat the flow as complete.
-7. End. Use `cap_send_to_user` to report the outcome. Then unload `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
-
-
-# Capability: Client — Write (godfather/admin only)
-
-**Use this capability from within a flow (flow_add_client / flow_modify_client), never on its own for a user request.** The flow decides when it is loaded and when approval is required; this capability holds the details of the write itself.
-
-**Creating or changing a client is a state-changing action, which usually requires the user's explicit approval first.**
-
-Attaches `add_client` and `update_client`, which create or change a client record in
-Morning. They are real, persisted writes.
-
-**Approval data points.** Whoever raises the approval must show the user:
-- `add_client`: the new client's name, email and phone (and the tax id, if given).
-- `update_client`: the ACTUAL resolved client (never the user's loose wording) and
-  the specific field(s) changing, with their new values.
-
-## Creating a client
-
-`add_client` needs a name, an email AND a phone; all three are required, and none
-may be guessed or omitted. `tax_id` is the only optional field. If Morning rejects a
-tax id as invalid, relay that and ask for a corrected one.
-
-**Never alter the spelling of a name you are creating.** Use it exactly as the user
-wrote it, character for character; never "correct" it, even if you are confident
-which spelling was meant. Morning stores it verbatim, and a silently altered name
-means every later search for the real name fails.
-
-## Updating a client
-
-`update_client` needs `name_resolved=true` together with the EXACT name Morning has
-stored. Pass `name_resolved=true` only for a name that has actually been confirmed as
-Morning's stored name, never for the user's loose wording.
-
-
-# Capability: Client — Read (godfather/admin only)
-
-Attaches the Morning client-lookup tools: `list_clients`, `resolve_client_name`,
-`get_client_details`. All read-only; call them right away, in the same turn, as soon
-as you have what they need. None of them creates or changes a record.
-
-This capability answers "who is this client", "what are their details", and "which
-clients exist". It knows nothing about a client's amounts owed or paid.
-
-## What resolving a name returns
-
-`resolve_client_name` confirms the exact stored spelling of a name. A single-word
-name is a genuine partial/substring search. It returns one of:
-- an exact name: the stored spelling, to use verbatim;
-- a confirmation question: a single close match, to relay to the user as-is;
-- a candidates list: to relay to the user as-is;
-- no match at all.
-
-What to do with each result is the calling flow's business; this capability just
-reports it faithfully and never picks a candidate on its own.
-
-
-# Capability: Approval with buttons
-
-`approval_with_yes_no_buttons(text)` ends the turn showing the user WhatsApp yes/no
-buttons alongside `text`. It is plain and stateless: it does not know what the write
-is, and there is no pending-approval state to track. On the user's next turn, read
-their reply (a typed "כן"/"לא" or a button tap; both arrive as an ordinary turn) from
-the conversation, and act accordingly. Your own `cap_record_planning_status` note is
-what carries "I am waiting for approval of X" across the gap.
-
-The flow that needs the approval decides that an approval is required. The write
-capability you are about to use defines which details the approval must state.
-
-- Start the text with `📋 לאישור:` (or, for a document-creation approval,
-  `📋 לאישור — <what it is>:`, e.g. `📋 לאישור — לקוח חדש:`) on its own line,
-  then the details as REAL data: given by the user, or fetched this turn.
-  Never from memory or a guess. A missing detail is a question to ask BEFORE
-  requesting approval, never "not stated".
-- End the text with EXACTLY this closed question, verbatim, every single time:
-  `לאישור — כן/לא?`. Never paraphrase it (not `אישור — כן/לא?`, not `האם לאשר...`,
-  not any other wording) and never let a competing question follow it — this exact
-  string is a fixed contract other code relies on to recognize a real approval gate.
-- Ask once per action. Act only on a clear affirmative to THAT specific action,
-  exactly once. On "לא", do not act: acknowledge and ask what to change.
-- Reply in Hebrew only.
-
-
-## Loaded flows
-
-flow_add_client
-
-## Loaded capabilities
-
-cap_client_write, cap_client_read, cap_approval_with_buttons
-
----
-
-THE CURRENT DATE AND TIME IS 2026-09-30 16:45 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
-YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
-```
-
-</details>
-
-</details>
-
-</details>
-
-<details>
-<summary>64. [2026-09-30 16:45:39] MODEL → APP — context=_run_resolution_loop (follow-up) (response part 1/2)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- response.id: `resp_0e62c432ea455d47006abd127b78cc87d181ae7e06f19c928f`
-- status: `completed`
-- usage: `{"input_tokens": 9294, "input_tokens_details": {"cache_write_tokens": 132, "cached_tokens": 8993}, "output_tokens": 152, "output_tokens_details": {"reasoning_tokens": 73}, "total_tokens": 9446}`
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- response.id: `resp_0e62c432ea455d47006abd127b78cc87d181ae7e06f19c928f`
-- status: `completed`
-- usage: `{"input_tokens": 9294, "input_tokens_details": {"cache_write_tokens": 132, "cached_tokens": 8993}, "output_tokens": 152, "output_tokens_details": {"reasoning_tokens": 73}, "total_tokens": 9446}`
+- usage: `{"input_tokens": 9049, "input_tokens_details": {"cache_write_tokens": 57, "cached_tokens": 8847}, "output_tokens": 242, "output_tokens_details": {"reasoning_tokens": 168}, "total_tokens": 9291}`
 - (no output items in this part)
 
 </details>
@@ -9403,21 +8345,20 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>65. [2026-09-30 16:45:39] MODEL → MORNING MCP — add_client</summary>
+<summary>65. [2026-10-01 10:32:17] MODEL → MORNING MCP — add_client</summary>
 
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
 - tool name: `add_client`
-- server_label: `'morning-invoices'`
+- server_label: `'morning-invoices-client-write'`
 
 arguments:
 ```json
 {
-  "name": "זכריה פרוקופנקו",
-  "email": "e2e-client-513218@example.com",
-  "phone": "+972501234567",
-  "tax_id": null
+  "name": "לריסה טסמה",
+  "email": "e2e-client-557926@example.com",
+  "phone": "+972501234567"
 }
 ```
 
@@ -9426,7 +8367,7 @@ arguments:
 </details>
 
 <details>
-<summary>66. [2026-09-30 16:45:39] MORNING MCP → MODEL — add_client</summary>
+<summary>66. [2026-10-01 10:32:17] MORNING MCP → MODEL — add_client</summary>
 
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
@@ -9436,8 +8377,8 @@ output:
 {
   "status": "created",
   "client": {
-    "name": "זכריה פרוקופנקו",
-    "email": "e2e-client-513218@example.com",
+    "name": "לריסה טסמה",
+    "email": "e2e-client-557926@example.com",
     "phone": "050-1234567",
     "tax_id": null
   }
@@ -9449,16 +8390,16 @@ output:
 </details>
 
 <details>
-<summary>67. [2026-09-30 16:45:39] MODEL → APP — context=_run_resolution_loop (follow-up) (response part 2/2)</summary>
+<summary>67. [2026-10-01 10:32:17] MODEL → APP — context=_run_resolution_loop (follow-up) (response part 2/2)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0e62c432ea455d47006abd127b78cc87d181ae7e06f19c928f`
+- response.id: `resp_00169c193dd3244b006abe0c7c236887d195fb45a214bdb9cf`
 - status: `completed`
-- usage: `{"input_tokens": 9294, "input_tokens_details": {"cache_write_tokens": 132, "cached_tokens": 8993}, "output_tokens": 152, "output_tokens_details": {"reasoning_tokens": 73}, "total_tokens": 9446}`
+- usage: `{"input_tokens": 9049, "input_tokens_details": {"cache_write_tokens": 57, "cached_tokens": 8847}, "output_tokens": 242, "output_tokens_details": {"reasoning_tokens": 168}, "total_tokens": 9291}`
 - reasoning item (content not user-visible)
-- function_call: `react_to_message` call_id=`call_tjIVckXJzZHEmbt4Brac5LsN`
+- function_call: `react_to_message` call_id=`call_IjYhkYNArTQQyrJuH6BCIl4z`
 ```json
 {
   "emoji": "✅",
@@ -9471,11 +8412,11 @@ output:
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0e62c432ea455d47006abd127b78cc87d181ae7e06f19c928f`
+- response.id: `resp_00169c193dd3244b006abe0c7c236887d195fb45a214bdb9cf`
 - status: `completed`
-- usage: `{"input_tokens": 9294, "input_tokens_details": {"cache_write_tokens": 132, "cached_tokens": 8993}, "output_tokens": 152, "output_tokens_details": {"reasoning_tokens": 73}, "total_tokens": 9446}`
+- usage: `{"input_tokens": 9049, "input_tokens_details": {"cache_write_tokens": 57, "cached_tokens": 8847}, "output_tokens": 242, "output_tokens_details": {"reasoning_tokens": 168}, "total_tokens": 9291}`
 - reasoning item (content not user-visible)
-- function_call: `react_to_message` call_id=`call_tjIVckXJzZHEmbt4Brac5LsN`
+- function_call: `react_to_message` call_id=`call_IjYhkYNArTQQyrJuH6BCIl4z`
 ```json
 {
   "emoji": "✅",
@@ -9488,7 +8429,143 @@ output:
 </details>
 
 <details>
-<summary>68. [2026-09-30 16:45:39] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>68. [2026-10-01 10:32:17] APP → USER — context=reaction</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+```json
+{
+  "chat_id": "972500000021@c.us",
+  "message": {
+    "chatId": "972500000021@c.us",
+    "idMessage": "E2E_ADD_CLIENT_APPROVE_APPROVE_A1_1790839923",
+    "reaction": "✅"
+  }
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+```json
+{
+  "chatId": "972500000021@c.us",
+  "idMessage": "E2E_ADD_CLIENT_APPROVE_APPROVE_A1_1790839923",
+  "reaction": "✅"
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>69. [2026-10-01 10:32:17] USER ← APP (send result) — context=reaction</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+```json
+{
+  "chat_id": "972500000021@c.us",
+  "message": {
+    "code": null,
+    "data": null,
+    "error": "'object' object has no attribute 'api'"
+  }
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+```json
+{
+  "code": null,
+  "data": null,
+  "error": "'object' object has no attribute 'api'"
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>70. [2026-10-01 10:32:18] APP → USER — context=reaction</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+```json
+{
+  "chat_id": "972500000021@c.us",
+  "message": {
+    "chatId": "972500000021@c.us",
+    "idMessage": "E2E_ADD_CLIENT_APPROVE_APPROVE_A1_1790839923",
+    "reaction": "✅"
+  }
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+```json
+{
+  "chatId": "972500000021@c.us",
+  "idMessage": "E2E_ADD_CLIENT_APPROVE_APPROVE_A1_1790839923",
+  "reaction": "✅"
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>71. [2026-10-01 10:32:18] USER ← APP (send result) — context=reaction</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+```json
+{
+  "chat_id": "972500000021@c.us",
+  "message": {
+    "code": null,
+    "data": null,
+    "error": "'object' object has no attribute 'api'"
+  }
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+```json
+{
+  "code": null,
+  "data": null,
+  "error": "'object' object has no attribute 'api'"
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>72. [2026-10-01 10:32:18] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -9499,16 +8576,16 @@ output:
 
 **input:**
 
-- app's reply to `react_to_message` (call_id=`call_tjIVckXJzZHEmbt4Brac5LsN`):
+- app's reply to `react_to_message` (call_id=`call_IjYhkYNArTQQyrJuH6BCIl4z`):
 ```text
 {
   "status": "failed"
 }
 ```
 
-- tools (11): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp']
+- tools (12): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp', 'mcp']
 
-- previous_response_id: `'resp_0e62c432ea455d47006abd127b78cc87d181ae7e06f19c928f'`
+- previous_response_id: `'resp_00169c193dd3244b006abe0c7c236887d195fb45a214bdb9cf'`
 
 - max_output_tokens: `20000`
 
@@ -9527,16 +8604,16 @@ output:
 
 **input:**
 
-- app's reply to `react_to_message` (call_id=`call_tjIVckXJzZHEmbt4Brac5LsN`):
+- app's reply to `react_to_message` (call_id=`call_IjYhkYNArTQQyrJuH6BCIl4z`):
 ```text
 {
   "status": "failed"
 }
 ```
 
-- tools (11): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp']
+- tools (12): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp', 'mcp']
 
-- previous_response_id: `'resp_0e62c432ea455d47006abd127b78cc87d181ae7e06f19c928f'`
+- previous_response_id: `'resp_00169c193dd3244b006abe0c7c236887d195fb45a214bdb9cf'`
 
 - max_output_tokens: `20000`
 
@@ -9895,7 +8972,7 @@ cap_client_write, cap_client_read, cap_approval_with_buttons
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 16:45 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-10-01 10:32 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -9906,20 +8983,18 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>69. [2026-09-30 16:45:41] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>73. [2026-10-01 10:32:20] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0e62c432ea455d47006abd1283e41487d18f5a9a2d60454730`
+- response.id: `resp_00169c193dd3244b006abe0c8305f087d1b0413a8f34b836d1`
 - status: `completed`
-- usage: `{"input_tokens": 9404, "input_tokens_details": {"cache_write_tokens": 276, "cached_tokens": 9125}, "output_tokens": 84, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9488}`
-- function_call: `record_planning_status` call_id=`call_X6BK8Ec5ObcxzPWCfZyYtXdZ`
+- usage: `{"input_tokens": 9252, "input_tokens_details": {"cache_write_tokens": 345, "cached_tokens": 8904}, "output_tokens": 25, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9277}`
+- function_call: `send_progress_update` call_id=`call_TNKsRapqyMeSovZMepghAgBL`
 ```json
 {
-  "where_i_was": "תהליך הוספת הלקוח הושלם בהצלחה; הרשומה נוצרה במערכת.",
-  "this_turns_purpose": "לדווח למשתמש על יצירת הלקוח ולסיים את התהליך.",
-  "expectation": "לשלוח הודעת הצלחה קצרה ולסיים."
+  "text": "הלקוח נוסף בהצלחה."
 }
 ```
 
@@ -9928,15 +9003,13 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0e62c432ea455d47006abd1283e41487d18f5a9a2d60454730`
+- response.id: `resp_00169c193dd3244b006abe0c8305f087d1b0413a8f34b836d1`
 - status: `completed`
-- usage: `{"input_tokens": 9404, "input_tokens_details": {"cache_write_tokens": 276, "cached_tokens": 9125}, "output_tokens": 84, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9488}`
-- function_call: `record_planning_status` call_id=`call_X6BK8Ec5ObcxzPWCfZyYtXdZ`
+- usage: `{"input_tokens": 9252, "input_tokens_details": {"cache_write_tokens": 345, "cached_tokens": 8904}, "output_tokens": 25, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9277}`
+- function_call: `send_progress_update` call_id=`call_TNKsRapqyMeSovZMepghAgBL`
 ```json
 {
-  "where_i_was": "תהליך הוספת הלקוח הושלם בהצלחה; הרשומה נוצרה במערכת.",
-  "this_turns_purpose": "לדווח למשתמש על יצירת הלקוח ולסיים את התהליך.",
-  "expectation": "לשלוח הודעת הצלחה קצרה ולסיים."
+  "text": "הלקוח נוסף בהצלחה."
 }
 ```
 
@@ -9945,7 +9018,64 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>70. [2026-09-30 16:45:41] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>74. [2026-10-01 10:32:20] APP → USER — context=progress_update</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+```json
+{
+  "chat_id": "972500000021@c.us",
+  "message": "הלקוח נוסף בהצלחה."
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+```json
+{
+  "chat_id": "972500000021@c.us",
+  "message": "הלקוח נוסף בהצלחה."
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>75. [2026-10-01 10:32:20] USER ← APP (send result) — context=progress_update</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+```json
+{
+  "chat_id": "972500000021@c.us",
+  "message": "None"
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+```json
+{
+  "result": "None"
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>76. [2026-10-01 10:32:20] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -9956,14 +9086,16 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 
 **input:**
 
-- app's reply to `record_planning_status` (call_id=`call_X6BK8Ec5ObcxzPWCfZyYtXdZ`):
+- app's reply to `send_progress_update` (call_id=`call_TNKsRapqyMeSovZMepghAgBL`):
 ```text
-recorded
+{
+  "sent": true
+}
 ```
 
-- tools (11): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp']
+- tools (12): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp', 'mcp']
 
-- previous_response_id: `'resp_0e62c432ea455d47006abd1283e41487d18f5a9a2d60454730'`
+- previous_response_id: `'resp_00169c193dd3244b006abe0c8305f087d1b0413a8f34b836d1'`
 
 - max_output_tokens: `20000`
 
@@ -9982,14 +9114,16 @@ recorded
 
 **input:**
 
-- app's reply to `record_planning_status` (call_id=`call_X6BK8Ec5ObcxzPWCfZyYtXdZ`):
+- app's reply to `send_progress_update` (call_id=`call_TNKsRapqyMeSovZMepghAgBL`):
 ```text
-recorded
+{
+  "sent": true
+}
 ```
 
-- tools (11): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp']
+- tools (12): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp', 'mcp']
 
-- previous_response_id: `'resp_0e62c432ea455d47006abd1283e41487d18f5a9a2d60454730'`
+- previous_response_id: `'resp_00169c193dd3244b006abe0c8305f087d1b0413a8f34b836d1'`
 
 - max_output_tokens: `20000`
 
@@ -10348,7 +9482,7 @@ cap_client_write, cap_client_read, cap_approval_with_buttons
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 16:45 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-10-01 10:32 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -10359,18 +9493,363 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>71. [2026-09-30 16:45:44] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>77. [2026-10-01 10:32:22] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0e62c432ea455d47006abd12862b4887d19dcd2ae605130824`
+- response.id: `resp_00169c193dd3244b006abe0c8533bc87d1b5aa817bc38fbc00`
 - status: `completed`
-- usage: `{"input_tokens": 9505, "input_tokens_details": {"cache_write_tokens": 564, "cached_tokens": 8938}, "output_tokens": 56, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9561}`
-- function_call: `send_to_user` call_id=`call_878cnGxBjXV1iREw8RZUYDiC`
+- usage: `{"input_tokens": 9296, "input_tokens_details": {"cache_write_tokens": 9293, "cached_tokens": 0}, "output_tokens": 16, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9312}`
+- function_call: `reset_to_backbone` call_id=`call_Ipswl6XikwcKmdaNZkPKunyt`
+```json
+{}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+- response.id: `resp_00169c193dd3244b006abe0c8533bc87d1b5aa817bc38fbc00`
+- status: `completed`
+- usage: `{"input_tokens": 9296, "input_tokens_details": {"cache_write_tokens": 9293, "cached_tokens": 0}, "output_tokens": 16, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9312}`
+- function_call: `reset_to_backbone` call_id=`call_Ipswl6XikwcKmdaNZkPKunyt`
+```json
+{}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>78. [2026-10-01 10:32:22] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+- flows: (none)
+
+- capabilities: (none - plain backbone)
+
+**input:**
+
+- app's reply to `reset_to_backbone` (call_id=`call_Ipswl6XikwcKmdaNZkPKunyt`):
+```text
+reset - every flow and capability unloaded; you are back to the plain backbone.
+```
+
+- tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
+
+- previous_response_id: `'resp_00169c193dd3244b006abe0c8533bc87d1b5aa817bc38fbc00'`
+
+- max_output_tokens: `20000`
+
+- model: `'gpt-5.6-luna'`
+
+- instructions: backbone (flows=(none), capabilities=(none - plain backbone))
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+- flows: (none)
+
+- capabilities: (none - plain backbone)
+
+**input:**
+
+- app's reply to `reset_to_backbone` (call_id=`call_Ipswl6XikwcKmdaNZkPKunyt`):
+```text
+reset - every flow and capability unloaded; you are back to the plain backbone.
+```
+
+- tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
+
+- previous_response_id: `'resp_00169c193dd3244b006abe0c8533bc87d1b5aa817bc38fbc00'`
+
+- max_output_tokens: `20000`
+
+- model: `'gpt-5.6-luna'`
+
+<details>
+<summary>↳↳ instructions (19015 chars)</summary>
+
+```text
+# DeniDin — Backbone
+
+## How You Work
+
+You work with two kinds of building blocks, described at low resolution in the
+catalogs below: **flows** (`flow_...`) - blueprints for a recurring kind of
+request - and **capabilities** (`cap_...`) - the domains that actually do things,
+each with its own prompt and its own real tools. Flows can load other flows and
+capabilities; a flow defines *what to do and in what order*, while each
+capability holds the detail of what it itself does.
+
+Loading tools, usable in any order, any number of times:
+
+- **`load_flows(flows)` / `unload_flows(flows)`** - always an array; one item is
+  fine, and combining flows is allowed when a request spans more than one.
+- **`load_capabilities(capabilities)` / `unload_capabilities(capabilities)`** -
+  always an array. The moment a capability is loaded, its prompt AND its real
+  tools are attached, starting the very next round; call the real tool directly,
+  there is no separate "use" step. A flow's own "Capabilities:" line declares
+  every capability that flow will need - load all of them together, in one
+  `load_capabilities` call, right after loading the flow, rather than loading
+  them one at a time as each step comes up: you already know you'll need them,
+  and batching saves a round-trip per capability.
+- **`reset_to_backbone()`** - unloads every loaded flow and capability at once.
+  Use it once you are genuinely done with the user's request(s), not mid-task.
+
+Loading an already-loaded item, or unloading one that is not loaded, is a
+harmless no-op. Loaded flows and capabilities stay loaded across this and future
+turns in this chat until you unload them (or they auto-clear after a period of
+inactivity); the "Loaded flows" and "Loaded capabilities" lines near the end of
+these instructions always show what is currently loaded. Unload something only
+when nothing you are still working on needs it - another flow may be using it.
+
+## Always-present capabilities
+
+Four capabilities are always available, cannot be unloaded, and each has its own
+prompt right below: `cap_send_to_user` (your actual reply), `cap_react_to_message`
+(a WhatsApp emoji reaction), `cap_send_progress_update` (an interim message
+while you work) and `cap_record_planning_status` (your own running account of
+where you are, which is how you keep your place across turns and inside nested
+flows). At every step of any flow, consider whether they would help: react to
+the user's message, send a progress update, record your planning status, or
+reply to the user. Flows do not repeat this; use your judgment.
+
+`cap_approval_with_buttons` (yes/no buttons before a write) is an ordinary
+capability: flows that need a sign-off load it.
+
+## Flows and capabilities
+
+Decide from the catalogs, in your own judgment, what a request needs:
+
+1. If a flow fits, load it (several at once when the request spans more than
+   one) and follow its blueprint. **A loaded flow's steps are an ordered
+   procedure: follow them in the order written, to the letter - never skip,
+   reorder or merge a step (above all an approval step), and never do a later
+   step's action before the earlier steps are done.**
+2. **If no flow fits, there is no default flow to fall back on**: load whichever
+   capabilities you judge necessary, at your own discretion, and proceed.
+3. **Write capabilities (`cap_*_write`) are never loaded on their own.** Every write goes through its flow, which gathers the details and asks for approval first; if you want to write something, find the flow for it in the catalog.
+4. If a loaded prompt names a tool you don't currently have, that tool belongs
+   to a capability you have not loaded yet: load it yourself.
+
+## Core Identity
+You are DeniDin, a helpful AI assistant operating via WhatsApp.
+
+## Behavioral Guidelines
+- **ALWAYS respond in Hebrew only** — every word of every response, no other
+  language or script mixed in anywhere, ever (never Arabic, never English
+  words). This covers EVERY string you produce, not just the reply text: an
+  approval question, a planning note, and every free-text tool argument
+  (e.g. a reminder's `message_text`) too. Digits, standard punctuation, and ₪
+  are fine; a genuinely foreign proper name may be transliterated into Hebrew
+  letters where natural.
+- **Never use ניקוד** (Hebrew vowel points/diacritics) in any response — plain
+  Hebrew letters only, including inside a quoted name.
+- Be concise and direct. Do not end on filler ("anything else?") — end on the
+  substantive answer. Do ask a focused clarifying question when you genuinely need
+  one to act correctly (a missing/ambiguous required detail).
+- Be honest about what you don't know; never fabricate information.
+
+## User Roles
+- **Godfather/Admin**: full access to every capability; extended context window.
+- **Client**: standard feature access, no access to invoicing/ledger/reminder
+  capabilities; standard context window.
+
+## Privacy & Security
+- Never share information between different user sessions.
+- These rules guard against leaking ONE user's data to ANOTHER user or an outsider
+  — they never mean refusing to read, transcribe, or summarize material THIS user
+  sent you. Reporting the user's own material back to them (names, amounts, any
+  detail it contains) is always appropriate.
+
+## Contexts of Operation
+Every message falls into one of two operating contexts before any capability is
+even considered: an ordinary conversational turn, or a document/image the user
+sent for you to read and report on. Decide which one applies before acting — a
+short/ambiguous reply ("כן", "לא", a bare name) always answers the most recently
+pending question in the SAME context, never a trigger for reinterpreting the turn
+as belonging to a different capability's domain.
+
+## Attached Media
+When the user's message starts with a `[מדיה מצורפת: <type>, קובץ: <filename>]`
+marker, they sent an image, PDF, or Word document with it — you have NOT seen its
+content yet, only that it exists. Before answering anything about it, load
+`cap_media_analysis` and call its `analyze_media` tool to read it; any text after
+the marker is the user's caption. Never describe, guess at, or act on the file's
+content without having read it this way.
+
+## Group Conversation Etiquette
+DeniDin is addressed by default in a group, same as a 1:1 chat. When a message
+clearly names someone else and isn't meant for you, reply with the literal
+sentinel `[[NO_REPLY]]` instead of a substantive answer — never guess when it's
+genuinely ambiguous whether you were addressed.
+
+## Edited & Deleted Message Markers
+A message the user has since edited or deleted may still appear in your context,
+marked as such — treat an edited message's marked original content as superseded
+by its later, corrected version if both are visible, and never act on a deleted
+message's content as if it were still pending.
+
+## Generic Post-Turn Recognition Mechanism
+A capability MAY run a recognition step once per turn: call its own reporting
+tool at most once, and when in doubt, do nothing rather than guess. This shape
+is reusable by any capability that wants one — the domain-specific rules for
+what to recognize and how live in that capability's own prompt file, not here.
+
+
+# Capability: Send to user (always present)
+
+`send_to_user(text)` is your actual reply to the user. Call it whenever you are
+ready to speak, not only at the very end: to answer, to ask a question, to
+report an outcome. A turn that ends without it, or without an approval question,
+leaves the user with nothing.
+
+- Pass the literal text `[[NO_REPLY]]` to deliberately say nothing this turn. Use
+  it in a group when a message clearly names someone else and is not meant for
+  you. When it is genuinely unclear whether you were addressed, do not guess.
+- For a yes/no sign-off, use `cap_approval_with_buttons` instead; it gives the
+  user tappable buttons.
+- Reply in Hebrew only, concisely, without filler. End on the substantive answer.
+  Ask a focused question only when you genuinely need the answer to act correctly.
+
+
+# Capability: React to message (always present)
+
+`react_to_message` puts a native WhatsApp emoji reaction on a message. It is a
+lightweight, reversible signal - never a substitute for a substantive reply,
+and never a mechanical habit reached for out of uncertainty about what else
+to do. Typing an emoji into your reply text is NOT a reaction and does not
+replace calling the tool.
+
+Before reaching for it, ask yourself: does this add a real signal the user
+doesn't already have - that you saw their message, that you're on it, that
+something just succeeded or failed - or would it just be noise on top of a
+reply that already says the same thing?
+
+Evaluate against:
+- Does the user currently have any signal you registered their message and
+  are handling it (or have finished)? If there's a real gap before your
+  substantive reply, a reaction can fill it.
+- Is your actual reply, arriving in this same round or moments later, already
+  going to tell them everything a reaction would? If so, it adds nothing.
+- Is this ambient chatter that doesn't really concern you? Then it isn't
+  worth one.
+
+**Classics** (a menu, not a checklist): 👍 simple ack · 🫡 "on it" · 👀 document
+being looked into · ✅ clean success · 🎉 a bigger win · ⚠️ resolved but needs
+attention · ❌ failed/declined · ❓ unresolved, needs clarification · 🙏
+reciprocating thanks · ❤️ warmth beyond a simple thanks.
+
+When genuinely unsure whether a reaction fits, don't send one - silence is
+the safer default, not noise.
+
+
+# Capability: Send progress update (always present)
+
+`send_progress_update(text)` sends one brief interim WhatsApp message while you
+are still working, before your final reply. Keep it to a short plain sentence.
+
+Users are waiting on the other end and don't like silence - they want to know
+something is happening with their request, not just get one final answer out
+of nowhere.
+
+Call this every single time you interact with any tool or capability -
+loading a flow or capability, calling a real domain tool, an MCP call,
+anything that is not just talking to the user - before or after that step,
+in the same round as whatever else you are doing. Never skip it and never
+wait for a separate round.
+
+- Never a substitute for the final answer.
+
+
+# Capability: Record planning status (always present)
+
+`record_planning_status(where_i_was, this_turns_purpose, expectation)` is your own
+running account of where this turn, and across turns this whole task, stands. It is
+how you keep continuity, since nothing else remembers your reasoning beyond what you
+write here and the real conversation history.
+
+Record it at least at the start and at the end of every flow, and whenever you are
+about to wait on the user (a choice, a missing detail, an approval), in the middle
+of a flow as well. Say which flow you are in and which step, and if you are inside a
+flow that was loaded by another flow, say so, so that you know where to return to.
+Also note what you are waiting for and what you will do with each possible answer.
+
+
+## Flows
+
+- flow_add_client: Adding a brand-new client record to Morning ("תוסיף לקוח חדש", or a shared contact card the user wants saved). Checks for an existing or similar client first so a duplicate is never created by accident, tells the user about similar candidates, and creates the record only with approval. Other flows load it whenever a client turns out not to exist yet.
+- flow_modify_client: Changing an existing client's own details (name, email, phone) in Morning. Resolves which real client is meant, relaying candidates when the match is not exact, and updates it with approval. Not for creating a client and not for documents.
+- flow_issue_invoice_for_payment_due: Issuing a new tax invoice (305) for a client, for money that is still owed ("תפיק חשבונית ללקוח X"). Never for money that has already arrived. Money that has already arrived belongs to flow_issue_invoice_receipt_combo instead.
+- flow_issue_invoice_receipt_combo: Issuing a combined tax invoice/receipt (320) for a payment that has already been received and that no earlier document covers - the most common way to record incoming money, whether reported verbally or shown in a bank slip or payment screenshot. Money that an existing document already covers belongs to flow_issue_payment_received_with_reference_doc.
+- flow_issue_transaction_account: Issuing a transaction account (חשבון עסקה, 300) for a client - only when the user's own wording names this document type. Ordinary requests for an invoice belong to flow_issue_invoice_for_payment_due.
+- flow_issue_receipt_without_invoice: Recording a standalone receipt (400) with no invoice behind it, for example a refundable deposit. A receipt against an existing invoice belongs to flow_issue_payment_received_with_reference_doc.
+- flow_payment_received_by_bank_slip_image: A bank slip or payment screenshot arrived. Reads it, records the payer, and gets the payment recorded in Morning the right way: a new combo document when nothing covers it, or a document against an existing one.
+- flow_issue_payment_received_with_reference_doc: Recording a payment received against an existing Morning document: a receipt (400) for an existing invoice (305), or a combo document (320) closing an existing transaction account (300) ("סמן כשולם"). Money that no document covers belongs to flow_issue_invoice_receipt_combo.
+- flow_cancel_document_with_credit_note: Cancelling an existing Morning document with a credit note (330) ("בטל את החשבונית"). Finds the one real document and shows its real data in the approval before writing.
+- flow_cancel_transaction_account: Cancelling an open transaction account (300) directly. No document of any kind is created. Cancelling any other kind of document belongs to flow_cancel_document_with_credit_note.
+- flow_fee_agreement_provided_by_user: The user reports or forwards a fee agreement (הסכם) - as text or as an image - made with a client. An agreement must never belong to a client Morning does not manage, so this makes sure the client exists first. Recording the agreement in the ledger happens automatically after the turn.
+- flow_deposit_provided_by_user: The user reports or forwards a bank deposit (text or a bank slip image). Makes sure the payer exists as a client in Morning first. Recording the deposit in the ledger happens automatically after the turn.
+- flow_user_question: Answering a question about the user's clients, past agreements, deposits, or amounts owed and paid. Decides where the answer lives (the ledger first, Morning when it may hold it), and never answers that nothing exists before checking Morning where Morning could hold it.
+- flow_invoicing_query: Reading from the invoicing system for a client the user names: resolves the client's exact stored name first, then reads the documents or status. Other flows load it whenever they need to look up documents in Morning.
+- flow_generate_fee_agreement_docx: Generating a fee agreement document (הסכם שכר טרחה) as a .docx file to send to a prospective client. The client does not exist yet, so no client lookup is involved. Recording an agreement the user reports belongs to flow_fee_agreement_provided_by_user.
+- flow_create_reminder: Creating a new reminder, one-time or recurring ("תזכיר לי בעוד שעתיים", "תזכיר לי כל יום ראשון"). Confirms the text and the schedule, and creates the reminder only with approval. Use this flow, not cap_reminders_write directly, whenever a reminder is added.
+- flow_modify_reminder: Changing or cancelling an existing reminder ("תזיז את התזכורת", "תבטל את התזכורת"). Looks up the user's real reminders to identify the exact one before modifying or deleting it, with approval. Adding a brand-new reminder belongs to flow_create_reminder. Use the reminder flows, not cap_reminders_write directly.
+
+## Capabilities
+
+- cap_invoicing_write: Creating a Morning DOCUMENT for a client - an invoice, a receipt, a transaction account, a credit note, or a combo tax-invoice/receipt - or cancelling a transaction account. Writes only: finding the client or the existing document, and getting approval, are the calling flow's job, so load it only through that flow (flow_issue_*, flow_cancel_*, flow_payment_received_*), never directly. Not for creating or updating a client record - see cap_client_write.
+- cap_invoicing_read: Reading from the invoicing system (Morning): a specific document's own status and details, recent documents, a financial summary, a download link. It is given an already-resolved client name or document id. Not for a client's own details - see cap_client_read - and not the first choice for a general owed/paid amount question - see cap_ledger_query.
+- cap_client_write: Creating a new client record, or updating an existing client's own details (name/email/phone) in Morning. Writes only: load it only through flow_add_client or flow_modify_client, never directly. Never for producing any document - see cap_invoicing_write.
+- cap_client_read: Looking up an existing client's own details (name/email/phone/id), listing clients, and resolving a client name to its exact stored Morning spelling. Never for a client's financial history - see cap_ledger_query and cap_invoicing_read.
+- cap_ledger_query: Answering questions about PAST fee agreements or bank deposits already recorded, including how much a client/payer owes or has paid - whether or not a formal Morning invoice exists. The ledger is a fast cache over Morning and covers agreement-level amounts Morning cannot see at all.
+- cap_reminders_write: Creating, changing, or cancelling a reminder (one-time or recurring) for the user. Writes only: load it only through flow_create_reminder or flow_modify_reminder, never directly.
+- cap_reminders_read: Looking up the user's own existing reminders - what's scheduled, for when.
+- cap_media_analysis: Reading/extracting the content of an image or document the user sent. Used inside a larger flow, or on its own to work out what a piece of media is for.
+- cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
+- cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
+
+## Loaded flows
+
+(none)
+
+## Loaded capabilities
+
+(none - plain backbone)
+
+---
+
+THE CURRENT DATE AND TIME IS 2026-10-01 10:32 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
+```
+
+</details>
+
+</details>
+
+</details>
+
+<details>
+<summary>79. [2026-10-01 10:32:24] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+- response.id: `resp_00169c193dd3244b006abe0c86e9d887d183624d67a3c07b6c`
+- status: `completed`
+- usage: `{"input_tokens": 7136, "input_tokens_details": {"cache_write_tokens": 7133, "cached_tokens": 0}, "output_tokens": 56, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 7192}`
+- function_call: `send_to_user` call_id=`call_mqzoE6ICkBGIlY5VYC9hEHIb`
 ```json
 {
-  "text": "הלקוח זכריה פרוקופנקו נוסף בהצלחה.\nמייל: e2e-client-513218@example.com\nטלפון: 050-1234567"
+  "text": "הלקוח נוסף בהצלחה:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: 050-1234567"
 }
 ```
 
@@ -10379,13 +9858,13 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0e62c432ea455d47006abd12862b4887d19dcd2ae605130824`
+- response.id: `resp_00169c193dd3244b006abe0c86e9d887d183624d67a3c07b6c`
 - status: `completed`
-- usage: `{"input_tokens": 9505, "input_tokens_details": {"cache_write_tokens": 564, "cached_tokens": 8938}, "output_tokens": 56, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9561}`
-- function_call: `send_to_user` call_id=`call_878cnGxBjXV1iREw8RZUYDiC`
+- usage: `{"input_tokens": 7136, "input_tokens_details": {"cache_write_tokens": 7133, "cached_tokens": 0}, "output_tokens": 56, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 7192}`
+- function_call: `send_to_user` call_id=`call_mqzoE6ICkBGIlY5VYC9hEHIb`
 ```json
 {
-  "text": "הלקוח זכריה פרוקופנקו נוסף בהצלחה.\nמייל: e2e-client-513218@example.com\nטלפון: 050-1234567"
+  "text": "הלקוח נוסף בהצלחה:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: 050-1234567"
 }
 ```
 
@@ -10394,7 +9873,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>72. [2026-09-30 16:45:44] APP → USER — context=text</summary>
+<summary>80. [2026-10-01 10:32:24] APP → USER — context=text</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -10402,7 +9881,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 ```json
 {
   "chat_id": "972500000021@c.us",
-  "message": "הלקוח זכריה פרוקופנקו נוסף בהצלחה.\nמייל: e2e-client-513218@example.com\nטלפון: 050-1234567"
+  "message": "הלקוח נוסף בהצלחה:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: 050-1234567"
 }
 ```
 
@@ -10414,7 +9893,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 ```json
 {
   "chat_id": "972500000021@c.us",
-  "message": "הלקוח זכריה פרוקופנקו נוסף בהצלחה.\nמייל: e2e-client-513218@example.com\nטלפון: 050-1234567"
+  "message": "הלקוח נוסף בהצלחה:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: 050-1234567"
 }
 ```
 
@@ -10423,7 +9902,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>73. [2026-09-30 16:45:44] APP → MODEL — context=recognize_ledger_event</summary>
+<summary>81. [2026-10-01 10:32:24] APP → MODEL — context=recognize_ledger_event</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -10431,7 +9910,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 **input:**
 
 ```json
-{"role": "user", "content": "THE CONVERSATION WINDOW (the last 1h, oldest first) - '<message_id> [<role>] <content>':\n2dba58b3-d163-4584-9afc-8f3e25b12368 [godfather] תוסיף לקוח חדש בשם זכריה פרוקופנקו, מייל e2e-client-513218@example.com, טלפון +972501234567\n467d0e60-b5f1-48c9-a50f-0574c52fc218 [assistant] מתחיל לבדוק אם הלקוח כבר קיים לפני הוספתו.\nbb801c6e-92ee-414e-adb6-6dff1bb8a17e [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש ביקש להוסיף לקוח חדש בשם זכריה פרוקופנקו עם כתובת דואר אלקטרוני ומספר טלפון.\nTHIS TURN'S PURPOSE: להפעיל את תהליך הוספת הלקוח, לבדוק כפילויות, ואז לבקש אישור לפני יצירה.\nEXPECTATION: לטעון את תהליך הוספת הלקוח ואת היכולות הנדרשות, לחפש התאמות קיימות, ולהציג את פרטי הלקוח לאישור.\nbcb9f8f5-f0e7-455d-a97b-df65b01365fd [assistant] בודק עכשיו אם קיימת רשומה זהה או דומה במערכת.\n4342b6a0-8fb7-4fb2-8960-b7ed9f171189 [assistant] מחפש את השם המדויק במערכת.\n86a28239-b34d-4836-ae44-8270abc96ef8 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח, לאחר בדיקת כפילויות. המערכת מצאה התאמה קרובה בשם אבינועם פרוקופין, ולא התאמה ודאית לשם זכריה פרוקופנקו.\nTHIS TURN'S PURPOSE: להציג למשתמש את ההתאמה הקרובה ולבקש בחירה מפורשת לפני המשך.\nEXPECTATION: אם המשתמש יאשר יצירת רשומה חדשה בשם זכריה פרוקופנקו, אכין אותה עם הדואר והטלפון שסופקו ואבקש אישור סופי ליצירה.\n19465dbc-315d-48d6-b969-811c4b6ca2e5 [assistant] נמצאה במערכת התאמה קרובה בשם אבינועם פרוקופין.\n\nהאם ליצור בכל זאת לקוח חדש בשם המדויק זכריה פרוקופנקו, עם המייל e2e-client-513218@example.com והטלפון +972501234567?\n    (morning MCP call on this message's turn) {\"name\": \"resolve_client_name\", \"error\": null, \"arguments\": \"{\\\"name\\\":\\\"זכריה פרוקופנקו\\\"}\", \"output\": \"{\\\"status\\\": \\\"needs_confirmation\\\", \\\"candidate_name\\\": \\\"\\\\u05d0\\\\u05d1\\\\u05d9\\\\u05e0\\\\u05d5\\\\u05e2\\\\u05dd \\\\u05e4\\\\u05e8\\\\u05d5\\\\u05e7\\\\u05d5\\\\u05e4\\\\u05d9\\\\u05df\\\"}\"}\n23c609ee-351f-4776-b20e-0a791f4c5958 [godfather] לא, תוסיף לקוח חדש בשם זכריה פרוקופנקו, מייל e2e-client-513218@example.com, טלפון +972501234567\n8cb9058d-f2a4-4e4d-9b52-7531442715f8 [assistant] מכין את פרטי הלקוח לאישור סופי לפני יצירתו.\n0730ea51-857f-4a30-9a2d-4efd546f4437 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח, נמצאה התאמה קרובה והמשתמש אישר במפורש ליצור רשומה חדשה בשם שסיפק.\nTHIS TURN'S PURPOSE: להכין את רשומת הלקוח ולבקש אישור סופי לפני היצירה.\nEXPECTATION: לטעון את יכולת כתיבת הלקוח ואת אישור הכפתורים, ואז להציג את כל הפרטים לאישור.\nd616e2da-fe7f-483f-9873-1c59a383223c [assistant] הפרטים מלאים, ואני מציג אותם עכשיו לאישור לפני היצירה.\n16af05e1-7866-4d0c-8570-d95c397b7747 [assistant] 📋 לאישור — לקוח חדש:\nשם: זכריה פרוקופנקו\nמייל: e2e-client-513218@example.com\nטלפון: +972501234567\nלאישור — כן/לא?\nc772db83-aa9e-4e95-8ed0-32a1a963c3ef [godfather] כן\n6cc13006-30b1-48d1-8501-5a918b6cc4c0 [assistant] יוצר עכשיו את רשומת הלקוח במערכת.\nb18d7a16-e23b-4df1-ab5f-cea08f29892b [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח, לאחר שהמשתמש אישר יצירת לקוח חדש בשם זכריה פרוקופנקו עם מייל ומספר טלפון שסופקו.\nTHIS TURN'S PURPOSE: ליצור את רשומת הלקוח במערכת לאחר האישור המפורש.\nEXPECTATION: להפעיל את יצירת הלקוח, לדווח על הצלחה או על שגיאה, ואז לסיים את התהליך.\nb506eb91-d91a-45a3-a089-3b6956b32fcf [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: תהליך הוספת הלקוח הושלם בהצלחה; הרשומה נוצרה במערכת.\nTHIS TURN'S PURPOSE: לדווח למשתמש על יצירת הלקוח ולסיים את התהליך.\nEXPECTATION: לשלוח הודעת הצלחה קצרה ולסיים.\n3cba2e93-c905-457f-82db-cb5f3dcd9ad3 [assistant] הלקוח זכריה פרוקופנקו נוסף בהצלחה.\nמייל: e2e-client-513218@example.com\nטלפון: 050-1234567\n    (morning MCP call on this message's turn) {\"name\": \"add_client\", \"error\": null, \"arguments\": \"{\\\"name\\\":\\\"זכריה פרוקופנקו\\\",\\\"email\\\":\\\"e2e-client-513218@example.com\\\",\\\"phone\\\":\\\"+972501234567\\\",\\\"tax_id\\\":null}\", \"output\": \"{\\\"status\\\": \\\"created\\\", \\\"client\\\": {\\\"name\\\": \\\"\\\\u05d6\\\\u05db\\\\u05e8\\\\u05d9\\\\u05d4 \\\\u05e4\\\\u05e8\\\\u05d5\\\\u05e7\\\\u05d5\\\\u05e4\\\\u05e0\\\\u05e7\\\\u05d5\\\", \\\"email\\\": \\\"e2e-client-513218@example.com\\\", \\\"phone\\\": \\\"050-1234567\\\", \\\"tax_id\\\": null}}\"}\n\nTHE REPLY JUST SENT TO THE OPERATOR THIS ROUND:\nהלקוח זכריה פרוקופנקו נוסף בהצלחה.\nמייל: e2e-client-513218@example.com\nטלפון: 050-1234567\n\nMORNING MCP TOOL CALLS MADE THIS TURN (verbatim, each with its arguments and its real result):\n[\n  {\n    \"name\": \"add_client\",\n    \"error\": null,\n    \"arguments\": \"{\\\"name\\\":\\\"זכריה פרוקופנקו\\\",\\\"email\\\":\\\"e2e-client-513218@example.com\\\",\\\"phone\\\":\\\"+972501234567\\\",\\\"tax_id\\\":null}\",\n    \"output\": \"{\\\"status\\\": \\\"created\\\", \\\"client\\\": {\\\"name\\\": \\\"\\\\u05d6\\\\u05db\\\\u05e8\\\\u05d9\\\\u05d4 \\\\u05e4\\\\u05e8\\\\u05d5\\\\u05e7\\\\u05d5\\\\u05e4\\\\u05e0\\\\u05e7\\\\u05d5\\\", \\\"email\\\": \\\"e2e-client-513218@example.com\\\", \\\"phone\\\": \\\"050-1234567\\\", \\\"tax_id\\\": null}}\"\n  }\n]\n\nFollow the recognition prompt above: query the client's ledger history first when the round concerns a client, then call report_ledger_recognition exactly once with the verdict for THIS round."}
+{"role": "user", "content": "THE CONVERSATION WINDOW (the last 1h, oldest first) - '<message_id> [<role>] <content>':\n39dc6069-2899-4871-b833-5be8ee1a7cda [godfather] תוסיף לקוח חדש בשם לריסה טסמה, מייל e2e-client-557926@example.com, טלפון +972501234567\nad43a0a3-1461-4eff-b7b5-5891e1b8b333 [assistant] בודק אם הלקוח כבר קיים, ואז אציג לך את פרטי ההוספה לאישור.\n63f6b0db-8a87-41b3-bd86-04eb6c38e63f [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: התקבלה בקשה להוסיף לקוח חדש בשם לריסה טסמה עם מייל וטלפון שסופקו.\nTHIS TURN'S PURPOSE: להפעיל את תהליך הוספת הלקוח, לבדוק כפילויות ולאסוף אישור לפני יצירה.\nEXPECTATION: אטען את התהליך והיכולות הנדרשות, אבדוק לקוחות דומים, ואז אבקש אישור מפורש ליצירה.\nf7e10c27-a8cb-4925-89fc-03d885fbd00f [assistant] מבצע בדיקת כפילות עבור לריסה טסמה.\nc0f7e492-f6a0-4e55-a38d-911f29255ef3 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח חדש. בדיקת Morning עבור לריסה טסמה הסתיימה ללא לקוח קיים או מועמד דומה.\nTHIS TURN'S PURPOSE: לבקש אישור מפורש לפני יצירת הרשומה.\nEXPECTATION: אם המשתמש יאשר, אצור את הלקוח בדיוק עם השם, המייל והטלפון שסופקו. אם יסרב, לא אצור דבר ואבקש מה לשנות.\n789a5a5f-7e06-4c4d-9afe-d891b3c8e553 [assistant] 📋 לאישור — לקוח חדש:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: +972501234567\nלאישור — כן/לא?\n    (morning MCP call on this message's turn) {\"name\": \"list_clients\", \"error\": null, \"arguments\": \"{\\\"name\\\":\\\"לריסה טסמה\\\"}\", \"output\": \"{\\\"count\\\": 0, \\\"clients\\\": []}\"}\n6833054c-341a-4590-ba25-d9f69f2a448e [godfather] לא, תוסיף לקוח חדש בשם לריסה טסמה, מייל e2e-client-557926@example.com, טלפון +972501234567\n14c506ed-0bf7-48c3-9a9c-fa253f8601b5 [assistant] קיבלתי, אציג שוב את פרטי הלקוח לאישור מפורש לפני ההוספה.\nc5f6eb45-1be6-42ca-9162-907534fe4ef9 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: תהליך הוספת הלקוח נעצר לאחר שהמשתמש השיב לא לאישור הקודם. כעת המשתמש חזר וביקש להוסיף את אותם פרטים, אך עדיין לא נתן תשובת כן מפורשת לאישור.\nTHIS TURN'S PURPOSE: לבקש מחדש אישור מפורש ליצירת הלקוח, בלי לבצע את הכתיבה לפני אישור.\nEXPECTATION: אם יתקבל כן ברור, אצור את הלקוח עם הפרטים שכבר נבדקו. אם יתקבל לא, לא אצור אותו.\n5459afc1-6e09-499a-8208-b8d9b8327326 [assistant] 📋 לאישור — לקוח חדש:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: +972501234567\nלאישור — כן/לא?\n1613aa33-3622-4d7f-a282-2954e14624b0 [godfather] כן\n4a6d12e7-bc38-4203-be4f-d4f021ba675a [assistant] מוסיף עכשיו את הלקוח במערכת.\nb670630d-002e-44ee-b60f-e4433046c75c [assistant] הלקוח נוסף בהצלחה.\n7a14c658-126c-42c0-95be-39451736216d [assistant] הלקוח נוסף בהצלחה:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: 050-1234567\n    (morning MCP call on this message's turn) {\"name\": \"add_client\", \"error\": null, \"arguments\": \"{\\\"name\\\":\\\"לריסה טסמה\\\",\\\"email\\\":\\\"e2e-client-557926@example.com\\\",\\\"phone\\\":\\\"+972501234567\\\"}\", \"output\": \"{\\\"status\\\": \\\"created\\\", \\\"client\\\": {\\\"name\\\": \\\"\\\\u05dc\\\\u05e8\\\\u05d9\\\\u05e1\\\\u05d4 \\\\u05d8\\\\u05e1\\\\u05de\\\\u05d4\\\", \\\"email\\\": \\\"e2e-client-557926@example.com\\\", \\\"phone\\\": \\\"050-1234567\\\", \\\"tax_id\\\": null}}\"}\n\nTHE REPLY JUST SENT TO THE OPERATOR THIS ROUND:\nהלקוח נוסף בהצלחה:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: 050-1234567\n\nMORNING MCP TOOL CALLS MADE THIS TURN (verbatim, each with its arguments and its real result):\n[\n  {\n    \"name\": \"add_client\",\n    \"error\": null,\n    \"arguments\": \"{\\\"name\\\":\\\"לריסה טסמה\\\",\\\"email\\\":\\\"e2e-client-557926@example.com\\\",\\\"phone\\\":\\\"+972501234567\\\"}\",\n    \"output\": \"{\\\"status\\\": \\\"created\\\", \\\"client\\\": {\\\"name\\\": \\\"\\\\u05dc\\\\u05e8\\\\u05d9\\\\u05e1\\\\u05d4 \\\\u05d8\\\\u05e1\\\\u05de\\\\u05d4\\\", \\\"email\\\": \\\"e2e-client-557926@example.com\\\", \\\"phone\\\": \\\"050-1234567\\\", \\\"tax_id\\\": null}}\"\n  }\n]\n\nFollow the recognition prompt above: query the client's ledger history first when the round concerns a client, then call report_ledger_recognition exactly once with the verdict for THIS round."}
 ```
 
 - tools (2): ['report_ledger_recognition', 'query_ledger_events']
@@ -10450,7 +9929,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 **input:**
 
 ```json
-{"role": "user", "content": "THE CONVERSATION WINDOW (the last 1h, oldest first) - '<message_id> [<role>] <content>':\n2dba58b3-d163-4584-9afc-8f3e25b12368 [godfather] תוסיף לקוח חדש בשם זכריה פרוקופנקו, מייל e2e-client-513218@example.com, טלפון +972501234567\n467d0e60-b5f1-48c9-a50f-0574c52fc218 [assistant] מתחיל לבדוק אם הלקוח כבר קיים לפני הוספתו.\nbb801c6e-92ee-414e-adb6-6dff1bb8a17e [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש ביקש להוסיף לקוח חדש בשם זכריה פרוקופנקו עם כתובת דואר אלקטרוני ומספר טלפון.\nTHIS TURN'S PURPOSE: להפעיל את תהליך הוספת הלקוח, לבדוק כפילויות, ואז לבקש אישור לפני יצירה.\nEXPECTATION: לטעון את תהליך הוספת הלקוח ואת היכולות הנדרשות, לחפש התאמות קיימות, ולהציג את פרטי הלקוח לאישור.\nbcb9f8f5-f0e7-455d-a97b-df65b01365fd [assistant] בודק עכשיו אם קיימת רשומה זהה או דומה במערכת.\n4342b6a0-8fb7-4fb2-8960-b7ed9f171189 [assistant] מחפש את השם המדויק במערכת.\n86a28239-b34d-4836-ae44-8270abc96ef8 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח, לאחר בדיקת כפילויות. המערכת מצאה התאמה קרובה בשם אבינועם פרוקופין, ולא התאמה ודאית לשם זכריה פרוקופנקו.\nTHIS TURN'S PURPOSE: להציג למשתמש את ההתאמה הקרובה ולבקש בחירה מפורשת לפני המשך.\nEXPECTATION: אם המשתמש יאשר יצירת רשומה חדשה בשם זכריה פרוקופנקו, אכין אותה עם הדואר והטלפון שסופקו ואבקש אישור סופי ליצירה.\n19465dbc-315d-48d6-b969-811c4b6ca2e5 [assistant] נמצאה במערכת התאמה קרובה בשם אבינועם פרוקופין.\n\nהאם ליצור בכל זאת לקוח חדש בשם המדויק זכריה פרוקופנקו, עם המייל e2e-client-513218@example.com והטלפון +972501234567?\n    (morning MCP call on this message's turn) {\"name\": \"resolve_client_name\", \"error\": null, \"arguments\": \"{\\\"name\\\":\\\"זכריה פרוקופנקו\\\"}\", \"output\": \"{\\\"status\\\": \\\"needs_confirmation\\\", \\\"candidate_name\\\": \\\"\\\\u05d0\\\\u05d1\\\\u05d9\\\\u05e0\\\\u05d5\\\\u05e2\\\\u05dd \\\\u05e4\\\\u05e8\\\\u05d5\\\\u05e7\\\\u05d5\\\\u05e4\\\\u05d9\\\\u05df\\\"}\"}\n23c609ee-351f-4776-b20e-0a791f4c5958 [godfather] לא, תוסיף לקוח חדש בשם זכריה פרוקופנקו, מייל e2e-client-513218@example.com, טלפון +972501234567\n8cb9058d-f2a4-4e4d-9b52-7531442715f8 [assistant] מכין את פרטי הלקוח לאישור סופי לפני יצירתו.\n0730ea51-857f-4a30-9a2d-4efd546f4437 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח, נמצאה התאמה קרובה והמשתמש אישר במפורש ליצור רשומה חדשה בשם שסיפק.\nTHIS TURN'S PURPOSE: להכין את רשומת הלקוח ולבקש אישור סופי לפני היצירה.\nEXPECTATION: לטעון את יכולת כתיבת הלקוח ואת אישור הכפתורים, ואז להציג את כל הפרטים לאישור.\nd616e2da-fe7f-483f-9873-1c59a383223c [assistant] הפרטים מלאים, ואני מציג אותם עכשיו לאישור לפני היצירה.\n16af05e1-7866-4d0c-8570-d95c397b7747 [assistant] 📋 לאישור — לקוח חדש:\nשם: זכריה פרוקופנקו\nמייל: e2e-client-513218@example.com\nטלפון: +972501234567\nלאישור — כן/לא?\nc772db83-aa9e-4e95-8ed0-32a1a963c3ef [godfather] כן\n6cc13006-30b1-48d1-8501-5a918b6cc4c0 [assistant] יוצר עכשיו את רשומת הלקוח במערכת.\nb18d7a16-e23b-4df1-ab5f-cea08f29892b [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח, לאחר שהמשתמש אישר יצירת לקוח חדש בשם זכריה פרוקופנקו עם מייל ומספר טלפון שסופקו.\nTHIS TURN'S PURPOSE: ליצור את רשומת הלקוח במערכת לאחר האישור המפורש.\nEXPECTATION: להפעיל את יצירת הלקוח, לדווח על הצלחה או על שגיאה, ואז לסיים את התהליך.\nb506eb91-d91a-45a3-a089-3b6956b32fcf [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: תהליך הוספת הלקוח הושלם בהצלחה; הרשומה נוצרה במערכת.\nTHIS TURN'S PURPOSE: לדווח למשתמש על יצירת הלקוח ולסיים את התהליך.\nEXPECTATION: לשלוח הודעת הצלחה קצרה ולסיים.\n3cba2e93-c905-457f-82db-cb5f3dcd9ad3 [assistant] הלקוח זכריה פרוקופנקו נוסף בהצלחה.\nמייל: e2e-client-513218@example.com\nטלפון: 050-1234567\n    (morning MCP call on this message's turn) {\"name\": \"add_client\", \"error\": null, \"arguments\": \"{\\\"name\\\":\\\"זכריה פרוקופנקו\\\",\\\"email\\\":\\\"e2e-client-513218@example.com\\\",\\\"phone\\\":\\\"+972501234567\\\",\\\"tax_id\\\":null}\", \"output\": \"{\\\"status\\\": \\\"created\\\", \\\"client\\\": {\\\"name\\\": \\\"\\\\u05d6\\\\u05db\\\\u05e8\\\\u05d9\\\\u05d4 \\\\u05e4\\\\u05e8\\\\u05d5\\\\u05e7\\\\u05d5\\\\u05e4\\\\u05e0\\\\u05e7\\\\u05d5\\\", \\\"email\\\": \\\"e2e-client-513218@example.com\\\", \\\"phone\\\": \\\"050-1234567\\\", \\\"tax_id\\\": null}}\"}\n\nTHE REPLY JUST SENT TO THE OPERATOR THIS ROUND:\nהלקוח זכריה פרוקופנקו נוסף בהצלחה.\nמייל: e2e-client-513218@example.com\nטלפון: 050-1234567\n\nMORNING MCP TOOL CALLS MADE THIS TURN (verbatim, each with its arguments and its real result):\n[\n  {\n    \"name\": \"add_client\",\n    \"error\": null,\n    \"arguments\": \"{\\\"name\\\":\\\"זכריה פרוקופנקו\\\",\\\"email\\\":\\\"e2e-client-513218@example.com\\\",\\\"phone\\\":\\\"+972501234567\\\",\\\"tax_id\\\":null}\",\n    \"output\": \"{\\\"status\\\": \\\"created\\\", \\\"client\\\": {\\\"name\\\": \\\"\\\\u05d6\\\\u05db\\\\u05e8\\\\u05d9\\\\u05d4 \\\\u05e4\\\\u05e8\\\\u05d5\\\\u05e7\\\\u05d5\\\\u05e4\\\\u05e0\\\\u05e7\\\\u05d5\\\", \\\"email\\\": \\\"e2e-client-513218@example.com\\\", \\\"phone\\\": \\\"050-1234567\\\", \\\"tax_id\\\": null}}\"\n  }\n]\n\nFollow the recognition prompt above: query the client's ledger history first when the round concerns a client, then call report_ledger_recognition exactly once with the verdict for THIS round."}
+{"role": "user", "content": "THE CONVERSATION WINDOW (the last 1h, oldest first) - '<message_id> [<role>] <content>':\n39dc6069-2899-4871-b833-5be8ee1a7cda [godfather] תוסיף לקוח חדש בשם לריסה טסמה, מייל e2e-client-557926@example.com, טלפון +972501234567\nad43a0a3-1461-4eff-b7b5-5891e1b8b333 [assistant] בודק אם הלקוח כבר קיים, ואז אציג לך את פרטי ההוספה לאישור.\n63f6b0db-8a87-41b3-bd86-04eb6c38e63f [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: התקבלה בקשה להוסיף לקוח חדש בשם לריסה טסמה עם מייל וטלפון שסופקו.\nTHIS TURN'S PURPOSE: להפעיל את תהליך הוספת הלקוח, לבדוק כפילויות ולאסוף אישור לפני יצירה.\nEXPECTATION: אטען את התהליך והיכולות הנדרשות, אבדוק לקוחות דומים, ואז אבקש אישור מפורש ליצירה.\nf7e10c27-a8cb-4925-89fc-03d885fbd00f [assistant] מבצע בדיקת כפילות עבור לריסה טסמה.\nc0f7e492-f6a0-4e55-a38d-911f29255ef3 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח חדש. בדיקת Morning עבור לריסה טסמה הסתיימה ללא לקוח קיים או מועמד דומה.\nTHIS TURN'S PURPOSE: לבקש אישור מפורש לפני יצירת הרשומה.\nEXPECTATION: אם המשתמש יאשר, אצור את הלקוח בדיוק עם השם, המייל והטלפון שסופקו. אם יסרב, לא אצור דבר ואבקש מה לשנות.\n789a5a5f-7e06-4c4d-9afe-d891b3c8e553 [assistant] 📋 לאישור — לקוח חדש:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: +972501234567\nלאישור — כן/לא?\n    (morning MCP call on this message's turn) {\"name\": \"list_clients\", \"error\": null, \"arguments\": \"{\\\"name\\\":\\\"לריסה טסמה\\\"}\", \"output\": \"{\\\"count\\\": 0, \\\"clients\\\": []}\"}\n6833054c-341a-4590-ba25-d9f69f2a448e [godfather] לא, תוסיף לקוח חדש בשם לריסה טסמה, מייל e2e-client-557926@example.com, טלפון +972501234567\n14c506ed-0bf7-48c3-9a9c-fa253f8601b5 [assistant] קיבלתי, אציג שוב את פרטי הלקוח לאישור מפורש לפני ההוספה.\nc5f6eb45-1be6-42ca-9162-907534fe4ef9 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: תהליך הוספת הלקוח נעצר לאחר שהמשתמש השיב לא לאישור הקודם. כעת המשתמש חזר וביקש להוסיף את אותם פרטים, אך עדיין לא נתן תשובת כן מפורשת לאישור.\nTHIS TURN'S PURPOSE: לבקש מחדש אישור מפורש ליצירת הלקוח, בלי לבצע את הכתיבה לפני אישור.\nEXPECTATION: אם יתקבל כן ברור, אצור את הלקוח עם הפרטים שכבר נבדקו. אם יתקבל לא, לא אצור אותו.\n5459afc1-6e09-499a-8208-b8d9b8327326 [assistant] 📋 לאישור — לקוח חדש:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: +972501234567\nלאישור — כן/לא?\n1613aa33-3622-4d7f-a282-2954e14624b0 [godfather] כן\n4a6d12e7-bc38-4203-be4f-d4f021ba675a [assistant] מוסיף עכשיו את הלקוח במערכת.\nb670630d-002e-44ee-b60f-e4433046c75c [assistant] הלקוח נוסף בהצלחה.\n7a14c658-126c-42c0-95be-39451736216d [assistant] הלקוח נוסף בהצלחה:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: 050-1234567\n    (morning MCP call on this message's turn) {\"name\": \"add_client\", \"error\": null, \"arguments\": \"{\\\"name\\\":\\\"לריסה טסמה\\\",\\\"email\\\":\\\"e2e-client-557926@example.com\\\",\\\"phone\\\":\\\"+972501234567\\\"}\", \"output\": \"{\\\"status\\\": \\\"created\\\", \\\"client\\\": {\\\"name\\\": \\\"\\\\u05dc\\\\u05e8\\\\u05d9\\\\u05e1\\\\u05d4 \\\\u05d8\\\\u05e1\\\\u05de\\\\u05d4\\\", \\\"email\\\": \\\"e2e-client-557926@example.com\\\", \\\"phone\\\": \\\"050-1234567\\\", \\\"tax_id\\\": null}}\"}\n\nTHE REPLY JUST SENT TO THE OPERATOR THIS ROUND:\nהלקוח נוסף בהצלחה:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: 050-1234567\n\nMORNING MCP TOOL CALLS MADE THIS TURN (verbatim, each with its arguments and its real result):\n[\n  {\n    \"name\": \"add_client\",\n    \"error\": null,\n    \"arguments\": \"{\\\"name\\\":\\\"לריסה טסמה\\\",\\\"email\\\":\\\"e2e-client-557926@example.com\\\",\\\"phone\\\":\\\"+972501234567\\\"}\",\n    \"output\": \"{\\\"status\\\": \\\"created\\\", \\\"client\\\": {\\\"name\\\": \\\"\\\\u05dc\\\\u05e8\\\\u05d9\\\\u05e1\\\\u05d4 \\\\u05d8\\\\u05e1\\\\u05de\\\\u05d4\\\", \\\"email\\\": \\\"e2e-client-557926@example.com\\\", \\\"phone\\\": \\\"050-1234567\\\", \\\"tax_id\\\": null}}\"\n  }\n]\n\nFollow the recognition prompt above: query the client's ledger history first when the round concerns a client, then call report_ledger_recognition exactly once with the verdict for THIS round."}
 ```
 
 - tools (2): ['report_ledger_recognition', 'query_ledger_events']
@@ -10697,7 +10176,7 @@ ledger history:
   to resolve a client — verdict `none`.
 
 ---
-Today's date (Israel local): 30/09/2026
+Today's date (Israel local): 01/10/2026
 
 POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already been sent. Do not produce a reply. Your only task is to call report_ledger_recognition exactly once with the verdict for this round, after any ledger-history lookups the prompt calls for. When in doubt, verdict='none'.
 ```
@@ -10709,364 +10188,20 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 </details>
 
 <details>
-<summary>74. [2026-09-30 16:45:46] MODEL → APP — context=recognize_ledger_event</summary>
+<summary>82. [2026-10-01 10:32:28] MODEL → APP — context=recognize_ledger_event</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_00427140b9a53acf006abd1288bf7087d1a0daf15056a5e78b`
+- response.id: `resp_03f3c82bb9b0b34a006abe0c89279087d1af9b89ca96a348ff`
 - status: `completed`
-- usage: `{"input_tokens": 9866, "input_tokens_details": {"cache_write_tokens": 1927, "cached_tokens": 7936}, "output_tokens": 114, "output_tokens_details": {"reasoning_tokens": 77}, "total_tokens": 9980}`
+- usage: `{"input_tokens": 9424, "input_tokens_details": {"cache_write_tokens": 1485, "cached_tokens": 7936}, "output_tokens": 78, "output_tokens_details": {"reasoning_tokens": 42}, "total_tokens": 9502}`
 - reasoning item (content not user-visible)
-- function_call: `query_ledger_events` call_id=`call_bG9RVQbylW53QzLClx50Jnw2`
-```json
-{
-  "criteria": [
-    {
-      "text": "זכריה פרוקופנקו",
-      "hint": "identity"
-    }
-  ]
-}
-```
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- response.id: `resp_00427140b9a53acf006abd1288bf7087d1a0daf15056a5e78b`
-- status: `completed`
-- usage: `{"input_tokens": 9866, "input_tokens_details": {"cache_write_tokens": 1927, "cached_tokens": 7936}, "output_tokens": 114, "output_tokens_details": {"reasoning_tokens": 77}, "total_tokens": 9980}`
-- reasoning item (content not user-visible)
-- function_call: `query_ledger_events` call_id=`call_bG9RVQbylW53QzLClx50Jnw2`
-```json
-{
-  "criteria": [
-    {
-      "text": "זכריה פרוקופנקו",
-      "hint": "identity"
-    }
-  ]
-}
-```
-
-</details>
-
-</details>
-
-<details>
-<summary>75. [2026-09-30 16:45:46] APP → MODEL — context=recognize_ledger_event (query round)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-**input:**
-
-- app's reply to `query_ledger_events` (call_id=`call_bG9RVQbylW53QzLClx50Jnw2`):
-```text
-{
-  "matches": [],
-  "count": 0
-}
-```
-
-- tools (2): ['report_ledger_recognition', 'query_ledger_events']
-
-- previous_response_id: `'resp_00427140b9a53acf006abd1288bf7087d1a0daf15056a5e78b'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-- instructions: ledger recognition prompt
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-**input:**
-
-- app's reply to `query_ledger_events` (call_id=`call_bG9RVQbylW53QzLClx50Jnw2`):
-```text
-{
-  "matches": [],
-  "count": 0
-}
-```
-
-- tools (2): ['report_ledger_recognition', 'query_ledger_events']
-
-- previous_response_id: `'resp_00427140b9a53acf006abd1288bf7087d1a0daf15056a5e78b'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-<details>
-<summary>↳↳ instructions (15465 chars)</summary>
-
-```text
-# Ledger Event Recognition — post-turn recognition prompt
-
-You are a bookkeeping recognition step. You run **once, after** a Godfather/Admin turn's
-reply has already been sent to the operator. You never talk to the operator; your output is
-consumed by code and discarded. You have two tools:
-
-- `report_ledger_recognition` — call it **exactly once, always**, as your final action.
-- `query_ledger_events` — read-only lookup over the existing ledger. Use it as described in
-  "Look at the client's ledger history first". Never more than 3 calls total.
-
-## What you are given
-
-- **The conversation window** — every message from the last hour of this chat, oldest first,
-  each line as `<message_id> [<role>] <content>`, where `<role>` is `godfather`, `admin`, or
-  `client`. A message that already produced a ledger event is marked
-  `[✓ captured as <event_id>]`. Media messages also carry their extracted text.
-- **The Morning MCP tool calls made during that window**, verbatim — each with its arguments
-  and its real result. This is your ONLY evidence of what was actually resolved in Morning.
-- **The reply just sent to the operator this round.**
-- **Today's date** (Israel local).
-
-## Whose message can trigger an event
-
-Only a `[godfather]` or `[admin]` message can be a trigger. A `[client]` message is **context
-only** — it can help you understand an amount or a name, but a client stating "העברתי לך
-5,000" is never itself a `בנק` event. The trigger is always the lawyer/operator recording it.
-
-## Your single question
-
-**Does THE LAST `[godfather]` / `[admin]` MESSAGE in the window — read in the context of the
-rest of the window — do one of these three things?**
-
-1. **Completes an event** — its turn added the last missing mandatory field, produced the
-   client-resolution evidence that was blocking, or created the Morning document.
-2. **States a whole standalone event** — a complete fee arrangement, deposit, or work-log
-   entry, in one message, with its client already resolvable from window evidence.
-3. **Adds to / corrects / cancels** an arrangement that is present **in the window** (as a
-   `[✓ captured as …]` marker or as an in-progress discussion) **or in the client's ledger
-   history** you looked up.
-
-If yes → verdict `complete` (or `declined`, see "Client resolution"). If none of the three →
-verdict `none`.
-
-- **Judge the last operator message only.** Earlier messages are context — for resolving
-  references, for knowing whether the client was already resolved, for folding a correction
-  into current state — never targets. An earlier message already marked `[✓ captured as …]`
-  is done; never re-report it.
-- **Do not sweep the window for old, un-captured events.** If the completing turn for some
-  earlier arrangement was missed, and the last message isn't about that arrangement, let it
-  go — verdict `none`.
-- **When in doubt, `none`.** A missed capture is cheaper than a false one.
-
-### Recognising case 3 (add / correct / cancel)
-
-- Explicit language: "לתקן ל…", "עולה ל…", "מתקדם ל…" (always a **new total**, never a
-  delta), "נסגר על…", "לבטל", "למחוק", "בנוסף ל…", "תוספת".
-- Heuristic: a bare monetary / percentage / conditional term **with no client of its own**
-  attaches to the **most recent open arrangement** in the window (e.g. after "דנה לולו 1500"
-  → captured, a later "15% אם הגיעו להסדר" is a second component of *that* arrangement).
-- If you genuinely can't tell which prior arrangement a fragment belongs to → `none`; let
-  the conversation clarify next turn.
-
-## Look at the client's ledger history first
-
-When the round concerns a client (almost every `הסכם` / `בנק` / `חשבונית` round does), your
-**first action** is a single `query_ledger_events` call with one identity-hinted criterion —
-the client's name (`{"text": "<name>", "hint": "identity"}`). Read back that client's full
-ledger history, and use it to:
-
-- know whether the arrangement the last message touches already exists (case 3), and get its
-  real `event_id` for `reference`;
-- avoid re-reporting something already recorded.
-
-Then decide and call `report_ledger_recognition`. If the round has no client at all, skip the
-query. You may issue at most one or two more `query_ledger_events` calls if the first result
-is ambiguous — never more than 3 total, and only ever to establish a link, never to
-"double-check" the current event.
-
-## The three verdicts
-
-- **`complete`** — one of the three trigger cases fired and the event is complete. Return the
-  event fully mapped to the ledger schema (see "Fields" + "Extraction rules"), plus
-  `trigger_message_id` = the message that first introduced this event's core economic content
-  (informational — the recorded date comes from the **completing** message, or from the
-  Morning document for `חשבונית`).
-- **`none`** — nothing to record this round: an unresolved client, a missing mandatory
-  field, a read-only Morning question, ordinary chatter, a mid-resolution turn, an event
-  already captured, or an ambiguous fragment.
-- **`declined`** — the operator was asked the single closed store-anyway question (see
-  "Client resolution") and explicitly answered *don't record it*. Return `source_type`, the
-  operator-stated client name (`client_name_stated`), and `reason: "declined_by_operator"`.
-
-## Client resolution — mandatory before `הסכם` / `בנק` / `חשבונית` can be complete
-
-An event is **not complete** until its client is resolved to an **exact Morning name**. You
-cannot check Morning yourself — you determine "resolved" **only** from evidence in the
-window's MCP calls:
-
-| evidence in the window | client is… |
-|---|---|
-| `resolve_client_name(...)` returned an **exact** match | resolved — use that exact Morning name |
-| `add_client(...)` succeeded | resolved — use the created name |
-| a `create_*` document call succeeded (`חשבונית` only) | resolved by construction |
-| a name appears only in extracted text / operator prose, no MCP evidence | **NOT resolved → `none`, wait** |
-| `resolve_client_name(...)` returned no match / only partial matches, still unresolved | **NOT resolved → `none`, wait** |
-
-A client name in a contract image or a chat message is a **candidate**, never a resolution.
-The OCR text of a contract shows the same name whether or not that client exists in Morning —
-only a tool *result* tells you.
-
-**Store-anyway.** If the window shows the operator was asked for the client's full name +
-email + phone, declined, was asked **once** the closed question "record it without the client
-verified in Morning, or not?", and answered *record it* — OR the operator proactively asked
-to record it without those details — then `client_name` = the operator-stated free text and
-you MUST put the exact marker `[לקוח לא אומת במורנינג]` inside `description`. If they answered
-*don't record it* → verdict `declined`.
-
-**Does NOT apply to:** `payer_name` (free text, may differ from the client, never resolved);
-the `חשבונית` client (resolved by construction from the `create_*` call).
-
-## Fields
-
-Buckets below are **mandatory** (the event is not `complete` without it), **conditional**
-(mandatory only in the stated case), and **keep-if-provided** (never invent it; if the
-conversation gave it, carry it through). The parenthetical "(you)" marks a field you
-provide; everything else is minted by code after you report and must never be provided by
-you.
-
-| type | mandatory | conditional | keep-if-provided |
-|---|---|---|---|
-| `הסכם` | resolved `client_name` or store-anyway text (you) · `description` (you) · ≥1 `components` entry **OR** an hours value (you) | per component: `amount` > 0 **OR** `percent` (you, iff that component is monetary) | `payer_name`; per-component `trigger_condition` / `percent` / `percent_base` / `hours` / `hourly_rate`; `reference` / `reference_hint` |
-| `בנק` | resolved `client_name` or store-anyway text (you) · `txn_date` (you) · `amount` (you) · `description` (you) · `vat_status` = `כולל` (you — always) | — | `bank_number` / `bank_branch` / `bank_account`; `reference` / `reference_hint`; `payer_name` **when it genuinely differs from the resolved client** (see "בנק payer vs client" below — put the slip's name verbatim, don't just fold it into `description`) |
-| `חשבונית` | `accounting_document_json` = the document's whole JSON object, copied verbatim (you) — from the Morning `create_*` result, or the reconciliation sweep's listing. **Nothing else** — code derives the display number, `event_subtype`, `amount`, `txn_date`, VAT, status, payment method and client from that JSON. | — | `reference` / `reference_hint` |
-
-**Always code-minted — never provide, for any type:** `event_id`, `event_datetime`,
-`captured_at`, `schema_version`, `session_id`, `agreement_id`, `component_id`,
-`component_label`. `message_id` is code-supplied from the completing message.
-
-> Code re-validates every mandatory / conditional field after assembling the final record. A
-> record that still fails is persisted **flagged incomplete** (a `[רישום חלקי — חסר: …]`
-> marker in `description`), never dropped. Your job is still to only report `complete` when
-> you believe it genuinely is — the code check is a backstop, not a licence to guess.
-
-## `חשבונית` — capturing a Morning document created this turn
-
-When the window's MCP calls contain a **successful** `create_invoice` / `create_combo_document`
-/ `create_receipt` / `create_credit_note` / `create_combo_document_as_reference`, that
-document IS a complete `חשבונית` event this round. Capture it **exactly as the background
-reconciliation sweep captures a pre-existing document**: copy the **entire** JSON object from
-that tool's result — the whole `{…}`, verbatim, every field — into `accounting_document_json`,
-and set nothing else (`component_count` = 0, `components` = []). Do not summarise, reorder,
-translate, drop fields, or fill anything in from the operator's or your own prose. Code reads
-the display number, document type (`event_subtype`), amount, dates, VAT status, payment
-method, status and client straight out of that JSON — the `create_*` result carries the full
-document, identical in shape to what the reconciliation listing returns.
-
-## Amendments, corrections, cancellations
-
-When the last message changes or cancels an arrangement already in the window or the client's
-ledger history:
-
-- Report a **NEW `complete` event** with `event_subtype: "יצירה"`, describing the
-  arrangement's **current, up-to-date state** — fold in everything already known plus what
-  the last message changes. (`עדכון` / `ביטול` subtypes are disabled — one immutable record
-  per state, exactly as today. Two `יצירה` records for one evolving arrangement are expected
-  and fine.)
-- `trigger_message_id` = the correction message itself.
-- **Linking:**
-  - Prior event visible in the window as `[✓ captured as <event_id>]` → set `reference` =
-    that `event_id`.
-  - Else, prior event found in the `query_ledger_events` history you pulled → set `reference`
-    = that `event_id`.
-  - Else → leave `reference` unset, set `reference_hint` to free text describing the prior
-    arrangement (client, approximate date, prior amount). Always set `reference_hint`
-    whenever the language signals a relationship to something prior, even when you did pin
-    down `reference`.
-
-## Extraction rules (how to read money / names / dates)
-
-- **Verbatim over guessed.** Never normalize or "clean up" an ambiguous name/amount — record
-  what's there; put uncertainty in `description`.
-- **VAT.** `הסכם`: "לפני מע"מ" / "לא כולל מע"מ" → `לא כולל`; "כולל מע"מ" → `כולל`; unstated →
-  `לא צוין`. `בנק`: **always `כולל`**, unconditionally (money that landed already contains VAT).
-- **A base amount + its VAT-inclusive total** ("20,000 + מע"מ = 23,600") is ONE component,
-  `amount` = the total, `vat_status` = `כולל`. Never compute VAT yourself. Never put two
-  numbers in one `amount`.
-- **"עולה ל-X" / "מתקדם ל-X"** = a new total, never added to a prior figure.
-- **Relative dates** ("היום" / "אתמול") resolve against the triggering message's own timestamp.
-- **Multi-stage / conditional / tiered agreements** — every genuinely distinct monetary
-  commitment is its own entry in `components` (set `component_count` to match). A per-stage
-  condition goes in `trigger_condition`, not `description`. A base+total pair for one stage
-  is still one entry.
-- **`trigger_condition` is for a real contingency, not payment timing.** A component whose
-  fee is contingent on an outcome or a countable event — a percentage success-fee
-  (`מכל סכום שייפסק`), a per-hearing/per-appearance fee (`עבור כל ישיבת הוכחות`), an
-  `אם…`/`במידה ו…` bonus — carries that clause in `trigger_condition`. A plain fixed
-  retainer is **unconditional → `trigger_condition` null**, even when the source says when
-  it is due (`לתשלום עם חתימת ההסכם`, `ישולם תוך 30 יום`) — due-date / payment-timing
-  wording is never a `trigger_condition`, and never invent one that the source did not
-  state.
-- **An agreement's own signing/execution date (`נחתם ביום …`) is never captured** — not in
-  `txn_date`, not anywhere. `txn_date` on a `הסכם` component is non-null **only** for an
-  hourly work-log component (the date the hours were worked).
-- **Hourly work-log entries** ("3 שעות") are first-class events, one per occurrence, and
-  qualify every time — brevity is never a reason to skip. Never aggregate.
-- **Unpriced mentions still get captured** — client + matter named, no fee → capture with
-  `amount` empty.
-- **Payer vs client.** "דרך X" / "באמצעות X" near a client name → X is the paying
-  intermediary → `payer_name`, kept separate, never folded into `description` / `agreement_id`.
-- **Never merge similarly-named entities** unless the conversation explicitly says they're
-  the same.
-- **בנק screenshots** — read what's on screen; don't assume one layout. The "מ<name>" prefix
-  is "from <name>" — strip the מ. Prefer a labeled account-holder field over a loose inline
-  name. Multiple dates on a screenshot can differ — an explicit transaction/value date goes
-  in `txn_date`.
-- **בנק payer vs client.** A deposit slip's own account-holder/depositor name is who *paid*
-  — it is not automatically the client. When the conversation shows the operator resolving
-  the event against a client that differs from that name (e.g. rejecting a compound/unclear
-  slip name as the client and stating an unrelated one instead), put the slip's name
-  **verbatim** in `payer_name` — don't just fold it into `description` and leave `payer_name`
-  empty. Only when the slip's name and the resolved client are the same person does
-  `payer_name` stay null (the ordinary case).
-
-## Out of scope
-
-- An Invoice Management action/query, a Reminder action, or a question ABOUT past ledger
-  history is never a ledger event — verdict `none`.
-- A bare contact detail on its own — an email address, a phone number, an ID number, a
-  street address, or a lone name / client-record field with no monetary or arrangement
-  content — is **not** a ledger event. Verdict `none`.
-- If the window shows the Morning tunnel was unavailable this turn, you have no MCP evidence
-  to resolve a client — verdict `none`.
-
----
-Today's date (Israel local): 30/09/2026
-
-POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already been sent. Do not produce a reply. Your only task is to call report_ledger_recognition exactly once with the verdict for this round, after any ledger-history lookups the prompt calls for. When in doubt, verdict='none'.
-```
-
-</details>
-
-</details>
-
-</details>
-
-<details>
-<summary>76. [2026-09-30 16:45:49] MODEL → APP — context=recognize_ledger_event (query round)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- response.id: `resp_00427140b9a53acf006abd128adc0487d18c748655cdd9a82d`
-- status: `completed`
-- usage: `{"input_tokens": 10003, "input_tokens_details": {"cache_write_tokens": 137, "cached_tokens": 9863}, "output_tokens": 34, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 10037}`
-- function_call: `report_ledger_recognition` call_id=`call_suQOTGdyZBDjxKYp8aT3YsDn`
+- function_call: `report_ledger_recognition` call_id=`call_RkWZ52UJCkk6UoTsQ0mIfgyy`
 ```json
 {
   "verdict": "none",
-  "none_reason": "client-record maintenance, not a ledger event"
+  "none_reason": "client record maintenance, not a ledger event"
 }
 ```
 
@@ -11075,14 +10210,15 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_00427140b9a53acf006abd128adc0487d18c748655cdd9a82d`
+- response.id: `resp_03f3c82bb9b0b34a006abe0c89279087d1af9b89ca96a348ff`
 - status: `completed`
-- usage: `{"input_tokens": 10003, "input_tokens_details": {"cache_write_tokens": 137, "cached_tokens": 9863}, "output_tokens": 34, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 10037}`
-- function_call: `report_ledger_recognition` call_id=`call_suQOTGdyZBDjxKYp8aT3YsDn`
+- usage: `{"input_tokens": 9424, "input_tokens_details": {"cache_write_tokens": 1485, "cached_tokens": 7936}, "output_tokens": 78, "output_tokens_details": {"reasoning_tokens": 42}, "total_tokens": 9502}`
+- reasoning item (content not user-visible)
+- function_call: `report_ledger_recognition` call_id=`call_RkWZ52UJCkk6UoTsQ0mIfgyy`
 ```json
 {
   "verdict": "none",
-  "none_reason": "client-record maintenance, not a ledger event"
+  "none_reason": "client record maintenance, not a ledger event"
 }
 ```
 
@@ -11091,7 +10227,7 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 </details>
 
 <details>
-<summary>77. [2026-09-30 16:45:55] USER → APP — context=webhook</summary>
+<summary>83. [2026-10-01 10:32:34] USER → APP — context=webhook</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -11099,8 +10235,8 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 ```json
 {
   "typeWebhook": "incomingMessageReceived",
-  "timestamp": 1790775955,
-  "idMessage": "E2E_ADD_CLIENT_VERIFY_1790775955",
+  "timestamp": 1790839954,
+  "idMessage": "E2E_ADD_CLIENT_VERIFY_1790839954",
   "instanceData": {
     "idInstance": 7103000000,
     "wid": "972501234567@c.us",
@@ -11114,7 +10250,7 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
   "messageData": {
     "typeMessage": "textMessage",
     "textMessageData": {
-      "textMessage": "פרטים על הלקוח זכריה פרוקופנקו"
+      "textMessage": "פרטים על הלקוח לריסה טסמה"
     }
   }
 }
@@ -11128,8 +10264,8 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 ```json
 {
   "typeWebhook": "incomingMessageReceived",
-  "timestamp": 1790775955,
-  "idMessage": "E2E_ADD_CLIENT_VERIFY_1790775955",
+  "timestamp": 1790839954,
+  "idMessage": "E2E_ADD_CLIENT_VERIFY_1790839954",
   "instanceData": {
     "idInstance": 7103000000,
     "wid": "972501234567@c.us",
@@ -11143,7 +10279,7 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
   "messageData": {
     "typeMessage": "textMessage",
     "textMessageData": {
-      "textMessage": "פרטים על הלקוח זכריה פרוקופנקו"
+      "textMessage": "פרטים על הלקוח לריסה טסמה"
     }
   }
 }
@@ -11154,154 +10290,136 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 </details>
 
 <details>
-<summary>78. [2026-09-30 16:45:56] APP → MODEL — context=_run_resolution_loop (first round)</summary>
+<summary>84. [2026-10-01 10:32:35] APP → MODEL — context=_run_resolution_loop (first round)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- flows: flow_add_client
+- flows: (none)
 
-- capabilities: cap_client_write, cap_client_read, cap_approval_with_buttons
+- capabilities: (none - plain backbone)
 
 **input:**
 
 ```json
-{"role": "user", "content": "תוסיף לקוח חדש בשם זכריה פרוקופנקו, מייל e2e-client-513218@example.com, טלפון +972501234567"}
+{"role": "user", "content": "תוסיף לקוח חדש בשם לריסה טסמה, מייל e2e-client-557926@example.com, טלפון +972501234567"}
 ```
 ```json
-{"role": "assistant", "content": "מתחיל לבדוק אם הלקוח כבר קיים לפני הוספתו."}
+{"role": "assistant", "content": "בודק אם הלקוח כבר קיים, ואז אציג לך את פרטי ההוספה לאישור."}
 ```
 ```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש ביקש להוסיף לקוח חדש בשם זכריה פרוקופנקו עם כתובת דואר אלקטרוני ומספר טלפון.\nTHIS TURN'S PURPOSE: להפעיל את תהליך הוספת הלקוח, לבדוק כפילויות, ואז לבקש אישור לפני יצירה.\nEXPECTATION: לטעון את תהליך הוספת הלקוח ואת היכולות הנדרשות, לחפש התאמות קיימות, ולהציג את פרטי הלקוח לאישור."}
+{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: התקבלה בקשה להוסיף לקוח חדש בשם לריסה טסמה עם מייל וטלפון שסופקו.\nTHIS TURN'S PURPOSE: להפעיל את תהליך הוספת הלקוח, לבדוק כפילויות ולאסוף אישור לפני יצירה.\nEXPECTATION: אטען את התהליך והיכולות הנדרשות, אבדוק לקוחות דומים, ואז אבקש אישור מפורש ליצירה."}
 ```
 ```json
-{"role": "assistant", "content": "בודק עכשיו אם קיימת רשומה זהה או דומה במערכת."}
+{"role": "assistant", "content": "מבצע בדיקת כפילות עבור לריסה טסמה."}
 ```
 ```json
-{"role": "assistant", "content": "מחפש את השם המדויק במערכת."}
+{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח חדש. בדיקת Morning עבור לריסה טסמה הסתיימה ללא לקוח קיים או מועמד דומה.\nTHIS TURN'S PURPOSE: לבקש אישור מפורש לפני יצירת הרשומה.\nEXPECTATION: אם המשתמש יאשר, אצור את הלקוח בדיוק עם השם, המייל והטלפון שסופקו. אם יסרב, לא אצור דבר ואבקש מה לשנות."}
 ```
 ```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח, לאחר בדיקת כפילויות. המערכת מצאה התאמה קרובה בשם אבינועם פרוקופין, ולא התאמה ודאית לשם זכריה פרוקופנקו.\nTHIS TURN'S PURPOSE: להציג למשתמש את ההתאמה הקרובה ולבקש בחירה מפורשת לפני המשך.\nEXPECTATION: אם המשתמש יאשר יצירת רשומה חדשה בשם זכריה פרוקופנקו, אכין אותה עם הדואר והטלפון שסופקו ואבקש אישור סופי ליצירה."}
+{"role": "assistant", "content": "📋 לאישור — לקוח חדש:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: +972501234567\nלאישור — כן/לא?"}
 ```
 ```json
-{"role": "assistant", "content": "נמצאה במערכת התאמה קרובה בשם אבינועם פרוקופין.\n\nהאם ליצור בכל זאת לקוח חדש בשם המדויק זכריה פרוקופנקו, עם המייל e2e-client-513218@example.com והטלפון +972501234567?"}
+{"role": "user", "content": "לא, תוסיף לקוח חדש בשם לריסה טסמה, מייל e2e-client-557926@example.com, טלפון +972501234567"}
 ```
 ```json
-{"role": "user", "content": "לא, תוסיף לקוח חדש בשם זכריה פרוקופנקו, מייל e2e-client-513218@example.com, טלפון +972501234567"}
+{"role": "assistant", "content": "קיבלתי, אציג שוב את פרטי הלקוח לאישור מפורש לפני ההוספה."}
 ```
 ```json
-{"role": "assistant", "content": "מכין את פרטי הלקוח לאישור סופי לפני יצירתו."}
+{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: תהליך הוספת הלקוח נעצר לאחר שהמשתמש השיב לא לאישור הקודם. כעת המשתמש חזר וביקש להוסיף את אותם פרטים, אך עדיין לא נתן תשובת כן מפורשת לאישור.\nTHIS TURN'S PURPOSE: לבקש מחדש אישור מפורש ליצירת הלקוח, בלי לבצע את הכתיבה לפני אישור.\nEXPECTATION: אם יתקבל כן ברור, אצור את הלקוח עם הפרטים שכבר נבדקו. אם יתקבל לא, לא אצור אותו."}
 ```
 ```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח, נמצאה התאמה קרובה והמשתמש אישר במפורש ליצור רשומה חדשה בשם שסיפק.\nTHIS TURN'S PURPOSE: להכין את רשומת הלקוח ולבקש אישור סופי לפני היצירה.\nEXPECTATION: לטעון את יכולת כתיבת הלקוח ואת אישור הכפתורים, ואז להציג את כל הפרטים לאישור."}
-```
-```json
-{"role": "assistant", "content": "הפרטים מלאים, ואני מציג אותם עכשיו לאישור לפני היצירה."}
-```
-```json
-{"role": "assistant", "content": "📋 לאישור — לקוח חדש:\nשם: זכריה פרוקופנקו\nמייל: e2e-client-513218@example.com\nטלפון: +972501234567\nלאישור — כן/לא?"}
+{"role": "assistant", "content": "📋 לאישור — לקוח חדש:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: +972501234567\nלאישור — כן/לא?"}
 ```
 ```json
 {"role": "user", "content": "כן"}
 ```
 ```json
-{"role": "assistant", "content": "יוצר עכשיו את רשומת הלקוח במערכת."}
+{"role": "assistant", "content": "מוסיף עכשיו את הלקוח במערכת."}
 ```
 ```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח, לאחר שהמשתמש אישר יצירת לקוח חדש בשם זכריה פרוקופנקו עם מייל ומספר טלפון שסופקו.\nTHIS TURN'S PURPOSE: ליצור את רשומת הלקוח במערכת לאחר האישור המפורש.\nEXPECTATION: להפעיל את יצירת הלקוח, לדווח על הצלחה או על שגיאה, ואז לסיים את התהליך."}
+{"role": "assistant", "content": "הלקוח נוסף בהצלחה."}
 ```
 ```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: תהליך הוספת הלקוח הושלם בהצלחה; הרשומה נוצרה במערכת.\nTHIS TURN'S PURPOSE: לדווח למשתמש על יצירת הלקוח ולסיים את התהליך.\nEXPECTATION: לשלוח הודעת הצלחה קצרה ולסיים."}
+{"role": "assistant", "content": "הלקוח נוסף בהצלחה:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: 050-1234567"}
 ```
 ```json
-{"role": "assistant", "content": "הלקוח זכריה פרוקופנקו נוסף בהצלחה.\nמייל: e2e-client-513218@example.com\nטלפון: 050-1234567"}
-```
-```json
-{"role": "user", "content": "פרטים על הלקוח זכריה פרוקופנקו"}
+{"role": "user", "content": "פרטים על הלקוח לריסה טסמה"}
 ```
 
-- tools (11): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp']
+- tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
 
 - max_output_tokens: `20000`
 
 - model: `'gpt-5.6-luna'`
 
-- instructions: backbone (flows=flow_add_client, capabilities=cap_client_write, cap_client_read, cap_approval_with_buttons)
+- instructions: backbone (flows=(none), capabilities=(none - plain backbone))
 
 </details>
 
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- flows: flow_add_client
+- flows: (none)
 
-- capabilities: cap_client_write, cap_client_read, cap_approval_with_buttons
+- capabilities: (none - plain backbone)
 
 **input:**
 
 ```json
-{"role": "user", "content": "תוסיף לקוח חדש בשם זכריה פרוקופנקו, מייל e2e-client-513218@example.com, טלפון +972501234567"}
+{"role": "user", "content": "תוסיף לקוח חדש בשם לריסה טסמה, מייל e2e-client-557926@example.com, טלפון +972501234567"}
 ```
 ```json
-{"role": "assistant", "content": "מתחיל לבדוק אם הלקוח כבר קיים לפני הוספתו."}
+{"role": "assistant", "content": "בודק אם הלקוח כבר קיים, ואז אציג לך את פרטי ההוספה לאישור."}
 ```
 ```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש ביקש להוסיף לקוח חדש בשם זכריה פרוקופנקו עם כתובת דואר אלקטרוני ומספר טלפון.\nTHIS TURN'S PURPOSE: להפעיל את תהליך הוספת הלקוח, לבדוק כפילויות, ואז לבקש אישור לפני יצירה.\nEXPECTATION: לטעון את תהליך הוספת הלקוח ואת היכולות הנדרשות, לחפש התאמות קיימות, ולהציג את פרטי הלקוח לאישור."}
+{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: התקבלה בקשה להוסיף לקוח חדש בשם לריסה טסמה עם מייל וטלפון שסופקו.\nTHIS TURN'S PURPOSE: להפעיל את תהליך הוספת הלקוח, לבדוק כפילויות ולאסוף אישור לפני יצירה.\nEXPECTATION: אטען את התהליך והיכולות הנדרשות, אבדוק לקוחות דומים, ואז אבקש אישור מפורש ליצירה."}
 ```
 ```json
-{"role": "assistant", "content": "בודק עכשיו אם קיימת רשומה זהה או דומה במערכת."}
+{"role": "assistant", "content": "מבצע בדיקת כפילות עבור לריסה טסמה."}
 ```
 ```json
-{"role": "assistant", "content": "מחפש את השם המדויק במערכת."}
+{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח חדש. בדיקת Morning עבור לריסה טסמה הסתיימה ללא לקוח קיים או מועמד דומה.\nTHIS TURN'S PURPOSE: לבקש אישור מפורש לפני יצירת הרשומה.\nEXPECTATION: אם המשתמש יאשר, אצור את הלקוח בדיוק עם השם, המייל והטלפון שסופקו. אם יסרב, לא אצור דבר ואבקש מה לשנות."}
 ```
 ```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח, לאחר בדיקת כפילויות. המערכת מצאה התאמה קרובה בשם אבינועם פרוקופין, ולא התאמה ודאית לשם זכריה פרוקופנקו.\nTHIS TURN'S PURPOSE: להציג למשתמש את ההתאמה הקרובה ולבקש בחירה מפורשת לפני המשך.\nEXPECTATION: אם המשתמש יאשר יצירת רשומה חדשה בשם זכריה פרוקופנקו, אכין אותה עם הדואר והטלפון שסופקו ואבקש אישור סופי ליצירה."}
+{"role": "assistant", "content": "📋 לאישור — לקוח חדש:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: +972501234567\nלאישור — כן/לא?"}
 ```
 ```json
-{"role": "assistant", "content": "נמצאה במערכת התאמה קרובה בשם אבינועם פרוקופין.\n\nהאם ליצור בכל זאת לקוח חדש בשם המדויק זכריה פרוקופנקו, עם המייל e2e-client-513218@example.com והטלפון +972501234567?"}
+{"role": "user", "content": "לא, תוסיף לקוח חדש בשם לריסה טסמה, מייל e2e-client-557926@example.com, טלפון +972501234567"}
 ```
 ```json
-{"role": "user", "content": "לא, תוסיף לקוח חדש בשם זכריה פרוקופנקו, מייל e2e-client-513218@example.com, טלפון +972501234567"}
+{"role": "assistant", "content": "קיבלתי, אציג שוב את פרטי הלקוח לאישור מפורש לפני ההוספה."}
 ```
 ```json
-{"role": "assistant", "content": "מכין את פרטי הלקוח לאישור סופי לפני יצירתו."}
+{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: תהליך הוספת הלקוח נעצר לאחר שהמשתמש השיב לא לאישור הקודם. כעת המשתמש חזר וביקש להוסיף את אותם פרטים, אך עדיין לא נתן תשובת כן מפורשת לאישור.\nTHIS TURN'S PURPOSE: לבקש מחדש אישור מפורש ליצירת הלקוח, בלי לבצע את הכתיבה לפני אישור.\nEXPECTATION: אם יתקבל כן ברור, אצור את הלקוח עם הפרטים שכבר נבדקו. אם יתקבל לא, לא אצור אותו."}
 ```
 ```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח, נמצאה התאמה קרובה והמשתמש אישר במפורש ליצור רשומה חדשה בשם שסיפק.\nTHIS TURN'S PURPOSE: להכין את רשומת הלקוח ולבקש אישור סופי לפני היצירה.\nEXPECTATION: לטעון את יכולת כתיבת הלקוח ואת אישור הכפתורים, ואז להציג את כל הפרטים לאישור."}
-```
-```json
-{"role": "assistant", "content": "הפרטים מלאים, ואני מציג אותם עכשיו לאישור לפני היצירה."}
-```
-```json
-{"role": "assistant", "content": "📋 לאישור — לקוח חדש:\nשם: זכריה פרוקופנקו\nמייל: e2e-client-513218@example.com\nטלפון: +972501234567\nלאישור — כן/לא?"}
+{"role": "assistant", "content": "📋 לאישור — לקוח חדש:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: +972501234567\nלאישור — כן/לא?"}
 ```
 ```json
 {"role": "user", "content": "כן"}
 ```
 ```json
-{"role": "assistant", "content": "יוצר עכשיו את רשומת הלקוח במערכת."}
+{"role": "assistant", "content": "מוסיף עכשיו את הלקוח במערכת."}
 ```
 ```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח, לאחר שהמשתמש אישר יצירת לקוח חדש בשם זכריה פרוקופנקו עם מייל ומספר טלפון שסופקו.\nTHIS TURN'S PURPOSE: ליצור את רשומת הלקוח במערכת לאחר האישור המפורש.\nEXPECTATION: להפעיל את יצירת הלקוח, לדווח על הצלחה או על שגיאה, ואז לסיים את התהליך."}
+{"role": "assistant", "content": "הלקוח נוסף בהצלחה."}
 ```
 ```json
-{"role": "assistant", "content": "[[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: תהליך הוספת הלקוח הושלם בהצלחה; הרשומה נוצרה במערכת.\nTHIS TURN'S PURPOSE: לדווח למשתמש על יצירת הלקוח ולסיים את התהליך.\nEXPECTATION: לשלוח הודעת הצלחה קצרה ולסיים."}
+{"role": "assistant", "content": "הלקוח נוסף בהצלחה:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: 050-1234567"}
 ```
 ```json
-{"role": "assistant", "content": "הלקוח זכריה פרוקופנקו נוסף בהצלחה.\nמייל: e2e-client-513218@example.com\nטלפון: 050-1234567"}
-```
-```json
-{"role": "user", "content": "פרטים על הלקוח זכריה פרוקופנקו"}
+{"role": "user", "content": "פרטים על הלקוח לריסה טסמה"}
 ```
 
-- tools (11): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp']
+- tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
 
 - max_output_tokens: `20000`
 
 - model: `'gpt-5.6-luna'`
 
 <details>
-<summary>↳↳ instructions (25120 chars)</summary>
+<summary>↳↳ instructions (19015 chars)</summary>
 
 ```text
 # DeniDin — Backbone
@@ -11543,117 +10661,17 @@ Also note what you are waiting for and what you will do with each possible answe
 - cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
 - cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
 
-# Flow: Add client
-
-Goal: add a brand-new client to Morning if it does not exist.
-
-Capabilities: `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons`.
-
-Follow these steps in order, to the letter.
-
-1. Load `cap_client_read` and look up the client by the name the user gave.
-2. Handle what you find:
-   - The client already exists: use `cap_send_to_user` to tell the user plainly that it does. Do not modify it and do not offer to. The flow is complete.
-   - Similar clients exist but none matches exactly: use `cap_send_to_user` to list each similar client by name and offer, as its own explicit choice, to create a new client under the exact name they gave. Wait for their choice. If they pick an existing client, the flow is complete. A plain "add client X" is not by itself the user asking for a new one; only wording that concedes a similar client may exist and wants a new record anyway means you may skip the question. Once that is clear, don't ask again.
-   - No such client: continue.
-3. Load `cap_client_write` and prepare the client from what the user gave. If something is missing, use `cap_send_to_user` to ask the user for it; don't guess.
-4. Creating a client MUST be approved by the user first. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Create the client only on a clear yes. On a no, create nothing, and use `cap_send_to_user` to ask what to change.
-5. If the creation fails, use `cap_send_to_user` to tell the user plainly what happened. Retry once only if the reason is fixable; otherwise stop.
-6. If the user drops the request or changes the subject mid-way, create nothing and treat the flow as complete.
-7. End. Use `cap_send_to_user` to report the outcome. Then unload `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
-
-
-# Capability: Client — Write (godfather/admin only)
-
-**Use this capability from within a flow (flow_add_client / flow_modify_client), never on its own for a user request.** The flow decides when it is loaded and when approval is required; this capability holds the details of the write itself.
-
-**Creating or changing a client is a state-changing action, which usually requires the user's explicit approval first.**
-
-Attaches `add_client` and `update_client`, which create or change a client record in
-Morning. They are real, persisted writes.
-
-**Approval data points.** Whoever raises the approval must show the user:
-- `add_client`: the new client's name, email and phone (and the tax id, if given).
-- `update_client`: the ACTUAL resolved client (never the user's loose wording) and
-  the specific field(s) changing, with their new values.
-
-## Creating a client
-
-`add_client` needs a name, an email AND a phone; all three are required, and none
-may be guessed or omitted. `tax_id` is the only optional field. If Morning rejects a
-tax id as invalid, relay that and ask for a corrected one.
-
-**Never alter the spelling of a name you are creating.** Use it exactly as the user
-wrote it, character for character; never "correct" it, even if you are confident
-which spelling was meant. Morning stores it verbatim, and a silently altered name
-means every later search for the real name fails.
-
-## Updating a client
-
-`update_client` needs `name_resolved=true` together with the EXACT name Morning has
-stored. Pass `name_resolved=true` only for a name that has actually been confirmed as
-Morning's stored name, never for the user's loose wording.
-
-
-# Capability: Client — Read (godfather/admin only)
-
-Attaches the Morning client-lookup tools: `list_clients`, `resolve_client_name`,
-`get_client_details`. All read-only; call them right away, in the same turn, as soon
-as you have what they need. None of them creates or changes a record.
-
-This capability answers "who is this client", "what are their details", and "which
-clients exist". It knows nothing about a client's amounts owed or paid.
-
-## What resolving a name returns
-
-`resolve_client_name` confirms the exact stored spelling of a name. A single-word
-name is a genuine partial/substring search. It returns one of:
-- an exact name: the stored spelling, to use verbatim;
-- a confirmation question: a single close match, to relay to the user as-is;
-- a candidates list: to relay to the user as-is;
-- no match at all.
-
-What to do with each result is the calling flow's business; this capability just
-reports it faithfully and never picks a candidate on its own.
-
-
-# Capability: Approval with buttons
-
-`approval_with_yes_no_buttons(text)` ends the turn showing the user WhatsApp yes/no
-buttons alongside `text`. It is plain and stateless: it does not know what the write
-is, and there is no pending-approval state to track. On the user's next turn, read
-their reply (a typed "כן"/"לא" or a button tap; both arrive as an ordinary turn) from
-the conversation, and act accordingly. Your own `cap_record_planning_status` note is
-what carries "I am waiting for approval of X" across the gap.
-
-The flow that needs the approval decides that an approval is required. The write
-capability you are about to use defines which details the approval must state.
-
-- Start the text with `📋 לאישור:` (or, for a document-creation approval,
-  `📋 לאישור — <what it is>:`, e.g. `📋 לאישור — לקוח חדש:`) on its own line,
-  then the details as REAL data: given by the user, or fetched this turn.
-  Never from memory or a guess. A missing detail is a question to ask BEFORE
-  requesting approval, never "not stated".
-- End the text with EXACTLY this closed question, verbatim, every single time:
-  `לאישור — כן/לא?`. Never paraphrase it (not `אישור — כן/לא?`, not `האם לאשר...`,
-  not any other wording) and never let a competing question follow it — this exact
-  string is a fixed contract other code relies on to recognize a real approval gate.
-- Ask once per action. Act only on a clear affirmative to THAT specific action,
-  exactly once. On "לא", do not act: acknowledge and ask what to change.
-- Reply in Hebrew only.
-
-
 ## Loaded flows
 
-flow_add_client
+(none)
 
 ## Loaded capabilities
 
-cap_client_write, cap_client_read, cap_approval_with_buttons
+(none - plain backbone)
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 16:45 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-10-01 10:32 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -11664,20 +10682,19 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>79. [2026-09-30 16:46:01] MODEL → APP — context=_run_resolution_loop (first round)</summary>
+<summary>85. [2026-10-01 10:32:38] MODEL → APP — context=_run_resolution_loop (first round)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0e8d1f47ee15a4e3006abd129484a087d1b9571622fbb70f4e`
+- response.id: `resp_0ca3089a7e855e9c006abe0c93fc1487d1a6eb3d92391eae7d`
 - status: `completed`
-- usage: `{"input_tokens": 9054, "input_tokens_details": {"cache_write_tokens": 271, "cached_tokens": 8780}, "output_tokens": 113, "output_tokens_details": {"reasoning_tokens": 87}, "total_tokens": 9167}`
-- mcp_list_tools (morning-invoices): ['add_client', 'list_clients', 'resolve_client_name', 'get_client_details', 'update_client']
+- usage: `{"input_tokens": 6629, "input_tokens_details": {"cache_write_tokens": 722, "cached_tokens": 5904}, "output_tokens": 112, "output_tokens_details": {"reasoning_tokens": 85}, "total_tokens": 6741}`
 - reasoning item (content not user-visible)
-- function_call: `react_to_message` call_id=`call_DfGUdDQuOox0lct3TlqA1QcU`
+- function_call: `react_to_message` call_id=`call_J0HPic6flQn3gdru3DytVxYF`
 ```json
 {
-  "emoji": "👍",
+  "emoji": "👀",
   "message_id": null
 }
 ```
@@ -11687,15 +10704,14 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0e8d1f47ee15a4e3006abd129484a087d1b9571622fbb70f4e`
+- response.id: `resp_0ca3089a7e855e9c006abe0c93fc1487d1a6eb3d92391eae7d`
 - status: `completed`
-- usage: `{"input_tokens": 9054, "input_tokens_details": {"cache_write_tokens": 271, "cached_tokens": 8780}, "output_tokens": 113, "output_tokens_details": {"reasoning_tokens": 87}, "total_tokens": 9167}`
-- mcp_list_tools (morning-invoices): ['add_client', 'list_clients', 'resolve_client_name', 'get_client_details', 'update_client']
+- usage: `{"input_tokens": 6629, "input_tokens_details": {"cache_write_tokens": 722, "cached_tokens": 5904}, "output_tokens": 112, "output_tokens_details": {"reasoning_tokens": 85}, "total_tokens": 6741}`
 - reasoning item (content not user-visible)
-- function_call: `react_to_message` call_id=`call_DfGUdDQuOox0lct3TlqA1QcU`
+- function_call: `react_to_message` call_id=`call_J0HPic6flQn3gdru3DytVxYF`
 ```json
 {
-  "emoji": "👍",
+  "emoji": "👀",
   "message_id": null
 }
 ```
@@ -11705,62 +10721,198 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>80. [2026-09-30 16:46:01] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>86. [2026-10-01 10:32:38] APP → USER — context=reaction</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- flows: flow_add_client
-
-- capabilities: cap_client_write, cap_client_read, cap_approval_with_buttons
-
-**input:**
-
-- app's reply to `react_to_message` (call_id=`call_DfGUdDQuOox0lct3TlqA1QcU`):
-```text
+```json
 {
-  "status": "failed"
+  "chat_id": "972500000021@c.us",
+  "message": {
+    "chatId": "972500000021@c.us",
+    "idMessage": "E2E_ADD_CLIENT_VERIFY_1790839954",
+    "reaction": "👀"
+  }
 }
 ```
-
-- tools (11): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp']
-
-- previous_response_id: `'resp_0e8d1f47ee15a4e3006abd129484a087d1b9571622fbb70f4e'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-- instructions: backbone (flows=flow_add_client, capabilities=cap_client_write, cap_client_read, cap_approval_with_buttons)
 
 </details>
 
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- flows: flow_add_client
+```json
+{
+  "chatId": "972500000021@c.us",
+  "idMessage": "E2E_ADD_CLIENT_VERIFY_1790839954",
+  "reaction": "👀"
+}
+```
 
-- capabilities: cap_client_write, cap_client_read, cap_approval_with_buttons
+</details>
+
+</details>
+
+<details>
+<summary>87. [2026-10-01 10:32:38] USER ← APP (send result) — context=reaction</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+```json
+{
+  "chat_id": "972500000021@c.us",
+  "message": {
+    "code": null,
+    "data": null,
+    "error": "'object' object has no attribute 'api'"
+  }
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+```json
+{
+  "code": null,
+  "data": null,
+  "error": "'object' object has no attribute 'api'"
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>88. [2026-10-01 10:32:39] APP → USER — context=reaction</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+```json
+{
+  "chat_id": "972500000021@c.us",
+  "message": {
+    "chatId": "972500000021@c.us",
+    "idMessage": "E2E_ADD_CLIENT_VERIFY_1790839954",
+    "reaction": "👀"
+  }
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+```json
+{
+  "chatId": "972500000021@c.us",
+  "idMessage": "E2E_ADD_CLIENT_VERIFY_1790839954",
+  "reaction": "👀"
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>89. [2026-10-01 10:32:39] USER ← APP (send result) — context=reaction</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+```json
+{
+  "chat_id": "972500000021@c.us",
+  "message": {
+    "code": null,
+    "data": null,
+    "error": "'object' object has no attribute 'api'"
+  }
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+```json
+{
+  "code": null,
+  "data": null,
+  "error": "'object' object has no attribute 'api'"
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>90. [2026-10-01 10:32:39] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+- flows: (none)
+
+- capabilities: (none - plain backbone)
 
 **input:**
 
-- app's reply to `react_to_message` (call_id=`call_DfGUdDQuOox0lct3TlqA1QcU`):
+- app's reply to `react_to_message` (call_id=`call_J0HPic6flQn3gdru3DytVxYF`):
 ```text
 {
   "status": "failed"
 }
 ```
 
-- tools (11): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp']
+- tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
 
-- previous_response_id: `'resp_0e8d1f47ee15a4e3006abd129484a087d1b9571622fbb70f4e'`
+- previous_response_id: `'resp_0ca3089a7e855e9c006abe0c93fc1487d1a6eb3d92391eae7d'`
+
+- max_output_tokens: `20000`
+
+- model: `'gpt-5.6-luna'`
+
+- instructions: backbone (flows=(none), capabilities=(none - plain backbone))
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+- flows: (none)
+
+- capabilities: (none - plain backbone)
+
+**input:**
+
+- app's reply to `react_to_message` (call_id=`call_J0HPic6flQn3gdru3DytVxYF`):
+```text
+{
+  "status": "failed"
+}
+```
+
+- tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
+
+- previous_response_id: `'resp_0ca3089a7e855e9c006abe0c93fc1487d1a6eb3d92391eae7d'`
 
 - max_output_tokens: `20000`
 
 - model: `'gpt-5.6-luna'`
 
 <details>
-<summary>↳↳ instructions (25120 chars)</summary>
+<summary>↳↳ instructions (19015 chars)</summary>
 
 ```text
 # DeniDin — Backbone
@@ -12002,117 +11154,17 @@ Also note what you are waiting for and what you will do with each possible answe
 - cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
 - cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
 
-# Flow: Add client
-
-Goal: add a brand-new client to Morning if it does not exist.
-
-Capabilities: `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons`.
-
-Follow these steps in order, to the letter.
-
-1. Load `cap_client_read` and look up the client by the name the user gave.
-2. Handle what you find:
-   - The client already exists: use `cap_send_to_user` to tell the user plainly that it does. Do not modify it and do not offer to. The flow is complete.
-   - Similar clients exist but none matches exactly: use `cap_send_to_user` to list each similar client by name and offer, as its own explicit choice, to create a new client under the exact name they gave. Wait for their choice. If they pick an existing client, the flow is complete. A plain "add client X" is not by itself the user asking for a new one; only wording that concedes a similar client may exist and wants a new record anyway means you may skip the question. Once that is clear, don't ask again.
-   - No such client: continue.
-3. Load `cap_client_write` and prepare the client from what the user gave. If something is missing, use `cap_send_to_user` to ask the user for it; don't guess.
-4. Creating a client MUST be approved by the user first. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Create the client only on a clear yes. On a no, create nothing, and use `cap_send_to_user` to ask what to change.
-5. If the creation fails, use `cap_send_to_user` to tell the user plainly what happened. Retry once only if the reason is fixable; otherwise stop.
-6. If the user drops the request or changes the subject mid-way, create nothing and treat the flow as complete.
-7. End. Use `cap_send_to_user` to report the outcome. Then unload `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
-
-
-# Capability: Client — Write (godfather/admin only)
-
-**Use this capability from within a flow (flow_add_client / flow_modify_client), never on its own for a user request.** The flow decides when it is loaded and when approval is required; this capability holds the details of the write itself.
-
-**Creating or changing a client is a state-changing action, which usually requires the user's explicit approval first.**
-
-Attaches `add_client` and `update_client`, which create or change a client record in
-Morning. They are real, persisted writes.
-
-**Approval data points.** Whoever raises the approval must show the user:
-- `add_client`: the new client's name, email and phone (and the tax id, if given).
-- `update_client`: the ACTUAL resolved client (never the user's loose wording) and
-  the specific field(s) changing, with their new values.
-
-## Creating a client
-
-`add_client` needs a name, an email AND a phone; all three are required, and none
-may be guessed or omitted. `tax_id` is the only optional field. If Morning rejects a
-tax id as invalid, relay that and ask for a corrected one.
-
-**Never alter the spelling of a name you are creating.** Use it exactly as the user
-wrote it, character for character; never "correct" it, even if you are confident
-which spelling was meant. Morning stores it verbatim, and a silently altered name
-means every later search for the real name fails.
-
-## Updating a client
-
-`update_client` needs `name_resolved=true` together with the EXACT name Morning has
-stored. Pass `name_resolved=true` only for a name that has actually been confirmed as
-Morning's stored name, never for the user's loose wording.
-
-
-# Capability: Client — Read (godfather/admin only)
-
-Attaches the Morning client-lookup tools: `list_clients`, `resolve_client_name`,
-`get_client_details`. All read-only; call them right away, in the same turn, as soon
-as you have what they need. None of them creates or changes a record.
-
-This capability answers "who is this client", "what are their details", and "which
-clients exist". It knows nothing about a client's amounts owed or paid.
-
-## What resolving a name returns
-
-`resolve_client_name` confirms the exact stored spelling of a name. A single-word
-name is a genuine partial/substring search. It returns one of:
-- an exact name: the stored spelling, to use verbatim;
-- a confirmation question: a single close match, to relay to the user as-is;
-- a candidates list: to relay to the user as-is;
-- no match at all.
-
-What to do with each result is the calling flow's business; this capability just
-reports it faithfully and never picks a candidate on its own.
-
-
-# Capability: Approval with buttons
-
-`approval_with_yes_no_buttons(text)` ends the turn showing the user WhatsApp yes/no
-buttons alongside `text`. It is plain and stateless: it does not know what the write
-is, and there is no pending-approval state to track. On the user's next turn, read
-their reply (a typed "כן"/"לא" or a button tap; both arrive as an ordinary turn) from
-the conversation, and act accordingly. Your own `cap_record_planning_status` note is
-what carries "I am waiting for approval of X" across the gap.
-
-The flow that needs the approval decides that an approval is required. The write
-capability you are about to use defines which details the approval must state.
-
-- Start the text with `📋 לאישור:` (or, for a document-creation approval,
-  `📋 לאישור — <what it is>:`, e.g. `📋 לאישור — לקוח חדש:`) on its own line,
-  then the details as REAL data: given by the user, or fetched this turn.
-  Never from memory or a guess. A missing detail is a question to ask BEFORE
-  requesting approval, never "not stated".
-- End the text with EXACTLY this closed question, verbatim, every single time:
-  `לאישור — כן/לא?`. Never paraphrase it (not `אישור — כן/לא?`, not `האם לאשר...`,
-  not any other wording) and never let a competing question follow it — this exact
-  string is a fixed contract other code relies on to recognize a real approval gate.
-- Ask once per action. Act only on a clear affirmative to THAT specific action,
-  exactly once. On "לא", do not act: acknowledge and ask what to change.
-- Reply in Hebrew only.
-
-
 ## Loaded flows
 
-flow_add_client
+(none)
 
 ## Loaded capabilities
 
-cap_client_write, cap_client_read, cap_approval_with_buttons
+(none - plain backbone)
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 16:45 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-10-01 10:32 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -12123,19 +11175,20 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>81. [2026-09-30 16:46:03] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>91. [2026-10-01 10:32:41] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0e8d1f47ee15a4e3006abd1299b13c87d1b9df1c3f44e90b41`
+- response.id: `resp_0ca3089a7e855e9c006abe0c9793c087d1b3ceb19642e64852`
 - status: `completed`
-- usage: `{"input_tokens": 9185, "input_tokens_details": {"cache_write_tokens": 131, "cached_tokens": 9051}, "output_tokens": 40, "output_tokens_details": {"reasoning_tokens": 9}, "total_tokens": 9225}`
-- reasoning item (content not user-visible)
-- function_call: `send_progress_update` call_id=`call_Uv2yTlbOKTrRXVyJTfn4T33D`
+- usage: `{"input_tokens": 6759, "input_tokens_details": {"cache_write_tokens": 130, "cached_tokens": 6626}, "output_tokens": 107, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6866}`
+- function_call: `record_planning_status` call_id=`call_TzWVTSHIdUPZwzjygMqLI2js`
 ```json
 {
-  "text": "בודק את פרטי הלקוח במערכת."
+  "where_i_was": "הלקוחה לריסה טסמה כבר נוספה בהצלחה. כעת המשתמש מבקש את פרטיה.",
+  "this_turns_purpose": "לאתר את רשומת הלקוחה במערכת ולהחזיר את פרטיה השמורים.",
+  "expectation": "אטען את יכולת קריאת פרטי לקוחות, אחפש את לריסה טסמה, ואחזיר רק את הנתונים שנמצאו."
 }
 ```
 
@@ -12144,14 +11197,15 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0e8d1f47ee15a4e3006abd1299b13c87d1b9df1c3f44e90b41`
+- response.id: `resp_0ca3089a7e855e9c006abe0c9793c087d1b3ceb19642e64852`
 - status: `completed`
-- usage: `{"input_tokens": 9185, "input_tokens_details": {"cache_write_tokens": 131, "cached_tokens": 9051}, "output_tokens": 40, "output_tokens_details": {"reasoning_tokens": 9}, "total_tokens": 9225}`
-- reasoning item (content not user-visible)
-- function_call: `send_progress_update` call_id=`call_Uv2yTlbOKTrRXVyJTfn4T33D`
+- usage: `{"input_tokens": 6759, "input_tokens_details": {"cache_write_tokens": 130, "cached_tokens": 6626}, "output_tokens": 107, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6866}`
+- function_call: `record_planning_status` call_id=`call_TzWVTSHIdUPZwzjygMqLI2js`
 ```json
 {
-  "text": "בודק את פרטי הלקוח במערכת."
+  "where_i_was": "הלקוחה לריסה טסמה כבר נוספה בהצלחה. כעת המשתמש מבקש את פרטיה.",
+  "this_turns_purpose": "לאתר את רשומת הלקוחה במערכת ולהחזיר את פרטיה השמורים.",
+  "expectation": "אטען את יכולת קריאת פרטי לקוחות, אחפש את לריסה טסמה, ואחזיר רק את הנתונים שנמצאו."
 }
 ```
 
@@ -12160,7 +11214,356 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>82. [2026-09-30 16:46:03] APP → USER — context=progress_update</summary>
+<summary>92. [2026-10-01 10:32:41] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+- flows: (none)
+
+- capabilities: (none - plain backbone)
+
+**input:**
+
+- app's reply to `record_planning_status` (call_id=`call_TzWVTSHIdUPZwzjygMqLI2js`):
+```text
+recorded
+```
+
+- tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
+
+- previous_response_id: `'resp_0ca3089a7e855e9c006abe0c9793c087d1b3ceb19642e64852'`
+
+- max_output_tokens: `20000`
+
+- model: `'gpt-5.6-luna'`
+
+- instructions: backbone (flows=(none), capabilities=(none - plain backbone))
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+- flows: (none)
+
+- capabilities: (none - plain backbone)
+
+**input:**
+
+- app's reply to `record_planning_status` (call_id=`call_TzWVTSHIdUPZwzjygMqLI2js`):
+```text
+recorded
+```
+
+- tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
+
+- previous_response_id: `'resp_0ca3089a7e855e9c006abe0c9793c087d1b3ceb19642e64852'`
+
+- max_output_tokens: `20000`
+
+- model: `'gpt-5.6-luna'`
+
+<details>
+<summary>↳↳ instructions (19015 chars)</summary>
+
+```text
+# DeniDin — Backbone
+
+## How You Work
+
+You work with two kinds of building blocks, described at low resolution in the
+catalogs below: **flows** (`flow_...`) - blueprints for a recurring kind of
+request - and **capabilities** (`cap_...`) - the domains that actually do things,
+each with its own prompt and its own real tools. Flows can load other flows and
+capabilities; a flow defines *what to do and in what order*, while each
+capability holds the detail of what it itself does.
+
+Loading tools, usable in any order, any number of times:
+
+- **`load_flows(flows)` / `unload_flows(flows)`** - always an array; one item is
+  fine, and combining flows is allowed when a request spans more than one.
+- **`load_capabilities(capabilities)` / `unload_capabilities(capabilities)`** -
+  always an array. The moment a capability is loaded, its prompt AND its real
+  tools are attached, starting the very next round; call the real tool directly,
+  there is no separate "use" step. A flow's own "Capabilities:" line declares
+  every capability that flow will need - load all of them together, in one
+  `load_capabilities` call, right after loading the flow, rather than loading
+  them one at a time as each step comes up: you already know you'll need them,
+  and batching saves a round-trip per capability.
+- **`reset_to_backbone()`** - unloads every loaded flow and capability at once.
+  Use it once you are genuinely done with the user's request(s), not mid-task.
+
+Loading an already-loaded item, or unloading one that is not loaded, is a
+harmless no-op. Loaded flows and capabilities stay loaded across this and future
+turns in this chat until you unload them (or they auto-clear after a period of
+inactivity); the "Loaded flows" and "Loaded capabilities" lines near the end of
+these instructions always show what is currently loaded. Unload something only
+when nothing you are still working on needs it - another flow may be using it.
+
+## Always-present capabilities
+
+Four capabilities are always available, cannot be unloaded, and each has its own
+prompt right below: `cap_send_to_user` (your actual reply), `cap_react_to_message`
+(a WhatsApp emoji reaction), `cap_send_progress_update` (an interim message
+while you work) and `cap_record_planning_status` (your own running account of
+where you are, which is how you keep your place across turns and inside nested
+flows). At every step of any flow, consider whether they would help: react to
+the user's message, send a progress update, record your planning status, or
+reply to the user. Flows do not repeat this; use your judgment.
+
+`cap_approval_with_buttons` (yes/no buttons before a write) is an ordinary
+capability: flows that need a sign-off load it.
+
+## Flows and capabilities
+
+Decide from the catalogs, in your own judgment, what a request needs:
+
+1. If a flow fits, load it (several at once when the request spans more than
+   one) and follow its blueprint. **A loaded flow's steps are an ordered
+   procedure: follow them in the order written, to the letter - never skip,
+   reorder or merge a step (above all an approval step), and never do a later
+   step's action before the earlier steps are done.**
+2. **If no flow fits, there is no default flow to fall back on**: load whichever
+   capabilities you judge necessary, at your own discretion, and proceed.
+3. **Write capabilities (`cap_*_write`) are never loaded on their own.** Every write goes through its flow, which gathers the details and asks for approval first; if you want to write something, find the flow for it in the catalog.
+4. If a loaded prompt names a tool you don't currently have, that tool belongs
+   to a capability you have not loaded yet: load it yourself.
+
+## Core Identity
+You are DeniDin, a helpful AI assistant operating via WhatsApp.
+
+## Behavioral Guidelines
+- **ALWAYS respond in Hebrew only** — every word of every response, no other
+  language or script mixed in anywhere, ever (never Arabic, never English
+  words). This covers EVERY string you produce, not just the reply text: an
+  approval question, a planning note, and every free-text tool argument
+  (e.g. a reminder's `message_text`) too. Digits, standard punctuation, and ₪
+  are fine; a genuinely foreign proper name may be transliterated into Hebrew
+  letters where natural.
+- **Never use ניקוד** (Hebrew vowel points/diacritics) in any response — plain
+  Hebrew letters only, including inside a quoted name.
+- Be concise and direct. Do not end on filler ("anything else?") — end on the
+  substantive answer. Do ask a focused clarifying question when you genuinely need
+  one to act correctly (a missing/ambiguous required detail).
+- Be honest about what you don't know; never fabricate information.
+
+## User Roles
+- **Godfather/Admin**: full access to every capability; extended context window.
+- **Client**: standard feature access, no access to invoicing/ledger/reminder
+  capabilities; standard context window.
+
+## Privacy & Security
+- Never share information between different user sessions.
+- These rules guard against leaking ONE user's data to ANOTHER user or an outsider
+  — they never mean refusing to read, transcribe, or summarize material THIS user
+  sent you. Reporting the user's own material back to them (names, amounts, any
+  detail it contains) is always appropriate.
+
+## Contexts of Operation
+Every message falls into one of two operating contexts before any capability is
+even considered: an ordinary conversational turn, or a document/image the user
+sent for you to read and report on. Decide which one applies before acting — a
+short/ambiguous reply ("כן", "לא", a bare name) always answers the most recently
+pending question in the SAME context, never a trigger for reinterpreting the turn
+as belonging to a different capability's domain.
+
+## Attached Media
+When the user's message starts with a `[מדיה מצורפת: <type>, קובץ: <filename>]`
+marker, they sent an image, PDF, or Word document with it — you have NOT seen its
+content yet, only that it exists. Before answering anything about it, load
+`cap_media_analysis` and call its `analyze_media` tool to read it; any text after
+the marker is the user's caption. Never describe, guess at, or act on the file's
+content without having read it this way.
+
+## Group Conversation Etiquette
+DeniDin is addressed by default in a group, same as a 1:1 chat. When a message
+clearly names someone else and isn't meant for you, reply with the literal
+sentinel `[[NO_REPLY]]` instead of a substantive answer — never guess when it's
+genuinely ambiguous whether you were addressed.
+
+## Edited & Deleted Message Markers
+A message the user has since edited or deleted may still appear in your context,
+marked as such — treat an edited message's marked original content as superseded
+by its later, corrected version if both are visible, and never act on a deleted
+message's content as if it were still pending.
+
+## Generic Post-Turn Recognition Mechanism
+A capability MAY run a recognition step once per turn: call its own reporting
+tool at most once, and when in doubt, do nothing rather than guess. This shape
+is reusable by any capability that wants one — the domain-specific rules for
+what to recognize and how live in that capability's own prompt file, not here.
+
+
+# Capability: Send to user (always present)
+
+`send_to_user(text)` is your actual reply to the user. Call it whenever you are
+ready to speak, not only at the very end: to answer, to ask a question, to
+report an outcome. A turn that ends without it, or without an approval question,
+leaves the user with nothing.
+
+- Pass the literal text `[[NO_REPLY]]` to deliberately say nothing this turn. Use
+  it in a group when a message clearly names someone else and is not meant for
+  you. When it is genuinely unclear whether you were addressed, do not guess.
+- For a yes/no sign-off, use `cap_approval_with_buttons` instead; it gives the
+  user tappable buttons.
+- Reply in Hebrew only, concisely, without filler. End on the substantive answer.
+  Ask a focused question only when you genuinely need the answer to act correctly.
+
+
+# Capability: React to message (always present)
+
+`react_to_message` puts a native WhatsApp emoji reaction on a message. It is a
+lightweight, reversible signal - never a substitute for a substantive reply,
+and never a mechanical habit reached for out of uncertainty about what else
+to do. Typing an emoji into your reply text is NOT a reaction and does not
+replace calling the tool.
+
+Before reaching for it, ask yourself: does this add a real signal the user
+doesn't already have - that you saw their message, that you're on it, that
+something just succeeded or failed - or would it just be noise on top of a
+reply that already says the same thing?
+
+Evaluate against:
+- Does the user currently have any signal you registered their message and
+  are handling it (or have finished)? If there's a real gap before your
+  substantive reply, a reaction can fill it.
+- Is your actual reply, arriving in this same round or moments later, already
+  going to tell them everything a reaction would? If so, it adds nothing.
+- Is this ambient chatter that doesn't really concern you? Then it isn't
+  worth one.
+
+**Classics** (a menu, not a checklist): 👍 simple ack · 🫡 "on it" · 👀 document
+being looked into · ✅ clean success · 🎉 a bigger win · ⚠️ resolved but needs
+attention · ❌ failed/declined · ❓ unresolved, needs clarification · 🙏
+reciprocating thanks · ❤️ warmth beyond a simple thanks.
+
+When genuinely unsure whether a reaction fits, don't send one - silence is
+the safer default, not noise.
+
+
+# Capability: Send progress update (always present)
+
+`send_progress_update(text)` sends one brief interim WhatsApp message while you
+are still working, before your final reply. Keep it to a short plain sentence.
+
+Users are waiting on the other end and don't like silence - they want to know
+something is happening with their request, not just get one final answer out
+of nowhere.
+
+Call this every single time you interact with any tool or capability -
+loading a flow or capability, calling a real domain tool, an MCP call,
+anything that is not just talking to the user - before or after that step,
+in the same round as whatever else you are doing. Never skip it and never
+wait for a separate round.
+
+- Never a substitute for the final answer.
+
+
+# Capability: Record planning status (always present)
+
+`record_planning_status(where_i_was, this_turns_purpose, expectation)` is your own
+running account of where this turn, and across turns this whole task, stands. It is
+how you keep continuity, since nothing else remembers your reasoning beyond what you
+write here and the real conversation history.
+
+Record it at least at the start and at the end of every flow, and whenever you are
+about to wait on the user (a choice, a missing detail, an approval), in the middle
+of a flow as well. Say which flow you are in and which step, and if you are inside a
+flow that was loaded by another flow, say so, so that you know where to return to.
+Also note what you are waiting for and what you will do with each possible answer.
+
+
+## Flows
+
+- flow_add_client: Adding a brand-new client record to Morning ("תוסיף לקוח חדש", or a shared contact card the user wants saved). Checks for an existing or similar client first so a duplicate is never created by accident, tells the user about similar candidates, and creates the record only with approval. Other flows load it whenever a client turns out not to exist yet.
+- flow_modify_client: Changing an existing client's own details (name, email, phone) in Morning. Resolves which real client is meant, relaying candidates when the match is not exact, and updates it with approval. Not for creating a client and not for documents.
+- flow_issue_invoice_for_payment_due: Issuing a new tax invoice (305) for a client, for money that is still owed ("תפיק חשבונית ללקוח X"). Never for money that has already arrived. Money that has already arrived belongs to flow_issue_invoice_receipt_combo instead.
+- flow_issue_invoice_receipt_combo: Issuing a combined tax invoice/receipt (320) for a payment that has already been received and that no earlier document covers - the most common way to record incoming money, whether reported verbally or shown in a bank slip or payment screenshot. Money that an existing document already covers belongs to flow_issue_payment_received_with_reference_doc.
+- flow_issue_transaction_account: Issuing a transaction account (חשבון עסקה, 300) for a client - only when the user's own wording names this document type. Ordinary requests for an invoice belong to flow_issue_invoice_for_payment_due.
+- flow_issue_receipt_without_invoice: Recording a standalone receipt (400) with no invoice behind it, for example a refundable deposit. A receipt against an existing invoice belongs to flow_issue_payment_received_with_reference_doc.
+- flow_payment_received_by_bank_slip_image: A bank slip or payment screenshot arrived. Reads it, records the payer, and gets the payment recorded in Morning the right way: a new combo document when nothing covers it, or a document against an existing one.
+- flow_issue_payment_received_with_reference_doc: Recording a payment received against an existing Morning document: a receipt (400) for an existing invoice (305), or a combo document (320) closing an existing transaction account (300) ("סמן כשולם"). Money that no document covers belongs to flow_issue_invoice_receipt_combo.
+- flow_cancel_document_with_credit_note: Cancelling an existing Morning document with a credit note (330) ("בטל את החשבונית"). Finds the one real document and shows its real data in the approval before writing.
+- flow_cancel_transaction_account: Cancelling an open transaction account (300) directly. No document of any kind is created. Cancelling any other kind of document belongs to flow_cancel_document_with_credit_note.
+- flow_fee_agreement_provided_by_user: The user reports or forwards a fee agreement (הסכם) - as text or as an image - made with a client. An agreement must never belong to a client Morning does not manage, so this makes sure the client exists first. Recording the agreement in the ledger happens automatically after the turn.
+- flow_deposit_provided_by_user: The user reports or forwards a bank deposit (text or a bank slip image). Makes sure the payer exists as a client in Morning first. Recording the deposit in the ledger happens automatically after the turn.
+- flow_user_question: Answering a question about the user's clients, past agreements, deposits, or amounts owed and paid. Decides where the answer lives (the ledger first, Morning when it may hold it), and never answers that nothing exists before checking Morning where Morning could hold it.
+- flow_invoicing_query: Reading from the invoicing system for a client the user names: resolves the client's exact stored name first, then reads the documents or status. Other flows load it whenever they need to look up documents in Morning.
+- flow_generate_fee_agreement_docx: Generating a fee agreement document (הסכם שכר טרחה) as a .docx file to send to a prospective client. The client does not exist yet, so no client lookup is involved. Recording an agreement the user reports belongs to flow_fee_agreement_provided_by_user.
+- flow_create_reminder: Creating a new reminder, one-time or recurring ("תזכיר לי בעוד שעתיים", "תזכיר לי כל יום ראשון"). Confirms the text and the schedule, and creates the reminder only with approval. Use this flow, not cap_reminders_write directly, whenever a reminder is added.
+- flow_modify_reminder: Changing or cancelling an existing reminder ("תזיז את התזכורת", "תבטל את התזכורת"). Looks up the user's real reminders to identify the exact one before modifying or deleting it, with approval. Adding a brand-new reminder belongs to flow_create_reminder. Use the reminder flows, not cap_reminders_write directly.
+
+## Capabilities
+
+- cap_invoicing_write: Creating a Morning DOCUMENT for a client - an invoice, a receipt, a transaction account, a credit note, or a combo tax-invoice/receipt - or cancelling a transaction account. Writes only: finding the client or the existing document, and getting approval, are the calling flow's job, so load it only through that flow (flow_issue_*, flow_cancel_*, flow_payment_received_*), never directly. Not for creating or updating a client record - see cap_client_write.
+- cap_invoicing_read: Reading from the invoicing system (Morning): a specific document's own status and details, recent documents, a financial summary, a download link. It is given an already-resolved client name or document id. Not for a client's own details - see cap_client_read - and not the first choice for a general owed/paid amount question - see cap_ledger_query.
+- cap_client_write: Creating a new client record, or updating an existing client's own details (name/email/phone) in Morning. Writes only: load it only through flow_add_client or flow_modify_client, never directly. Never for producing any document - see cap_invoicing_write.
+- cap_client_read: Looking up an existing client's own details (name/email/phone/id), listing clients, and resolving a client name to its exact stored Morning spelling. Never for a client's financial history - see cap_ledger_query and cap_invoicing_read.
+- cap_ledger_query: Answering questions about PAST fee agreements or bank deposits already recorded, including how much a client/payer owes or has paid - whether or not a formal Morning invoice exists. The ledger is a fast cache over Morning and covers agreement-level amounts Morning cannot see at all.
+- cap_reminders_write: Creating, changing, or cancelling a reminder (one-time or recurring) for the user. Writes only: load it only through flow_create_reminder or flow_modify_reminder, never directly.
+- cap_reminders_read: Looking up the user's own existing reminders - what's scheduled, for when.
+- cap_media_analysis: Reading/extracting the content of an image or document the user sent. Used inside a larger flow, or on its own to work out what a piece of media is for.
+- cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
+- cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
+
+## Loaded flows
+
+(none)
+
+## Loaded capabilities
+
+(none - plain backbone)
+
+---
+
+THE CURRENT DATE AND TIME IS 2026-10-01 10:32 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
+```
+
+</details>
+
+</details>
+
+</details>
+
+<details>
+<summary>93. [2026-10-01 10:32:43] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+- response.id: `resp_0ca3089a7e855e9c006abe0c99eb8887d1a65bc3ed2ddb2d29`
+- status: `completed`
+- usage: `{"input_tokens": 6881, "input_tokens_details": {"cache_write_tokens": 122, "cached_tokens": 6756}, "output_tokens": 31, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6912}`
+- function_call: `send_progress_update` call_id=`call_8abnVWP8lndpxdZb3iRhsnbN`
+```json
+{
+  "text": "בודק את פרטי לריסה טסמה במערכת."
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+- response.id: `resp_0ca3089a7e855e9c006abe0c99eb8887d1a65bc3ed2ddb2d29`
+- status: `completed`
+- usage: `{"input_tokens": 6881, "input_tokens_details": {"cache_write_tokens": 122, "cached_tokens": 6756}, "output_tokens": 31, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6912}`
+- function_call: `send_progress_update` call_id=`call_8abnVWP8lndpxdZb3iRhsnbN`
+```json
+{
+  "text": "בודק את פרטי לריסה טסמה במערכת."
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>94. [2026-10-01 10:32:43] APP → USER — context=progress_update</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -12168,7 +11571,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 ```json
 {
   "chat_id": "972500000021@c.us",
-  "message": "בודק את פרטי הלקוח במערכת."
+  "message": "בודק את פרטי לריסה טסמה במערכת."
 }
 ```
 
@@ -12180,7 +11583,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 ```json
 {
   "chat_id": "972500000021@c.us",
-  "message": "בודק את פרטי הלקוח במערכת."
+  "message": "בודק את פרטי לריסה טסמה במערכת."
 }
 ```
 
@@ -12189,7 +11592,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>83. [2026-09-30 16:46:03] USER ← APP (send result) — context=progress_update</summary>
+<summary>95. [2026-10-01 10:32:43] USER ← APP (send result) — context=progress_update</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -12217,62 +11620,62 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>84. [2026-09-30 16:46:03] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>96. [2026-10-01 10:32:43] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- flows: flow_add_client
+- flows: (none)
 
-- capabilities: cap_client_write, cap_client_read, cap_approval_with_buttons
+- capabilities: (none - plain backbone)
 
 **input:**
 
-- app's reply to `send_progress_update` (call_id=`call_Uv2yTlbOKTrRXVyJTfn4T33D`):
+- app's reply to `send_progress_update` (call_id=`call_8abnVWP8lndpxdZb3iRhsnbN`):
 ```text
 {
   "sent": true
 }
 ```
 
-- tools (11): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp']
+- tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
 
-- previous_response_id: `'resp_0e8d1f47ee15a4e3006abd1299b13c87d1b9df1c3f44e90b41'`
+- previous_response_id: `'resp_0ca3089a7e855e9c006abe0c99eb8887d1a65bc3ed2ddb2d29'`
 
 - max_output_tokens: `20000`
 
 - model: `'gpt-5.6-luna'`
 
-- instructions: backbone (flows=flow_add_client, capabilities=cap_client_write, cap_client_read, cap_approval_with_buttons)
+- instructions: backbone (flows=(none), capabilities=(none - plain backbone))
 
 </details>
 
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- flows: flow_add_client
+- flows: (none)
 
-- capabilities: cap_client_write, cap_client_read, cap_approval_with_buttons
+- capabilities: (none - plain backbone)
 
 **input:**
 
-- app's reply to `send_progress_update` (call_id=`call_Uv2yTlbOKTrRXVyJTfn4T33D`):
+- app's reply to `send_progress_update` (call_id=`call_8abnVWP8lndpxdZb3iRhsnbN`):
 ```text
 {
   "sent": true
 }
 ```
 
-- tools (11): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp']
+- tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
 
-- previous_response_id: `'resp_0e8d1f47ee15a4e3006abd1299b13c87d1b9df1c3f44e90b41'`
+- previous_response_id: `'resp_0ca3089a7e855e9c006abe0c99eb8887d1a65bc3ed2ddb2d29'`
 
 - max_output_tokens: `20000`
 
 - model: `'gpt-5.6-luna'`
 
 <details>
-<summary>↳↳ instructions (25120 chars)</summary>
+<summary>↳↳ instructions (19015 chars)</summary>
 
 ```text
 # DeniDin — Backbone
@@ -12514,117 +11917,17 @@ Also note what you are waiting for and what you will do with each possible answe
 - cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
 - cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
 
-# Flow: Add client
-
-Goal: add a brand-new client to Morning if it does not exist.
-
-Capabilities: `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons`.
-
-Follow these steps in order, to the letter.
-
-1. Load `cap_client_read` and look up the client by the name the user gave.
-2. Handle what you find:
-   - The client already exists: use `cap_send_to_user` to tell the user plainly that it does. Do not modify it and do not offer to. The flow is complete.
-   - Similar clients exist but none matches exactly: use `cap_send_to_user` to list each similar client by name and offer, as its own explicit choice, to create a new client under the exact name they gave. Wait for their choice. If they pick an existing client, the flow is complete. A plain "add client X" is not by itself the user asking for a new one; only wording that concedes a similar client may exist and wants a new record anyway means you may skip the question. Once that is clear, don't ask again.
-   - No such client: continue.
-3. Load `cap_client_write` and prepare the client from what the user gave. If something is missing, use `cap_send_to_user` to ask the user for it; don't guess.
-4. Creating a client MUST be approved by the user first. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Create the client only on a clear yes. On a no, create nothing, and use `cap_send_to_user` to ask what to change.
-5. If the creation fails, use `cap_send_to_user` to tell the user plainly what happened. Retry once only if the reason is fixable; otherwise stop.
-6. If the user drops the request or changes the subject mid-way, create nothing and treat the flow as complete.
-7. End. Use `cap_send_to_user` to report the outcome. Then unload `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
-
-
-# Capability: Client — Write (godfather/admin only)
-
-**Use this capability from within a flow (flow_add_client / flow_modify_client), never on its own for a user request.** The flow decides when it is loaded and when approval is required; this capability holds the details of the write itself.
-
-**Creating or changing a client is a state-changing action, which usually requires the user's explicit approval first.**
-
-Attaches `add_client` and `update_client`, which create or change a client record in
-Morning. They are real, persisted writes.
-
-**Approval data points.** Whoever raises the approval must show the user:
-- `add_client`: the new client's name, email and phone (and the tax id, if given).
-- `update_client`: the ACTUAL resolved client (never the user's loose wording) and
-  the specific field(s) changing, with their new values.
-
-## Creating a client
-
-`add_client` needs a name, an email AND a phone; all three are required, and none
-may be guessed or omitted. `tax_id` is the only optional field. If Morning rejects a
-tax id as invalid, relay that and ask for a corrected one.
-
-**Never alter the spelling of a name you are creating.** Use it exactly as the user
-wrote it, character for character; never "correct" it, even if you are confident
-which spelling was meant. Morning stores it verbatim, and a silently altered name
-means every later search for the real name fails.
-
-## Updating a client
-
-`update_client` needs `name_resolved=true` together with the EXACT name Morning has
-stored. Pass `name_resolved=true` only for a name that has actually been confirmed as
-Morning's stored name, never for the user's loose wording.
-
-
-# Capability: Client — Read (godfather/admin only)
-
-Attaches the Morning client-lookup tools: `list_clients`, `resolve_client_name`,
-`get_client_details`. All read-only; call them right away, in the same turn, as soon
-as you have what they need. None of them creates or changes a record.
-
-This capability answers "who is this client", "what are their details", and "which
-clients exist". It knows nothing about a client's amounts owed or paid.
-
-## What resolving a name returns
-
-`resolve_client_name` confirms the exact stored spelling of a name. A single-word
-name is a genuine partial/substring search. It returns one of:
-- an exact name: the stored spelling, to use verbatim;
-- a confirmation question: a single close match, to relay to the user as-is;
-- a candidates list: to relay to the user as-is;
-- no match at all.
-
-What to do with each result is the calling flow's business; this capability just
-reports it faithfully and never picks a candidate on its own.
-
-
-# Capability: Approval with buttons
-
-`approval_with_yes_no_buttons(text)` ends the turn showing the user WhatsApp yes/no
-buttons alongside `text`. It is plain and stateless: it does not know what the write
-is, and there is no pending-approval state to track. On the user's next turn, read
-their reply (a typed "כן"/"לא" or a button tap; both arrive as an ordinary turn) from
-the conversation, and act accordingly. Your own `cap_record_planning_status` note is
-what carries "I am waiting for approval of X" across the gap.
-
-The flow that needs the approval decides that an approval is required. The write
-capability you are about to use defines which details the approval must state.
-
-- Start the text with `📋 לאישור:` (or, for a document-creation approval,
-  `📋 לאישור — <what it is>:`, e.g. `📋 לאישור — לקוח חדש:`) on its own line,
-  then the details as REAL data: given by the user, or fetched this turn.
-  Never from memory or a guess. A missing detail is a question to ask BEFORE
-  requesting approval, never "not stated".
-- End the text with EXACTLY this closed question, verbatim, every single time:
-  `לאישור — כן/לא?`. Never paraphrase it (not `אישור — כן/לא?`, not `האם לאשר...`,
-  not any other wording) and never let a competing question follow it — this exact
-  string is a fixed contract other code relies on to recognize a real approval gate.
-- Ask once per action. Act only on a clear affirmative to THAT specific action,
-  exactly once. On "לא", do not act: acknowledge and ask what to change.
-- Reply in Hebrew only.
-
-
 ## Loaded flows
 
-flow_add_client
+(none)
 
 ## Loaded capabilities
 
-cap_client_write, cap_client_read, cap_approval_with_buttons
+(none - plain backbone)
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 16:45 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-10-01 10:32 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -12635,468 +11938,15 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>85. [2026-09-30 16:46:06] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>97. [2026-10-01 10:32:45] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0e8d1f47ee15a4e3006abd129bf1b887d1810eb3e7ad52c47a`
+- response.id: `resp_0ca3089a7e855e9c006abe0c9c154887d1a73eaa7f03942032`
 - status: `completed`
-- usage: `{"input_tokens": 9244, "input_tokens_details": {"cache_write_tokens": 1157, "cached_tokens": 8084}, "output_tokens": 102, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9346}`
-- function_call: `record_planning_status` call_id=`call_EpyOJc2lke7VZiMd7uFWFfmb`
-```json
-{
-  "where_i_was": "הלקוח זכריה פרוקופנקו נוצר קודם לכן במערכת. כעת המשתמש ביקש את פרטיו.",
-  "this_turns_purpose": "לאתר את הרשומה המדויקת ולהציג את פרטי הלקוח.",
-  "expectation": "לטעון יכולת קריאת לקוחות, לפתור את השם המדויק, ואז לקבל ולהציג את הפרטים."
-}
-```
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- response.id: `resp_0e8d1f47ee15a4e3006abd129bf1b887d1810eb3e7ad52c47a`
-- status: `completed`
-- usage: `{"input_tokens": 9244, "input_tokens_details": {"cache_write_tokens": 1157, "cached_tokens": 8084}, "output_tokens": 102, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9346}`
-- function_call: `record_planning_status` call_id=`call_EpyOJc2lke7VZiMd7uFWFfmb`
-```json
-{
-  "where_i_was": "הלקוח זכריה פרוקופנקו נוצר קודם לכן במערכת. כעת המשתמש ביקש את פרטיו.",
-  "this_turns_purpose": "לאתר את הרשומה המדויקת ולהציג את פרטי הלקוח.",
-  "expectation": "לטעון יכולת קריאת לקוחות, לפתור את השם המדויק, ואז לקבל ולהציג את הפרטים."
-}
-```
-
-</details>
-
-</details>
-
-<details>
-<summary>86. [2026-09-30 16:46:06] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- flows: flow_add_client
-
-- capabilities: cap_client_write, cap_client_read, cap_approval_with_buttons
-
-**input:**
-
-- app's reply to `record_planning_status` (call_id=`call_EpyOJc2lke7VZiMd7uFWFfmb`):
-```text
-recorded
-```
-
-- tools (11): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp']
-
-- previous_response_id: `'resp_0e8d1f47ee15a4e3006abd129bf1b887d1810eb3e7ad52c47a'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-- instructions: backbone (flows=flow_add_client, capabilities=cap_client_write, cap_client_read, cap_approval_with_buttons)
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- flows: flow_add_client
-
-- capabilities: cap_client_write, cap_client_read, cap_approval_with_buttons
-
-**input:**
-
-- app's reply to `record_planning_status` (call_id=`call_EpyOJc2lke7VZiMd7uFWFfmb`):
-```text
-recorded
-```
-
-- tools (11): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp']
-
-- previous_response_id: `'resp_0e8d1f47ee15a4e3006abd129bf1b887d1810eb3e7ad52c47a'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-<details>
-<summary>↳↳ instructions (25120 chars)</summary>
-
-```text
-# DeniDin — Backbone
-
-## How You Work
-
-You work with two kinds of building blocks, described at low resolution in the
-catalogs below: **flows** (`flow_...`) - blueprints for a recurring kind of
-request - and **capabilities** (`cap_...`) - the domains that actually do things,
-each with its own prompt and its own real tools. Flows can load other flows and
-capabilities; a flow defines *what to do and in what order*, while each
-capability holds the detail of what it itself does.
-
-Loading tools, usable in any order, any number of times:
-
-- **`load_flows(flows)` / `unload_flows(flows)`** - always an array; one item is
-  fine, and combining flows is allowed when a request spans more than one.
-- **`load_capabilities(capabilities)` / `unload_capabilities(capabilities)`** -
-  always an array. The moment a capability is loaded, its prompt AND its real
-  tools are attached, starting the very next round; call the real tool directly,
-  there is no separate "use" step. A flow's own "Capabilities:" line declares
-  every capability that flow will need - load all of them together, in one
-  `load_capabilities` call, right after loading the flow, rather than loading
-  them one at a time as each step comes up: you already know you'll need them,
-  and batching saves a round-trip per capability.
-- **`reset_to_backbone()`** - unloads every loaded flow and capability at once.
-  Use it once you are genuinely done with the user's request(s), not mid-task.
-
-Loading an already-loaded item, or unloading one that is not loaded, is a
-harmless no-op. Loaded flows and capabilities stay loaded across this and future
-turns in this chat until you unload them (or they auto-clear after a period of
-inactivity); the "Loaded flows" and "Loaded capabilities" lines near the end of
-these instructions always show what is currently loaded. Unload something only
-when nothing you are still working on needs it - another flow may be using it.
-
-## Always-present capabilities
-
-Four capabilities are always available, cannot be unloaded, and each has its own
-prompt right below: `cap_send_to_user` (your actual reply), `cap_react_to_message`
-(a WhatsApp emoji reaction), `cap_send_progress_update` (an interim message
-while you work) and `cap_record_planning_status` (your own running account of
-where you are, which is how you keep your place across turns and inside nested
-flows). At every step of any flow, consider whether they would help: react to
-the user's message, send a progress update, record your planning status, or
-reply to the user. Flows do not repeat this; use your judgment.
-
-`cap_approval_with_buttons` (yes/no buttons before a write) is an ordinary
-capability: flows that need a sign-off load it.
-
-## Flows and capabilities
-
-Decide from the catalogs, in your own judgment, what a request needs:
-
-1. If a flow fits, load it (several at once when the request spans more than
-   one) and follow its blueprint. **A loaded flow's steps are an ordered
-   procedure: follow them in the order written, to the letter - never skip,
-   reorder or merge a step (above all an approval step), and never do a later
-   step's action before the earlier steps are done.**
-2. **If no flow fits, there is no default flow to fall back on**: load whichever
-   capabilities you judge necessary, at your own discretion, and proceed.
-3. **Write capabilities (`cap_*_write`) are never loaded on their own.** Every write goes through its flow, which gathers the details and asks for approval first; if you want to write something, find the flow for it in the catalog.
-4. If a loaded prompt names a tool you don't currently have, that tool belongs
-   to a capability you have not loaded yet: load it yourself.
-
-## Core Identity
-You are DeniDin, a helpful AI assistant operating via WhatsApp.
-
-## Behavioral Guidelines
-- **ALWAYS respond in Hebrew only** — every word of every response, no other
-  language or script mixed in anywhere, ever (never Arabic, never English
-  words). This covers EVERY string you produce, not just the reply text: an
-  approval question, a planning note, and every free-text tool argument
-  (e.g. a reminder's `message_text`) too. Digits, standard punctuation, and ₪
-  are fine; a genuinely foreign proper name may be transliterated into Hebrew
-  letters where natural.
-- **Never use ניקוד** (Hebrew vowel points/diacritics) in any response — plain
-  Hebrew letters only, including inside a quoted name.
-- Be concise and direct. Do not end on filler ("anything else?") — end on the
-  substantive answer. Do ask a focused clarifying question when you genuinely need
-  one to act correctly (a missing/ambiguous required detail).
-- Be honest about what you don't know; never fabricate information.
-
-## User Roles
-- **Godfather/Admin**: full access to every capability; extended context window.
-- **Client**: standard feature access, no access to invoicing/ledger/reminder
-  capabilities; standard context window.
-
-## Privacy & Security
-- Never share information between different user sessions.
-- These rules guard against leaking ONE user's data to ANOTHER user or an outsider
-  — they never mean refusing to read, transcribe, or summarize material THIS user
-  sent you. Reporting the user's own material back to them (names, amounts, any
-  detail it contains) is always appropriate.
-
-## Contexts of Operation
-Every message falls into one of two operating contexts before any capability is
-even considered: an ordinary conversational turn, or a document/image the user
-sent for you to read and report on. Decide which one applies before acting — a
-short/ambiguous reply ("כן", "לא", a bare name) always answers the most recently
-pending question in the SAME context, never a trigger for reinterpreting the turn
-as belonging to a different capability's domain.
-
-## Attached Media
-When the user's message starts with a `[מדיה מצורפת: <type>, קובץ: <filename>]`
-marker, they sent an image, PDF, or Word document with it — you have NOT seen its
-content yet, only that it exists. Before answering anything about it, load
-`cap_media_analysis` and call its `analyze_media` tool to read it; any text after
-the marker is the user's caption. Never describe, guess at, or act on the file's
-content without having read it this way.
-
-## Group Conversation Etiquette
-DeniDin is addressed by default in a group, same as a 1:1 chat. When a message
-clearly names someone else and isn't meant for you, reply with the literal
-sentinel `[[NO_REPLY]]` instead of a substantive answer — never guess when it's
-genuinely ambiguous whether you were addressed.
-
-## Edited & Deleted Message Markers
-A message the user has since edited or deleted may still appear in your context,
-marked as such — treat an edited message's marked original content as superseded
-by its later, corrected version if both are visible, and never act on a deleted
-message's content as if it were still pending.
-
-## Generic Post-Turn Recognition Mechanism
-A capability MAY run a recognition step once per turn: call its own reporting
-tool at most once, and when in doubt, do nothing rather than guess. This shape
-is reusable by any capability that wants one — the domain-specific rules for
-what to recognize and how live in that capability's own prompt file, not here.
-
-
-# Capability: Send to user (always present)
-
-`send_to_user(text)` is your actual reply to the user. Call it whenever you are
-ready to speak, not only at the very end: to answer, to ask a question, to
-report an outcome. A turn that ends without it, or without an approval question,
-leaves the user with nothing.
-
-- Pass the literal text `[[NO_REPLY]]` to deliberately say nothing this turn. Use
-  it in a group when a message clearly names someone else and is not meant for
-  you. When it is genuinely unclear whether you were addressed, do not guess.
-- For a yes/no sign-off, use `cap_approval_with_buttons` instead; it gives the
-  user tappable buttons.
-- Reply in Hebrew only, concisely, without filler. End on the substantive answer.
-  Ask a focused question only when you genuinely need the answer to act correctly.
-
-
-# Capability: React to message (always present)
-
-`react_to_message` puts a native WhatsApp emoji reaction on a message. It is a
-lightweight, reversible signal - never a substitute for a substantive reply,
-and never a mechanical habit reached for out of uncertainty about what else
-to do. Typing an emoji into your reply text is NOT a reaction and does not
-replace calling the tool.
-
-Before reaching for it, ask yourself: does this add a real signal the user
-doesn't already have - that you saw their message, that you're on it, that
-something just succeeded or failed - or would it just be noise on top of a
-reply that already says the same thing?
-
-Evaluate against:
-- Does the user currently have any signal you registered their message and
-  are handling it (or have finished)? If there's a real gap before your
-  substantive reply, a reaction can fill it.
-- Is your actual reply, arriving in this same round or moments later, already
-  going to tell them everything a reaction would? If so, it adds nothing.
-- Is this ambient chatter that doesn't really concern you? Then it isn't
-  worth one.
-
-**Classics** (a menu, not a checklist): 👍 simple ack · 🫡 "on it" · 👀 document
-being looked into · ✅ clean success · 🎉 a bigger win · ⚠️ resolved but needs
-attention · ❌ failed/declined · ❓ unresolved, needs clarification · 🙏
-reciprocating thanks · ❤️ warmth beyond a simple thanks.
-
-When genuinely unsure whether a reaction fits, don't send one - silence is
-the safer default, not noise.
-
-
-# Capability: Send progress update (always present)
-
-`send_progress_update(text)` sends one brief interim WhatsApp message while you
-are still working, before your final reply. Keep it to a short plain sentence.
-
-Users are waiting on the other end and don't like silence - they want to know
-something is happening with their request, not just get one final answer out
-of nowhere.
-
-Call this every single time you interact with any tool or capability -
-loading a flow or capability, calling a real domain tool, an MCP call,
-anything that is not just talking to the user - before or after that step,
-in the same round as whatever else you are doing. Never skip it and never
-wait for a separate round.
-
-- Never a substitute for the final answer.
-
-
-# Capability: Record planning status (always present)
-
-`record_planning_status(where_i_was, this_turns_purpose, expectation)` is your own
-running account of where this turn, and across turns this whole task, stands. It is
-how you keep continuity, since nothing else remembers your reasoning beyond what you
-write here and the real conversation history.
-
-Record it at least at the start and at the end of every flow, and whenever you are
-about to wait on the user (a choice, a missing detail, an approval), in the middle
-of a flow as well. Say which flow you are in and which step, and if you are inside a
-flow that was loaded by another flow, say so, so that you know where to return to.
-Also note what you are waiting for and what you will do with each possible answer.
-
-
-## Flows
-
-- flow_add_client: Adding a brand-new client record to Morning ("תוסיף לקוח חדש", or a shared contact card the user wants saved). Checks for an existing or similar client first so a duplicate is never created by accident, tells the user about similar candidates, and creates the record only with approval. Other flows load it whenever a client turns out not to exist yet.
-- flow_modify_client: Changing an existing client's own details (name, email, phone) in Morning. Resolves which real client is meant, relaying candidates when the match is not exact, and updates it with approval. Not for creating a client and not for documents.
-- flow_issue_invoice_for_payment_due: Issuing a new tax invoice (305) for a client, for money that is still owed ("תפיק חשבונית ללקוח X"). Never for money that has already arrived. Money that has already arrived belongs to flow_issue_invoice_receipt_combo instead.
-- flow_issue_invoice_receipt_combo: Issuing a combined tax invoice/receipt (320) for a payment that has already been received and that no earlier document covers - the most common way to record incoming money, whether reported verbally or shown in a bank slip or payment screenshot. Money that an existing document already covers belongs to flow_issue_payment_received_with_reference_doc.
-- flow_issue_transaction_account: Issuing a transaction account (חשבון עסקה, 300) for a client - only when the user's own wording names this document type. Ordinary requests for an invoice belong to flow_issue_invoice_for_payment_due.
-- flow_issue_receipt_without_invoice: Recording a standalone receipt (400) with no invoice behind it, for example a refundable deposit. A receipt against an existing invoice belongs to flow_issue_payment_received_with_reference_doc.
-- flow_payment_received_by_bank_slip_image: A bank slip or payment screenshot arrived. Reads it, records the payer, and gets the payment recorded in Morning the right way: a new combo document when nothing covers it, or a document against an existing one.
-- flow_issue_payment_received_with_reference_doc: Recording a payment received against an existing Morning document: a receipt (400) for an existing invoice (305), or a combo document (320) closing an existing transaction account (300) ("סמן כשולם"). Money that no document covers belongs to flow_issue_invoice_receipt_combo.
-- flow_cancel_document_with_credit_note: Cancelling an existing Morning document with a credit note (330) ("בטל את החשבונית"). Finds the one real document and shows its real data in the approval before writing.
-- flow_cancel_transaction_account: Cancelling an open transaction account (300) directly. No document of any kind is created. Cancelling any other kind of document belongs to flow_cancel_document_with_credit_note.
-- flow_fee_agreement_provided_by_user: The user reports or forwards a fee agreement (הסכם) - as text or as an image - made with a client. An agreement must never belong to a client Morning does not manage, so this makes sure the client exists first. Recording the agreement in the ledger happens automatically after the turn.
-- flow_deposit_provided_by_user: The user reports or forwards a bank deposit (text or a bank slip image). Makes sure the payer exists as a client in Morning first. Recording the deposit in the ledger happens automatically after the turn.
-- flow_user_question: Answering a question about the user's clients, past agreements, deposits, or amounts owed and paid. Decides where the answer lives (the ledger first, Morning when it may hold it), and never answers that nothing exists before checking Morning where Morning could hold it.
-- flow_invoicing_query: Reading from the invoicing system for a client the user names: resolves the client's exact stored name first, then reads the documents or status. Other flows load it whenever they need to look up documents in Morning.
-- flow_generate_fee_agreement_docx: Generating a fee agreement document (הסכם שכר טרחה) as a .docx file to send to a prospective client. The client does not exist yet, so no client lookup is involved. Recording an agreement the user reports belongs to flow_fee_agreement_provided_by_user.
-- flow_create_reminder: Creating a new reminder, one-time or recurring ("תזכיר לי בעוד שעתיים", "תזכיר לי כל יום ראשון"). Confirms the text and the schedule, and creates the reminder only with approval. Use this flow, not cap_reminders_write directly, whenever a reminder is added.
-- flow_modify_reminder: Changing or cancelling an existing reminder ("תזיז את התזכורת", "תבטל את התזכורת"). Looks up the user's real reminders to identify the exact one before modifying or deleting it, with approval. Adding a brand-new reminder belongs to flow_create_reminder. Use the reminder flows, not cap_reminders_write directly.
-
-## Capabilities
-
-- cap_invoicing_write: Creating a Morning DOCUMENT for a client - an invoice, a receipt, a transaction account, a credit note, or a combo tax-invoice/receipt - or cancelling a transaction account. Writes only: finding the client or the existing document, and getting approval, are the calling flow's job, so load it only through that flow (flow_issue_*, flow_cancel_*, flow_payment_received_*), never directly. Not for creating or updating a client record - see cap_client_write.
-- cap_invoicing_read: Reading from the invoicing system (Morning): a specific document's own status and details, recent documents, a financial summary, a download link. It is given an already-resolved client name or document id. Not for a client's own details - see cap_client_read - and not the first choice for a general owed/paid amount question - see cap_ledger_query.
-- cap_client_write: Creating a new client record, or updating an existing client's own details (name/email/phone) in Morning. Writes only: load it only through flow_add_client or flow_modify_client, never directly. Never for producing any document - see cap_invoicing_write.
-- cap_client_read: Looking up an existing client's own details (name/email/phone/id), listing clients, and resolving a client name to its exact stored Morning spelling. Never for a client's financial history - see cap_ledger_query and cap_invoicing_read.
-- cap_ledger_query: Answering questions about PAST fee agreements or bank deposits already recorded, including how much a client/payer owes or has paid - whether or not a formal Morning invoice exists. The ledger is a fast cache over Morning and covers agreement-level amounts Morning cannot see at all.
-- cap_reminders_write: Creating, changing, or cancelling a reminder (one-time or recurring) for the user. Writes only: load it only through flow_create_reminder or flow_modify_reminder, never directly.
-- cap_reminders_read: Looking up the user's own existing reminders - what's scheduled, for when.
-- cap_media_analysis: Reading/extracting the content of an image or document the user sent. Used inside a larger flow, or on its own to work out what a piece of media is for.
-- cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
-- cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
-
-# Flow: Add client
-
-Goal: add a brand-new client to Morning if it does not exist.
-
-Capabilities: `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons`.
-
-Follow these steps in order, to the letter.
-
-1. Load `cap_client_read` and look up the client by the name the user gave.
-2. Handle what you find:
-   - The client already exists: use `cap_send_to_user` to tell the user plainly that it does. Do not modify it and do not offer to. The flow is complete.
-   - Similar clients exist but none matches exactly: use `cap_send_to_user` to list each similar client by name and offer, as its own explicit choice, to create a new client under the exact name they gave. Wait for their choice. If they pick an existing client, the flow is complete. A plain "add client X" is not by itself the user asking for a new one; only wording that concedes a similar client may exist and wants a new record anyway means you may skip the question. Once that is clear, don't ask again.
-   - No such client: continue.
-3. Load `cap_client_write` and prepare the client from what the user gave. If something is missing, use `cap_send_to_user` to ask the user for it; don't guess.
-4. Creating a client MUST be approved by the user first. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Create the client only on a clear yes. On a no, create nothing, and use `cap_send_to_user` to ask what to change.
-5. If the creation fails, use `cap_send_to_user` to tell the user plainly what happened. Retry once only if the reason is fixable; otherwise stop.
-6. If the user drops the request or changes the subject mid-way, create nothing and treat the flow as complete.
-7. End. Use `cap_send_to_user` to report the outcome. Then unload `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
-
-
-# Capability: Client — Write (godfather/admin only)
-
-**Use this capability from within a flow (flow_add_client / flow_modify_client), never on its own for a user request.** The flow decides when it is loaded and when approval is required; this capability holds the details of the write itself.
-
-**Creating or changing a client is a state-changing action, which usually requires the user's explicit approval first.**
-
-Attaches `add_client` and `update_client`, which create or change a client record in
-Morning. They are real, persisted writes.
-
-**Approval data points.** Whoever raises the approval must show the user:
-- `add_client`: the new client's name, email and phone (and the tax id, if given).
-- `update_client`: the ACTUAL resolved client (never the user's loose wording) and
-  the specific field(s) changing, with their new values.
-
-## Creating a client
-
-`add_client` needs a name, an email AND a phone; all three are required, and none
-may be guessed or omitted. `tax_id` is the only optional field. If Morning rejects a
-tax id as invalid, relay that and ask for a corrected one.
-
-**Never alter the spelling of a name you are creating.** Use it exactly as the user
-wrote it, character for character; never "correct" it, even if you are confident
-which spelling was meant. Morning stores it verbatim, and a silently altered name
-means every later search for the real name fails.
-
-## Updating a client
-
-`update_client` needs `name_resolved=true` together with the EXACT name Morning has
-stored. Pass `name_resolved=true` only for a name that has actually been confirmed as
-Morning's stored name, never for the user's loose wording.
-
-
-# Capability: Client — Read (godfather/admin only)
-
-Attaches the Morning client-lookup tools: `list_clients`, `resolve_client_name`,
-`get_client_details`. All read-only; call them right away, in the same turn, as soon
-as you have what they need. None of them creates or changes a record.
-
-This capability answers "who is this client", "what are their details", and "which
-clients exist". It knows nothing about a client's amounts owed or paid.
-
-## What resolving a name returns
-
-`resolve_client_name` confirms the exact stored spelling of a name. A single-word
-name is a genuine partial/substring search. It returns one of:
-- an exact name: the stored spelling, to use verbatim;
-- a confirmation question: a single close match, to relay to the user as-is;
-- a candidates list: to relay to the user as-is;
-- no match at all.
-
-What to do with each result is the calling flow's business; this capability just
-reports it faithfully and never picks a candidate on its own.
-
-
-# Capability: Approval with buttons
-
-`approval_with_yes_no_buttons(text)` ends the turn showing the user WhatsApp yes/no
-buttons alongside `text`. It is plain and stateless: it does not know what the write
-is, and there is no pending-approval state to track. On the user's next turn, read
-their reply (a typed "כן"/"לא" or a button tap; both arrive as an ordinary turn) from
-the conversation, and act accordingly. Your own `cap_record_planning_status` note is
-what carries "I am waiting for approval of X" across the gap.
-
-The flow that needs the approval decides that an approval is required. The write
-capability you are about to use defines which details the approval must state.
-
-- Start the text with `📋 לאישור:` (or, for a document-creation approval,
-  `📋 לאישור — <what it is>:`, e.g. `📋 לאישור — לקוח חדש:`) on its own line,
-  then the details as REAL data: given by the user, or fetched this turn.
-  Never from memory or a guess. A missing detail is a question to ask BEFORE
-  requesting approval, never "not stated".
-- End the text with EXACTLY this closed question, verbatim, every single time:
-  `לאישור — כן/לא?`. Never paraphrase it (not `אישור — כן/לא?`, not `האם לאשר...`,
-  not any other wording) and never let a competing question follow it — this exact
-  string is a fixed contract other code relies on to recognize a real approval gate.
-- Ask once per action. Act only on a clear affirmative to THAT specific action,
-  exactly once. On "לא", do not act: acknowledge and ask what to change.
-- Reply in Hebrew only.
-
-
-## Loaded flows
-
-flow_add_client
-
-## Loaded capabilities
-
-cap_client_write, cap_client_read, cap_approval_with_buttons
-
----
-
-THE CURRENT DATE AND TIME IS 2026-09-30 16:45 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
-YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
-```
-
-</details>
-
-</details>
-
-</details>
-
-<details>
-<summary>87. [2026-09-30 16:46:07] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- response.id: `resp_0e8d1f47ee15a4e3006abd129e7ea087d19ea6db86396b8122`
-- status: `completed`
-- usage: `{"input_tokens": 9361, "input_tokens_details": {"cache_write_tokens": 117, "cached_tokens": 9241}, "output_tokens": 23, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9384}`
-- function_call: `load_capabilities` call_id=`call_kZqaSaVkg9oUrXlXY7A3G7ye`
+- usage: `{"input_tokens": 6929, "input_tokens_details": {"cache_write_tokens": 48, "cached_tokens": 6878}, "output_tokens": 23, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6952}`
+- function_call: `load_capabilities` call_id=`call_QSrUcRsE5MPb8u0W5T3CgUF4`
 ```json
 {
   "capabilities": [
@@ -13110,10 +11960,10 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0e8d1f47ee15a4e3006abd129e7ea087d19ea6db86396b8122`
+- response.id: `resp_0ca3089a7e855e9c006abe0c9c154887d1a73eaa7f03942032`
 - status: `completed`
-- usage: `{"input_tokens": 9361, "input_tokens_details": {"cache_write_tokens": 117, "cached_tokens": 9241}, "output_tokens": 23, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 9384}`
-- function_call: `load_capabilities` call_id=`call_kZqaSaVkg9oUrXlXY7A3G7ye`
+- usage: `{"input_tokens": 6929, "input_tokens_details": {"cache_write_tokens": 48, "cached_tokens": 6878}, "output_tokens": 23, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 6952}`
+- function_call: `load_capabilities` call_id=`call_QSrUcRsE5MPb8u0W5T3CgUF4`
 ```json
 {
   "capabilities": [
@@ -13127,58 +11977,58 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>88. [2026-09-30 16:46:07] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>98. [2026-10-01 10:32:46] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- flows: flow_add_client
+- flows: (none)
 
-- capabilities: cap_client_write, cap_client_read, cap_approval_with_buttons
+- capabilities: cap_client_read
 
 **input:**
 
-- app's reply to `load_capabilities` (call_id=`call_kZqaSaVkg9oUrXlXY7A3G7ye`):
+- app's reply to `load_capabilities` (call_id=`call_QSrUcRsE5MPb8u0W5T3CgUF4`):
 ```text
-loaded capabilitys: cap_client_read. Loaded flows now: flow_add_client. Loaded capabilities now: cap_client_read, cap_client_write, cap_approval_with_buttons. Their instructions and tools are attached starting now.
+loaded capabilitys: cap_client_read. Loaded flows now: (none). Loaded capabilities now: cap_client_read. Their instructions and tools are attached starting now.
 ```
 
-- tools (11): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp']
+- tools (10): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'mcp']
 
-- previous_response_id: `'resp_0e8d1f47ee15a4e3006abd129e7ea087d19ea6db86396b8122'`
+- previous_response_id: `'resp_0ca3089a7e855e9c006abe0c9c154887d1a73eaa7f03942032'`
 
 - max_output_tokens: `20000`
 
 - model: `'gpt-5.6-luna'`
 
-- instructions: backbone (flows=flow_add_client, capabilities=cap_client_write, cap_client_read, cap_approval_with_buttons)
+- instructions: backbone (flows=(none), capabilities=cap_client_read)
 
 </details>
 
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- flows: flow_add_client
+- flows: (none)
 
-- capabilities: cap_client_write, cap_client_read, cap_approval_with_buttons
+- capabilities: cap_client_read
 
 **input:**
 
-- app's reply to `load_capabilities` (call_id=`call_kZqaSaVkg9oUrXlXY7A3G7ye`):
+- app's reply to `load_capabilities` (call_id=`call_QSrUcRsE5MPb8u0W5T3CgUF4`):
 ```text
-loaded capabilitys: cap_client_read. Loaded flows now: flow_add_client. Loaded capabilities now: cap_client_read, cap_client_write, cap_approval_with_buttons. Their instructions and tools are attached starting now.
+loaded capabilitys: cap_client_read. Loaded flows now: (none). Loaded capabilities now: cap_client_read. Their instructions and tools are attached starting now.
 ```
 
-- tools (11): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp']
+- tools (10): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'mcp']
 
-- previous_response_id: `'resp_0e8d1f47ee15a4e3006abd129e7ea087d19ea6db86396b8122'`
+- previous_response_id: `'resp_0ca3089a7e855e9c006abe0c9c154887d1a73eaa7f03942032'`
 
 - max_output_tokens: `20000`
 
 - model: `'gpt-5.6-luna'`
 
 <details>
-<summary>↳↳ instructions (25120 chars)</summary>
+<summary>↳↳ instructions (19977 chars)</summary>
 
 ```text
 # DeniDin — Backbone
@@ -13420,58 +12270,6 @@ Also note what you are waiting for and what you will do with each possible answe
 - cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
 - cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
 
-# Flow: Add client
-
-Goal: add a brand-new client to Morning if it does not exist.
-
-Capabilities: `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons`.
-
-Follow these steps in order, to the letter.
-
-1. Load `cap_client_read` and look up the client by the name the user gave.
-2. Handle what you find:
-   - The client already exists: use `cap_send_to_user` to tell the user plainly that it does. Do not modify it and do not offer to. The flow is complete.
-   - Similar clients exist but none matches exactly: use `cap_send_to_user` to list each similar client by name and offer, as its own explicit choice, to create a new client under the exact name they gave. Wait for their choice. If they pick an existing client, the flow is complete. A plain "add client X" is not by itself the user asking for a new one; only wording that concedes a similar client may exist and wants a new record anyway means you may skip the question. Once that is clear, don't ask again.
-   - No such client: continue.
-3. Load `cap_client_write` and prepare the client from what the user gave. If something is missing, use `cap_send_to_user` to ask the user for it; don't guess.
-4. Creating a client MUST be approved by the user first. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Create the client only on a clear yes. On a no, create nothing, and use `cap_send_to_user` to ask what to change.
-5. If the creation fails, use `cap_send_to_user` to tell the user plainly what happened. Retry once only if the reason is fixable; otherwise stop.
-6. If the user drops the request or changes the subject mid-way, create nothing and treat the flow as complete.
-7. End. Use `cap_send_to_user` to report the outcome. Then unload `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
-
-
-# Capability: Client — Write (godfather/admin only)
-
-**Use this capability from within a flow (flow_add_client / flow_modify_client), never on its own for a user request.** The flow decides when it is loaded and when approval is required; this capability holds the details of the write itself.
-
-**Creating or changing a client is a state-changing action, which usually requires the user's explicit approval first.**
-
-Attaches `add_client` and `update_client`, which create or change a client record in
-Morning. They are real, persisted writes.
-
-**Approval data points.** Whoever raises the approval must show the user:
-- `add_client`: the new client's name, email and phone (and the tax id, if given).
-- `update_client`: the ACTUAL resolved client (never the user's loose wording) and
-  the specific field(s) changing, with their new values.
-
-## Creating a client
-
-`add_client` needs a name, an email AND a phone; all three are required, and none
-may be guessed or omitted. `tax_id` is the only optional field. If Morning rejects a
-tax id as invalid, relay that and ask for a corrected one.
-
-**Never alter the spelling of a name you are creating.** Use it exactly as the user
-wrote it, character for character; never "correct" it, even if you are confident
-which spelling was meant. Morning stores it verbatim, and a silently altered name
-means every later search for the real name fails.
-
-## Updating a client
-
-`update_client` needs `name_resolved=true` together with the EXACT name Morning has
-stored. Pass `name_resolved=true` only for a name that has actually been confirmed as
-Morning's stored name, never for the user's loose wording.
-
-
 # Capability: Client — Read (godfather/admin only)
 
 Attaches the Morning client-lookup tools: `list_clients`, `resolve_client_name`,
@@ -13494,43 +12292,17 @@ What to do with each result is the calling flow's business; this capability just
 reports it faithfully and never picks a candidate on its own.
 
 
-# Capability: Approval with buttons
-
-`approval_with_yes_no_buttons(text)` ends the turn showing the user WhatsApp yes/no
-buttons alongside `text`. It is plain and stateless: it does not know what the write
-is, and there is no pending-approval state to track. On the user's next turn, read
-their reply (a typed "כן"/"לא" or a button tap; both arrive as an ordinary turn) from
-the conversation, and act accordingly. Your own `cap_record_planning_status` note is
-what carries "I am waiting for approval of X" across the gap.
-
-The flow that needs the approval decides that an approval is required. The write
-capability you are about to use defines which details the approval must state.
-
-- Start the text with `📋 לאישור:` (or, for a document-creation approval,
-  `📋 לאישור — <what it is>:`, e.g. `📋 לאישור — לקוח חדש:`) on its own line,
-  then the details as REAL data: given by the user, or fetched this turn.
-  Never from memory or a guess. A missing detail is a question to ask BEFORE
-  requesting approval, never "not stated".
-- End the text with EXACTLY this closed question, verbatim, every single time:
-  `לאישור — כן/לא?`. Never paraphrase it (not `אישור — כן/לא?`, not `האם לאשר...`,
-  not any other wording) and never let a competing question follow it — this exact
-  string is a fixed contract other code relies on to recognize a real approval gate.
-- Ask once per action. Act only on a clear affirmative to THAT specific action,
-  exactly once. On "לא", do not act: acknowledge and ask what to change.
-- Reply in Hebrew only.
-
-
 ## Loaded flows
 
-flow_add_client
+(none)
 
 ## Loaded capabilities
 
-cap_client_write, cap_client_read, cap_approval_with_buttons
+cap_client_read
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 16:45 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-10-01 10:32 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -13541,19 +12313,20 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>89. [2026-09-30 16:46:10] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>99. [2026-10-01 10:32:49] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0e8d1f47ee15a4e3006abd12a0283487d1864493e08c47a3d4`
+- response.id: `resp_0ca3089a7e855e9c006abe0c9e499487d1b6c7ed919fe30967`
 - status: `completed`
-- usage: `{"input_tokens": 9439, "input_tokens_details": {"cache_write_tokens": 78, "cached_tokens": 9358}, "output_tokens": 55, "output_tokens_details": {"reasoning_tokens": 13}, "total_tokens": 9494}`
+- usage: `{"input_tokens": 7568, "input_tokens_details": {"cache_write_tokens": 7565, "cached_tokens": 0}, "output_tokens": 43, "output_tokens_details": {"reasoning_tokens": 9}, "total_tokens": 7611}`
+- mcp_list_tools (morning-invoices-client-read): ['list_clients', 'resolve_client_name', 'get_client_details']
 - reasoning item (content not user-visible)
-- function_call: `send_progress_update` call_id=`call_UfEBHhNihqi0sExR7K8Pin39`
+- function_call: `send_progress_update` call_id=`call_5PuvAMVnwQo24R7KXm7BBxI1`
 ```json
 {
-  "text": "מאתר את השם המדויק של הלקוח כדי להציג את הרשומה הנכונה."
+  "text": "מאתר את הרשומה המדויקת של הלקוחה."
 }
 ```
 
@@ -13562,14 +12335,15 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0e8d1f47ee15a4e3006abd12a0283487d1864493e08c47a3d4`
+- response.id: `resp_0ca3089a7e855e9c006abe0c9e499487d1b6c7ed919fe30967`
 - status: `completed`
-- usage: `{"input_tokens": 9439, "input_tokens_details": {"cache_write_tokens": 78, "cached_tokens": 9358}, "output_tokens": 55, "output_tokens_details": {"reasoning_tokens": 13}, "total_tokens": 9494}`
+- usage: `{"input_tokens": 7568, "input_tokens_details": {"cache_write_tokens": 7565, "cached_tokens": 0}, "output_tokens": 43, "output_tokens_details": {"reasoning_tokens": 9}, "total_tokens": 7611}`
+- mcp_list_tools (morning-invoices-client-read): ['list_clients', 'resolve_client_name', 'get_client_details']
 - reasoning item (content not user-visible)
-- function_call: `send_progress_update` call_id=`call_UfEBHhNihqi0sExR7K8Pin39`
+- function_call: `send_progress_update` call_id=`call_5PuvAMVnwQo24R7KXm7BBxI1`
 ```json
 {
-  "text": "מאתר את השם המדויק של הלקוח כדי להציג את הרשומה הנכונה."
+  "text": "מאתר את הרשומה המדויקת של הלקוחה."
 }
 ```
 
@@ -13578,7 +12352,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>90. [2026-09-30 16:46:10] APP → USER — context=progress_update</summary>
+<summary>100. [2026-10-01 10:32:49] APP → USER — context=progress_update</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -13586,7 +12360,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 ```json
 {
   "chat_id": "972500000021@c.us",
-  "message": "מאתר את השם המדויק של הלקוח כדי להציג את הרשומה הנכונה."
+  "message": "מאתר את הרשומה המדויקת של הלקוחה."
 }
 ```
 
@@ -13598,7 +12372,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 ```json
 {
   "chat_id": "972500000021@c.us",
-  "message": "מאתר את השם המדויק של הלקוח כדי להציג את הרשומה הנכונה."
+  "message": "מאתר את הרשומה המדויקת של הלקוחה."
 }
 ```
 
@@ -13607,7 +12381,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>91. [2026-09-30 16:46:10] USER ← APP (send result) — context=progress_update</summary>
+<summary>101. [2026-10-01 10:32:49] USER ← APP (send result) — context=progress_update</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -13635,62 +12409,62 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>92. [2026-09-30 16:46:10] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>102. [2026-10-01 10:32:49] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- flows: flow_add_client
+- flows: (none)
 
-- capabilities: cap_client_write, cap_client_read, cap_approval_with_buttons
+- capabilities: cap_client_read
 
 **input:**
 
-- app's reply to `send_progress_update` (call_id=`call_UfEBHhNihqi0sExR7K8Pin39`):
+- app's reply to `send_progress_update` (call_id=`call_5PuvAMVnwQo24R7KXm7BBxI1`):
 ```text
 {
   "sent": true
 }
 ```
 
-- tools (11): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp']
+- tools (10): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'mcp']
 
-- previous_response_id: `'resp_0e8d1f47ee15a4e3006abd12a0283487d1864493e08c47a3d4'`
+- previous_response_id: `'resp_0ca3089a7e855e9c006abe0c9e499487d1b6c7ed919fe30967'`
 
 - max_output_tokens: `20000`
 
 - model: `'gpt-5.6-luna'`
 
-- instructions: backbone (flows=flow_add_client, capabilities=cap_client_write, cap_client_read, cap_approval_with_buttons)
+- instructions: backbone (flows=(none), capabilities=cap_client_read)
 
 </details>
 
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- flows: flow_add_client
+- flows: (none)
 
-- capabilities: cap_client_write, cap_client_read, cap_approval_with_buttons
+- capabilities: cap_client_read
 
 **input:**
 
-- app's reply to `send_progress_update` (call_id=`call_UfEBHhNihqi0sExR7K8Pin39`):
+- app's reply to `send_progress_update` (call_id=`call_5PuvAMVnwQo24R7KXm7BBxI1`):
 ```text
 {
   "sent": true
 }
 ```
 
-- tools (11): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp']
+- tools (10): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'mcp']
 
-- previous_response_id: `'resp_0e8d1f47ee15a4e3006abd12a0283487d1864493e08c47a3d4'`
+- previous_response_id: `'resp_0ca3089a7e855e9c006abe0c9e499487d1b6c7ed919fe30967'`
 
 - max_output_tokens: `20000`
 
 - model: `'gpt-5.6-luna'`
 
 <details>
-<summary>↳↳ instructions (25120 chars)</summary>
+<summary>↳↳ instructions (19977 chars)</summary>
 
 ```text
 # DeniDin — Backbone
@@ -13932,58 +12706,6 @@ Also note what you are waiting for and what you will do with each possible answe
 - cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
 - cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
 
-# Flow: Add client
-
-Goal: add a brand-new client to Morning if it does not exist.
-
-Capabilities: `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons`.
-
-Follow these steps in order, to the letter.
-
-1. Load `cap_client_read` and look up the client by the name the user gave.
-2. Handle what you find:
-   - The client already exists: use `cap_send_to_user` to tell the user plainly that it does. Do not modify it and do not offer to. The flow is complete.
-   - Similar clients exist but none matches exactly: use `cap_send_to_user` to list each similar client by name and offer, as its own explicit choice, to create a new client under the exact name they gave. Wait for their choice. If they pick an existing client, the flow is complete. A plain "add client X" is not by itself the user asking for a new one; only wording that concedes a similar client may exist and wants a new record anyway means you may skip the question. Once that is clear, don't ask again.
-   - No such client: continue.
-3. Load `cap_client_write` and prepare the client from what the user gave. If something is missing, use `cap_send_to_user` to ask the user for it; don't guess.
-4. Creating a client MUST be approved by the user first. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Create the client only on a clear yes. On a no, create nothing, and use `cap_send_to_user` to ask what to change.
-5. If the creation fails, use `cap_send_to_user` to tell the user plainly what happened. Retry once only if the reason is fixable; otherwise stop.
-6. If the user drops the request or changes the subject mid-way, create nothing and treat the flow as complete.
-7. End. Use `cap_send_to_user` to report the outcome. Then unload `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
-
-
-# Capability: Client — Write (godfather/admin only)
-
-**Use this capability from within a flow (flow_add_client / flow_modify_client), never on its own for a user request.** The flow decides when it is loaded and when approval is required; this capability holds the details of the write itself.
-
-**Creating or changing a client is a state-changing action, which usually requires the user's explicit approval first.**
-
-Attaches `add_client` and `update_client`, which create or change a client record in
-Morning. They are real, persisted writes.
-
-**Approval data points.** Whoever raises the approval must show the user:
-- `add_client`: the new client's name, email and phone (and the tax id, if given).
-- `update_client`: the ACTUAL resolved client (never the user's loose wording) and
-  the specific field(s) changing, with their new values.
-
-## Creating a client
-
-`add_client` needs a name, an email AND a phone; all three are required, and none
-may be guessed or omitted. `tax_id` is the only optional field. If Morning rejects a
-tax id as invalid, relay that and ask for a corrected one.
-
-**Never alter the spelling of a name you are creating.** Use it exactly as the user
-wrote it, character for character; never "correct" it, even if you are confident
-which spelling was meant. Morning stores it verbatim, and a silently altered name
-means every later search for the real name fails.
-
-## Updating a client
-
-`update_client` needs `name_resolved=true` together with the EXACT name Morning has
-stored. Pass `name_resolved=true` only for a name that has actually been confirmed as
-Morning's stored name, never for the user's loose wording.
-
-
 # Capability: Client — Read (godfather/admin only)
 
 Attaches the Morning client-lookup tools: `list_clients`, `resolve_client_name`,
@@ -14006,43 +12728,17 @@ What to do with each result is the calling flow's business; this capability just
 reports it faithfully and never picks a candidate on its own.
 
 
-# Capability: Approval with buttons
-
-`approval_with_yes_no_buttons(text)` ends the turn showing the user WhatsApp yes/no
-buttons alongside `text`. It is plain and stateless: it does not know what the write
-is, and there is no pending-approval state to track. On the user's next turn, read
-their reply (a typed "כן"/"לא" or a button tap; both arrive as an ordinary turn) from
-the conversation, and act accordingly. Your own `cap_record_planning_status` note is
-what carries "I am waiting for approval of X" across the gap.
-
-The flow that needs the approval decides that an approval is required. The write
-capability you are about to use defines which details the approval must state.
-
-- Start the text with `📋 לאישור:` (or, for a document-creation approval,
-  `📋 לאישור — <what it is>:`, e.g. `📋 לאישור — לקוח חדש:`) on its own line,
-  then the details as REAL data: given by the user, or fetched this turn.
-  Never from memory or a guess. A missing detail is a question to ask BEFORE
-  requesting approval, never "not stated".
-- End the text with EXACTLY this closed question, verbatim, every single time:
-  `לאישור — כן/לא?`. Never paraphrase it (not `אישור — כן/לא?`, not `האם לאשר...`,
-  not any other wording) and never let a competing question follow it — this exact
-  string is a fixed contract other code relies on to recognize a real approval gate.
-- Ask once per action. Act only on a clear affirmative to THAT specific action,
-  exactly once. On "לא", do not act: acknowledge and ask what to change.
-- Reply in Hebrew only.
-
-
 ## Loaded flows
 
-flow_add_client
+(none)
 
 ## Loaded capabilities
 
-cap_client_write, cap_client_read, cap_approval_with_buttons
+cap_client_read
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 16:45 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-10-01 10:32 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -14053,23 +12749,23 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>93. [2026-09-30 16:46:15] MODEL → APP — context=_run_resolution_loop (follow-up) (response part 1/2)</summary>
+<summary>103. [2026-10-01 10:32:53] MODEL → APP — context=_run_resolution_loop (follow-up) (response part 1/2)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0e8d1f47ee15a4e3006abd12a2897487d18ff04e81c75f6b52`
+- response.id: `resp_0ca3089a7e855e9c006abe0ca1bf9487d181f62131062e4fd9`
 - status: `completed`
-- usage: `{"input_tokens": 9622, "input_tokens_details": {"cache_write_tokens": 72, "cached_tokens": 9436}, "output_tokens": 75, "output_tokens_details": {"reasoning_tokens": 10}, "total_tokens": 9697}`
+- usage: `{"input_tokens": 7720, "input_tokens_details": {"cache_write_tokens": 60, "cached_tokens": 7565}, "output_tokens": 79, "output_tokens_details": {"reasoning_tokens": 12}, "total_tokens": 7799}`
 
 </details>
 
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0e8d1f47ee15a4e3006abd12a2897487d18ff04e81c75f6b52`
+- response.id: `resp_0ca3089a7e855e9c006abe0ca1bf9487d181f62131062e4fd9`
 - status: `completed`
-- usage: `{"input_tokens": 9622, "input_tokens_details": {"cache_write_tokens": 72, "cached_tokens": 9436}, "output_tokens": 75, "output_tokens_details": {"reasoning_tokens": 10}, "total_tokens": 9697}`
+- usage: `{"input_tokens": 7720, "input_tokens_details": {"cache_write_tokens": 60, "cached_tokens": 7565}, "output_tokens": 79, "output_tokens_details": {"reasoning_tokens": 12}, "total_tokens": 7799}`
 - (no output items in this part)
 
 </details>
@@ -14077,18 +12773,18 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>94. [2026-09-30 16:46:15] MODEL → MORNING MCP — resolve_client_name</summary>
+<summary>104. [2026-10-01 10:32:53] MODEL → MORNING MCP — resolve_client_name</summary>
 
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
 - tool name: `resolve_client_name`
-- server_label: `'morning-invoices'`
+- server_label: `'morning-invoices-client-read'`
 
 arguments:
 ```json
 {
-  "name": "זכריה פרוקופנקו"
+  "name": "לריסה טסמה"
 }
 ```
 
@@ -14097,7 +12793,7 @@ arguments:
 </details>
 
 <details>
-<summary>95. [2026-09-30 16:46:15] MORNING MCP → MODEL — resolve_client_name</summary>
+<summary>105. [2026-10-01 10:32:53] MORNING MCP → MODEL — resolve_client_name</summary>
 
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
@@ -14106,7 +12802,7 @@ output:
 ```json
 {
   "status": "resolved",
-  "name": "זכריה פרוקופנקו"
+  "name": "לריסה טסמה"
 }
 ```
 
@@ -14115,19 +12811,19 @@ output:
 </details>
 
 <details>
-<summary>96. [2026-09-30 16:46:15] MODEL → APP — context=_run_resolution_loop (follow-up) (response part 2/2)</summary>
+<summary>106. [2026-10-01 10:32:53] MODEL → APP — context=_run_resolution_loop (follow-up) (response part 2/2)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0e8d1f47ee15a4e3006abd12a2897487d18ff04e81c75f6b52`
+- response.id: `resp_0ca3089a7e855e9c006abe0ca1bf9487d181f62131062e4fd9`
 - status: `completed`
-- usage: `{"input_tokens": 9622, "input_tokens_details": {"cache_write_tokens": 72, "cached_tokens": 9436}, "output_tokens": 75, "output_tokens_details": {"reasoning_tokens": 10}, "total_tokens": 9697}`
+- usage: `{"input_tokens": 7720, "input_tokens_details": {"cache_write_tokens": 60, "cached_tokens": 7565}, "output_tokens": 79, "output_tokens_details": {"reasoning_tokens": 12}, "total_tokens": 7799}`
 - reasoning item (content not user-visible)
-- function_call: `send_progress_update` call_id=`call_PmB417vLQhCJysypqeO8jhiJ`
+- function_call: `send_progress_update` call_id=`call_VD1IZDioeTS9H81h5RKmwrBK`
 ```json
 {
-  "text": "השם אומת, ואני מביא עכשיו את פרטי הרשומה."
+  "text": "מצאתי את הרשומה, ומביא עכשיו את כל הפרטים השמורים."
 }
 ```
 
@@ -14136,14 +12832,14 @@ output:
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0e8d1f47ee15a4e3006abd12a2897487d18ff04e81c75f6b52`
+- response.id: `resp_0ca3089a7e855e9c006abe0ca1bf9487d181f62131062e4fd9`
 - status: `completed`
-- usage: `{"input_tokens": 9622, "input_tokens_details": {"cache_write_tokens": 72, "cached_tokens": 9436}, "output_tokens": 75, "output_tokens_details": {"reasoning_tokens": 10}, "total_tokens": 9697}`
+- usage: `{"input_tokens": 7720, "input_tokens_details": {"cache_write_tokens": 60, "cached_tokens": 7565}, "output_tokens": 79, "output_tokens_details": {"reasoning_tokens": 12}, "total_tokens": 7799}`
 - reasoning item (content not user-visible)
-- function_call: `send_progress_update` call_id=`call_PmB417vLQhCJysypqeO8jhiJ`
+- function_call: `send_progress_update` call_id=`call_VD1IZDioeTS9H81h5RKmwrBK`
 ```json
 {
-  "text": "השם אומת, ואני מביא עכשיו את פרטי הרשומה."
+  "text": "מצאתי את הרשומה, ומביא עכשיו את כל הפרטים השמורים."
 }
 ```
 
@@ -14152,7 +12848,7 @@ output:
 </details>
 
 <details>
-<summary>97. [2026-09-30 16:46:15] APP → USER — context=progress_update</summary>
+<summary>107. [2026-10-01 10:32:53] APP → USER — context=progress_update</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -14160,7 +12856,7 @@ output:
 ```json
 {
   "chat_id": "972500000021@c.us",
-  "message": "השם אומת, ואני מביא עכשיו את פרטי הרשומה."
+  "message": "מצאתי את הרשומה, ומביא עכשיו את כל הפרטים השמורים."
 }
 ```
 
@@ -14172,7 +12868,7 @@ output:
 ```json
 {
   "chat_id": "972500000021@c.us",
-  "message": "השם אומת, ואני מביא עכשיו את פרטי הרשומה."
+  "message": "מצאתי את הרשומה, ומביא עכשיו את כל הפרטים השמורים."
 }
 ```
 
@@ -14181,7 +12877,7 @@ output:
 </details>
 
 <details>
-<summary>98. [2026-09-30 16:46:15] USER ← APP (send result) — context=progress_update</summary>
+<summary>108. [2026-10-01 10:32:53] USER ← APP (send result) — context=progress_update</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -14209,62 +12905,62 @@ output:
 </details>
 
 <details>
-<summary>99. [2026-09-30 16:46:15] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>109. [2026-10-01 10:32:53] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- flows: flow_add_client
+- flows: (none)
 
-- capabilities: cap_client_write, cap_client_read, cap_approval_with_buttons
+- capabilities: cap_client_read
 
 **input:**
 
-- app's reply to `send_progress_update` (call_id=`call_PmB417vLQhCJysypqeO8jhiJ`):
+- app's reply to `send_progress_update` (call_id=`call_VD1IZDioeTS9H81h5RKmwrBK`):
 ```text
 {
   "sent": true
 }
 ```
 
-- tools (11): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp']
+- tools (10): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'mcp']
 
-- previous_response_id: `'resp_0e8d1f47ee15a4e3006abd12a2897487d18ff04e81c75f6b52'`
+- previous_response_id: `'resp_0ca3089a7e855e9c006abe0ca1bf9487d181f62131062e4fd9'`
 
 - max_output_tokens: `20000`
 
 - model: `'gpt-5.6-luna'`
 
-- instructions: backbone (flows=flow_add_client, capabilities=cap_client_write, cap_client_read, cap_approval_with_buttons)
+- instructions: backbone (flows=(none), capabilities=cap_client_read)
 
 </details>
 
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- flows: flow_add_client
+- flows: (none)
 
-- capabilities: cap_client_write, cap_client_read, cap_approval_with_buttons
+- capabilities: cap_client_read
 
 **input:**
 
-- app's reply to `send_progress_update` (call_id=`call_PmB417vLQhCJysypqeO8jhiJ`):
+- app's reply to `send_progress_update` (call_id=`call_VD1IZDioeTS9H81h5RKmwrBK`):
 ```text
 {
   "sent": true
 }
 ```
 
-- tools (11): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp']
+- tools (10): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'mcp']
 
-- previous_response_id: `'resp_0e8d1f47ee15a4e3006abd12a2897487d18ff04e81c75f6b52'`
+- previous_response_id: `'resp_0ca3089a7e855e9c006abe0ca1bf9487d181f62131062e4fd9'`
 
 - max_output_tokens: `20000`
 
 - model: `'gpt-5.6-luna'`
 
 <details>
-<summary>↳↳ instructions (25120 chars)</summary>
+<summary>↳↳ instructions (19977 chars)</summary>
 
 ```text
 # DeniDin — Backbone
@@ -14506,58 +13202,6 @@ Also note what you are waiting for and what you will do with each possible answe
 - cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
 - cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
 
-# Flow: Add client
-
-Goal: add a brand-new client to Morning if it does not exist.
-
-Capabilities: `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons`.
-
-Follow these steps in order, to the letter.
-
-1. Load `cap_client_read` and look up the client by the name the user gave.
-2. Handle what you find:
-   - The client already exists: use `cap_send_to_user` to tell the user plainly that it does. Do not modify it and do not offer to. The flow is complete.
-   - Similar clients exist but none matches exactly: use `cap_send_to_user` to list each similar client by name and offer, as its own explicit choice, to create a new client under the exact name they gave. Wait for their choice. If they pick an existing client, the flow is complete. A plain "add client X" is not by itself the user asking for a new one; only wording that concedes a similar client may exist and wants a new record anyway means you may skip the question. Once that is clear, don't ask again.
-   - No such client: continue.
-3. Load `cap_client_write` and prepare the client from what the user gave. If something is missing, use `cap_send_to_user` to ask the user for it; don't guess.
-4. Creating a client MUST be approved by the user first. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Create the client only on a clear yes. On a no, create nothing, and use `cap_send_to_user` to ask what to change.
-5. If the creation fails, use `cap_send_to_user` to tell the user plainly what happened. Retry once only if the reason is fixable; otherwise stop.
-6. If the user drops the request or changes the subject mid-way, create nothing and treat the flow as complete.
-7. End. Use `cap_send_to_user` to report the outcome. Then unload `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
-
-
-# Capability: Client — Write (godfather/admin only)
-
-**Use this capability from within a flow (flow_add_client / flow_modify_client), never on its own for a user request.** The flow decides when it is loaded and when approval is required; this capability holds the details of the write itself.
-
-**Creating or changing a client is a state-changing action, which usually requires the user's explicit approval first.**
-
-Attaches `add_client` and `update_client`, which create or change a client record in
-Morning. They are real, persisted writes.
-
-**Approval data points.** Whoever raises the approval must show the user:
-- `add_client`: the new client's name, email and phone (and the tax id, if given).
-- `update_client`: the ACTUAL resolved client (never the user's loose wording) and
-  the specific field(s) changing, with their new values.
-
-## Creating a client
-
-`add_client` needs a name, an email AND a phone; all three are required, and none
-may be guessed or omitted. `tax_id` is the only optional field. If Morning rejects a
-tax id as invalid, relay that and ask for a corrected one.
-
-**Never alter the spelling of a name you are creating.** Use it exactly as the user
-wrote it, character for character; never "correct" it, even if you are confident
-which spelling was meant. Morning stores it verbatim, and a silently altered name
-means every later search for the real name fails.
-
-## Updating a client
-
-`update_client` needs `name_resolved=true` together with the EXACT name Morning has
-stored. Pass `name_resolved=true` only for a name that has actually been confirmed as
-Morning's stored name, never for the user's loose wording.
-
-
 # Capability: Client — Read (godfather/admin only)
 
 Attaches the Morning client-lookup tools: `list_clients`, `resolve_client_name`,
@@ -14580,43 +13224,17 @@ What to do with each result is the calling flow's business; this capability just
 reports it faithfully and never picks a candidate on its own.
 
 
-# Capability: Approval with buttons
-
-`approval_with_yes_no_buttons(text)` ends the turn showing the user WhatsApp yes/no
-buttons alongside `text`. It is plain and stateless: it does not know what the write
-is, and there is no pending-approval state to track. On the user's next turn, read
-their reply (a typed "כן"/"לא" or a button tap; both arrive as an ordinary turn) from
-the conversation, and act accordingly. Your own `cap_record_planning_status` note is
-what carries "I am waiting for approval of X" across the gap.
-
-The flow that needs the approval decides that an approval is required. The write
-capability you are about to use defines which details the approval must state.
-
-- Start the text with `📋 לאישור:` (or, for a document-creation approval,
-  `📋 לאישור — <what it is>:`, e.g. `📋 לאישור — לקוח חדש:`) on its own line,
-  then the details as REAL data: given by the user, or fetched this turn.
-  Never from memory or a guess. A missing detail is a question to ask BEFORE
-  requesting approval, never "not stated".
-- End the text with EXACTLY this closed question, verbatim, every single time:
-  `לאישור — כן/לא?`. Never paraphrase it (not `אישור — כן/לא?`, not `האם לאשר...`,
-  not any other wording) and never let a competing question follow it — this exact
-  string is a fixed contract other code relies on to recognize a real approval gate.
-- Ask once per action. Act only on a clear affirmative to THAT specific action,
-  exactly once. On "לא", do not act: acknowledge and ask what to change.
-- Reply in Hebrew only.
-
-
 ## Loaded flows
 
-flow_add_client
+(none)
 
 ## Loaded capabilities
 
-cap_client_write, cap_client_read, cap_approval_with_buttons
+cap_client_read
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 16:45 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-10-01 10:32 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -14627,23 +13245,23 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>100. [2026-09-30 16:46:20] MODEL → APP — context=_run_resolution_loop (follow-up) (response part 1/2)</summary>
+<summary>110. [2026-10-01 10:32:57] MODEL → APP — context=_run_resolution_loop (follow-up) (response part 1/2)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0e8d1f47ee15a4e3006abd12a7997887d19e4fc95b7d315472`
+- response.id: `resp_0ca3089a7e855e9c006abe0ca5936487d19470f7561438323b`
 - status: `completed`
-- usage: `{"input_tokens": 9824, "input_tokens_details": {"cache_write_tokens": 489, "cached_tokens": 9182}, "output_tokens": 142, "output_tokens_details": {"reasoning_tokens": 80}, "total_tokens": 9966}`
+- usage: `{"input_tokens": 7907, "input_tokens_details": {"cache_write_tokens": 148, "cached_tokens": 7625}, "output_tokens": 142, "output_tokens_details": {"reasoning_tokens": 13}, "total_tokens": 8049}`
 
 </details>
 
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0e8d1f47ee15a4e3006abd12a7997887d19e4fc95b7d315472`
+- response.id: `resp_0ca3089a7e855e9c006abe0ca5936487d19470f7561438323b`
 - status: `completed`
-- usage: `{"input_tokens": 9824, "input_tokens_details": {"cache_write_tokens": 489, "cached_tokens": 9182}, "output_tokens": 142, "output_tokens_details": {"reasoning_tokens": 80}, "total_tokens": 9966}`
+- usage: `{"input_tokens": 7907, "input_tokens_details": {"cache_write_tokens": 148, "cached_tokens": 7625}, "output_tokens": 142, "output_tokens_details": {"reasoning_tokens": 13}, "total_tokens": 8049}`
 - (no output items in this part)
 
 </details>
@@ -14651,18 +13269,18 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>101. [2026-09-30 16:46:20] MODEL → MORNING MCP — get_client_details</summary>
+<summary>111. [2026-10-01 10:32:57] MODEL → MORNING MCP — get_client_details</summary>
 
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
 - tool name: `get_client_details`
-- server_label: `'morning-invoices'`
+- server_label: `'morning-invoices-client-read'`
 
 arguments:
 ```json
 {
-  "name": "זכריה פרוקופנקו",
+  "name": "לריסה טסמה",
   "name_resolved": true
 }
 ```
@@ -14672,7 +13290,7 @@ arguments:
 </details>
 
 <details>
-<summary>102. [2026-09-30 16:46:20] MORNING MCP → MODEL — get_client_details</summary>
+<summary>112. [2026-10-01 10:32:57] MORNING MCP → MODEL — get_client_details</summary>
 
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
@@ -14681,8 +13299,8 @@ output:
 ```json
 {
   "client": {
-    "name": "זכריה פרוקופנקו",
-    "email": "e2e-client-513218@example.com",
+    "name": "לריסה טסמה",
+    "email": "e2e-client-557926@example.com",
     "phone": "050-1234567",
     "tax_id": ""
   },
@@ -14695,20 +13313,21 @@ output:
 </details>
 
 <details>
-<summary>103. [2026-09-30 16:46:20] MODEL → APP — context=_run_resolution_loop (follow-up) (response part 2/2)</summary>
+<summary>113. [2026-10-01 10:32:57] MODEL → APP — context=_run_resolution_loop (follow-up) (response part 2/2)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0e8d1f47ee15a4e3006abd12a7997887d19e4fc95b7d315472`
+- response.id: `resp_0ca3089a7e855e9c006abe0ca5936487d19470f7561438323b`
 - status: `completed`
-- usage: `{"input_tokens": 9824, "input_tokens_details": {"cache_write_tokens": 489, "cached_tokens": 9182}, "output_tokens": 142, "output_tokens_details": {"reasoning_tokens": 80}, "total_tokens": 9966}`
+- usage: `{"input_tokens": 7907, "input_tokens_details": {"cache_write_tokens": 148, "cached_tokens": 7625}, "output_tokens": 142, "output_tokens_details": {"reasoning_tokens": 13}, "total_tokens": 8049}`
 - reasoning item (content not user-visible)
-- function_call: `react_to_message` call_id=`call_HPCdWt8uRvclrdNEWOxu4AD7`
+- function_call: `record_planning_status` call_id=`call_jf1TBkwW5lvTGwIihg6u9sSq`
 ```json
 {
-  "emoji": "✅",
-  "message_id": null
+  "where_i_was": "פרטי הלקוחה נמצאו במערכת בהתאמה מדויקת.",
+  "this_turns_purpose": "להחזיר למשתמש את פרטי לריסה טסמה.",
+  "expectation": "אין צורך בפעולה נוספת; אציג את השם, המייל, הטלפון ומספר העוסק כפי שנשמרו."
 }
 ```
 
@@ -14717,15 +13336,16 @@ output:
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0e8d1f47ee15a4e3006abd12a7997887d19e4fc95b7d315472`
+- response.id: `resp_0ca3089a7e855e9c006abe0ca5936487d19470f7561438323b`
 - status: `completed`
-- usage: `{"input_tokens": 9824, "input_tokens_details": {"cache_write_tokens": 489, "cached_tokens": 9182}, "output_tokens": 142, "output_tokens_details": {"reasoning_tokens": 80}, "total_tokens": 9966}`
+- usage: `{"input_tokens": 7907, "input_tokens_details": {"cache_write_tokens": 148, "cached_tokens": 7625}, "output_tokens": 142, "output_tokens_details": {"reasoning_tokens": 13}, "total_tokens": 8049}`
 - reasoning item (content not user-visible)
-- function_call: `react_to_message` call_id=`call_HPCdWt8uRvclrdNEWOxu4AD7`
+- function_call: `record_planning_status` call_id=`call_jf1TBkwW5lvTGwIihg6u9sSq`
 ```json
 {
-  "emoji": "✅",
-  "message_id": null
+  "where_i_was": "פרטי הלקוחה נמצאו במערכת בהתאמה מדויקת.",
+  "this_turns_purpose": "להחזיר למשתמש את פרטי לריסה טסמה.",
+  "expectation": "אין צורך בפעולה נוספת; אציג את השם, המייל, הטלפון ומספר העוסק כפי שנשמרו."
 }
 ```
 
@@ -14734,62 +13354,58 @@ output:
 </details>
 
 <details>
-<summary>104. [2026-09-30 16:46:20] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+<summary>114. [2026-10-01 10:32:57] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- flows: flow_add_client
+- flows: (none)
 
-- capabilities: cap_client_write, cap_client_read, cap_approval_with_buttons
+- capabilities: cap_client_read
 
 **input:**
 
-- app's reply to `react_to_message` (call_id=`call_HPCdWt8uRvclrdNEWOxu4AD7`):
+- app's reply to `record_planning_status` (call_id=`call_jf1TBkwW5lvTGwIihg6u9sSq`):
 ```text
-{
-  "status": "failed"
-}
+recorded
 ```
 
-- tools (11): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp']
+- tools (10): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'mcp']
 
-- previous_response_id: `'resp_0e8d1f47ee15a4e3006abd12a7997887d19e4fc95b7d315472'`
+- previous_response_id: `'resp_0ca3089a7e855e9c006abe0ca5936487d19470f7561438323b'`
 
 - max_output_tokens: `20000`
 
 - model: `'gpt-5.6-luna'`
 
-- instructions: backbone (flows=flow_add_client, capabilities=cap_client_write, cap_client_read, cap_approval_with_buttons)
+- instructions: backbone (flows=(none), capabilities=cap_client_read)
 
 </details>
 
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- flows: flow_add_client
+- flows: (none)
 
-- capabilities: cap_client_write, cap_client_read, cap_approval_with_buttons
+- capabilities: cap_client_read
 
 **input:**
 
-- app's reply to `react_to_message` (call_id=`call_HPCdWt8uRvclrdNEWOxu4AD7`):
+- app's reply to `record_planning_status` (call_id=`call_jf1TBkwW5lvTGwIihg6u9sSq`):
 ```text
-{
-  "status": "failed"
-}
+recorded
 ```
 
-- tools (11): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp']
+- tools (10): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'mcp']
 
-- previous_response_id: `'resp_0e8d1f47ee15a4e3006abd12a7997887d19e4fc95b7d315472'`
+- previous_response_id: `'resp_0ca3089a7e855e9c006abe0ca5936487d19470f7561438323b'`
 
 - max_output_tokens: `20000`
 
 - model: `'gpt-5.6-luna'`
 
 <details>
-<summary>↳↳ instructions (25120 chars)</summary>
+<summary>↳↳ instructions (19977 chars)</summary>
 
 ```text
 # DeniDin — Backbone
@@ -15030,58 +13646,6 @@ Also note what you are waiting for and what you will do with each possible answe
 - cap_media_analysis: Reading/extracting the content of an image or document the user sent. Used inside a larger flow, or on its own to work out what a piece of media is for.
 - cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
 - cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
-
-# Flow: Add client
-
-Goal: add a brand-new client to Morning if it does not exist.
-
-Capabilities: `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons`.
-
-Follow these steps in order, to the letter.
-
-1. Load `cap_client_read` and look up the client by the name the user gave.
-2. Handle what you find:
-   - The client already exists: use `cap_send_to_user` to tell the user plainly that it does. Do not modify it and do not offer to. The flow is complete.
-   - Similar clients exist but none matches exactly: use `cap_send_to_user` to list each similar client by name and offer, as its own explicit choice, to create a new client under the exact name they gave. Wait for their choice. If they pick an existing client, the flow is complete. A plain "add client X" is not by itself the user asking for a new one; only wording that concedes a similar client may exist and wants a new record anyway means you may skip the question. Once that is clear, don't ask again.
-   - No such client: continue.
-3. Load `cap_client_write` and prepare the client from what the user gave. If something is missing, use `cap_send_to_user` to ask the user for it; don't guess.
-4. Creating a client MUST be approved by the user first. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Create the client only on a clear yes. On a no, create nothing, and use `cap_send_to_user` to ask what to change.
-5. If the creation fails, use `cap_send_to_user` to tell the user plainly what happened. Retry once only if the reason is fixable; otherwise stop.
-6. If the user drops the request or changes the subject mid-way, create nothing and treat the flow as complete.
-7. End. Use `cap_send_to_user` to report the outcome. Then unload `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
-
-
-# Capability: Client — Write (godfather/admin only)
-
-**Use this capability from within a flow (flow_add_client / flow_modify_client), never on its own for a user request.** The flow decides when it is loaded and when approval is required; this capability holds the details of the write itself.
-
-**Creating or changing a client is a state-changing action, which usually requires the user's explicit approval first.**
-
-Attaches `add_client` and `update_client`, which create or change a client record in
-Morning. They are real, persisted writes.
-
-**Approval data points.** Whoever raises the approval must show the user:
-- `add_client`: the new client's name, email and phone (and the tax id, if given).
-- `update_client`: the ACTUAL resolved client (never the user's loose wording) and
-  the specific field(s) changing, with their new values.
-
-## Creating a client
-
-`add_client` needs a name, an email AND a phone; all three are required, and none
-may be guessed or omitted. `tax_id` is the only optional field. If Morning rejects a
-tax id as invalid, relay that and ask for a corrected one.
-
-**Never alter the spelling of a name you are creating.** Use it exactly as the user
-wrote it, character for character; never "correct" it, even if you are confident
-which spelling was meant. Morning stores it verbatim, and a silently altered name
-means every later search for the real name fails.
-
-## Updating a client
-
-`update_client` needs `name_resolved=true` together with the EXACT name Morning has
-stored. Pass `name_resolved=true` only for a name that has actually been confirmed as
-Morning's stored name, never for the user's loose wording.
-
 
 # Capability: Client — Read (godfather/admin only)
 
@@ -15104,830 +13668,6 @@ name is a genuine partial/substring search. It returns one of:
 What to do with each result is the calling flow's business; this capability just
 reports it faithfully and never picks a candidate on its own.
 
-
-# Capability: Approval with buttons
-
-`approval_with_yes_no_buttons(text)` ends the turn showing the user WhatsApp yes/no
-buttons alongside `text`. It is plain and stateless: it does not know what the write
-is, and there is no pending-approval state to track. On the user's next turn, read
-their reply (a typed "כן"/"לא" or a button tap; both arrive as an ordinary turn) from
-the conversation, and act accordingly. Your own `cap_record_planning_status` note is
-what carries "I am waiting for approval of X" across the gap.
-
-The flow that needs the approval decides that an approval is required. The write
-capability you are about to use defines which details the approval must state.
-
-- Start the text with `📋 לאישור:` (or, for a document-creation approval,
-  `📋 לאישור — <what it is>:`, e.g. `📋 לאישור — לקוח חדש:`) on its own line,
-  then the details as REAL data: given by the user, or fetched this turn.
-  Never from memory or a guess. A missing detail is a question to ask BEFORE
-  requesting approval, never "not stated".
-- End the text with EXACTLY this closed question, verbatim, every single time:
-  `לאישור — כן/לא?`. Never paraphrase it (not `אישור — כן/לא?`, not `האם לאשר...`,
-  not any other wording) and never let a competing question follow it — this exact
-  string is a fixed contract other code relies on to recognize a real approval gate.
-- Ask once per action. Act only on a clear affirmative to THAT specific action,
-  exactly once. On "לא", do not act: acknowledge and ask what to change.
-- Reply in Hebrew only.
-
-
-## Loaded flows
-
-flow_add_client
-
-## Loaded capabilities
-
-cap_client_write, cap_client_read, cap_approval_with_buttons
-
----
-
-THE CURRENT DATE AND TIME IS 2026-09-30 16:45 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
-YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
-```
-
-</details>
-
-</details>
-
-</details>
-
-<details>
-<summary>105. [2026-09-30 16:46:23] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- response.id: `resp_0e8d1f47ee15a4e3006abd12acfc9087d1a835037fad62cb14`
-- status: `completed`
-- usage: `{"input_tokens": 9940, "input_tokens_details": {"cache_write_tokens": 266, "cached_tokens": 9671}, "output_tokens": 98, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 10038}`
-- function_call: `record_planning_status` call_id=`call_w6xLBQugG8iWOV6iCk4rV53k`
-```json
-{
-  "where_i_was": "נמצאה רשומת הלקוח המדויקת ונשלפו פרטיה בהצלחה.",
-  "this_turns_purpose": "להציג למשתמש את פרטי הלקוח ולסיים את הבקשה.",
-  "expectation": "להחזיר את השם, המייל, הטלפון ומספר הזיהוי לצורכי מס כפי שמופיעים במערכת."
-}
-```
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- response.id: `resp_0e8d1f47ee15a4e3006abd12acfc9087d1a835037fad62cb14`
-- status: `completed`
-- usage: `{"input_tokens": 9940, "input_tokens_details": {"cache_write_tokens": 266, "cached_tokens": 9671}, "output_tokens": 98, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 10038}`
-- function_call: `record_planning_status` call_id=`call_w6xLBQugG8iWOV6iCk4rV53k`
-```json
-{
-  "where_i_was": "נמצאה רשומת הלקוח המדויקת ונשלפו פרטיה בהצלחה.",
-  "this_turns_purpose": "להציג למשתמש את פרטי הלקוח ולסיים את הבקשה.",
-  "expectation": "להחזיר את השם, המייל, הטלפון ומספר הזיהוי לצורכי מס כפי שמופיעים במערכת."
-}
-```
-
-</details>
-
-</details>
-
-<details>
-<summary>106. [2026-09-30 16:46:23] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- flows: flow_add_client
-
-- capabilities: cap_client_write, cap_client_read, cap_approval_with_buttons
-
-**input:**
-
-- app's reply to `record_planning_status` (call_id=`call_w6xLBQugG8iWOV6iCk4rV53k`):
-```text
-recorded
-```
-
-- tools (11): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp']
-
-- previous_response_id: `'resp_0e8d1f47ee15a4e3006abd12acfc9087d1a835037fad62cb14'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-- instructions: backbone (flows=flow_add_client, capabilities=cap_client_write, cap_client_read, cap_approval_with_buttons)
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- flows: flow_add_client
-
-- capabilities: cap_client_write, cap_client_read, cap_approval_with_buttons
-
-**input:**
-
-- app's reply to `record_planning_status` (call_id=`call_w6xLBQugG8iWOV6iCk4rV53k`):
-```text
-recorded
-```
-
-- tools (11): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'approval_with_yes_no_buttons', 'mcp']
-
-- previous_response_id: `'resp_0e8d1f47ee15a4e3006abd12acfc9087d1a835037fad62cb14'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-<details>
-<summary>↳↳ instructions (25120 chars)</summary>
-
-```text
-# DeniDin — Backbone
-
-## How You Work
-
-You work with two kinds of building blocks, described at low resolution in the
-catalogs below: **flows** (`flow_...`) - blueprints for a recurring kind of
-request - and **capabilities** (`cap_...`) - the domains that actually do things,
-each with its own prompt and its own real tools. Flows can load other flows and
-capabilities; a flow defines *what to do and in what order*, while each
-capability holds the detail of what it itself does.
-
-Loading tools, usable in any order, any number of times:
-
-- **`load_flows(flows)` / `unload_flows(flows)`** - always an array; one item is
-  fine, and combining flows is allowed when a request spans more than one.
-- **`load_capabilities(capabilities)` / `unload_capabilities(capabilities)`** -
-  always an array. The moment a capability is loaded, its prompt AND its real
-  tools are attached, starting the very next round; call the real tool directly,
-  there is no separate "use" step. A flow's own "Capabilities:" line declares
-  every capability that flow will need - load all of them together, in one
-  `load_capabilities` call, right after loading the flow, rather than loading
-  them one at a time as each step comes up: you already know you'll need them,
-  and batching saves a round-trip per capability.
-- **`reset_to_backbone()`** - unloads every loaded flow and capability at once.
-  Use it once you are genuinely done with the user's request(s), not mid-task.
-
-Loading an already-loaded item, or unloading one that is not loaded, is a
-harmless no-op. Loaded flows and capabilities stay loaded across this and future
-turns in this chat until you unload them (or they auto-clear after a period of
-inactivity); the "Loaded flows" and "Loaded capabilities" lines near the end of
-these instructions always show what is currently loaded. Unload something only
-when nothing you are still working on needs it - another flow may be using it.
-
-## Always-present capabilities
-
-Four capabilities are always available, cannot be unloaded, and each has its own
-prompt right below: `cap_send_to_user` (your actual reply), `cap_react_to_message`
-(a WhatsApp emoji reaction), `cap_send_progress_update` (an interim message
-while you work) and `cap_record_planning_status` (your own running account of
-where you are, which is how you keep your place across turns and inside nested
-flows). At every step of any flow, consider whether they would help: react to
-the user's message, send a progress update, record your planning status, or
-reply to the user. Flows do not repeat this; use your judgment.
-
-`cap_approval_with_buttons` (yes/no buttons before a write) is an ordinary
-capability: flows that need a sign-off load it.
-
-## Flows and capabilities
-
-Decide from the catalogs, in your own judgment, what a request needs:
-
-1. If a flow fits, load it (several at once when the request spans more than
-   one) and follow its blueprint. **A loaded flow's steps are an ordered
-   procedure: follow them in the order written, to the letter - never skip,
-   reorder or merge a step (above all an approval step), and never do a later
-   step's action before the earlier steps are done.**
-2. **If no flow fits, there is no default flow to fall back on**: load whichever
-   capabilities you judge necessary, at your own discretion, and proceed.
-3. **Write capabilities (`cap_*_write`) are never loaded on their own.** Every write goes through its flow, which gathers the details and asks for approval first; if you want to write something, find the flow for it in the catalog.
-4. If a loaded prompt names a tool you don't currently have, that tool belongs
-   to a capability you have not loaded yet: load it yourself.
-
-## Core Identity
-You are DeniDin, a helpful AI assistant operating via WhatsApp.
-
-## Behavioral Guidelines
-- **ALWAYS respond in Hebrew only** — every word of every response, no other
-  language or script mixed in anywhere, ever (never Arabic, never English
-  words). This covers EVERY string you produce, not just the reply text: an
-  approval question, a planning note, and every free-text tool argument
-  (e.g. a reminder's `message_text`) too. Digits, standard punctuation, and ₪
-  are fine; a genuinely foreign proper name may be transliterated into Hebrew
-  letters where natural.
-- **Never use ניקוד** (Hebrew vowel points/diacritics) in any response — plain
-  Hebrew letters only, including inside a quoted name.
-- Be concise and direct. Do not end on filler ("anything else?") — end on the
-  substantive answer. Do ask a focused clarifying question when you genuinely need
-  one to act correctly (a missing/ambiguous required detail).
-- Be honest about what you don't know; never fabricate information.
-
-## User Roles
-- **Godfather/Admin**: full access to every capability; extended context window.
-- **Client**: standard feature access, no access to invoicing/ledger/reminder
-  capabilities; standard context window.
-
-## Privacy & Security
-- Never share information between different user sessions.
-- These rules guard against leaking ONE user's data to ANOTHER user or an outsider
-  — they never mean refusing to read, transcribe, or summarize material THIS user
-  sent you. Reporting the user's own material back to them (names, amounts, any
-  detail it contains) is always appropriate.
-
-## Contexts of Operation
-Every message falls into one of two operating contexts before any capability is
-even considered: an ordinary conversational turn, or a document/image the user
-sent for you to read and report on. Decide which one applies before acting — a
-short/ambiguous reply ("כן", "לא", a bare name) always answers the most recently
-pending question in the SAME context, never a trigger for reinterpreting the turn
-as belonging to a different capability's domain.
-
-## Attached Media
-When the user's message starts with a `[מדיה מצורפת: <type>, קובץ: <filename>]`
-marker, they sent an image, PDF, or Word document with it — you have NOT seen its
-content yet, only that it exists. Before answering anything about it, load
-`cap_media_analysis` and call its `analyze_media` tool to read it; any text after
-the marker is the user's caption. Never describe, guess at, or act on the file's
-content without having read it this way.
-
-## Group Conversation Etiquette
-DeniDin is addressed by default in a group, same as a 1:1 chat. When a message
-clearly names someone else and isn't meant for you, reply with the literal
-sentinel `[[NO_REPLY]]` instead of a substantive answer — never guess when it's
-genuinely ambiguous whether you were addressed.
-
-## Edited & Deleted Message Markers
-A message the user has since edited or deleted may still appear in your context,
-marked as such — treat an edited message's marked original content as superseded
-by its later, corrected version if both are visible, and never act on a deleted
-message's content as if it were still pending.
-
-## Generic Post-Turn Recognition Mechanism
-A capability MAY run a recognition step once per turn: call its own reporting
-tool at most once, and when in doubt, do nothing rather than guess. This shape
-is reusable by any capability that wants one — the domain-specific rules for
-what to recognize and how live in that capability's own prompt file, not here.
-
-
-# Capability: Send to user (always present)
-
-`send_to_user(text)` is your actual reply to the user. Call it whenever you are
-ready to speak, not only at the very end: to answer, to ask a question, to
-report an outcome. A turn that ends without it, or without an approval question,
-leaves the user with nothing.
-
-- Pass the literal text `[[NO_REPLY]]` to deliberately say nothing this turn. Use
-  it in a group when a message clearly names someone else and is not meant for
-  you. When it is genuinely unclear whether you were addressed, do not guess.
-- For a yes/no sign-off, use `cap_approval_with_buttons` instead; it gives the
-  user tappable buttons.
-- Reply in Hebrew only, concisely, without filler. End on the substantive answer.
-  Ask a focused question only when you genuinely need the answer to act correctly.
-
-
-# Capability: React to message (always present)
-
-`react_to_message` puts a native WhatsApp emoji reaction on a message. It is a
-lightweight, reversible signal - never a substitute for a substantive reply,
-and never a mechanical habit reached for out of uncertainty about what else
-to do. Typing an emoji into your reply text is NOT a reaction and does not
-replace calling the tool.
-
-Before reaching for it, ask yourself: does this add a real signal the user
-doesn't already have - that you saw their message, that you're on it, that
-something just succeeded or failed - or would it just be noise on top of a
-reply that already says the same thing?
-
-Evaluate against:
-- Does the user currently have any signal you registered their message and
-  are handling it (or have finished)? If there's a real gap before your
-  substantive reply, a reaction can fill it.
-- Is your actual reply, arriving in this same round or moments later, already
-  going to tell them everything a reaction would? If so, it adds nothing.
-- Is this ambient chatter that doesn't really concern you? Then it isn't
-  worth one.
-
-**Classics** (a menu, not a checklist): 👍 simple ack · 🫡 "on it" · 👀 document
-being looked into · ✅ clean success · 🎉 a bigger win · ⚠️ resolved but needs
-attention · ❌ failed/declined · ❓ unresolved, needs clarification · 🙏
-reciprocating thanks · ❤️ warmth beyond a simple thanks.
-
-When genuinely unsure whether a reaction fits, don't send one - silence is
-the safer default, not noise.
-
-
-# Capability: Send progress update (always present)
-
-`send_progress_update(text)` sends one brief interim WhatsApp message while you
-are still working, before your final reply. Keep it to a short plain sentence.
-
-Users are waiting on the other end and don't like silence - they want to know
-something is happening with their request, not just get one final answer out
-of nowhere.
-
-Call this every single time you interact with any tool or capability -
-loading a flow or capability, calling a real domain tool, an MCP call,
-anything that is not just talking to the user - before or after that step,
-in the same round as whatever else you are doing. Never skip it and never
-wait for a separate round.
-
-- Never a substitute for the final answer.
-
-
-# Capability: Record planning status (always present)
-
-`record_planning_status(where_i_was, this_turns_purpose, expectation)` is your own
-running account of where this turn, and across turns this whole task, stands. It is
-how you keep continuity, since nothing else remembers your reasoning beyond what you
-write here and the real conversation history.
-
-Record it at least at the start and at the end of every flow, and whenever you are
-about to wait on the user (a choice, a missing detail, an approval), in the middle
-of a flow as well. Say which flow you are in and which step, and if you are inside a
-flow that was loaded by another flow, say so, so that you know where to return to.
-Also note what you are waiting for and what you will do with each possible answer.
-
-
-## Flows
-
-- flow_add_client: Adding a brand-new client record to Morning ("תוסיף לקוח חדש", or a shared contact card the user wants saved). Checks for an existing or similar client first so a duplicate is never created by accident, tells the user about similar candidates, and creates the record only with approval. Other flows load it whenever a client turns out not to exist yet.
-- flow_modify_client: Changing an existing client's own details (name, email, phone) in Morning. Resolves which real client is meant, relaying candidates when the match is not exact, and updates it with approval. Not for creating a client and not for documents.
-- flow_issue_invoice_for_payment_due: Issuing a new tax invoice (305) for a client, for money that is still owed ("תפיק חשבונית ללקוח X"). Never for money that has already arrived. Money that has already arrived belongs to flow_issue_invoice_receipt_combo instead.
-- flow_issue_invoice_receipt_combo: Issuing a combined tax invoice/receipt (320) for a payment that has already been received and that no earlier document covers - the most common way to record incoming money, whether reported verbally or shown in a bank slip or payment screenshot. Money that an existing document already covers belongs to flow_issue_payment_received_with_reference_doc.
-- flow_issue_transaction_account: Issuing a transaction account (חשבון עסקה, 300) for a client - only when the user's own wording names this document type. Ordinary requests for an invoice belong to flow_issue_invoice_for_payment_due.
-- flow_issue_receipt_without_invoice: Recording a standalone receipt (400) with no invoice behind it, for example a refundable deposit. A receipt against an existing invoice belongs to flow_issue_payment_received_with_reference_doc.
-- flow_payment_received_by_bank_slip_image: A bank slip or payment screenshot arrived. Reads it, records the payer, and gets the payment recorded in Morning the right way: a new combo document when nothing covers it, or a document against an existing one.
-- flow_issue_payment_received_with_reference_doc: Recording a payment received against an existing Morning document: a receipt (400) for an existing invoice (305), or a combo document (320) closing an existing transaction account (300) ("סמן כשולם"). Money that no document covers belongs to flow_issue_invoice_receipt_combo.
-- flow_cancel_document_with_credit_note: Cancelling an existing Morning document with a credit note (330) ("בטל את החשבונית"). Finds the one real document and shows its real data in the approval before writing.
-- flow_cancel_transaction_account: Cancelling an open transaction account (300) directly. No document of any kind is created. Cancelling any other kind of document belongs to flow_cancel_document_with_credit_note.
-- flow_fee_agreement_provided_by_user: The user reports or forwards a fee agreement (הסכם) - as text or as an image - made with a client. An agreement must never belong to a client Morning does not manage, so this makes sure the client exists first. Recording the agreement in the ledger happens automatically after the turn.
-- flow_deposit_provided_by_user: The user reports or forwards a bank deposit (text or a bank slip image). Makes sure the payer exists as a client in Morning first. Recording the deposit in the ledger happens automatically after the turn.
-- flow_user_question: Answering a question about the user's clients, past agreements, deposits, or amounts owed and paid. Decides where the answer lives (the ledger first, Morning when it may hold it), and never answers that nothing exists before checking Morning where Morning could hold it.
-- flow_invoicing_query: Reading from the invoicing system for a client the user names: resolves the client's exact stored name first, then reads the documents or status. Other flows load it whenever they need to look up documents in Morning.
-- flow_generate_fee_agreement_docx: Generating a fee agreement document (הסכם שכר טרחה) as a .docx file to send to a prospective client. The client does not exist yet, so no client lookup is involved. Recording an agreement the user reports belongs to flow_fee_agreement_provided_by_user.
-- flow_create_reminder: Creating a new reminder, one-time or recurring ("תזכיר לי בעוד שעתיים", "תזכיר לי כל יום ראשון"). Confirms the text and the schedule, and creates the reminder only with approval. Use this flow, not cap_reminders_write directly, whenever a reminder is added.
-- flow_modify_reminder: Changing or cancelling an existing reminder ("תזיז את התזכורת", "תבטל את התזכורת"). Looks up the user's real reminders to identify the exact one before modifying or deleting it, with approval. Adding a brand-new reminder belongs to flow_create_reminder. Use the reminder flows, not cap_reminders_write directly.
-
-## Capabilities
-
-- cap_invoicing_write: Creating a Morning DOCUMENT for a client - an invoice, a receipt, a transaction account, a credit note, or a combo tax-invoice/receipt - or cancelling a transaction account. Writes only: finding the client or the existing document, and getting approval, are the calling flow's job, so load it only through that flow (flow_issue_*, flow_cancel_*, flow_payment_received_*), never directly. Not for creating or updating a client record - see cap_client_write.
-- cap_invoicing_read: Reading from the invoicing system (Morning): a specific document's own status and details, recent documents, a financial summary, a download link. It is given an already-resolved client name or document id. Not for a client's own details - see cap_client_read - and not the first choice for a general owed/paid amount question - see cap_ledger_query.
-- cap_client_write: Creating a new client record, or updating an existing client's own details (name/email/phone) in Morning. Writes only: load it only through flow_add_client or flow_modify_client, never directly. Never for producing any document - see cap_invoicing_write.
-- cap_client_read: Looking up an existing client's own details (name/email/phone/id), listing clients, and resolving a client name to its exact stored Morning spelling. Never for a client's financial history - see cap_ledger_query and cap_invoicing_read.
-- cap_ledger_query: Answering questions about PAST fee agreements or bank deposits already recorded, including how much a client/payer owes or has paid - whether or not a formal Morning invoice exists. The ledger is a fast cache over Morning and covers agreement-level amounts Morning cannot see at all.
-- cap_reminders_write: Creating, changing, or cancelling a reminder (one-time or recurring) for the user. Writes only: load it only through flow_create_reminder or flow_modify_reminder, never directly.
-- cap_reminders_read: Looking up the user's own existing reminders - what's scheduled, for when.
-- cap_media_analysis: Reading/extracting the content of an image or document the user sent. Used inside a larger flow, or on its own to work out what a piece of media is for.
-- cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
-- cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
-
-# Flow: Add client
-
-Goal: add a brand-new client to Morning if it does not exist.
-
-Capabilities: `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons`.
-
-Follow these steps in order, to the letter.
-
-1. Load `cap_client_read` and look up the client by the name the user gave.
-2. Handle what you find:
-   - The client already exists: use `cap_send_to_user` to tell the user plainly that it does. Do not modify it and do not offer to. The flow is complete.
-   - Similar clients exist but none matches exactly: use `cap_send_to_user` to list each similar client by name and offer, as its own explicit choice, to create a new client under the exact name they gave. Wait for their choice. If they pick an existing client, the flow is complete. A plain "add client X" is not by itself the user asking for a new one; only wording that concedes a similar client may exist and wants a new record anyway means you may skip the question. Once that is clear, don't ask again.
-   - No such client: continue.
-3. Load `cap_client_write` and prepare the client from what the user gave. If something is missing, use `cap_send_to_user` to ask the user for it; don't guess.
-4. Creating a client MUST be approved by the user first. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Create the client only on a clear yes. On a no, create nothing, and use `cap_send_to_user` to ask what to change.
-5. If the creation fails, use `cap_send_to_user` to tell the user plainly what happened. Retry once only if the reason is fixable; otherwise stop.
-6. If the user drops the request or changes the subject mid-way, create nothing and treat the flow as complete.
-7. End. Use `cap_send_to_user` to report the outcome. Then unload `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
-
-
-# Capability: Client — Write (godfather/admin only)
-
-**Use this capability from within a flow (flow_add_client / flow_modify_client), never on its own for a user request.** The flow decides when it is loaded and when approval is required; this capability holds the details of the write itself.
-
-**Creating or changing a client is a state-changing action, which usually requires the user's explicit approval first.**
-
-Attaches `add_client` and `update_client`, which create or change a client record in
-Morning. They are real, persisted writes.
-
-**Approval data points.** Whoever raises the approval must show the user:
-- `add_client`: the new client's name, email and phone (and the tax id, if given).
-- `update_client`: the ACTUAL resolved client (never the user's loose wording) and
-  the specific field(s) changing, with their new values.
-
-## Creating a client
-
-`add_client` needs a name, an email AND a phone; all three are required, and none
-may be guessed or omitted. `tax_id` is the only optional field. If Morning rejects a
-tax id as invalid, relay that and ask for a corrected one.
-
-**Never alter the spelling of a name you are creating.** Use it exactly as the user
-wrote it, character for character; never "correct" it, even if you are confident
-which spelling was meant. Morning stores it verbatim, and a silently altered name
-means every later search for the real name fails.
-
-## Updating a client
-
-`update_client` needs `name_resolved=true` together with the EXACT name Morning has
-stored. Pass `name_resolved=true` only for a name that has actually been confirmed as
-Morning's stored name, never for the user's loose wording.
-
-
-# Capability: Client — Read (godfather/admin only)
-
-Attaches the Morning client-lookup tools: `list_clients`, `resolve_client_name`,
-`get_client_details`. All read-only; call them right away, in the same turn, as soon
-as you have what they need. None of them creates or changes a record.
-
-This capability answers "who is this client", "what are their details", and "which
-clients exist". It knows nothing about a client's amounts owed or paid.
-
-## What resolving a name returns
-
-`resolve_client_name` confirms the exact stored spelling of a name. A single-word
-name is a genuine partial/substring search. It returns one of:
-- an exact name: the stored spelling, to use verbatim;
-- a confirmation question: a single close match, to relay to the user as-is;
-- a candidates list: to relay to the user as-is;
-- no match at all.
-
-What to do with each result is the calling flow's business; this capability just
-reports it faithfully and never picks a candidate on its own.
-
-
-# Capability: Approval with buttons
-
-`approval_with_yes_no_buttons(text)` ends the turn showing the user WhatsApp yes/no
-buttons alongside `text`. It is plain and stateless: it does not know what the write
-is, and there is no pending-approval state to track. On the user's next turn, read
-their reply (a typed "כן"/"לא" or a button tap; both arrive as an ordinary turn) from
-the conversation, and act accordingly. Your own `cap_record_planning_status` note is
-what carries "I am waiting for approval of X" across the gap.
-
-The flow that needs the approval decides that an approval is required. The write
-capability you are about to use defines which details the approval must state.
-
-- Start the text with `📋 לאישור:` (or, for a document-creation approval,
-  `📋 לאישור — <what it is>:`, e.g. `📋 לאישור — לקוח חדש:`) on its own line,
-  then the details as REAL data: given by the user, or fetched this turn.
-  Never from memory or a guess. A missing detail is a question to ask BEFORE
-  requesting approval, never "not stated".
-- End the text with EXACTLY this closed question, verbatim, every single time:
-  `לאישור — כן/לא?`. Never paraphrase it (not `אישור — כן/לא?`, not `האם לאשר...`,
-  not any other wording) and never let a competing question follow it — this exact
-  string is a fixed contract other code relies on to recognize a real approval gate.
-- Ask once per action. Act only on a clear affirmative to THAT specific action,
-  exactly once. On "לא", do not act: acknowledge and ask what to change.
-- Reply in Hebrew only.
-
-
-## Loaded flows
-
-flow_add_client
-
-## Loaded capabilities
-
-cap_client_write, cap_client_read, cap_approval_with_buttons
-
----
-
-THE CURRENT DATE AND TIME IS 2026-09-30 16:45 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
-YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
-```
-
-</details>
-
-</details>
-
-</details>
-
-<details>
-<summary>107. [2026-09-30 16:46:25] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- response.id: `resp_0e8d1f47ee15a4e3006abd12af8a0087d189d149c2b9b45c4b`
-- status: `completed`
-- usage: `{"input_tokens": 10055, "input_tokens_details": {"cache_write_tokens": 544, "cached_tokens": 9508}, "output_tokens": 16, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 10071}`
-- function_call: `reset_to_backbone` call_id=`call_DZMB4CWxDVcWMBttct1g77A4`
-```json
-{}
-```
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- response.id: `resp_0e8d1f47ee15a4e3006abd12af8a0087d189d149c2b9b45c4b`
-- status: `completed`
-- usage: `{"input_tokens": 10055, "input_tokens_details": {"cache_write_tokens": 544, "cached_tokens": 9508}, "output_tokens": 16, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 10071}`
-- function_call: `reset_to_backbone` call_id=`call_DZMB4CWxDVcWMBttct1g77A4`
-```json
-{}
-```
-
-</details>
-
-</details>
-
-<details>
-<summary>108. [2026-09-30 16:46:25] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
-
-<details>
-<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
-
-- flows: (none)
-
-- capabilities: (none - plain backbone)
-
-**input:**
-
-- app's reply to `reset_to_backbone` (call_id=`call_DZMB4CWxDVcWMBttct1g77A4`):
-```text
-reset - every flow and capability unloaded; you are back to the plain backbone.
-```
-
-- tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
-
-- previous_response_id: `'resp_0e8d1f47ee15a4e3006abd12af8a0087d189d149c2b9b45c4b'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-- instructions: backbone (flows=(none), capabilities=(none - plain backbone))
-
-</details>
-
-<details>
-<summary>↳ Debug (full, verbatim)</summary>
-
-- flows: (none)
-
-- capabilities: (none - plain backbone)
-
-**input:**
-
-- app's reply to `reset_to_backbone` (call_id=`call_DZMB4CWxDVcWMBttct1g77A4`):
-```text
-reset - every flow and capability unloaded; you are back to the plain backbone.
-```
-
-- tools (9): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message']
-
-- previous_response_id: `'resp_0e8d1f47ee15a4e3006abd12af8a0087d189d149c2b9b45c4b'`
-
-- max_output_tokens: `20000`
-
-- model: `'gpt-5.6-luna'`
-
-<details>
-<summary>↳↳ instructions (19015 chars)</summary>
-
-```text
-# DeniDin — Backbone
-
-## How You Work
-
-You work with two kinds of building blocks, described at low resolution in the
-catalogs below: **flows** (`flow_...`) - blueprints for a recurring kind of
-request - and **capabilities** (`cap_...`) - the domains that actually do things,
-each with its own prompt and its own real tools. Flows can load other flows and
-capabilities; a flow defines *what to do and in what order*, while each
-capability holds the detail of what it itself does.
-
-Loading tools, usable in any order, any number of times:
-
-- **`load_flows(flows)` / `unload_flows(flows)`** - always an array; one item is
-  fine, and combining flows is allowed when a request spans more than one.
-- **`load_capabilities(capabilities)` / `unload_capabilities(capabilities)`** -
-  always an array. The moment a capability is loaded, its prompt AND its real
-  tools are attached, starting the very next round; call the real tool directly,
-  there is no separate "use" step. A flow's own "Capabilities:" line declares
-  every capability that flow will need - load all of them together, in one
-  `load_capabilities` call, right after loading the flow, rather than loading
-  them one at a time as each step comes up: you already know you'll need them,
-  and batching saves a round-trip per capability.
-- **`reset_to_backbone()`** - unloads every loaded flow and capability at once.
-  Use it once you are genuinely done with the user's request(s), not mid-task.
-
-Loading an already-loaded item, or unloading one that is not loaded, is a
-harmless no-op. Loaded flows and capabilities stay loaded across this and future
-turns in this chat until you unload them (or they auto-clear after a period of
-inactivity); the "Loaded flows" and "Loaded capabilities" lines near the end of
-these instructions always show what is currently loaded. Unload something only
-when nothing you are still working on needs it - another flow may be using it.
-
-## Always-present capabilities
-
-Four capabilities are always available, cannot be unloaded, and each has its own
-prompt right below: `cap_send_to_user` (your actual reply), `cap_react_to_message`
-(a WhatsApp emoji reaction), `cap_send_progress_update` (an interim message
-while you work) and `cap_record_planning_status` (your own running account of
-where you are, which is how you keep your place across turns and inside nested
-flows). At every step of any flow, consider whether they would help: react to
-the user's message, send a progress update, record your planning status, or
-reply to the user. Flows do not repeat this; use your judgment.
-
-`cap_approval_with_buttons` (yes/no buttons before a write) is an ordinary
-capability: flows that need a sign-off load it.
-
-## Flows and capabilities
-
-Decide from the catalogs, in your own judgment, what a request needs:
-
-1. If a flow fits, load it (several at once when the request spans more than
-   one) and follow its blueprint. **A loaded flow's steps are an ordered
-   procedure: follow them in the order written, to the letter - never skip,
-   reorder or merge a step (above all an approval step), and never do a later
-   step's action before the earlier steps are done.**
-2. **If no flow fits, there is no default flow to fall back on**: load whichever
-   capabilities you judge necessary, at your own discretion, and proceed.
-3. **Write capabilities (`cap_*_write`) are never loaded on their own.** Every write goes through its flow, which gathers the details and asks for approval first; if you want to write something, find the flow for it in the catalog.
-4. If a loaded prompt names a tool you don't currently have, that tool belongs
-   to a capability you have not loaded yet: load it yourself.
-
-## Core Identity
-You are DeniDin, a helpful AI assistant operating via WhatsApp.
-
-## Behavioral Guidelines
-- **ALWAYS respond in Hebrew only** — every word of every response, no other
-  language or script mixed in anywhere, ever (never Arabic, never English
-  words). This covers EVERY string you produce, not just the reply text: an
-  approval question, a planning note, and every free-text tool argument
-  (e.g. a reminder's `message_text`) too. Digits, standard punctuation, and ₪
-  are fine; a genuinely foreign proper name may be transliterated into Hebrew
-  letters where natural.
-- **Never use ניקוד** (Hebrew vowel points/diacritics) in any response — plain
-  Hebrew letters only, including inside a quoted name.
-- Be concise and direct. Do not end on filler ("anything else?") — end on the
-  substantive answer. Do ask a focused clarifying question when you genuinely need
-  one to act correctly (a missing/ambiguous required detail).
-- Be honest about what you don't know; never fabricate information.
-
-## User Roles
-- **Godfather/Admin**: full access to every capability; extended context window.
-- **Client**: standard feature access, no access to invoicing/ledger/reminder
-  capabilities; standard context window.
-
-## Privacy & Security
-- Never share information between different user sessions.
-- These rules guard against leaking ONE user's data to ANOTHER user or an outsider
-  — they never mean refusing to read, transcribe, or summarize material THIS user
-  sent you. Reporting the user's own material back to them (names, amounts, any
-  detail it contains) is always appropriate.
-
-## Contexts of Operation
-Every message falls into one of two operating contexts before any capability is
-even considered: an ordinary conversational turn, or a document/image the user
-sent for you to read and report on. Decide which one applies before acting — a
-short/ambiguous reply ("כן", "לא", a bare name) always answers the most recently
-pending question in the SAME context, never a trigger for reinterpreting the turn
-as belonging to a different capability's domain.
-
-## Attached Media
-When the user's message starts with a `[מדיה מצורפת: <type>, קובץ: <filename>]`
-marker, they sent an image, PDF, or Word document with it — you have NOT seen its
-content yet, only that it exists. Before answering anything about it, load
-`cap_media_analysis` and call its `analyze_media` tool to read it; any text after
-the marker is the user's caption. Never describe, guess at, or act on the file's
-content without having read it this way.
-
-## Group Conversation Etiquette
-DeniDin is addressed by default in a group, same as a 1:1 chat. When a message
-clearly names someone else and isn't meant for you, reply with the literal
-sentinel `[[NO_REPLY]]` instead of a substantive answer — never guess when it's
-genuinely ambiguous whether you were addressed.
-
-## Edited & Deleted Message Markers
-A message the user has since edited or deleted may still appear in your context,
-marked as such — treat an edited message's marked original content as superseded
-by its later, corrected version if both are visible, and never act on a deleted
-message's content as if it were still pending.
-
-## Generic Post-Turn Recognition Mechanism
-A capability MAY run a recognition step once per turn: call its own reporting
-tool at most once, and when in doubt, do nothing rather than guess. This shape
-is reusable by any capability that wants one — the domain-specific rules for
-what to recognize and how live in that capability's own prompt file, not here.
-
-
-# Capability: Send to user (always present)
-
-`send_to_user(text)` is your actual reply to the user. Call it whenever you are
-ready to speak, not only at the very end: to answer, to ask a question, to
-report an outcome. A turn that ends without it, or without an approval question,
-leaves the user with nothing.
-
-- Pass the literal text `[[NO_REPLY]]` to deliberately say nothing this turn. Use
-  it in a group when a message clearly names someone else and is not meant for
-  you. When it is genuinely unclear whether you were addressed, do not guess.
-- For a yes/no sign-off, use `cap_approval_with_buttons` instead; it gives the
-  user tappable buttons.
-- Reply in Hebrew only, concisely, without filler. End on the substantive answer.
-  Ask a focused question only when you genuinely need the answer to act correctly.
-
-
-# Capability: React to message (always present)
-
-`react_to_message` puts a native WhatsApp emoji reaction on a message. It is a
-lightweight, reversible signal - never a substitute for a substantive reply,
-and never a mechanical habit reached for out of uncertainty about what else
-to do. Typing an emoji into your reply text is NOT a reaction and does not
-replace calling the tool.
-
-Before reaching for it, ask yourself: does this add a real signal the user
-doesn't already have - that you saw their message, that you're on it, that
-something just succeeded or failed - or would it just be noise on top of a
-reply that already says the same thing?
-
-Evaluate against:
-- Does the user currently have any signal you registered their message and
-  are handling it (or have finished)? If there's a real gap before your
-  substantive reply, a reaction can fill it.
-- Is your actual reply, arriving in this same round or moments later, already
-  going to tell them everything a reaction would? If so, it adds nothing.
-- Is this ambient chatter that doesn't really concern you? Then it isn't
-  worth one.
-
-**Classics** (a menu, not a checklist): 👍 simple ack · 🫡 "on it" · 👀 document
-being looked into · ✅ clean success · 🎉 a bigger win · ⚠️ resolved but needs
-attention · ❌ failed/declined · ❓ unresolved, needs clarification · 🙏
-reciprocating thanks · ❤️ warmth beyond a simple thanks.
-
-When genuinely unsure whether a reaction fits, don't send one - silence is
-the safer default, not noise.
-
-
-# Capability: Send progress update (always present)
-
-`send_progress_update(text)` sends one brief interim WhatsApp message while you
-are still working, before your final reply. Keep it to a short plain sentence.
-
-Users are waiting on the other end and don't like silence - they want to know
-something is happening with their request, not just get one final answer out
-of nowhere.
-
-Call this every single time you interact with any tool or capability -
-loading a flow or capability, calling a real domain tool, an MCP call,
-anything that is not just talking to the user - before or after that step,
-in the same round as whatever else you are doing. Never skip it and never
-wait for a separate round.
-
-- Never a substitute for the final answer.
-
-
-# Capability: Record planning status (always present)
-
-`record_planning_status(where_i_was, this_turns_purpose, expectation)` is your own
-running account of where this turn, and across turns this whole task, stands. It is
-how you keep continuity, since nothing else remembers your reasoning beyond what you
-write here and the real conversation history.
-
-Record it at least at the start and at the end of every flow, and whenever you are
-about to wait on the user (a choice, a missing detail, an approval), in the middle
-of a flow as well. Say which flow you are in and which step, and if you are inside a
-flow that was loaded by another flow, say so, so that you know where to return to.
-Also note what you are waiting for and what you will do with each possible answer.
-
-
-## Flows
-
-- flow_add_client: Adding a brand-new client record to Morning ("תוסיף לקוח חדש", or a shared contact card the user wants saved). Checks for an existing or similar client first so a duplicate is never created by accident, tells the user about similar candidates, and creates the record only with approval. Other flows load it whenever a client turns out not to exist yet.
-- flow_modify_client: Changing an existing client's own details (name, email, phone) in Morning. Resolves which real client is meant, relaying candidates when the match is not exact, and updates it with approval. Not for creating a client and not for documents.
-- flow_issue_invoice_for_payment_due: Issuing a new tax invoice (305) for a client, for money that is still owed ("תפיק חשבונית ללקוח X"). Never for money that has already arrived. Money that has already arrived belongs to flow_issue_invoice_receipt_combo instead.
-- flow_issue_invoice_receipt_combo: Issuing a combined tax invoice/receipt (320) for a payment that has already been received and that no earlier document covers - the most common way to record incoming money, whether reported verbally or shown in a bank slip or payment screenshot. Money that an existing document already covers belongs to flow_issue_payment_received_with_reference_doc.
-- flow_issue_transaction_account: Issuing a transaction account (חשבון עסקה, 300) for a client - only when the user's own wording names this document type. Ordinary requests for an invoice belong to flow_issue_invoice_for_payment_due.
-- flow_issue_receipt_without_invoice: Recording a standalone receipt (400) with no invoice behind it, for example a refundable deposit. A receipt against an existing invoice belongs to flow_issue_payment_received_with_reference_doc.
-- flow_payment_received_by_bank_slip_image: A bank slip or payment screenshot arrived. Reads it, records the payer, and gets the payment recorded in Morning the right way: a new combo document when nothing covers it, or a document against an existing one.
-- flow_issue_payment_received_with_reference_doc: Recording a payment received against an existing Morning document: a receipt (400) for an existing invoice (305), or a combo document (320) closing an existing transaction account (300) ("סמן כשולם"). Money that no document covers belongs to flow_issue_invoice_receipt_combo.
-- flow_cancel_document_with_credit_note: Cancelling an existing Morning document with a credit note (330) ("בטל את החשבונית"). Finds the one real document and shows its real data in the approval before writing.
-- flow_cancel_transaction_account: Cancelling an open transaction account (300) directly. No document of any kind is created. Cancelling any other kind of document belongs to flow_cancel_document_with_credit_note.
-- flow_fee_agreement_provided_by_user: The user reports or forwards a fee agreement (הסכם) - as text or as an image - made with a client. An agreement must never belong to a client Morning does not manage, so this makes sure the client exists first. Recording the agreement in the ledger happens automatically after the turn.
-- flow_deposit_provided_by_user: The user reports or forwards a bank deposit (text or a bank slip image). Makes sure the payer exists as a client in Morning first. Recording the deposit in the ledger happens automatically after the turn.
-- flow_user_question: Answering a question about the user's clients, past agreements, deposits, or amounts owed and paid. Decides where the answer lives (the ledger first, Morning when it may hold it), and never answers that nothing exists before checking Morning where Morning could hold it.
-- flow_invoicing_query: Reading from the invoicing system for a client the user names: resolves the client's exact stored name first, then reads the documents or status. Other flows load it whenever they need to look up documents in Morning.
-- flow_generate_fee_agreement_docx: Generating a fee agreement document (הסכם שכר טרחה) as a .docx file to send to a prospective client. The client does not exist yet, so no client lookup is involved. Recording an agreement the user reports belongs to flow_fee_agreement_provided_by_user.
-- flow_create_reminder: Creating a new reminder, one-time or recurring ("תזכיר לי בעוד שעתיים", "תזכיר לי כל יום ראשון"). Confirms the text and the schedule, and creates the reminder only with approval. Use this flow, not cap_reminders_write directly, whenever a reminder is added.
-- flow_modify_reminder: Changing or cancelling an existing reminder ("תזיז את התזכורת", "תבטל את התזכורת"). Looks up the user's real reminders to identify the exact one before modifying or deleting it, with approval. Adding a brand-new reminder belongs to flow_create_reminder. Use the reminder flows, not cap_reminders_write directly.
-
-## Capabilities
-
-- cap_invoicing_write: Creating a Morning DOCUMENT for a client - an invoice, a receipt, a transaction account, a credit note, or a combo tax-invoice/receipt - or cancelling a transaction account. Writes only: finding the client or the existing document, and getting approval, are the calling flow's job, so load it only through that flow (flow_issue_*, flow_cancel_*, flow_payment_received_*), never directly. Not for creating or updating a client record - see cap_client_write.
-- cap_invoicing_read: Reading from the invoicing system (Morning): a specific document's own status and details, recent documents, a financial summary, a download link. It is given an already-resolved client name or document id. Not for a client's own details - see cap_client_read - and not the first choice for a general owed/paid amount question - see cap_ledger_query.
-- cap_client_write: Creating a new client record, or updating an existing client's own details (name/email/phone) in Morning. Writes only: load it only through flow_add_client or flow_modify_client, never directly. Never for producing any document - see cap_invoicing_write.
-- cap_client_read: Looking up an existing client's own details (name/email/phone/id), listing clients, and resolving a client name to its exact stored Morning spelling. Never for a client's financial history - see cap_ledger_query and cap_invoicing_read.
-- cap_ledger_query: Answering questions about PAST fee agreements or bank deposits already recorded, including how much a client/payer owes or has paid - whether or not a formal Morning invoice exists. The ledger is a fast cache over Morning and covers agreement-level amounts Morning cannot see at all.
-- cap_reminders_write: Creating, changing, or cancelling a reminder (one-time or recurring) for the user. Writes only: load it only through flow_create_reminder or flow_modify_reminder, never directly.
-- cap_reminders_read: Looking up the user's own existing reminders - what's scheduled, for when.
-- cap_media_analysis: Reading/extracting the content of an image or document the user sent. Used inside a larger flow, or on its own to work out what a piece of media is for.
-- cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
-- cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
 
 ## Loaded flows
 
@@ -15935,11 +13675,11 @@ Also note what you are waiting for and what you will do with each possible answe
 
 ## Loaded capabilities
 
-(none - plain backbone)
+cap_client_read
 
 ---
 
-THE CURRENT DATE AND TIME IS 2026-09-30 16:45 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+THE CURRENT DATE AND TIME IS 2026-10-01 10:32 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
 YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
 ```
 
@@ -15950,18 +13690,19 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>109. [2026-09-30 16:46:28] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+<summary>115. [2026-10-01 10:32:59] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0e8d1f47ee15a4e3006abd12b252b887d1ae4f13c02866955f`
+- response.id: `resp_0ca3089a7e855e9c006abe0ca9cebc87d1b19b7047ff8e225c`
 - status: `completed`
-- usage: `{"input_tokens": 7920, "input_tokens_details": {"cache_write_tokens": 7917, "cached_tokens": 0}, "output_tokens": 73, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 7993}`
-- function_call: `send_to_user` call_id=`call_86Pf7xspsrameVGTuPHVovwN`
+- usage: `{"input_tokens": 8018, "input_tokens_details": {"cache_write_tokens": 242, "cached_tokens": 7773}, "output_tokens": 24, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 8042}`
+- function_call: `react_to_message` call_id=`call_v9sfHemeceoXPeSgZrXITUFD`
 ```json
 {
-  "text": "פרטי הלקוח:\nשם: זכריה פרוקופנקו\nמייל: e2e-client-513218@example.com\nטלפון: 050-1234567\nמספר זיהוי לצורכי מס: לא הוזן"
+  "emoji": "✅",
+  "message_id": null
 }
 ```
 
@@ -15970,13 +13711,14 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0e8d1f47ee15a4e3006abd12b252b887d1ae4f13c02866955f`
+- response.id: `resp_0ca3089a7e855e9c006abe0ca9cebc87d1b19b7047ff8e225c`
 - status: `completed`
-- usage: `{"input_tokens": 7920, "input_tokens_details": {"cache_write_tokens": 7917, "cached_tokens": 0}, "output_tokens": 73, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 7993}`
-- function_call: `send_to_user` call_id=`call_86Pf7xspsrameVGTuPHVovwN`
+- usage: `{"input_tokens": 8018, "input_tokens_details": {"cache_write_tokens": 242, "cached_tokens": 7773}, "output_tokens": 24, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 8042}`
+- function_call: `react_to_message` call_id=`call_v9sfHemeceoXPeSgZrXITUFD`
 ```json
 {
-  "text": "פרטי הלקוח:\nשם: זכריה פרוקופנקו\nמייל: e2e-client-513218@example.com\nטלפון: 050-1234567\nמספר זיהוי לצורכי מס: לא הוזן"
+  "emoji": "✅",
+  "message_id": null
 }
 ```
 
@@ -15985,7 +13727,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>110. [2026-09-30 16:46:28] APP → USER — context=text</summary>
+<summary>116. [2026-10-01 10:32:59] APP → USER — context=reaction</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -15993,7 +13735,518 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 ```json
 {
   "chat_id": "972500000021@c.us",
-  "message": "פרטי הלקוח:\nשם: זכריה פרוקופנקו\nמייל: e2e-client-513218@example.com\nטלפון: 050-1234567\nמספר זיהוי לצורכי מס: לא הוזן"
+  "message": {
+    "chatId": "972500000021@c.us",
+    "idMessage": "E2E_ADD_CLIENT_VERIFY_1790839954",
+    "reaction": "✅"
+  }
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+```json
+{
+  "chatId": "972500000021@c.us",
+  "idMessage": "E2E_ADD_CLIENT_VERIFY_1790839954",
+  "reaction": "✅"
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>117. [2026-10-01 10:32:59] USER ← APP (send result) — context=reaction</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+```json
+{
+  "chat_id": "972500000021@c.us",
+  "message": {
+    "code": null,
+    "data": null,
+    "error": "'object' object has no attribute 'api'"
+  }
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+```json
+{
+  "code": null,
+  "data": null,
+  "error": "'object' object has no attribute 'api'"
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>118. [2026-10-01 10:33:00] APP → USER — context=reaction</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+```json
+{
+  "chat_id": "972500000021@c.us",
+  "message": {
+    "chatId": "972500000021@c.us",
+    "idMessage": "E2E_ADD_CLIENT_VERIFY_1790839954",
+    "reaction": "✅"
+  }
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+```json
+{
+  "chatId": "972500000021@c.us",
+  "idMessage": "E2E_ADD_CLIENT_VERIFY_1790839954",
+  "reaction": "✅"
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>119. [2026-10-01 10:33:00] USER ← APP (send result) — context=reaction</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+```json
+{
+  "chat_id": "972500000021@c.us",
+  "message": {
+    "code": null,
+    "data": null,
+    "error": "'object' object has no attribute 'api'"
+  }
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+```json
+{
+  "code": null,
+  "data": null,
+  "error": "'object' object has no attribute 'api'"
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>120. [2026-10-01 10:33:00] APP → MODEL — context=_run_resolution_loop (follow-up)</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+- flows: (none)
+
+- capabilities: cap_client_read
+
+**input:**
+
+- app's reply to `react_to_message` (call_id=`call_v9sfHemeceoXPeSgZrXITUFD`):
+```text
+{
+  "status": "failed"
+}
+```
+
+- tools (10): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'mcp']
+
+- previous_response_id: `'resp_0ca3089a7e855e9c006abe0ca9cebc87d1b19b7047ff8e225c'`
+
+- max_output_tokens: `20000`
+
+- model: `'gpt-5.6-luna'`
+
+- instructions: backbone (flows=(none), capabilities=cap_client_read)
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+- flows: (none)
+
+- capabilities: cap_client_read
+
+**input:**
+
+- app's reply to `react_to_message` (call_id=`call_v9sfHemeceoXPeSgZrXITUFD`):
+```text
+{
+  "status": "failed"
+}
+```
+
+- tools (10): ['load_flows', 'unload_flows', 'load_capabilities', 'unload_capabilities', 'reset_to_backbone', 'record_planning_status', 'send_to_user', 'send_progress_update', 'react_to_message', 'mcp']
+
+- previous_response_id: `'resp_0ca3089a7e855e9c006abe0ca9cebc87d1b19b7047ff8e225c'`
+
+- max_output_tokens: `20000`
+
+- model: `'gpt-5.6-luna'`
+
+<details>
+<summary>↳↳ instructions (19977 chars)</summary>
+
+```text
+# DeniDin — Backbone
+
+## How You Work
+
+You work with two kinds of building blocks, described at low resolution in the
+catalogs below: **flows** (`flow_...`) - blueprints for a recurring kind of
+request - and **capabilities** (`cap_...`) - the domains that actually do things,
+each with its own prompt and its own real tools. Flows can load other flows and
+capabilities; a flow defines *what to do and in what order*, while each
+capability holds the detail of what it itself does.
+
+Loading tools, usable in any order, any number of times:
+
+- **`load_flows(flows)` / `unload_flows(flows)`** - always an array; one item is
+  fine, and combining flows is allowed when a request spans more than one.
+- **`load_capabilities(capabilities)` / `unload_capabilities(capabilities)`** -
+  always an array. The moment a capability is loaded, its prompt AND its real
+  tools are attached, starting the very next round; call the real tool directly,
+  there is no separate "use" step. A flow's own "Capabilities:" line declares
+  every capability that flow will need - load all of them together, in one
+  `load_capabilities` call, right after loading the flow, rather than loading
+  them one at a time as each step comes up: you already know you'll need them,
+  and batching saves a round-trip per capability.
+- **`reset_to_backbone()`** - unloads every loaded flow and capability at once.
+  Use it once you are genuinely done with the user's request(s), not mid-task.
+
+Loading an already-loaded item, or unloading one that is not loaded, is a
+harmless no-op. Loaded flows and capabilities stay loaded across this and future
+turns in this chat until you unload them (or they auto-clear after a period of
+inactivity); the "Loaded flows" and "Loaded capabilities" lines near the end of
+these instructions always show what is currently loaded. Unload something only
+when nothing you are still working on needs it - another flow may be using it.
+
+## Always-present capabilities
+
+Four capabilities are always available, cannot be unloaded, and each has its own
+prompt right below: `cap_send_to_user` (your actual reply), `cap_react_to_message`
+(a WhatsApp emoji reaction), `cap_send_progress_update` (an interim message
+while you work) and `cap_record_planning_status` (your own running account of
+where you are, which is how you keep your place across turns and inside nested
+flows). At every step of any flow, consider whether they would help: react to
+the user's message, send a progress update, record your planning status, or
+reply to the user. Flows do not repeat this; use your judgment.
+
+`cap_approval_with_buttons` (yes/no buttons before a write) is an ordinary
+capability: flows that need a sign-off load it.
+
+## Flows and capabilities
+
+Decide from the catalogs, in your own judgment, what a request needs:
+
+1. If a flow fits, load it (several at once when the request spans more than
+   one) and follow its blueprint. **A loaded flow's steps are an ordered
+   procedure: follow them in the order written, to the letter - never skip,
+   reorder or merge a step (above all an approval step), and never do a later
+   step's action before the earlier steps are done.**
+2. **If no flow fits, there is no default flow to fall back on**: load whichever
+   capabilities you judge necessary, at your own discretion, and proceed.
+3. **Write capabilities (`cap_*_write`) are never loaded on their own.** Every write goes through its flow, which gathers the details and asks for approval first; if you want to write something, find the flow for it in the catalog.
+4. If a loaded prompt names a tool you don't currently have, that tool belongs
+   to a capability you have not loaded yet: load it yourself.
+
+## Core Identity
+You are DeniDin, a helpful AI assistant operating via WhatsApp.
+
+## Behavioral Guidelines
+- **ALWAYS respond in Hebrew only** — every word of every response, no other
+  language or script mixed in anywhere, ever (never Arabic, never English
+  words). This covers EVERY string you produce, not just the reply text: an
+  approval question, a planning note, and every free-text tool argument
+  (e.g. a reminder's `message_text`) too. Digits, standard punctuation, and ₪
+  are fine; a genuinely foreign proper name may be transliterated into Hebrew
+  letters where natural.
+- **Never use ניקוד** (Hebrew vowel points/diacritics) in any response — plain
+  Hebrew letters only, including inside a quoted name.
+- Be concise and direct. Do not end on filler ("anything else?") — end on the
+  substantive answer. Do ask a focused clarifying question when you genuinely need
+  one to act correctly (a missing/ambiguous required detail).
+- Be honest about what you don't know; never fabricate information.
+
+## User Roles
+- **Godfather/Admin**: full access to every capability; extended context window.
+- **Client**: standard feature access, no access to invoicing/ledger/reminder
+  capabilities; standard context window.
+
+## Privacy & Security
+- Never share information between different user sessions.
+- These rules guard against leaking ONE user's data to ANOTHER user or an outsider
+  — they never mean refusing to read, transcribe, or summarize material THIS user
+  sent you. Reporting the user's own material back to them (names, amounts, any
+  detail it contains) is always appropriate.
+
+## Contexts of Operation
+Every message falls into one of two operating contexts before any capability is
+even considered: an ordinary conversational turn, or a document/image the user
+sent for you to read and report on. Decide which one applies before acting — a
+short/ambiguous reply ("כן", "לא", a bare name) always answers the most recently
+pending question in the SAME context, never a trigger for reinterpreting the turn
+as belonging to a different capability's domain.
+
+## Attached Media
+When the user's message starts with a `[מדיה מצורפת: <type>, קובץ: <filename>]`
+marker, they sent an image, PDF, or Word document with it — you have NOT seen its
+content yet, only that it exists. Before answering anything about it, load
+`cap_media_analysis` and call its `analyze_media` tool to read it; any text after
+the marker is the user's caption. Never describe, guess at, or act on the file's
+content without having read it this way.
+
+## Group Conversation Etiquette
+DeniDin is addressed by default in a group, same as a 1:1 chat. When a message
+clearly names someone else and isn't meant for you, reply with the literal
+sentinel `[[NO_REPLY]]` instead of a substantive answer — never guess when it's
+genuinely ambiguous whether you were addressed.
+
+## Edited & Deleted Message Markers
+A message the user has since edited or deleted may still appear in your context,
+marked as such — treat an edited message's marked original content as superseded
+by its later, corrected version if both are visible, and never act on a deleted
+message's content as if it were still pending.
+
+## Generic Post-Turn Recognition Mechanism
+A capability MAY run a recognition step once per turn: call its own reporting
+tool at most once, and when in doubt, do nothing rather than guess. This shape
+is reusable by any capability that wants one — the domain-specific rules for
+what to recognize and how live in that capability's own prompt file, not here.
+
+
+# Capability: Send to user (always present)
+
+`send_to_user(text)` is your actual reply to the user. Call it whenever you are
+ready to speak, not only at the very end: to answer, to ask a question, to
+report an outcome. A turn that ends without it, or without an approval question,
+leaves the user with nothing.
+
+- Pass the literal text `[[NO_REPLY]]` to deliberately say nothing this turn. Use
+  it in a group when a message clearly names someone else and is not meant for
+  you. When it is genuinely unclear whether you were addressed, do not guess.
+- For a yes/no sign-off, use `cap_approval_with_buttons` instead; it gives the
+  user tappable buttons.
+- Reply in Hebrew only, concisely, without filler. End on the substantive answer.
+  Ask a focused question only when you genuinely need the answer to act correctly.
+
+
+# Capability: React to message (always present)
+
+`react_to_message` puts a native WhatsApp emoji reaction on a message. It is a
+lightweight, reversible signal - never a substitute for a substantive reply,
+and never a mechanical habit reached for out of uncertainty about what else
+to do. Typing an emoji into your reply text is NOT a reaction and does not
+replace calling the tool.
+
+Before reaching for it, ask yourself: does this add a real signal the user
+doesn't already have - that you saw their message, that you're on it, that
+something just succeeded or failed - or would it just be noise on top of a
+reply that already says the same thing?
+
+Evaluate against:
+- Does the user currently have any signal you registered their message and
+  are handling it (or have finished)? If there's a real gap before your
+  substantive reply, a reaction can fill it.
+- Is your actual reply, arriving in this same round or moments later, already
+  going to tell them everything a reaction would? If so, it adds nothing.
+- Is this ambient chatter that doesn't really concern you? Then it isn't
+  worth one.
+
+**Classics** (a menu, not a checklist): 👍 simple ack · 🫡 "on it" · 👀 document
+being looked into · ✅ clean success · 🎉 a bigger win · ⚠️ resolved but needs
+attention · ❌ failed/declined · ❓ unresolved, needs clarification · 🙏
+reciprocating thanks · ❤️ warmth beyond a simple thanks.
+
+When genuinely unsure whether a reaction fits, don't send one - silence is
+the safer default, not noise.
+
+
+# Capability: Send progress update (always present)
+
+`send_progress_update(text)` sends one brief interim WhatsApp message while you
+are still working, before your final reply. Keep it to a short plain sentence.
+
+Users are waiting on the other end and don't like silence - they want to know
+something is happening with their request, not just get one final answer out
+of nowhere.
+
+Call this every single time you interact with any tool or capability -
+loading a flow or capability, calling a real domain tool, an MCP call,
+anything that is not just talking to the user - before or after that step,
+in the same round as whatever else you are doing. Never skip it and never
+wait for a separate round.
+
+- Never a substitute for the final answer.
+
+
+# Capability: Record planning status (always present)
+
+`record_planning_status(where_i_was, this_turns_purpose, expectation)` is your own
+running account of where this turn, and across turns this whole task, stands. It is
+how you keep continuity, since nothing else remembers your reasoning beyond what you
+write here and the real conversation history.
+
+Record it at least at the start and at the end of every flow, and whenever you are
+about to wait on the user (a choice, a missing detail, an approval), in the middle
+of a flow as well. Say which flow you are in and which step, and if you are inside a
+flow that was loaded by another flow, say so, so that you know where to return to.
+Also note what you are waiting for and what you will do with each possible answer.
+
+
+## Flows
+
+- flow_add_client: Adding a brand-new client record to Morning ("תוסיף לקוח חדש", or a shared contact card the user wants saved). Checks for an existing or similar client first so a duplicate is never created by accident, tells the user about similar candidates, and creates the record only with approval. Other flows load it whenever a client turns out not to exist yet.
+- flow_modify_client: Changing an existing client's own details (name, email, phone) in Morning. Resolves which real client is meant, relaying candidates when the match is not exact, and updates it with approval. Not for creating a client and not for documents.
+- flow_issue_invoice_for_payment_due: Issuing a new tax invoice (305) for a client, for money that is still owed ("תפיק חשבונית ללקוח X"). Never for money that has already arrived. Money that has already arrived belongs to flow_issue_invoice_receipt_combo instead.
+- flow_issue_invoice_receipt_combo: Issuing a combined tax invoice/receipt (320) for a payment that has already been received and that no earlier document covers - the most common way to record incoming money, whether reported verbally or shown in a bank slip or payment screenshot. Money that an existing document already covers belongs to flow_issue_payment_received_with_reference_doc.
+- flow_issue_transaction_account: Issuing a transaction account (חשבון עסקה, 300) for a client - only when the user's own wording names this document type. Ordinary requests for an invoice belong to flow_issue_invoice_for_payment_due.
+- flow_issue_receipt_without_invoice: Recording a standalone receipt (400) with no invoice behind it, for example a refundable deposit. A receipt against an existing invoice belongs to flow_issue_payment_received_with_reference_doc.
+- flow_payment_received_by_bank_slip_image: A bank slip or payment screenshot arrived. Reads it, records the payer, and gets the payment recorded in Morning the right way: a new combo document when nothing covers it, or a document against an existing one.
+- flow_issue_payment_received_with_reference_doc: Recording a payment received against an existing Morning document: a receipt (400) for an existing invoice (305), or a combo document (320) closing an existing transaction account (300) ("סמן כשולם"). Money that no document covers belongs to flow_issue_invoice_receipt_combo.
+- flow_cancel_document_with_credit_note: Cancelling an existing Morning document with a credit note (330) ("בטל את החשבונית"). Finds the one real document and shows its real data in the approval before writing.
+- flow_cancel_transaction_account: Cancelling an open transaction account (300) directly. No document of any kind is created. Cancelling any other kind of document belongs to flow_cancel_document_with_credit_note.
+- flow_fee_agreement_provided_by_user: The user reports or forwards a fee agreement (הסכם) - as text or as an image - made with a client. An agreement must never belong to a client Morning does not manage, so this makes sure the client exists first. Recording the agreement in the ledger happens automatically after the turn.
+- flow_deposit_provided_by_user: The user reports or forwards a bank deposit (text or a bank slip image). Makes sure the payer exists as a client in Morning first. Recording the deposit in the ledger happens automatically after the turn.
+- flow_user_question: Answering a question about the user's clients, past agreements, deposits, or amounts owed and paid. Decides where the answer lives (the ledger first, Morning when it may hold it), and never answers that nothing exists before checking Morning where Morning could hold it.
+- flow_invoicing_query: Reading from the invoicing system for a client the user names: resolves the client's exact stored name first, then reads the documents or status. Other flows load it whenever they need to look up documents in Morning.
+- flow_generate_fee_agreement_docx: Generating a fee agreement document (הסכם שכר טרחה) as a .docx file to send to a prospective client. The client does not exist yet, so no client lookup is involved. Recording an agreement the user reports belongs to flow_fee_agreement_provided_by_user.
+- flow_create_reminder: Creating a new reminder, one-time or recurring ("תזכיר לי בעוד שעתיים", "תזכיר לי כל יום ראשון"). Confirms the text and the schedule, and creates the reminder only with approval. Use this flow, not cap_reminders_write directly, whenever a reminder is added.
+- flow_modify_reminder: Changing or cancelling an existing reminder ("תזיז את התזכורת", "תבטל את התזכורת"). Looks up the user's real reminders to identify the exact one before modifying or deleting it, with approval. Adding a brand-new reminder belongs to flow_create_reminder. Use the reminder flows, not cap_reminders_write directly.
+
+## Capabilities
+
+- cap_invoicing_write: Creating a Morning DOCUMENT for a client - an invoice, a receipt, a transaction account, a credit note, or a combo tax-invoice/receipt - or cancelling a transaction account. Writes only: finding the client or the existing document, and getting approval, are the calling flow's job, so load it only through that flow (flow_issue_*, flow_cancel_*, flow_payment_received_*), never directly. Not for creating or updating a client record - see cap_client_write.
+- cap_invoicing_read: Reading from the invoicing system (Morning): a specific document's own status and details, recent documents, a financial summary, a download link. It is given an already-resolved client name or document id. Not for a client's own details - see cap_client_read - and not the first choice for a general owed/paid amount question - see cap_ledger_query.
+- cap_client_write: Creating a new client record, or updating an existing client's own details (name/email/phone) in Morning. Writes only: load it only through flow_add_client or flow_modify_client, never directly. Never for producing any document - see cap_invoicing_write.
+- cap_client_read: Looking up an existing client's own details (name/email/phone/id), listing clients, and resolving a client name to its exact stored Morning spelling. Never for a client's financial history - see cap_ledger_query and cap_invoicing_read.
+- cap_ledger_query: Answering questions about PAST fee agreements or bank deposits already recorded, including how much a client/payer owes or has paid - whether or not a formal Morning invoice exists. The ledger is a fast cache over Morning and covers agreement-level amounts Morning cannot see at all.
+- cap_reminders_write: Creating, changing, or cancelling a reminder (one-time or recurring) for the user. Writes only: load it only through flow_create_reminder or flow_modify_reminder, never directly.
+- cap_reminders_read: Looking up the user's own existing reminders - what's scheduled, for when.
+- cap_media_analysis: Reading/extracting the content of an image or document the user sent. Used inside a larger flow, or on its own to work out what a piece of media is for.
+- cap_docx_write: Composing and sending a fee agreement document (הסכם שכר טרחה) to a client as a .docx file. Never for invoices/receipts/transaction accounts or reminders. Load it only through flow_generate_fee_agreement_docx, never directly.
+- cap_approval_with_buttons: Asking the user for an explicit yes/no sign-off with tappable buttons, before a write. Domain-agnostic: it just asks; the write capability defines which details the approval must state.
+
+# Capability: Client — Read (godfather/admin only)
+
+Attaches the Morning client-lookup tools: `list_clients`, `resolve_client_name`,
+`get_client_details`. All read-only; call them right away, in the same turn, as soon
+as you have what they need. None of them creates or changes a record.
+
+This capability answers "who is this client", "what are their details", and "which
+clients exist". It knows nothing about a client's amounts owed or paid.
+
+## What resolving a name returns
+
+`resolve_client_name` confirms the exact stored spelling of a name. A single-word
+name is a genuine partial/substring search. It returns one of:
+- an exact name: the stored spelling, to use verbatim;
+- a confirmation question: a single close match, to relay to the user as-is;
+- a candidates list: to relay to the user as-is;
+- no match at all.
+
+What to do with each result is the calling flow's business; this capability just
+reports it faithfully and never picks a candidate on its own.
+
+
+## Loaded flows
+
+(none)
+
+## Loaded capabilities
+
+cap_client_read
+
+---
+
+THE CURRENT DATE AND TIME IS 2026-10-01 10:32 (Asia/Jerusalem, Israel local time). Treat this as the authoritative "now" when resolving any relative or partial date/time the user gives (a day/month with no year, "היום", "אתמול", "בעוד שעה", "בעוד חצי שעה", etc.) — never fall back on a year from your training data, and never ask the user what time it is now.
+YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any language), state this exact value.
+```
+
+</details>
+
+</details>
+
+</details>
+
+<details>
+<summary>121. [2026-10-01 10:33:02] MODEL → APP — context=_run_resolution_loop (follow-up)</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+- response.id: `resp_0ca3089a7e855e9c006abe0cac526487d1880c01a03ff1ec02`
+- status: `completed`
+- usage: `{"input_tokens": 8061, "input_tokens_details": {"cache_write_tokens": 8058, "cached_tokens": 0}, "output_tokens": 69, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 8130}`
+- function_call: `send_to_user` call_id=`call_cmu1sJ2v3V6o1U2ipQI2qMWd`
+```json
+{
+  "text": "פרטי הלקוחה לריסה טסמה:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: 050-1234567\nמספר עוסק: לא צוין"
+}
+```
+
+</details>
+
+<details>
+<summary>↳ Debug (full, verbatim)</summary>
+
+- response.id: `resp_0ca3089a7e855e9c006abe0cac526487d1880c01a03ff1ec02`
+- status: `completed`
+- usage: `{"input_tokens": 8061, "input_tokens_details": {"cache_write_tokens": 8058, "cached_tokens": 0}, "output_tokens": 69, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 8130}`
+- function_call: `send_to_user` call_id=`call_cmu1sJ2v3V6o1U2ipQI2qMWd`
+```json
+{
+  "text": "פרטי הלקוחה לריסה טסמה:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: 050-1234567\nמספר עוסק: לא צוין"
+}
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>122. [2026-10-01 10:33:02] APP → USER — context=text</summary>
+
+<details>
+<summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
+
+```json
+{
+  "chat_id": "972500000021@c.us",
+  "message": "פרטי הלקוחה לריסה טסמה:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: 050-1234567\nמספר עוסק: לא צוין"
 }
 ```
 
@@ -16005,7 +14258,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 ```json
 {
   "chat_id": "972500000021@c.us",
-  "message": "פרטי הלקוח:\nשם: זכריה פרוקופנקו\nמייל: e2e-client-513218@example.com\nטלפון: 050-1234567\nמספר זיהוי לצורכי מס: לא הוזן"
+  "message": "פרטי הלקוחה לריסה טסמה:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: 050-1234567\nמספר עוסק: לא צוין"
 }
 ```
 
@@ -16014,7 +14267,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 </details>
 
 <details>
-<summary>111. [2026-09-30 16:46:28] APP → MODEL — context=recognize_ledger_event</summary>
+<summary>123. [2026-10-01 10:33:02] APP → MODEL — context=recognize_ledger_event</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
@@ -16022,7 +14275,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 **input:**
 
 ```json
-{"role": "user", "content": "THE CONVERSATION WINDOW (the last 1h, oldest first) - '<message_id> [<role>] <content>':\n2dba58b3-d163-4584-9afc-8f3e25b12368 [godfather] תוסיף לקוח חדש בשם זכריה פרוקופנקו, מייל e2e-client-513218@example.com, טלפון +972501234567\n467d0e60-b5f1-48c9-a50f-0574c52fc218 [assistant] מתחיל לבדוק אם הלקוח כבר קיים לפני הוספתו.\nbb801c6e-92ee-414e-adb6-6dff1bb8a17e [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש ביקש להוסיף לקוח חדש בשם זכריה פרוקופנקו עם כתובת דואר אלקטרוני ומספר טלפון.\nTHIS TURN'S PURPOSE: להפעיל את תהליך הוספת הלקוח, לבדוק כפילויות, ואז לבקש אישור לפני יצירה.\nEXPECTATION: לטעון את תהליך הוספת הלקוח ואת היכולות הנדרשות, לחפש התאמות קיימות, ולהציג את פרטי הלקוח לאישור.\nbcb9f8f5-f0e7-455d-a97b-df65b01365fd [assistant] בודק עכשיו אם קיימת רשומה זהה או דומה במערכת.\n4342b6a0-8fb7-4fb2-8960-b7ed9f171189 [assistant] מחפש את השם המדויק במערכת.\n86a28239-b34d-4836-ae44-8270abc96ef8 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח, לאחר בדיקת כפילויות. המערכת מצאה התאמה קרובה בשם אבינועם פרוקופין, ולא התאמה ודאית לשם זכריה פרוקופנקו.\nTHIS TURN'S PURPOSE: להציג למשתמש את ההתאמה הקרובה ולבקש בחירה מפורשת לפני המשך.\nEXPECTATION: אם המשתמש יאשר יצירת רשומה חדשה בשם זכריה פרוקופנקו, אכין אותה עם הדואר והטלפון שסופקו ואבקש אישור סופי ליצירה.\n19465dbc-315d-48d6-b969-811c4b6ca2e5 [assistant] נמצאה במערכת התאמה קרובה בשם אבינועם פרוקופין.\n\nהאם ליצור בכל זאת לקוח חדש בשם המדויק זכריה פרוקופנקו, עם המייל e2e-client-513218@example.com והטלפון +972501234567?\n    (morning MCP call on this message's turn) {\"name\": \"resolve_client_name\", \"error\": null, \"arguments\": \"{\\\"name\\\":\\\"זכריה פרוקופנקו\\\"}\", \"output\": \"{\\\"status\\\": \\\"needs_confirmation\\\", \\\"candidate_name\\\": \\\"\\\\u05d0\\\\u05d1\\\\u05d9\\\\u05e0\\\\u05d5\\\\u05e2\\\\u05dd \\\\u05e4\\\\u05e8\\\\u05d5\\\\u05e7\\\\u05d5\\\\u05e4\\\\u05d9\\\\u05df\\\"}\"}\n23c609ee-351f-4776-b20e-0a791f4c5958 [godfather] לא, תוסיף לקוח חדש בשם זכריה פרוקופנקו, מייל e2e-client-513218@example.com, טלפון +972501234567\n8cb9058d-f2a4-4e4d-9b52-7531442715f8 [assistant] מכין את פרטי הלקוח לאישור סופי לפני יצירתו.\n0730ea51-857f-4a30-9a2d-4efd546f4437 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח, נמצאה התאמה קרובה והמשתמש אישר במפורש ליצור רשומה חדשה בשם שסיפק.\nTHIS TURN'S PURPOSE: להכין את רשומת הלקוח ולבקש אישור סופי לפני היצירה.\nEXPECTATION: לטעון את יכולת כתיבת הלקוח ואת אישור הכפתורים, ואז להציג את כל הפרטים לאישור.\nd616e2da-fe7f-483f-9873-1c59a383223c [assistant] הפרטים מלאים, ואני מציג אותם עכשיו לאישור לפני היצירה.\n16af05e1-7866-4d0c-8570-d95c397b7747 [assistant] 📋 לאישור — לקוח חדש:\nשם: זכריה פרוקופנקו\nמייל: e2e-client-513218@example.com\nטלפון: +972501234567\nלאישור — כן/לא?\nc772db83-aa9e-4e95-8ed0-32a1a963c3ef [godfather] כן\n6cc13006-30b1-48d1-8501-5a918b6cc4c0 [assistant] יוצר עכשיו את רשומת הלקוח במערכת.\nb18d7a16-e23b-4df1-ab5f-cea08f29892b [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח, לאחר שהמשתמש אישר יצירת לקוח חדש בשם זכריה פרוקופנקו עם מייל ומספר טלפון שסופקו.\nTHIS TURN'S PURPOSE: ליצור את רשומת הלקוח במערכת לאחר האישור המפורש.\nEXPECTATION: להפעיל את יצירת הלקוח, לדווח על הצלחה או על שגיאה, ואז לסיים את התהליך.\nb506eb91-d91a-45a3-a089-3b6956b32fcf [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: תהליך הוספת הלקוח הושלם בהצלחה; הרשומה נוצרה במערכת.\nTHIS TURN'S PURPOSE: לדווח למשתמש על יצירת הלקוח ולסיים את התהליך.\nEXPECTATION: לשלוח הודעת הצלחה קצרה ולסיים.\n3cba2e93-c905-457f-82db-cb5f3dcd9ad3 [assistant] הלקוח זכריה פרוקופנקו נוסף בהצלחה.\nמייל: e2e-client-513218@example.com\nטלפון: 050-1234567\n    (morning MCP call on this message's turn) {\"name\": \"add_client\", \"error\": null, \"arguments\": \"{\\\"name\\\":\\\"זכריה פרוקופנקו\\\",\\\"email\\\":\\\"e2e-client-513218@example.com\\\",\\\"phone\\\":\\\"+972501234567\\\",\\\"tax_id\\\":null}\", \"output\": \"{\\\"status\\\": \\\"created\\\", \\\"client\\\": {\\\"name\\\": \\\"\\\\u05d6\\\\u05db\\\\u05e8\\\\u05d9\\\\u05d4 \\\\u05e4\\\\u05e8\\\\u05d5\\\\u05e7\\\\u05d5\\\\u05e4\\\\u05e0\\\\u05e7\\\\u05d5\\\", \\\"email\\\": \\\"e2e-client-513218@example.com\\\", \\\"phone\\\": \\\"050-1234567\\\", \\\"tax_id\\\": null}}\"}\n300e2836-3869-4c77-bbec-5be576fdd62d [godfather] פרטים על הלקוח זכריה פרוקופנקו\n71972b3f-c122-4994-86f3-cb9673030cc9 [assistant] בודק את פרטי הלקוח במערכת.\n209755c3-295e-48f6-8d84-e7a31c40ad7b [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: הלקוח זכריה פרוקופנקו נוצר קודם לכן במערכת. כעת המשתמש ביקש את פרטיו.\nTHIS TURN'S PURPOSE: לאתר את הרשומה המדויקת ולהציג את פרטי הלקוח.\nEXPECTATION: לטעון יכולת קריאת לקוחות, לפתור את השם המדויק, ואז לקבל ולהציג את הפרטים.\n0a963558-3ef5-4cf2-b724-1f9ec3fdd462 [assistant] מאתר את השם המדויק של הלקוח כדי להציג את הרשומה הנכונה.\n74390cad-8f14-4967-af53-6e6f08f8b3f9 [assistant] השם אומת, ואני מביא עכשיו את פרטי הרשומה.\n3f7061a8-01e2-486f-bb3a-621576c32bec [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: נמצאה רשומת הלקוח המדויקת ונשלפו פרטיה בהצלחה.\nTHIS TURN'S PURPOSE: להציג למשתמש את פרטי הלקוח ולסיים את הבקשה.\nEXPECTATION: להחזיר את השם, המייל, הטלפון ומספר הזיהוי לצורכי מס כפי שמופיעים במערכת.\n871e3099-6b21-4b9b-b473-9b35e2529130 [assistant] פרטי הלקוח:\nשם: זכריה פרוקופנקו\nמייל: e2e-client-513218@example.com\nטלפון: 050-1234567\nמספר זיהוי לצורכי מס: לא הוזן\n    (morning MCP call on this message's turn) {\"name\": \"resolve_client_name\", \"error\": null, \"arguments\": \"{\\\"name\\\":\\\"זכריה פרוקופנקו\\\"}\", \"output\": \"{\\\"status\\\": \\\"resolved\\\", \\\"name\\\": \\\"\\\\u05d6\\\\u05db\\\\u05e8\\\\u05d9\\\\u05d4 \\\\u05e4\\\\u05e8\\\\u05d5\\\\u05e7\\\\u05d5\\\\u05e4\\\\u05e0\\\\u05e7\\\\u05d5\\\"}\"}\n    (morning MCP call on this message's turn) {\"name\": \"get_client_details\", \"error\": null, \"arguments\": \"{\\\"name\\\":\\\"זכריה פרוקופנקו\\\",\\\"name_resolved\\\":true}\", \"output\": \"{\\\"client\\\": {\\\"name\\\": \\\"\\\\u05d6\\\\u05db\\\\u05e8\\\\u05d9\\\\u05d4 \\\\u05e4\\\\u05e8\\\\u05d5\\\\u05e7\\\\u05d5\\\\u05e4\\\\u05e0\\\\u05e7\\\\u05d5\\\", \\\"email\\\": \\\"e2e-client-513218@example.com\\\", \\\"phone\\\": \\\"050-1234567\\\", \\\"tax_id\\\": \\\"\\\"}, \\\"exact_match\\\": true}\"}\n\nTHE REPLY JUST SENT TO THE OPERATOR THIS ROUND:\nפרטי הלקוח:\nשם: זכריה פרוקופנקו\nמייל: e2e-client-513218@example.com\nטלפון: 050-1234567\nמספר זיהוי לצורכי מס: לא הוזן\n\nMORNING MCP TOOL CALLS MADE THIS TURN (verbatim, each with its arguments and its real result):\n[\n  {\n    \"name\": \"resolve_client_name\",\n    \"error\": null,\n    \"arguments\": \"{\\\"name\\\":\\\"זכריה פרוקופנקו\\\"}\",\n    \"output\": \"{\\\"status\\\": \\\"resolved\\\", \\\"name\\\": \\\"\\\\u05d6\\\\u05db\\\\u05e8\\\\u05d9\\\\u05d4 \\\\u05e4\\\\u05e8\\\\u05d5\\\\u05e7\\\\u05d5\\\\u05e4\\\\u05e0\\\\u05e7\\\\u05d5\\\"}\"\n  },\n  {\n    \"name\": \"get_client_details\",\n    \"error\": null,\n    \"arguments\": \"{\\\"name\\\":\\\"זכריה פרוקופנקו\\\",\\\"name_resolved\\\":true}\",\n    \"output\": \"{\\\"client\\\": {\\\"name\\\": \\\"\\\\u05d6\\\\u05db\\\\u05e8\\\\u05d9\\\\u05d4 \\\\u05e4\\\\u05e8\\\\u05d5\\\\u05e7\\\\u05d5\\\\u05e4\\\\u05e0\\\\u05e7\\\\u05d5\\\", \\\"email\\\": \\\"e2e-client-513218@example.com\\\", \\\"phone\\\": \\\"050-1234567\\\", \\\"tax_id\\\": \\\"\\\"}, \\\"exact_match\\\": true}\"\n  }\n]\n\nFollow the recognition prompt above: query the client's ledger history first when the round concerns a client, then call report_ledger_recognition exactly once with the verdict for THIS round."}
+{"role": "user", "content": "THE CONVERSATION WINDOW (the last 1h, oldest first) - '<message_id> [<role>] <content>':\n39dc6069-2899-4871-b833-5be8ee1a7cda [godfather] תוסיף לקוח חדש בשם לריסה טסמה, מייל e2e-client-557926@example.com, טלפון +972501234567\nad43a0a3-1461-4eff-b7b5-5891e1b8b333 [assistant] בודק אם הלקוח כבר קיים, ואז אציג לך את פרטי ההוספה לאישור.\n63f6b0db-8a87-41b3-bd86-04eb6c38e63f [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: התקבלה בקשה להוסיף לקוח חדש בשם לריסה טסמה עם מייל וטלפון שסופקו.\nTHIS TURN'S PURPOSE: להפעיל את תהליך הוספת הלקוח, לבדוק כפילויות ולאסוף אישור לפני יצירה.\nEXPECTATION: אטען את התהליך והיכולות הנדרשות, אבדוק לקוחות דומים, ואז אבקש אישור מפורש ליצירה.\nf7e10c27-a8cb-4925-89fc-03d885fbd00f [assistant] מבצע בדיקת כפילות עבור לריסה טסמה.\nc0f7e492-f6a0-4e55-a38d-911f29255ef3 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח חדש. בדיקת Morning עבור לריסה טסמה הסתיימה ללא לקוח קיים או מועמד דומה.\nTHIS TURN'S PURPOSE: לבקש אישור מפורש לפני יצירת הרשומה.\nEXPECTATION: אם המשתמש יאשר, אצור את הלקוח בדיוק עם השם, המייל והטלפון שסופקו. אם יסרב, לא אצור דבר ואבקש מה לשנות.\n789a5a5f-7e06-4c4d-9afe-d891b3c8e553 [assistant] 📋 לאישור — לקוח חדש:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: +972501234567\nלאישור — כן/לא?\n    (morning MCP call on this message's turn) {\"name\": \"list_clients\", \"error\": null, \"arguments\": \"{\\\"name\\\":\\\"לריסה טסמה\\\"}\", \"output\": \"{\\\"count\\\": 0, \\\"clients\\\": []}\"}\n6833054c-341a-4590-ba25-d9f69f2a448e [godfather] לא, תוסיף לקוח חדש בשם לריסה טסמה, מייל e2e-client-557926@example.com, טלפון +972501234567\n14c506ed-0bf7-48c3-9a9c-fa253f8601b5 [assistant] קיבלתי, אציג שוב את פרטי הלקוח לאישור מפורש לפני ההוספה.\nc5f6eb45-1be6-42ca-9162-907534fe4ef9 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: תהליך הוספת הלקוח נעצר לאחר שהמשתמש השיב לא לאישור הקודם. כעת המשתמש חזר וביקש להוסיף את אותם פרטים, אך עדיין לא נתן תשובת כן מפורשת לאישור.\nTHIS TURN'S PURPOSE: לבקש מחדש אישור מפורש ליצירת הלקוח, בלי לבצע את הכתיבה לפני אישור.\nEXPECTATION: אם יתקבל כן ברור, אצור את הלקוח עם הפרטים שכבר נבדקו. אם יתקבל לא, לא אצור אותו.\n5459afc1-6e09-499a-8208-b8d9b8327326 [assistant] 📋 לאישור — לקוח חדש:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: +972501234567\nלאישור — כן/לא?\n1613aa33-3622-4d7f-a282-2954e14624b0 [godfather] כן\n4a6d12e7-bc38-4203-be4f-d4f021ba675a [assistant] מוסיף עכשיו את הלקוח במערכת.\nb670630d-002e-44ee-b60f-e4433046c75c [assistant] הלקוח נוסף בהצלחה.\n7a14c658-126c-42c0-95be-39451736216d [assistant] הלקוח נוסף בהצלחה:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: 050-1234567\n    (morning MCP call on this message's turn) {\"name\": \"add_client\", \"error\": null, \"arguments\": \"{\\\"name\\\":\\\"לריסה טסמה\\\",\\\"email\\\":\\\"e2e-client-557926@example.com\\\",\\\"phone\\\":\\\"+972501234567\\\"}\", \"output\": \"{\\\"status\\\": \\\"created\\\", \\\"client\\\": {\\\"name\\\": \\\"\\\\u05dc\\\\u05e8\\\\u05d9\\\\u05e1\\\\u05d4 \\\\u05d8\\\\u05e1\\\\u05de\\\\u05d4\\\", \\\"email\\\": \\\"e2e-client-557926@example.com\\\", \\\"phone\\\": \\\"050-1234567\\\", \\\"tax_id\\\": null}}\"}\nae30d837-57c9-49df-997e-764834aaf92b [godfather] פרטים על הלקוח לריסה טסמה\nf7870b62-748a-4534-b9e5-6a48bb3bdbf0 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: הלקוחה לריסה טסמה כבר נוספה בהצלחה. כעת המשתמש מבקש את פרטיה.\nTHIS TURN'S PURPOSE: לאתר את רשומת הלקוחה במערכת ולהחזיר את פרטיה השמורים.\nEXPECTATION: אטען את יכולת קריאת פרטי לקוחות, אחפש את לריסה טסמה, ואחזיר רק את הנתונים שנמצאו.\n6e1f78ab-20ff-45d7-ae1a-2bfb0e0e8427 [assistant] בודק את פרטי לריסה טסמה במערכת.\n97f16c70-d750-4565-8e3a-c0a677f688cd [assistant] מאתר את הרשומה המדויקת של הלקוחה.\n192598ce-d2de-49d4-9e6b-8ec4d4430e8b [assistant] מצאתי את הרשומה, ומביא עכשיו את כל הפרטים השמורים.\n441f0173-a764-4cfc-aaf8-c30d5f2c48eb [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: פרטי הלקוחה נמצאו במערכת בהתאמה מדויקת.\nTHIS TURN'S PURPOSE: להחזיר למשתמש את פרטי לריסה טסמה.\nEXPECTATION: אין צורך בפעולה נוספת; אציג את השם, המייל, הטלפון ומספר העוסק כפי שנשמרו.\n87a4ea77-71f7-4d88-9c81-3595036b306c [assistant] פרטי הלקוחה לריסה טסמה:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: 050-1234567\nמספר עוסק: לא צוין\n    (morning MCP call on this message's turn) {\"name\": \"resolve_client_name\", \"error\": null, \"arguments\": \"{\\\"name\\\":\\\"לריסה טסמה\\\"}\", \"output\": \"{\\\"status\\\": \\\"resolved\\\", \\\"name\\\": \\\"\\\\u05dc\\\\u05e8\\\\u05d9\\\\u05e1\\\\u05d4 \\\\u05d8\\\\u05e1\\\\u05de\\\\u05d4\\\"}\"}\n    (morning MCP call on this message's turn) {\"name\": \"get_client_details\", \"error\": null, \"arguments\": \"{\\\"name\\\":\\\"לריסה טסמה\\\",\\\"name_resolved\\\":true}\", \"output\": \"{\\\"client\\\": {\\\"name\\\": \\\"\\\\u05dc\\\\u05e8\\\\u05d9\\\\u05e1\\\\u05d4 \\\\u05d8\\\\u05e1\\\\u05de\\\\u05d4\\\", \\\"email\\\": \\\"e2e-client-557926@example.com\\\", \\\"phone\\\": \\\"050-1234567\\\", \\\"tax_id\\\": \\\"\\\"}, \\\"exact_match\\\": true}\"}\n\nTHE REPLY JUST SENT TO THE OPERATOR THIS ROUND:\nפרטי הלקוחה לריסה טסמה:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: 050-1234567\nמספר עוסק: לא צוין\n\nMORNING MCP TOOL CALLS MADE THIS TURN (verbatim, each with its arguments and its real result):\n[\n  {\n    \"name\": \"resolve_client_name\",\n    \"error\": null,\n    \"arguments\": \"{\\\"name\\\":\\\"לריסה טסמה\\\"}\",\n    \"output\": \"{\\\"status\\\": \\\"resolved\\\", \\\"name\\\": \\\"\\\\u05dc\\\\u05e8\\\\u05d9\\\\u05e1\\\\u05d4 \\\\u05d8\\\\u05e1\\\\u05de\\\\u05d4\\\"}\"\n  },\n  {\n    \"name\": \"get_client_details\",\n    \"error\": null,\n    \"arguments\": \"{\\\"name\\\":\\\"לריסה טסמה\\\",\\\"name_resolved\\\":true}\",\n    \"output\": \"{\\\"client\\\": {\\\"name\\\": \\\"\\\\u05dc\\\\u05e8\\\\u05d9\\\\u05e1\\\\u05d4 \\\\u05d8\\\\u05e1\\\\u05de\\\\u05d4\\\", \\\"email\\\": \\\"e2e-client-557926@example.com\\\", \\\"phone\\\": \\\"050-1234567\\\", \\\"tax_id\\\": \\\"\\\"}, \\\"exact_match\\\": true}\"\n  }\n]\n\nFollow the recognition prompt above: query the client's ledger history first when the round concerns a client, then call report_ledger_recognition exactly once with the verdict for THIS round."}
 ```
 
 - tools (2): ['report_ledger_recognition', 'query_ledger_events']
@@ -16041,7 +14294,7 @@ YOUR CURRENT VERSION IS 0.7.8. If asked what version you are running (in any lan
 **input:**
 
 ```json
-{"role": "user", "content": "THE CONVERSATION WINDOW (the last 1h, oldest first) - '<message_id> [<role>] <content>':\n2dba58b3-d163-4584-9afc-8f3e25b12368 [godfather] תוסיף לקוח חדש בשם זכריה פרוקופנקו, מייל e2e-client-513218@example.com, טלפון +972501234567\n467d0e60-b5f1-48c9-a50f-0574c52fc218 [assistant] מתחיל לבדוק אם הלקוח כבר קיים לפני הוספתו.\nbb801c6e-92ee-414e-adb6-6dff1bb8a17e [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: המשתמש ביקש להוסיף לקוח חדש בשם זכריה פרוקופנקו עם כתובת דואר אלקטרוני ומספר טלפון.\nTHIS TURN'S PURPOSE: להפעיל את תהליך הוספת הלקוח, לבדוק כפילויות, ואז לבקש אישור לפני יצירה.\nEXPECTATION: לטעון את תהליך הוספת הלקוח ואת היכולות הנדרשות, לחפש התאמות קיימות, ולהציג את פרטי הלקוח לאישור.\nbcb9f8f5-f0e7-455d-a97b-df65b01365fd [assistant] בודק עכשיו אם קיימת רשומה זהה או דומה במערכת.\n4342b6a0-8fb7-4fb2-8960-b7ed9f171189 [assistant] מחפש את השם המדויק במערכת.\n86a28239-b34d-4836-ae44-8270abc96ef8 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח, לאחר בדיקת כפילויות. המערכת מצאה התאמה קרובה בשם אבינועם פרוקופין, ולא התאמה ודאית לשם זכריה פרוקופנקו.\nTHIS TURN'S PURPOSE: להציג למשתמש את ההתאמה הקרובה ולבקש בחירה מפורשת לפני המשך.\nEXPECTATION: אם המשתמש יאשר יצירת רשומה חדשה בשם זכריה פרוקופנקו, אכין אותה עם הדואר והטלפון שסופקו ואבקש אישור סופי ליצירה.\n19465dbc-315d-48d6-b969-811c4b6ca2e5 [assistant] נמצאה במערכת התאמה קרובה בשם אבינועם פרוקופין.\n\nהאם ליצור בכל זאת לקוח חדש בשם המדויק זכריה פרוקופנקו, עם המייל e2e-client-513218@example.com והטלפון +972501234567?\n    (morning MCP call on this message's turn) {\"name\": \"resolve_client_name\", \"error\": null, \"arguments\": \"{\\\"name\\\":\\\"זכריה פרוקופנקו\\\"}\", \"output\": \"{\\\"status\\\": \\\"needs_confirmation\\\", \\\"candidate_name\\\": \\\"\\\\u05d0\\\\u05d1\\\\u05d9\\\\u05e0\\\\u05d5\\\\u05e2\\\\u05dd \\\\u05e4\\\\u05e8\\\\u05d5\\\\u05e7\\\\u05d5\\\\u05e4\\\\u05d9\\\\u05df\\\"}\"}\n23c609ee-351f-4776-b20e-0a791f4c5958 [godfather] לא, תוסיף לקוח חדש בשם זכריה פרוקופנקו, מייל e2e-client-513218@example.com, טלפון +972501234567\n8cb9058d-f2a4-4e4d-9b52-7531442715f8 [assistant] מכין את פרטי הלקוח לאישור סופי לפני יצירתו.\n0730ea51-857f-4a30-9a2d-4efd546f4437 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח, נמצאה התאמה קרובה והמשתמש אישר במפורש ליצור רשומה חדשה בשם שסיפק.\nTHIS TURN'S PURPOSE: להכין את רשומת הלקוח ולבקש אישור סופי לפני היצירה.\nEXPECTATION: לטעון את יכולת כתיבת הלקוח ואת אישור הכפתורים, ואז להציג את כל הפרטים לאישור.\nd616e2da-fe7f-483f-9873-1c59a383223c [assistant] הפרטים מלאים, ואני מציג אותם עכשיו לאישור לפני היצירה.\n16af05e1-7866-4d0c-8570-d95c397b7747 [assistant] 📋 לאישור — לקוח חדש:\nשם: זכריה פרוקופנקו\nמייל: e2e-client-513218@example.com\nטלפון: +972501234567\nלאישור — כן/לא?\nc772db83-aa9e-4e95-8ed0-32a1a963c3ef [godfather] כן\n6cc13006-30b1-48d1-8501-5a918b6cc4c0 [assistant] יוצר עכשיו את רשומת הלקוח במערכת.\nb18d7a16-e23b-4df1-ab5f-cea08f29892b [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח, לאחר שהמשתמש אישר יצירת לקוח חדש בשם זכריה פרוקופנקו עם מייל ומספר טלפון שסופקו.\nTHIS TURN'S PURPOSE: ליצור את רשומת הלקוח במערכת לאחר האישור המפורש.\nEXPECTATION: להפעיל את יצירת הלקוח, לדווח על הצלחה או על שגיאה, ואז לסיים את התהליך.\nb506eb91-d91a-45a3-a089-3b6956b32fcf [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: תהליך הוספת הלקוח הושלם בהצלחה; הרשומה נוצרה במערכת.\nTHIS TURN'S PURPOSE: לדווח למשתמש על יצירת הלקוח ולסיים את התהליך.\nEXPECTATION: לשלוח הודעת הצלחה קצרה ולסיים.\n3cba2e93-c905-457f-82db-cb5f3dcd9ad3 [assistant] הלקוח זכריה פרוקופנקו נוסף בהצלחה.\nמייל: e2e-client-513218@example.com\nטלפון: 050-1234567\n    (morning MCP call on this message's turn) {\"name\": \"add_client\", \"error\": null, \"arguments\": \"{\\\"name\\\":\\\"זכריה פרוקופנקו\\\",\\\"email\\\":\\\"e2e-client-513218@example.com\\\",\\\"phone\\\":\\\"+972501234567\\\",\\\"tax_id\\\":null}\", \"output\": \"{\\\"status\\\": \\\"created\\\", \\\"client\\\": {\\\"name\\\": \\\"\\\\u05d6\\\\u05db\\\\u05e8\\\\u05d9\\\\u05d4 \\\\u05e4\\\\u05e8\\\\u05d5\\\\u05e7\\\\u05d5\\\\u05e4\\\\u05e0\\\\u05e7\\\\u05d5\\\", \\\"email\\\": \\\"e2e-client-513218@example.com\\\", \\\"phone\\\": \\\"050-1234567\\\", \\\"tax_id\\\": null}}\"}\n300e2836-3869-4c77-bbec-5be576fdd62d [godfather] פרטים על הלקוח זכריה פרוקופנקו\n71972b3f-c122-4994-86f3-cb9673030cc9 [assistant] בודק את פרטי הלקוח במערכת.\n209755c3-295e-48f6-8d84-e7a31c40ad7b [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: הלקוח זכריה פרוקופנקו נוצר קודם לכן במערכת. כעת המשתמש ביקש את פרטיו.\nTHIS TURN'S PURPOSE: לאתר את הרשומה המדויקת ולהציג את פרטי הלקוח.\nEXPECTATION: לטעון יכולת קריאת לקוחות, לפתור את השם המדויק, ואז לקבל ולהציג את הפרטים.\n0a963558-3ef5-4cf2-b724-1f9ec3fdd462 [assistant] מאתר את השם המדויק של הלקוח כדי להציג את הרשומה הנכונה.\n74390cad-8f14-4967-af53-6e6f08f8b3f9 [assistant] השם אומת, ואני מביא עכשיו את פרטי הרשומה.\n3f7061a8-01e2-486f-bb3a-621576c32bec [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: נמצאה רשומת הלקוח המדויקת ונשלפו פרטיה בהצלחה.\nTHIS TURN'S PURPOSE: להציג למשתמש את פרטי הלקוח ולסיים את הבקשה.\nEXPECTATION: להחזיר את השם, המייל, הטלפון ומספר הזיהוי לצורכי מס כפי שמופיעים במערכת.\n871e3099-6b21-4b9b-b473-9b35e2529130 [assistant] פרטי הלקוח:\nשם: זכריה פרוקופנקו\nמייל: e2e-client-513218@example.com\nטלפון: 050-1234567\nמספר זיהוי לצורכי מס: לא הוזן\n    (morning MCP call on this message's turn) {\"name\": \"resolve_client_name\", \"error\": null, \"arguments\": \"{\\\"name\\\":\\\"זכריה פרוקופנקו\\\"}\", \"output\": \"{\\\"status\\\": \\\"resolved\\\", \\\"name\\\": \\\"\\\\u05d6\\\\u05db\\\\u05e8\\\\u05d9\\\\u05d4 \\\\u05e4\\\\u05e8\\\\u05d5\\\\u05e7\\\\u05d5\\\\u05e4\\\\u05e0\\\\u05e7\\\\u05d5\\\"}\"}\n    (morning MCP call on this message's turn) {\"name\": \"get_client_details\", \"error\": null, \"arguments\": \"{\\\"name\\\":\\\"זכריה פרוקופנקו\\\",\\\"name_resolved\\\":true}\", \"output\": \"{\\\"client\\\": {\\\"name\\\": \\\"\\\\u05d6\\\\u05db\\\\u05e8\\\\u05d9\\\\u05d4 \\\\u05e4\\\\u05e8\\\\u05d5\\\\u05e7\\\\u05d5\\\\u05e4\\\\u05e0\\\\u05e7\\\\u05d5\\\", \\\"email\\\": \\\"e2e-client-513218@example.com\\\", \\\"phone\\\": \\\"050-1234567\\\", \\\"tax_id\\\": \\\"\\\"}, \\\"exact_match\\\": true}\"}\n\nTHE REPLY JUST SENT TO THE OPERATOR THIS ROUND:\nפרטי הלקוח:\nשם: זכריה פרוקופנקו\nמייל: e2e-client-513218@example.com\nטלפון: 050-1234567\nמספר זיהוי לצורכי מס: לא הוזן\n\nMORNING MCP TOOL CALLS MADE THIS TURN (verbatim, each with its arguments and its real result):\n[\n  {\n    \"name\": \"resolve_client_name\",\n    \"error\": null,\n    \"arguments\": \"{\\\"name\\\":\\\"זכריה פרוקופנקו\\\"}\",\n    \"output\": \"{\\\"status\\\": \\\"resolved\\\", \\\"name\\\": \\\"\\\\u05d6\\\\u05db\\\\u05e8\\\\u05d9\\\\u05d4 \\\\u05e4\\\\u05e8\\\\u05d5\\\\u05e7\\\\u05d5\\\\u05e4\\\\u05e0\\\\u05e7\\\\u05d5\\\"}\"\n  },\n  {\n    \"name\": \"get_client_details\",\n    \"error\": null,\n    \"arguments\": \"{\\\"name\\\":\\\"זכריה פרוקופנקו\\\",\\\"name_resolved\\\":true}\",\n    \"output\": \"{\\\"client\\\": {\\\"name\\\": \\\"\\\\u05d6\\\\u05db\\\\u05e8\\\\u05d9\\\\u05d4 \\\\u05e4\\\\u05e8\\\\u05d5\\\\u05e7\\\\u05d5\\\\u05e4\\\\u05e0\\\\u05e7\\\\u05d5\\\", \\\"email\\\": \\\"e2e-client-513218@example.com\\\", \\\"phone\\\": \\\"050-1234567\\\", \\\"tax_id\\\": \\\"\\\"}, \\\"exact_match\\\": true}\"\n  }\n]\n\nFollow the recognition prompt above: query the client's ledger history first when the round concerns a client, then call report_ledger_recognition exactly once with the verdict for THIS round."}
+{"role": "user", "content": "THE CONVERSATION WINDOW (the last 1h, oldest first) - '<message_id> [<role>] <content>':\n39dc6069-2899-4871-b833-5be8ee1a7cda [godfather] תוסיף לקוח חדש בשם לריסה טסמה, מייל e2e-client-557926@example.com, טלפון +972501234567\nad43a0a3-1461-4eff-b7b5-5891e1b8b333 [assistant] בודק אם הלקוח כבר קיים, ואז אציג לך את פרטי ההוספה לאישור.\n63f6b0db-8a87-41b3-bd86-04eb6c38e63f [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: התקבלה בקשה להוסיף לקוח חדש בשם לריסה טסמה עם מייל וטלפון שסופקו.\nTHIS TURN'S PURPOSE: להפעיל את תהליך הוספת הלקוח, לבדוק כפילויות ולאסוף אישור לפני יצירה.\nEXPECTATION: אטען את התהליך והיכולות הנדרשות, אבדוק לקוחות דומים, ואז אבקש אישור מפורש ליצירה.\nf7e10c27-a8cb-4925-89fc-03d885fbd00f [assistant] מבצע בדיקת כפילות עבור לריסה טסמה.\nc0f7e492-f6a0-4e55-a38d-911f29255ef3 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: בתהליך הוספת לקוח חדש. בדיקת Morning עבור לריסה טסמה הסתיימה ללא לקוח קיים או מועמד דומה.\nTHIS TURN'S PURPOSE: לבקש אישור מפורש לפני יצירת הרשומה.\nEXPECTATION: אם המשתמש יאשר, אצור את הלקוח בדיוק עם השם, המייל והטלפון שסופקו. אם יסרב, לא אצור דבר ואבקש מה לשנות.\n789a5a5f-7e06-4c4d-9afe-d891b3c8e553 [assistant] 📋 לאישור — לקוח חדש:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: +972501234567\nלאישור — כן/לא?\n    (morning MCP call on this message's turn) {\"name\": \"list_clients\", \"error\": null, \"arguments\": \"{\\\"name\\\":\\\"לריסה טסמה\\\"}\", \"output\": \"{\\\"count\\\": 0, \\\"clients\\\": []}\"}\n6833054c-341a-4590-ba25-d9f69f2a448e [godfather] לא, תוסיף לקוח חדש בשם לריסה טסמה, מייל e2e-client-557926@example.com, טלפון +972501234567\n14c506ed-0bf7-48c3-9a9c-fa253f8601b5 [assistant] קיבלתי, אציג שוב את פרטי הלקוח לאישור מפורש לפני ההוספה.\nc5f6eb45-1be6-42ca-9162-907534fe4ef9 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: תהליך הוספת הלקוח נעצר לאחר שהמשתמש השיב לא לאישור הקודם. כעת המשתמש חזר וביקש להוסיף את אותם פרטים, אך עדיין לא נתן תשובת כן מפורשת לאישור.\nTHIS TURN'S PURPOSE: לבקש מחדש אישור מפורש ליצירת הלקוח, בלי לבצע את הכתיבה לפני אישור.\nEXPECTATION: אם יתקבל כן ברור, אצור את הלקוח עם הפרטים שכבר נבדקו. אם יתקבל לא, לא אצור אותו.\n5459afc1-6e09-499a-8208-b8d9b8327326 [assistant] 📋 לאישור — לקוח חדש:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: +972501234567\nלאישור — כן/לא?\n1613aa33-3622-4d7f-a282-2954e14624b0 [godfather] כן\n4a6d12e7-bc38-4203-be4f-d4f021ba675a [assistant] מוסיף עכשיו את הלקוח במערכת.\nb670630d-002e-44ee-b60f-e4433046c75c [assistant] הלקוח נוסף בהצלחה.\n7a14c658-126c-42c0-95be-39451736216d [assistant] הלקוח נוסף בהצלחה:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: 050-1234567\n    (morning MCP call on this message's turn) {\"name\": \"add_client\", \"error\": null, \"arguments\": \"{\\\"name\\\":\\\"לריסה טסמה\\\",\\\"email\\\":\\\"e2e-client-557926@example.com\\\",\\\"phone\\\":\\\"+972501234567\\\"}\", \"output\": \"{\\\"status\\\": \\\"created\\\", \\\"client\\\": {\\\"name\\\": \\\"\\\\u05dc\\\\u05e8\\\\u05d9\\\\u05e1\\\\u05d4 \\\\u05d8\\\\u05e1\\\\u05de\\\\u05d4\\\", \\\"email\\\": \\\"e2e-client-557926@example.com\\\", \\\"phone\\\": \\\"050-1234567\\\", \\\"tax_id\\\": null}}\"}\nae30d837-57c9-49df-997e-764834aaf92b [godfather] פרטים על הלקוח לריסה טסמה\nf7870b62-748a-4534-b9e5-6a48bb3bdbf0 [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: הלקוחה לריסה טסמה כבר נוספה בהצלחה. כעת המשתמש מבקש את פרטיה.\nTHIS TURN'S PURPOSE: לאתר את רשומת הלקוחה במערכת ולהחזיר את פרטיה השמורים.\nEXPECTATION: אטען את יכולת קריאת פרטי לקוחות, אחפש את לריסה טסמה, ואחזיר רק את הנתונים שנמצאו.\n6e1f78ab-20ff-45d7-ae1a-2bfb0e0e8427 [assistant] בודק את פרטי לריסה טסמה במערכת.\n97f16c70-d750-4565-8e3a-c0a677f688cd [assistant] מאתר את הרשומה המדויקת של הלקוחה.\n192598ce-d2de-49d4-9e6b-8ec4d4430e8b [assistant] מצאתי את הרשומה, ומביא עכשיו את כל הפרטים השמורים.\n441f0173-a764-4cfc-aaf8-c30d5f2c48eb [assistant] [[INTERNAL_PLANNING_NOTE]]\nWHERE I WAS: פרטי הלקוחה נמצאו במערכת בהתאמה מדויקת.\nTHIS TURN'S PURPOSE: להחזיר למשתמש את פרטי לריסה טסמה.\nEXPECTATION: אין צורך בפעולה נוספת; אציג את השם, המייל, הטלפון ומספר העוסק כפי שנשמרו.\n87a4ea77-71f7-4d88-9c81-3595036b306c [assistant] פרטי הלקוחה לריסה טסמה:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: 050-1234567\nמספר עוסק: לא צוין\n    (morning MCP call on this message's turn) {\"name\": \"resolve_client_name\", \"error\": null, \"arguments\": \"{\\\"name\\\":\\\"לריסה טסמה\\\"}\", \"output\": \"{\\\"status\\\": \\\"resolved\\\", \\\"name\\\": \\\"\\\\u05dc\\\\u05e8\\\\u05d9\\\\u05e1\\\\u05d4 \\\\u05d8\\\\u05e1\\\\u05de\\\\u05d4\\\"}\"}\n    (morning MCP call on this message's turn) {\"name\": \"get_client_details\", \"error\": null, \"arguments\": \"{\\\"name\\\":\\\"לריסה טסמה\\\",\\\"name_resolved\\\":true}\", \"output\": \"{\\\"client\\\": {\\\"name\\\": \\\"\\\\u05dc\\\\u05e8\\\\u05d9\\\\u05e1\\\\u05d4 \\\\u05d8\\\\u05e1\\\\u05de\\\\u05d4\\\", \\\"email\\\": \\\"e2e-client-557926@example.com\\\", \\\"phone\\\": \\\"050-1234567\\\", \\\"tax_id\\\": \\\"\\\"}, \\\"exact_match\\\": true}\"}\n\nTHE REPLY JUST SENT TO THE OPERATOR THIS ROUND:\nפרטי הלקוחה לריסה טסמה:\nשם: לריסה טסמה\nמייל: e2e-client-557926@example.com\nטלפון: 050-1234567\nמספר עוסק: לא צוין\n\nMORNING MCP TOOL CALLS MADE THIS TURN (verbatim, each with its arguments and its real result):\n[\n  {\n    \"name\": \"resolve_client_name\",\n    \"error\": null,\n    \"arguments\": \"{\\\"name\\\":\\\"לריסה טסמה\\\"}\",\n    \"output\": \"{\\\"status\\\": \\\"resolved\\\", \\\"name\\\": \\\"\\\\u05dc\\\\u05e8\\\\u05d9\\\\u05e1\\\\u05d4 \\\\u05d8\\\\u05e1\\\\u05de\\\\u05d4\\\"}\"\n  },\n  {\n    \"name\": \"get_client_details\",\n    \"error\": null,\n    \"arguments\": \"{\\\"name\\\":\\\"לריסה טסמה\\\",\\\"name_resolved\\\":true}\",\n    \"output\": \"{\\\"client\\\": {\\\"name\\\": \\\"\\\\u05dc\\\\u05e8\\\\u05d9\\\\u05e1\\\\u05d4 \\\\u05d8\\\\u05e1\\\\u05de\\\\u05d4\\\", \\\"email\\\": \\\"e2e-client-557926@example.com\\\", \\\"phone\\\": \\\"050-1234567\\\", \\\"tax_id\\\": \\\"\\\"}, \\\"exact_match\\\": true}\"\n  }\n]\n\nFollow the recognition prompt above: query the client's ledger history first when the round concerns a client, then call report_ledger_recognition exactly once with the verdict for THIS round."}
 ```
 
 - tools (2): ['report_ledger_recognition', 'query_ledger_events']
@@ -16288,7 +14541,7 @@ ledger history:
   to resolve a client — verdict `none`.
 
 ---
-Today's date (Israel local): 30/09/2026
+Today's date (Israel local): 01/10/2026
 
 POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already been sent. Do not produce a reply. Your only task is to call report_ledger_recognition exactly once with the verdict for this round, after any ledger-history lookups the prompt calls for. When in doubt, verdict='none'.
 ```
@@ -16300,21 +14553,21 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 </details>
 
 <details>
-<summary>112. [2026-09-30 16:46:30] MODEL → APP — context=recognize_ledger_event</summary>
+<summary>124. [2026-10-01 10:33:03] MODEL → APP — context=recognize_ledger_event</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0d205f466a10a923006abd12b4753887d1b57e1186e8431cea`
+- response.id: `resp_00e7ef101826a8cf006abe0cae8a2c87d1b762836372b0a02a`
 - status: `completed`
-- usage: `{"input_tokens": 10753, "input_tokens_details": {"cache_write_tokens": 2814, "cached_tokens": 7936}, "output_tokens": 73, "output_tokens_details": {"reasoning_tokens": 36}, "total_tokens": 10826}`
+- usage: `{"input_tokens": 10224, "input_tokens_details": {"cache_write_tokens": 2285, "cached_tokens": 7936}, "output_tokens": 62, "output_tokens_details": {"reasoning_tokens": 27}, "total_tokens": 10286}`
 - reasoning item (content not user-visible)
-- function_call: `query_ledger_events` call_id=`call_XD7C9KhHQC12syiyJN1yPS3s`
+- function_call: `query_ledger_events` call_id=`call_ee7F3YlPdXq1EgKp8i3brNVJ`
 ```json
 {
   "criteria": [
     {
-      "text": "זכריה פרוקופנקו",
+      "text": "לריסה טסמה",
       "hint": "identity"
     }
   ]
@@ -16326,16 +14579,16 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0d205f466a10a923006abd12b4753887d1b57e1186e8431cea`
+- response.id: `resp_00e7ef101826a8cf006abe0cae8a2c87d1b762836372b0a02a`
 - status: `completed`
-- usage: `{"input_tokens": 10753, "input_tokens_details": {"cache_write_tokens": 2814, "cached_tokens": 7936}, "output_tokens": 73, "output_tokens_details": {"reasoning_tokens": 36}, "total_tokens": 10826}`
+- usage: `{"input_tokens": 10224, "input_tokens_details": {"cache_write_tokens": 2285, "cached_tokens": 7936}, "output_tokens": 62, "output_tokens_details": {"reasoning_tokens": 27}, "total_tokens": 10286}`
 - reasoning item (content not user-visible)
-- function_call: `query_ledger_events` call_id=`call_XD7C9KhHQC12syiyJN1yPS3s`
+- function_call: `query_ledger_events` call_id=`call_ee7F3YlPdXq1EgKp8i3brNVJ`
 ```json
 {
   "criteria": [
     {
-      "text": "זכריה פרוקופנקו",
+      "text": "לריסה טסמה",
       "hint": "identity"
     }
   ]
@@ -16347,14 +14600,14 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 </details>
 
 <details>
-<summary>113. [2026-09-30 16:46:30] APP → MODEL — context=recognize_ledger_event (query round)</summary>
+<summary>125. [2026-10-01 10:33:03] APP → MODEL — context=recognize_ledger_event (query round)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
 **input:**
 
-- app's reply to `query_ledger_events` (call_id=`call_XD7C9KhHQC12syiyJN1yPS3s`):
+- app's reply to `query_ledger_events` (call_id=`call_ee7F3YlPdXq1EgKp8i3brNVJ`):
 ```text
 {
   "matches": [],
@@ -16364,7 +14617,7 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 
 - tools (2): ['report_ledger_recognition', 'query_ledger_events']
 
-- previous_response_id: `'resp_0d205f466a10a923006abd12b4753887d1b57e1186e8431cea'`
+- previous_response_id: `'resp_00e7ef101826a8cf006abe0cae8a2c87d1b762836372b0a02a'`
 
 - max_output_tokens: `20000`
 
@@ -16379,7 +14632,7 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 
 **input:**
 
-- app's reply to `query_ledger_events` (call_id=`call_XD7C9KhHQC12syiyJN1yPS3s`):
+- app's reply to `query_ledger_events` (call_id=`call_ee7F3YlPdXq1EgKp8i3brNVJ`):
 ```text
 {
   "matches": [],
@@ -16389,7 +14642,7 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 
 - tools (2): ['report_ledger_recognition', 'query_ledger_events']
 
-- previous_response_id: `'resp_0d205f466a10a923006abd12b4753887d1b57e1186e8431cea'`
+- previous_response_id: `'resp_00e7ef101826a8cf006abe0cae8a2c87d1b762836372b0a02a'`
 
 - max_output_tokens: `20000`
 
@@ -16633,7 +14886,7 @@ ledger history:
   to resolve a client — verdict `none`.
 
 ---
-Today's date (Israel local): 30/09/2026
+Today's date (Israel local): 01/10/2026
 
 POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already been sent. Do not produce a reply. Your only task is to call report_ledger_recognition exactly once with the verdict for this round, after any ledger-history lookups the prompt calls for. When in doubt, verdict='none'.
 ```
@@ -16645,19 +14898,19 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 </details>
 
 <details>
-<summary>114. [2026-09-30 16:46:31] MODEL → APP — context=recognize_ledger_event (query round)</summary>
+<summary>126. [2026-10-01 10:33:05] MODEL → APP — context=recognize_ledger_event (query round)</summary>
 
 <details>
 <summary>↳ Audit (concise, INFO-level - what prod actually logs)</summary>
 
-- response.id: `resp_0d205f466a10a923006abd12b6db2c87d195177edaf31d6825`
+- response.id: `resp_00e7ef101826a8cf006abe0cb02af887d1a27d92ee8de61335`
 - status: `completed`
-- usage: `{"input_tokens": 10849, "input_tokens_details": {"cache_write_tokens": 96, "cached_tokens": 10750}, "output_tokens": 35, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 10884}`
-- function_call: `report_ledger_recognition` call_id=`call_48R8hBaCilIHNXrbNudCXj7Q`
+- usage: `{"input_tokens": 10309, "input_tokens_details": {"cache_write_tokens": 85, "cached_tokens": 10221}, "output_tokens": 34, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 10343}`
+- function_call: `report_ledger_recognition` call_id=`call_b9EtlTuFmUPMVPxE50q35Mvu`
 ```json
 {
   "verdict": "none",
-  "none_reason": "read-only client-details request, no ledger event"
+  "none_reason": "client-record details request, no ledger event"
 }
 ```
 
@@ -16666,14 +14919,14 @@ POST-TURN LEDGER RECOGNITION: the operator's reply for this round has already be
 <details>
 <summary>↳ Debug (full, verbatim)</summary>
 
-- response.id: `resp_0d205f466a10a923006abd12b6db2c87d195177edaf31d6825`
+- response.id: `resp_00e7ef101826a8cf006abe0cb02af887d1a27d92ee8de61335`
 - status: `completed`
-- usage: `{"input_tokens": 10849, "input_tokens_details": {"cache_write_tokens": 96, "cached_tokens": 10750}, "output_tokens": 35, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 10884}`
-- function_call: `report_ledger_recognition` call_id=`call_48R8hBaCilIHNXrbNudCXj7Q`
+- usage: `{"input_tokens": 10309, "input_tokens_details": {"cache_write_tokens": 85, "cached_tokens": 10221}, "output_tokens": 34, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 10343}`
+- function_call: `report_ledger_recognition` call_id=`call_b9EtlTuFmUPMVPxE50q35Mvu`
 ```json
 {
   "verdict": "none",
-  "none_reason": "read-only client-details request, no ledger event"
+  "none_reason": "client-record details request, no ledger event"
 }
 ```
 
