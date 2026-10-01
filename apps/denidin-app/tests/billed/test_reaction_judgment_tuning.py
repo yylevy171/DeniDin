@@ -49,6 +49,19 @@ def _scenario(name):
     raise KeyError(f"no such scenario in BILLED_REACTION_SCENARIOS: {name!r}")
 
 
+def _give_app_a_stand_in_bot(app) -> None:
+    """These tests check which reactions the model sends, so a reaction must reach
+    send_reaction (replaced by ReactionCaptureStub - the bot itself is never used).
+    react_to_message returns before send_reaction when no bot is set, and only
+    denidin.py's __main__ sets a real one - so give both message paths (the legacy
+    ai_handler and the flag-ON backbone) the same stand-in."""
+    if app.green_api_bot is None:
+        app.green_api_bot = object()
+    app.ai_handler.green_api_bot = app.green_api_bot
+    if app.backbone is not None:
+        app.backbone.green_api_bot = app.green_api_bot
+
+
 def _send_turn(chat_id: str, id_message: str, text: str):
     """Sends one real textMessage webhook turn through the actual dispatcher and
     returns the (tracked, never-sent-to-Green-API) notification."""
@@ -102,7 +115,7 @@ class TestReactionJudgmentTuningHardAssertions:
         }
         app = denidin.initialize_app(config_dict)
         denidin.denidin_app = app
-        app.ai_handler.green_api_bot = app.green_api_bot
+        _give_app_a_stand_in_bot(app)
         return app
 
     def test_ambient_group_chatter_lunch_makes_zero_reaction_calls(self, denidin_app):
@@ -190,6 +203,7 @@ class TestAgreementCreationReactionsBilled:
         self, denidin_app, live_morning_tunnel,
     ):
         chat_id = GODFATHER_CHAT_ID
+        _give_app_a_stand_in_bot(denidin_app)
         stub = ReactionCaptureStub()
         with stub.installed():
             notification = _send_turn(
