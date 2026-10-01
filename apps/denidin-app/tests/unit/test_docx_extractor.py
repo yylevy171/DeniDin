@@ -18,12 +18,6 @@ from src.handlers.extractors.docx_extractor import DOCXExtractor
 from src.models.media import Media
 
 
-# TODO(063 backbone): DOCX reading is not yet adjusted to the backbone. This test
-# covers only the legacy path (MediaHandler / AIHandler's interface). With the
-# backbone flag ON, DOCXExtractor runs through _ExtractorAIHandlerShim
-# (src/capabilities/media_analysis/handler.py), which has no get_response, so the
-# analysis always fails. Update this test, or add a backbone counterpart, once DOCX
-# reading is adjusted to the backbone.
 @pytest.fixture
 def mock_denidin_context():
     """Create mock DeniDin context."""
@@ -69,10 +63,10 @@ def test_extract_simple_docx_text(docx_extractor, mock_denidin_context):
     """
     media = create_docx_media("Hello World", "This is a test document")
     
-    # Mock AI response - get_response returns object with response_text attribute
+    # Mock AI response - the one standalone responses.create call returns output_text
     mock_response = Mock()
-    mock_response.response_text = "Analysis: Hello World greeting and test document"
-    mock_denidin_context.ai_handler.get_response.return_value = mock_response
+    mock_response.output_text = "Analysis: Hello World greeting and test document"
+    mock_denidin_context.ai_handler.client.responses.create.return_value = mock_response
     
     # With analyze=True, should return AI analysis
     result = docx_extractor.analyze_media(media, analyze=True)
@@ -80,7 +74,7 @@ def test_extract_simple_docx_text(docx_extractor, mock_denidin_context):
     assert result["extraction_quality"] == "high"
     assert len(result["warnings"]) == 0
     assert "Analysis" in result["raw_response"]
-    assert mock_denidin_context.ai_handler.get_response.call_count == 1
+    assert mock_denidin_context.ai_handler.client.responses.create.call_count == 1
 
 
 def test_extracted_text_key_holds_the_deterministic_docx_text(docx_extractor, mock_denidin_context):
@@ -89,8 +83,8 @@ def test_extracted_text_key_holds_the_deterministic_docx_text(docx_extractor, mo
     distinct from raw_response (the AI's analysis OF this text)."""
     media = create_docx_media("Hello World", "This is a test document")
     mock_response = Mock()
-    mock_response.response_text = "Analysis: something else entirely"
-    mock_denidin_context.ai_handler.get_response.return_value = mock_response
+    mock_response.output_text = "Analysis: something else entirely"
+    mock_denidin_context.ai_handler.client.responses.create.return_value = mock_response
 
     result = docx_extractor.analyze_media(media, analyze=True)
 
@@ -110,7 +104,7 @@ def test_extracted_text_empty_when_analyze_false_still_has_deterministic_text(
 
     assert result["extracted_text"] == "Just the text"
     assert result["raw_response"] == ""
-    assert mock_denidin_context.ai_handler.get_response.call_count == 0
+    assert mock_denidin_context.ai_handler.client.responses.create.call_count == 0
 
 
 def test_feature069_fee_agreement_docx_type_signal_no_ai(docx_extractor, mock_denidin_context):
@@ -123,7 +117,7 @@ def test_feature069_fee_agreement_docx_type_signal_no_ai(docx_extractor, mock_de
     result = docx_extractor.analyze_media(media, analyze=False)
 
     assert result["document_analysis"]["document_type"] == "הסכם"
-    assert mock_denidin_context.ai_handler.get_response.call_count == 0
+    assert mock_denidin_context.ai_handler.client.responses.create.call_count == 0
 
 
 def test_feature069_non_agreement_docx_stays_generic(docx_extractor, mock_denidin_context):
@@ -141,10 +135,10 @@ def test_extract_hebrew_text(docx_extractor, mock_denidin_context):
     """
     media = create_docx_media("שלום עולם", "זהו מסמך בדיקה")
     
-    # Mock AI response - get_response returns object with response_text attribute
+    # Mock AI response - the one standalone responses.create call returns output_text
     mock_response = Mock()
-    mock_response.response_text = "סיכום: מסמך בעברית"
-    mock_denidin_context.ai_handler.get_response.return_value = mock_response
+    mock_response.output_text = "סיכום: מסמך בעברית"
+    mock_denidin_context.ai_handler.client.responses.create.return_value = mock_response
     
     result = docx_extractor.analyze_media(media, analyze=True)
     
@@ -162,8 +156,8 @@ def test_preserve_paragraph_structure(docx_extractor, mock_denidin_context):
     
     # Mock AI response that acknowledges all paragraphs
     mock_response = Mock()
-    mock_response.response_text = "Analysis: Contains First, Second, Third paragraphs"
-    mock_denidin_context.ai_handler.get_response.return_value = mock_response
+    mock_response.output_text = "Analysis: Contains First, Second, Third paragraphs"
+    mock_denidin_context.ai_handler.client.responses.create.return_value = mock_response
     
     result = docx_extractor.analyze_media(media, analyze=True)
     
@@ -228,10 +222,10 @@ def test_extract_text_ignoring_formatting(docx_extractor, mock_denidin_context):
         filename="formatted.docx"
     )
     
-    # Mock AI response - get_response returns object with response_text attribute
+    # Mock AI response - the one standalone responses.create call returns output_text
     mock_response = Mock()
-    mock_response.response_text = "Contains Normal, Bold, and Italic text"
-    mock_denidin_context.ai_handler.get_response.return_value = mock_response
+    mock_response.output_text = "Contains Normal, Bold, and Italic text"
+    mock_denidin_context.ai_handler.client.responses.create.return_value = mock_response
     
     result = docx_extractor.analyze_media(media, analyze=True)
     
@@ -268,10 +262,10 @@ def test_extract_complex_structure(docx_extractor, mock_denidin_context):
         filename="complex.docx"
     )
     
-    # Mock AI response - get_response returns object with response_text attribute
+    # Mock AI response - the one standalone responses.create call returns output_text
     mock_response = Mock()
-    mock_response.response_text = "Document with title, intro, table with cells, and conclusion"
-    mock_denidin_context.ai_handler.get_response.return_value = mock_response
+    mock_response.output_text = "Document with title, intro, table with cells, and conclusion"
+    mock_denidin_context.ai_handler.client.responses.create.return_value = mock_response
     
     result = docx_extractor.analyze_media(media, analyze=True)
     
@@ -288,15 +282,15 @@ def test_analyze_document_with_ai(docx_extractor, mock_denidin_context):
     """
     media = create_docx_media("Invoice #12345", "Total: $100", "Due Date: 2024-01-01")
     
-    # Mock AI response - get_response returns object with response_text attribute
+    # Mock AI response - the one standalone responses.create call returns output_text
     mock_response = Mock()
-    mock_response.response_text = """DOCUMENT_TYPE: invoice
+    mock_response.output_text = """DOCUMENT_TYPE: invoice
 SUMMARY: Invoice for $100 due on 2024-01-01
 KEY_POINTS:
 - Invoice number 12345
 - Amount $100
 - Due date 2024-01-01"""
-    mock_denidin_context.ai_handler.get_response.return_value = mock_response
+    mock_denidin_context.ai_handler.client.responses.create.return_value = mock_response
     
     # Phase 4: analyze=True (default) should call AI
     result = docx_extractor.analyze_media(media, analyze=True)
@@ -304,7 +298,7 @@ KEY_POINTS:
     # Should have AI analysis in response
     assert "invoice" in result["raw_response"].lower()
     assert "$100" in result["raw_response"]
-    assert mock_denidin_context.ai_handler.get_response.call_count == 1
+    assert mock_denidin_context.ai_handler.client.responses.create.call_count == 1
 
 
 def test_analyze_skipped_when_false(docx_extractor, mock_denidin_context):
@@ -329,13 +323,13 @@ def test_analyze_default_is_true(docx_extractor, mock_denidin_context):
     """
     media = create_docx_media("Document content")
     
-    # Mock AI response - get_response returns object with response_text attribute
+    # Mock AI response - the one standalone responses.create call returns output_text
     mock_response = Mock()
-    mock_response.response_text = """DOCUMENT_TYPE: generic
+    mock_response.output_text = """DOCUMENT_TYPE: generic
 SUMMARY: Document with content
 KEY_POINTS:
 - Content present"""
-    mock_denidin_context.ai_handler.get_response.return_value = mock_response
+    mock_denidin_context.ai_handler.client.responses.create.return_value = mock_response
     
     # Call without analyze parameter (should default to True)
     result = docx_extractor.analyze_media(media)
@@ -343,7 +337,7 @@ KEY_POINTS:
     # Should have document analysis
     assert result["raw_response"] != ""
     assert "python-docx + gpt-4o" in result["model_used"]
-    assert mock_denidin_context.ai_handler.get_response.call_count == 1
+    assert mock_denidin_context.ai_handler.client.responses.create.call_count == 1
 
 
 def test_analyze_graceful_ai_failure(docx_extractor, mock_denidin_context):

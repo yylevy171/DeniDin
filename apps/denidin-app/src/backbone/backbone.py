@@ -23,14 +23,17 @@ from src.backbone.loading import apply_loading, describe_loading, parse_requeste
 from src.backbone.prompt_cache import MtimePromptCache
 from src.backbone.resolution_tools import RESOLUTION_TOOLS, extract_resolution_tool_calls
 from src.capabilities.toolsets import (
+    WRITE_TOOL_NAMES,
     build_capability_tools,
     dispatch_local_tool,
     extract_local_calls,
     local_tool_owners,
 )
-from src.constants.error_messages import BACKBONE_UNEXPECTED_ERROR
+from src.constants.error_messages import (
+    APPROVAL_POSSIBLY_DUPLICATED, BACKBONE_UNEXPECTED_ERROR, LEDGER_FOLLOWUP_FAILED_TRY_AGAIN,
+)
 from src.models.config import AppConfiguration
-from src.models.message import AIRequest, AIResponse, NO_REPLY_SENTINEL, should_reply_for
+from src.models.message import AIRequest, AIResponse, should_reply_for
 from src.models.user import Role
 from src.utils.capability_audit_log import log_capability_action, log_loading_action
 from src.utils.logger import read_version, DEFAULT_VERSION_FILE
@@ -40,7 +43,10 @@ from src.tool_actions.messaging_actions import (
 from src.core.turn_context import load_rolling_window, recall_memory_context
 from src.core.turn_result import (
     extract_mcp_call_items, finish_reason_of, fit_for_whatsapp,
-    log_possible_hallucinated_confirmation,
+    log_possible_hallucinated_confirmation, reply_or_fallback,
+)
+from src.core.write_guards import (
+    approved_write_not_run_message, is_affirmative_reply, tally_write_executions,
 )
 from src.core.model_calls import (
     build_fallback_response, record_mcp_tool_calls, telemetry_span, timed_model_call,
@@ -183,6 +189,9 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
         self._backbone_mtime: Optional[float] = None
         self._capability_prompts = MtimePromptCache("capability", self._capabilities_dir)
         self._flow_prompts = MtimePromptCache("flow", self._flows_dir)
+        # Context sections code adds by turn type (Item14, 2026-10-01): today only
+        # group_etiquette.md, for a group chat.
+        self._context_prompts = MtimePromptCache("context", self._prompts_dir)
         self._user_memory_content: str = ""
         self._user_memory_mtime: Optional[float] = None
 
@@ -233,6 +242,15 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
         # AIResponse exactly as AIHandler reports them (2026-10-01).
         self._turn_tokens = [0, 0, 0]  # total, input (prompt), output (completion)
         self._turn_last_response: Optional[Any] = None
+
+        # Item4 (2026-10-01): True when this turn answers an approval-buttons prompt
+        # with a yes - the turn that runs the approved write. Its model calls are
+        # never retried, and what it executed is checked (_apply_write_guards).
+        # _turn_write_calls collects what it executed: every raw Morning mcp_call item
+        # (any tool - a read's output can be the failure detail, as in legacy) and each
+        # local write ({name, output, error}); only writes are counted.
+        self._turn_is_approved_write: bool = False
+        self._turn_write_calls: List[Any] = []
 
         # The inbound WhatsAppMessage this turn answers (request.original_message) -
         # the addressing for internal notes stored mid-turn (see record_planning_status).
@@ -302,7 +320,8 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
     def build_instructions(self, active_tags: Union[None, CapabilityTag, List[CapabilityTag]],
                             accumulated_context: str = "",
                             today_timestamp: Optional[int] = None,
-                            *, active_flows: Optional[List[FlowTag]] = None) -> str:
+                            *, active_flows: Optional[List[FlowTag]] = None,
+                            is_group: bool = False) -> str:
         """contracts/prompt-assembly.md's fixed assembly order:
         backbone + the always-present capabilities' prompts (fixed order) + flow
         catalog + capability catalog + EVERY loaded flow's blueprint + EVERY loaded
@@ -347,6 +366,9 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
         parts = [
             self.load_backbone(),
             *[self._capability_prompts.get(name) for name in ALWAYS_PRESENT_CAPABILITIES],
+            # Group chats only (Item14): the code knows whether this is a group; the
+            # section is never shown in a 1:1 chat.
+            self._context_prompts.get("group_etiquette") if is_group else "",
             f"## Flows\n\n{flow_catalog}" if flow_catalog else "",
             f"## Capabilities\n\n{catalog}" if catalog else "",
             *[self.load_flow_prompt(f) for f in flows],
@@ -471,7 +493,7 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
         `return` from inside a try/except/finally spanning the whole call otherwise)."""
         # Message addressing (sender/recipient/group) is no longer needed here - every
         # message is stored at the WhatsApp boundary by ChatLog (2026-09-30).
-        del sender, recipient, is_group, chat_name
+        del sender, recipient, chat_name
         try:
             role = self._resolve_role(user_role)
             effective_chat_id = chat_id or request.chat_id
@@ -514,6 +536,8 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
                 "message_id": request.message_id,
                 "is_media": is_media,
                 "caption": request.user_prompt if is_media else "",
+                # Group chats get the group etiquette section (Item14).
+                "is_group": is_group,
             }
 
             # Conversation history (2026-09-14): the SAME rolling-window shape/source
@@ -532,10 +556,19 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
             # driven by load_capabilities/unload_capabilities/load_flows/unload_flows/reset_to_backbone/
             # record_planning_status/approval_with_yes_no_buttons/send_to_user.
             self._turn_planning_status = None
-            # Any new turn supersedes whatever approval buttons were outstanding.
+            # A yes to outstanding approval buttons makes this the approved-write
+            # turn (Item4). Any new turn supersedes whatever approval buttons were
+            # outstanding.
+            self._turn_write_calls = []
+            self._turn_is_approved_write = False
             if effective_chat_id:
+                approval_was_pending = bool(
+                    self.session_manager.get_session(effective_chat_id).approval_message_id)
+                self._turn_is_approved_write = (
+                    approval_was_pending and is_affirmative_reply(request.user_prompt))
                 self.session_manager.set_approval_message_id(effective_chat_id, None)
             final_text = self._run_resolution_loop(request, turn_context, is_media=is_media)
+            final_text = self._apply_write_guards(request, final_text)
 
             # Feature 080: the turn's Morning MCP calls, recorded the same way
             # AIHandler._finalize_response records them (shared helper).
@@ -606,7 +639,8 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
         tags = self._get_active_tags(chat_id)
         tools = list(RESOLUTION_TOOLS) + list(BACKBONE_TOOLS) + build_capability_tools(self, tags, turn_context)
         instructions = self.build_instructions(
-            tags, "", request.timestamp, active_flows=self._get_active_flows(chat_id))
+            tags, "", request.timestamp, active_flows=self._get_active_flows(chat_id),
+            is_group=bool(turn_context.get("is_group")))
         return tags, instructions, tools
 
     # ------------------------------------------------------------------
@@ -680,7 +714,8 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
                 else:
                     outputs, final_text = round_result
                 if final_text is not None:
-                    return final_text or NO_REPLY_SENTINEL
+                    # Empty send_to_user text: an error reply, never silence (Item7).
+                    return reply_or_fallback(final_text, BACKBONE_UNEXPECTED_ERROR)
 
                 try:
                     # Recompute BOTH instructions and tools from the (possibly
@@ -697,14 +732,15 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
                     })
                 except Exception as exc:  # pylint: disable=broad-except
                     logger.error("Resolution-loop follow-up call failed (non-fatal): %s", exc)
-                    return (getattr(response, "output_text", "") or "").strip() or NO_REPLY_SENTINEL
+                    return reply_or_fallback(getattr(response, "output_text", ""),
+                                             LEDGER_FOLLOWUP_FAILED_TRY_AGAIN)
 
         logger.warning(
             "Resolution loop hit MAX_BACKBONE_TOOL_LOOP_ITERATIONS=%d for request %s "
             "without a send_to_user call - returning whatever text the last round carries.",
             MAX_BACKBONE_TOOL_LOOP_ITERATIONS, request.request_id,
         )
-        return (getattr(response, "output_text", "") or "").strip() or NO_REPLY_SENTINEL
+        return reply_or_fallback(getattr(response, "output_text", ""), BACKBONE_UNEXPECTED_ERROR)
 
     def _execute_round_calls(self, request: AIRequest, turn_context: Dict[str, Any], *, chat_id: str,
                               tags: List[CapabilityTag], response: Any
@@ -752,6 +788,8 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
                 logger.error("%s(%s) failed (non-fatal): %s", tool_name, owner_tag.value, exc, exc_info=True)
                 result_text, outcome = f"error: {tool_name} failed: {exc}", "exception"
             log_capability_action(owner_tag.value, f"{tool_name}({args})", outcome, result_text)
+            if tool_name in WRITE_TOOL_NAMES:
+                self._turn_write_calls.append({"name": tool_name, "output": result_text, "error": None})
             outputs.append({"type": "function_call_output", "call_id": call_id, "output": result_text})
         return outputs
 
@@ -784,12 +822,24 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
         debug_wire("openai", "out", context, kwargs)
         # Retry + Feature 080 timing via the shared model_calls.timed_model_call (also
         # AIHandler._timed_llm_call's): a failed call is timed and counted too.
-        response = timed_model_call(
-            self._turn_telemetry_builder, lambda: self.client.responses.create(**kwargs), context=context,
-        )
+        if self._turn_is_approved_write:
+            # Never retried at any layer (Item4, legacy _call_openai_approval_api's
+            # rule): a retried call can run the approved write a second time.
+            response = timed_model_call(
+                self._turn_telemetry_builder,
+                lambda: self.client.with_options(max_retries=0).responses.create(**kwargs),
+                context=context, retry=False,
+            )
+        else:
+            response = timed_model_call(
+                self._turn_telemetry_builder, lambda: self.client.responses.create(**kwargs), context=context,
+            )
         audit_wire("openai", "in", context, response)
         debug_wire("openai", "in", context, response)
         self._turn_mcp_calls.extend(self._extract_mcp_call_items(response))
+        self._turn_write_calls.extend(
+            item for item in (getattr(response, "output", None) or [])
+            if getattr(item, "type", None) == "mcp_call")
         usage = getattr(response, "usage", None)
         if usage is not None:
             self._turn_tokens[0] += int(getattr(usage, "total_tokens", 0) or 0)
@@ -863,6 +913,30 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
                            now_loaded_capabilities=capabilities_now, planning_status=self._turn_planning_status)
         return describe_loading(kind, loading=loading, valid=valid, unknown=unknown,
                                 flows_now=flows_now, capabilities_now=capabilities_now)
+
+    def _apply_write_guards(self, request: AIRequest, final_text: str) -> str:
+        """Item4 (2026-10-01): the legacy approval-resolution checks, on the turn that
+        answers approval buttons with a yes (shared core.write_guards). A write that
+        ran more than once, or no write at all, replaces the reply - the user is never
+        told an approved action succeeded when it ran twice or not at all. Any other
+        turn, or an approved turn that ran each write exactly once, keeps its reply."""
+        if not self._turn_is_approved_write:
+            return final_text
+        executions = tally_write_executions(self._turn_write_calls, WRITE_TOOL_NAMES)
+        if executions.duplicated:
+            logger.error(
+                "[022] DUPLICATE EXECUTION DETECTED: approved turn for chat=%r request=%s ran %s "
+                "more than once (expected exactly 1). All write calls: %r",
+                self._turn_chat_id, request.request_id, executions.duplicated, self._turn_write_calls)
+            self._turn_offered_approval = False
+            return APPROVAL_POSSIBLY_DUPLICATED
+        if not executions.ran_any:
+            logger.error(
+                "[022] APPROVED TOOL NEVER RAN: approved turn for chat=%r request=%s executed no write. "
+                "Reply that was replaced: %r", self._turn_chat_id, request.request_id, final_text)
+            self._turn_offered_approval = False
+            return approved_write_not_run_message(executions.failure_detail)
+        return final_text
 
     def _finalize_response(self, request: AIRequest, final_text: str) -> AIResponse:
         """[[NO_REPLY]] sentinel handling via the shared models.message.should_reply_for

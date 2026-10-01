@@ -7,7 +7,6 @@ Phase 6: RBAC (Role-Based Access Control)
 import contextvars
 import copy
 import json
-import re
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -25,6 +24,10 @@ from src.utils.time_utils import now_local, local_from_timestamp, to_local
 from src.utils.wire_log import audit_wire, debug_wire
 from src.managers.session_manager import SessionManager, Session
 from src.core.turn_context import load_rolling_window, recall_memory_context
+from src.core.write_guards import (
+    AFFIRMATIVE_REPLIES, approved_write_not_run_message, is_affirmative_reply, mcp_error_text,
+    tally_write_executions,
+)
 from src.core.turn_result import (
     extract_mcp_call_items, finish_reason_of, fit_for_whatsapp,
     log_possible_hallucinated_confirmation,
@@ -549,55 +552,10 @@ def _build_pending_approval_details(
     return reference_block + "\n".join(lines) + f"\n\n{APPROVAL_QUESTION}"
 
 
-# Free-form affirmative replies recognized as approval of a pending MCP
-# document-creation request (Feature 022) - matched against the trimmed,
-# casefolded message (or its leading token), not as a substring-anywhere
-# check, to avoid false positives on unrelated longer sentences.
-_AFFIRMATIVE_REPLIES = {
-    "yes", "yep", "yeah", "sure", "ok", "okay", "go ahead",
-    "כן", "אישור", "בסדר", "אוקיי", "אוקי",
-    # Feature 046: additional common Hebrew affirmatives - "מאשר"/"מאשרת" ("I
-    # confirm", masc./fem.) plus "בטח"/"סבבה", not previously recognized.
-    "מאשר", "מאשרת", "בטח", "סבבה",
-    # bugfix-028 B1: the prompt itself ended "— לאשר?" while this set had only
-    # "אישור", so the prompt invited a word the parser rejected. Live: the user
-    # answered "לאשר" twice, got the identical prompt back twice, and gave up.
-    # The prompt is now a closed question (see _build_pending_approval_details),
-    # but the word it used to invite must still be understood.
-    "לאשר",
-}
-
-
-def _is_affirmative_reply(text: str) -> bool:
-    """Whether `text` reads as a free-form yes/no approval of a pending
-    document-creation request (Feature 022) - matched as the whole trimmed
-    message or its leading token, not a substring-anywhere check, to avoid
-    false positives on longer unrelated sentences (e.g. one that happens to
-    contain "כן" as a substring of another word).
-    """
-    normalized = text.strip().casefold()
-    if not normalized:
-        return False
-    if normalized in _AFFIRMATIVE_REPLIES:
-        return True
-    # bugfix-028 B2: the leading token is found by searching for the first RUN OF
-    # WORD CHARACTERS rather than by splitting on whitespace, because WhatsApp
-    # prefixes RTL text with Unicode bidi controls (U+200F RIGHT-TO-LEFT MARK and
-    # friends) that are NOT whitespace - `'‏'.isspace()` is False - so
-    # `.strip().split()[0]` yielded `'‏כן'` and missed this set entirely.
-    # Verified live: 2026-08-09 04:00:45 UTC the user sent `‏כן` and the log
-    # recorded approve=False; 8 messages in that window carried bidi controls.
-    #
-    # Deliberately NOT a list of characters to strip (rejected by the user) and
-    # deliberately NOT a substring-anywhere check: `\w` excludes every bidi
-    # control, punctuation and quote mark by definition, so no enumeration is
-    # needed, while anchoring on the FIRST word still refuses "לא נכון, אל תפיק"
-    # - a containment test would read that as approval and create a real
-    # financial document against an explicit refusal.
-    leading_match = re.search(r"\w+", normalized, flags=re.UNICODE)
-    if leading_match is None:
-        return False
-    return leading_match.group(0) in _AFFIRMATIVE_REPLIES
+# Feature 022 affirmative-reply recognition - 2026-10-01: the shared
+# core.write_guards implementation (also the backbone's); the old names stay as aliases.
+_AFFIRMATIVE_REPLIES = AFFIRMATIVE_REPLIES
+_is_affirmative_reply = is_affirmative_reply
 
 # Ledger Event Recognition (runtime_constitution.md) - a local OpenAI function tool,
 # NOT a remote MCP server: nothing is executed anywhere when the model "calls" it. The
@@ -1410,7 +1368,8 @@ class AIHandler:
     # Feature 080 (REQ-080-04): telemetry instrumentation helpers.
     # ------------------------------------------------------------------
 
-    def _timed_llm_call(self, call_fn: Callable[[], Any], *, context: str = "responses.create") -> Any:
+    def _timed_llm_call(self, call_fn: Callable[[], Any], *, context: str = "responses.create",
+                        retry: bool = True) -> Any:
         """Wraps one responses.create() call site with an explicit retry for the OpenAI SDK's
         own retry gap (2026-09-30 - see model_calls.call_model_with_retry's docstring),
         plus timing + token accounting, recorded into the active turn's TelemetryBuilder
@@ -1424,7 +1383,7 @@ class AIHandler:
         backbone."""
         from src.core.model_calls import timed_model_call
 
-        return timed_model_call(_active_telemetry_builder.get(), call_fn, context=context)
+        return timed_model_call(_active_telemetry_builder.get(), call_fn, context=context, retry=retry)
 
     def _timed_tool_call(self, tool_name: str, call_fn: Callable[[], Any], *, is_morning_tool: bool = False) -> Any:
         """Same contract as _timed_llm_call, for local function-tool dispatch and remote MCP
@@ -3018,18 +2977,9 @@ class AIHandler:
         zero-execution failure-detail extraction below would silently lose
         the actual reason (falling through to a fully generic message)
         every time, since it only ever looked at `.output`.
+        2026-10-01: the shared core.write_guards.mcp_error_text (also the backbone's).
         """
-        error = getattr(call, "error", None)
-        if not error:
-            return ""
-        content = error.get("content") if isinstance(error, dict) else getattr(error, "content", None)
-        if not content:
-            return ""
-        for block in content:
-            text = block.get("text") if isinstance(block, dict) else getattr(block, "text", None)
-            if text:
-                return str(text)
-        return ""
+        return mcp_error_text(call)
 
     @staticmethod
     def _extract_mcp_call_items(response) -> List[Dict[str, Any]]:
@@ -3934,7 +3884,8 @@ class AIHandler:
         # AppConfiguration.max_retries' own docstring) via .with_options(...)
         # right here, rather than relying on any outer/shared retry layer to
         # respect this. No retry of this call is ever safe, at any layer.
-        response = self._timed_llm_call(lambda: self.client.with_options(max_retries=0).responses.create(**kwargs))  # type: ignore[call-overload]
+        response = self._timed_llm_call(lambda: self.client.with_options(max_retries=0).responses.create(**kwargs),  # type: ignore[call-overload]
+                                        retry=False)
         audit_wire("openai", "in", "_call_openai_approval_api", response)
         debug_wire("openai", "in", "_call_openai_approval_api", response)
         logger.info(
@@ -4001,10 +3952,10 @@ class AIHandler:
             # legitimate 2-step sequence as a false positive (2026-08-03).
             # The real risk is the approved tool itself running more than
             # once - that's what must never happen.
-            approved_tool_executions = [
-                c for c in executed_calls if getattr(c, "name", None) == pending.tool_name
-            ]
-            if len(approved_tool_executions) > 1:
+            # 2026-10-01: counted by the shared core.write_guards.tally_write_executions
+            # (also the backbone's approved-turn guard).
+            executions = tally_write_executions(executed_calls, [pending.tool_name])
+            if executions.duplicated:
                 # The approved action must never execute more than once.
                 # Real, billed incidents (2026-08-03, at least twice, WITH
                 # client-side retry already disabled the second time - see
@@ -4022,7 +3973,7 @@ class AIHandler:
                     f"[022] DUPLICATE EXECUTION DETECTED: approval resolution for "
                     f"chat={effective_chat_id!r}, tool={pending.tool_name!r}, "
                     f"approval_request_id={pending.approval_request_id!r} produced "
-                    f"{len(approved_tool_executions)} executions of the approved tool "
+                    f"{executions.counts[pending.tool_name]} executions of the approved tool "
                     f"in one response (expected exactly 1). All mcp_calls: {executed_calls!r}"
                 )
                 self.pending_approval_manager.clear(effective_chat_id)
@@ -4030,7 +3981,7 @@ class AIHandler:
                     request, effective_chat_id, user_obj, user_role, sender, user_phone,
                     sender_phone, is_group, chat_name, APPROVAL_POSSIBLY_DUPLICATED)
 
-            if not approved_tool_executions:
+            if not executions.ran_any:
                 # bugfix-028 B4(b): the approved tool ran ZERO times. The guard
                 # above has always caught "more than once"; nothing caught "not
                 # at all", and nothing counted failures across turns - so the
@@ -4042,16 +3993,6 @@ class AIHandler:
                 # retry of the identical request would fail identically, and
                 # leaving it pending is what produced the loop. The user is told
                 # plainly, with whatever the tool actually said.
-                failure_detail = ""
-                for call in executed_calls:
-                    output = getattr(call, "output", None)
-                    if output:
-                        failure_detail = f" ({str(output)[:200]})"
-                        break
-                    error_text = self._extract_mcp_error_text(call)
-                    if error_text:
-                        failure_detail = f" ({error_text[:200]})"
-                        break
                 logger.error(
                     f"[022] APPROVED TOOL NEVER RAN: chat={effective_chat_id!r}, "
                     f"tool={pending.tool_name!r}, approval_request_id={pending.approval_request_id!r} "
@@ -4062,8 +4003,7 @@ class AIHandler:
                 return self._fallback_response_for(
                     request, effective_chat_id, user_obj, user_role, sender, user_phone,
                     sender_phone, is_group, chat_name,
-                    f"אישרת, אבל הפעולה לא בוצעה בפועל{failure_detail}. "
-                    f"לא נוצר שום מסמך. נסי שוב או ספרי לי איך להמשיך."
+                    approved_write_not_run_message(executions.failure_detail),
                 )
 
             self.pending_approval_manager.clear(effective_chat_id)

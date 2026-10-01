@@ -59,6 +59,13 @@ def fit_for_whatsapp(ai_response: AIResponse) -> AIResponse:
     return ai_response
 
 
+def reply_or_fallback(text: str, fallback: str) -> str:
+    """The reply text, or `fallback` when there is none (Item7, 2026-10-01): a turn
+    the user sent something to is never left silent by accident. A deliberate
+    [[NO_REPLY]] is non-empty text, so it passes through unchanged."""
+    return (text or "").strip() or fallback
+
+
 def log_possible_hallucinated_confirmation(request_id: str, response_text: str,
                                             tools_offered: bool,
                                             mcp_calls: List[Dict[str, Any]]) -> None:

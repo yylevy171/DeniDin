@@ -249,63 +249,6 @@ class DeniDin:
         # broad except degrades this to a harmless logged warning, never a crash.
         self.green_api_bot: Optional[Any] = None
     
-    def handle_message(self, chat_id: str, content: str) -> dict:
-        """
-        Send a message to the AI and get response.
-        
-        Args:
-            chat_id: WhatsApp chat ID (e.g., "972522968679@c.us")
-            content: Message text content
-            
-        Returns:
-            dict with keys: response_text, tokens_used, session_id
-        """
-        from src.models.message import WhatsAppMessage
-        from src.utils.time_utils import now_local
-
-        # Create fake WhatsApp message for testing
-        timestamp = int(now_local().timestamp())
-        message = WhatsAppMessage(
-            message_id=f"test_{timestamp}",
-            chat_id=chat_id,
-            sender_id=chat_id,
-            sender_name="Test User",
-            text_content=content,
-            timestamp=timestamp,
-            message_type="textMessage",
-            is_group=False,
-            received_timestamp=now_local(),
-            sender_display_name="Test User"
-        )
-
-        # Create AI request
-        ai_request = self.ai_handler.create_request(message)
-
-        # Get AI response
-        # Feature 039 fix: get_response's RBAC lookup falls back to `sender` only
-        # when `user_phone` isn't given - since `sender` is now a display name
-        # (not a phone), user_phone must always be passed explicitly, or RBAC
-        # silently resolves against a name instead of a phone.
-        ai_response = self.ai_handler.get_response(
-            ai_request,
-            sender=message.sender_display_name,
-            user_phone=message.sender_id,
-            sender_phone=message.sender_id,
-            is_group=message.is_group,
-            chat_name=message.chat_name
-        )
-        
-        # Get session_id from session manager
-        session = None
-        if self.ai_handler.memory_enabled:
-            session = self.ai_handler.session_manager.get_session(chat_id)
-
-        return {
-            'response_text': ai_response.response_text,
-            'tokens_used': ai_response.tokens_used,
-            'session_id': session.session_id if session else None
-        }
-    
     def get_collection(self):
         """
         Get ChromaDB collection for testing assertions.
@@ -426,7 +369,7 @@ def initialize_app(config_dict: dict, green_api: Optional[Any] = None) -> DeniDi
             connection at all (e.g. the player - see spec.md's "player" framing).
 
     Returns:
-        DeniDin instance with handle_message(), get_collection(), shutdown() APIs
+        DeniDin instance with get_collection(), shutdown() APIs
     """
     # Create AppConfiguration from dict (using from_dict for proper filtering)
     # Note: We need to write config to temp file and load it properly

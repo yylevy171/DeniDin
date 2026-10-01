@@ -47,6 +47,13 @@ _MORNING_INVOICE_WRITE_TOOLS = (
 )
 _MORNING_CLIENT_READ_TOOLS = ("list_clients", "resolve_client_name", "get_client_details")
 _MORNING_CLIENT_WRITE_TOOLS = ("add_client", "update_client")
+_REMINDER_WRITE_TOOLS = ("create_reminder", "modify_reminder", "delete_reminder")
+
+# Every tool that changes something (a Morning document/client, a reminder) - the
+# writes an approval answers. The backbone's approved-turn guard (Item4) counts
+# their executions.
+WRITE_TOOL_NAMES = frozenset(_MORNING_INVOICE_WRITE_TOOLS + _MORNING_CLIENT_WRITE_TOOLS
+                             + _REMINDER_WRITE_TOOLS)
 
 # tag -> Morning MCP tool names this capability makes available. Write
 # capabilities carry ONLY their write tools; reading is a separate capability

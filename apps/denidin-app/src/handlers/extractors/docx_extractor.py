@@ -131,7 +131,10 @@ class DOCXExtractor(MediaExtractor):
                 # MediaHandler can route a fee agreement as a synthetic turn.
                 "document_analysis": {
                     "document_type": self._classify_document_type(extracted_text),
-                    "summary": "See raw_response",
+                    # The AI analysis itself (Item17, 2026-10-01) - the backbone's
+                    # analyze_media passes document_analysis to the model, never
+                    # raw_response, so a "See raw_response" pointer reached it as noise.
+                    "summary": raw_response,
                     "key_points": [],
                 },
                 # Feature 043 (2026-08-18): the deterministic python-docx text itself
@@ -209,18 +212,19 @@ class DOCXExtractor(MediaExtractor):
             logger.debug(f"[DOCXExtractor._analyze_document] Constitution loaded: {bool(constitution)}")
             logger.debug(f"[DOCXExtractor._analyze_document] Constitution preview: {constitution[:200] if constitution else 'NONE'}")
             
-            # Use text model for analysis (constitution in user prompt, NOT system message)
-            from src.models.message import AIRequest
-            request = AIRequest(
-                user_prompt=full_prompt,
-                constitution=constitution,
-                max_tokens=self.config.ai_reply_max_tokens,
+            # One standalone text call (Item17, 2026-10-01) - not a conversational turn:
+            # no session, no tools. Was ai_handler.get_response, which on the legacy path
+            # ran a full chat turn under a fake "docx-analysis" chat and on the backbone
+            # did not exist (the media_analysis shim has no get_response), so the
+            # analysis was always empty there. Both paths' ai_handler expose `.client`.
+            from src.core.model_calls import single_prompt_text
+            response_text = single_prompt_text(
+                self.ai_handler.client,
                 model=self.config.ai_model,
-                chat_id="docx-analysis",
-                message_id="docx-analysis"
+                prompt=full_prompt,
+                max_output_tokens=self.config.ai_reply_max_tokens,
+                context="DOCXExtractor._analyze_document",
             )
-            ai_response = self.ai_handler.get_response(request)
-            response_text = ai_response.response_text
 
             logger.info(f"[DOCXExtractor._analyze_document] Raw AI response ({len(response_text)} chars):")
             logger.info(f"[DOCXExtractor._analyze_document] {response_text}")

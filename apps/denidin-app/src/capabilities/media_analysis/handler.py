@@ -98,6 +98,11 @@ def _format_result(result: Dict[str, Any]) -> tuple:
     for key in ("doc_type", "fields", "missing_required_fields", "document_analysis", "warnings"):
         if result.get(key):
             payload[key] = result[key]
+    # A DOCX the reader classified as a fee agreement (its deterministic "הסכם"
+    # signal) is doc_type "agreement" - the type cap_media_analysis routes to
+    # flow_fee_agreement_provided_by_user (Item17, 2026-10-01).
+    if "doc_type" not in payload and (result.get("document_analysis") or {}).get("document_type") == "הסכם":
+        payload["doc_type"] = "agreement"
     return json.dumps(payload, ensure_ascii=False, indent=2), extracted_text
 
 

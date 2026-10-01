@@ -63,12 +63,6 @@ class TestConstitutionUsage:
         assert "I am DeniDin" in text_content["text"]
         assert "Analyze this image" in text_content["text"]
     
-    # TODO(063 backbone): DOCX reading is not yet adjusted to the backbone. This test
-    # covers only the legacy path (MediaHandler / AIHandler's interface). With the
-    # backbone flag ON, DOCXExtractor runs through _ExtractorAIHandlerShim
-    # (src/capabilities/media_analysis/handler.py), which has no get_response, so the
-    # analysis always fails. Update this test, or add a backbone counterpart, once DOCX
-    # reading is adjusted to the backbone.
     def test_docx_extractor_uses_constitution_not_system_prompt(self):
         """DOCXExtractor must use constitution in user prompt, NOT system_prompt parameter."""
         mock_denidin = Mock()
@@ -78,10 +72,10 @@ class TestConstitutionUsage:
         mock_denidin.ai_handler = Mock()
         mock_denidin.ai_handler._load_constitution = Mock(return_value="I am DeniDin, a helpful assistant.")
         
-        # Mock get_response to return proper response
+        # Mock the standalone responses.create call
         mock_ai_response = Mock()
-        mock_ai_response.response_text = "DOCUMENT_TYPE: letter\nSUMMARY: Test\nKEY_POINTS:\n- Point 1\n"
-        mock_denidin.ai_handler.get_response = Mock(return_value=mock_ai_response)
+        mock_ai_response.output_text = "DOCUMENT_TYPE: letter\nSUMMARY: Test\nKEY_POINTS:\n- Point 1\n"
+        mock_denidin.ai_handler.client.responses.create = Mock(return_value=mock_ai_response)
         
         extractor = DOCXExtractor(mock_denidin)
         
@@ -108,9 +102,9 @@ class TestConstitutionUsage:
         # Verify constitution was loaded and used
         mock_denidin.ai_handler._load_constitution.assert_called_once()
         
-        # Verify get_response was called
-        assert mock_denidin.ai_handler.get_response.call_count == 1
-        call_args = mock_denidin.ai_handler.get_response.call_args
+        # Verify the standalone analysis call was made
+        assert mock_denidin.ai_handler.client.responses.create.call_count == 1
+        call_args = mock_denidin.ai_handler.client.responses.create.call_args
         
         # The AIRequest object should have been created with the constitution in the prompt
         assert call_args is not None
@@ -210,12 +204,6 @@ class TestCaptionContext:
         assert result["extraction_quality"] in ["high", "medium", "low", "failed"]
         assert "raw_response" in result
     
-    # TODO(063 backbone): DOCX reading is not yet adjusted to the backbone. This test
-    # covers only the legacy path (MediaHandler / AIHandler's interface). With the
-    # backbone flag ON, DOCXExtractor runs through _ExtractorAIHandlerShim
-    # (src/capabilities/media_analysis/handler.py), which has no get_response, so the
-    # analysis always fails. Update this test, or add a backbone counterpart, once DOCX
-    # reading is adjusted to the backbone.
     def test_docx_extractor_includes_caption_in_analysis(self):
         """DOCXExtractor should include caption in AI analysis prompt."""
         mock_denidin = Mock()
@@ -225,10 +213,10 @@ class TestCaptionContext:
         mock_denidin.ai_handler = Mock()
         mock_denidin.ai_handler._load_constitution = Mock(return_value="")
         
-        # Mock get_response to return proper response
+        # Mock the standalone responses.create call
         mock_ai_response = Mock()
-        mock_ai_response.response_text = "DOCUMENT_TYPE: invoice\nSUMMARY: Total is $2500\nKEY_POINTS:\n- Total: $2500\n"
-        mock_denidin.ai_handler.get_response = Mock(return_value=mock_ai_response)
+        mock_ai_response.output_text = "DOCUMENT_TYPE: invoice\nSUMMARY: Total is $2500\nKEY_POINTS:\n- Total: $2500\n"
+        mock_denidin.ai_handler.client.responses.create = Mock(return_value=mock_ai_response)
         
         extractor = DOCXExtractor(mock_denidin)
         
@@ -250,18 +238,12 @@ class TestCaptionContext:
             media = Media(data=b"docx", mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
             extractor.analyze_media(media, analyze=True, caption="What is the total amount?")
         
-        # Verify get_response was called
-        assert mock_denidin.ai_handler.get_response.call_count == 1
-        call_args = mock_denidin.ai_handler.get_response.call_args
+        # Verify the standalone analysis call was made
+        assert mock_denidin.ai_handler.client.responses.create.call_count == 1
+        call_args = mock_denidin.ai_handler.client.responses.create.call_args
         # Check that caption was included in the request
         assert call_args is not None
     
-    # TODO(063 backbone): DOCX reading is not yet adjusted to the backbone. This test
-    # covers only the legacy path (MediaHandler / AIHandler's interface). With the
-    # backbone flag ON, DOCXExtractor runs through _ExtractorAIHandlerShim
-    # (src/capabilities/media_analysis/handler.py), which has no get_response, so the
-    # analysis always fails. Update this test, or add a backbone counterpart, once DOCX
-    # reading is adjusted to the backbone.
     def test_docx_extractor_analysis_guided_by_caption(self):
         """DOCXExtractor prompt should instruct AI to focus on user's question when caption exists."""
         mock_denidin = Mock()
@@ -271,10 +253,10 @@ class TestCaptionContext:
         mock_denidin.ai_handler = Mock()
         mock_denidin.ai_handler._load_constitution = Mock(return_value="")
         
-        # Mock get_response to return proper response
+        # Mock the standalone responses.create call
         mock_ai_response = Mock()
-        mock_ai_response.response_text = "DOCUMENT_TYPE: contract\nSUMMARY: Client is John Doe\nKEY_POINTS:\n- Client: John Doe\n"
-        mock_denidin.ai_handler.get_response = Mock(return_value=mock_ai_response)
+        mock_ai_response.output_text = "DOCUMENT_TYPE: contract\nSUMMARY: Client is John Doe\nKEY_POINTS:\n- Client: John Doe\n"
+        mock_denidin.ai_handler.client.responses.create = Mock(return_value=mock_ai_response)
         
         extractor = DOCXExtractor(mock_denidin)
         
@@ -296,8 +278,8 @@ class TestCaptionContext:
             media = Media(data=b"docx", mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
             extractor.analyze_media(media, analyze=True, caption="Who is the client?")
         
-        # Verify get_response was called
-        assert mock_denidin.ai_handler.get_response.call_count == 1
+        # Verify the standalone analysis call was made
+        assert mock_denidin.ai_handler.client.responses.create.call_count == 1
     
     def test_pdf_extractor_passes_caption_to_all_pages(self):
         """PDFExtractor should pass same caption to all page extractions."""

@@ -142,14 +142,22 @@ def test_live_button_tap_resolves_as_ordinary_turn_and_capability_stays_loaded(e
     env.client.responses.create.side_effect = [
         _fc("load_capabilities", {"capabilities": ["cap_invoicing_write"]}),
         _fc("approval_with_yes_no_buttons", {"text": "להפיק?"}, rid="r2"),
-        _text("הופקה חשבונית 123.", rid="r3"),  # after "כן" - MCP ran server-side, model just reports
     ]
+    # After "כן" - the approved-write turn (Item4): its calls are never retried, so they
+    # go through client.with_options(max_retries=0); create_invoice ran server-side once
+    # and the model reports it.
+    reply = _text("הופקה חשבונית 123.", rid="r3")
+    reply.output.insert(0, SimpleNamespace(type="mcp_call", name="create_invoice", arguments="{}",
+                                           output="{\"number\": 123}", error=None))
+    approved_create = env.client.with_options.return_value.responses.create
+    approved_create.side_effect = [reply]
     orch = env.make()
     orch.turn_with_rounds(_request("תפיק"), chat_id="chat1", user_role="godfather")
     orch.record_approval_message_id("chat1", "STANZA-1")  # what denidin.py does after the buttons send
     tap = orch.resolve_button_tap("chat1", "STANZA-1", _request("כן"), user_role="godfather")
     assert tap.response_text == "הופקה חשבונית 123."
-    last = _sent_kwargs(env)[-1]
+    env.client.with_options.assert_called_with(max_retries=0)
+    last = approved_create.call_args.kwargs
     assert "create_invoice" in _mcp_entry(last)["allowed_tools"]  # still loaded on the tap turn
     assert env.sessions.get_session("chat1").active_capabilities == ["cap_invoicing_write"]
 
@@ -167,12 +175,15 @@ def test_tap_with_no_outstanding_approval_is_ignored(env):
 
 
 def test_a_second_tap_on_the_same_message_is_stale(env):
-    env.client.responses.create.side_effect = [_text("בוצע", rid="r1")]
+    # A live "כן" tap is the approved-write turn - its call goes through
+    # client.with_options(max_retries=0) (Item4).
+    approved_create = env.client.with_options.return_value.responses.create
+    approved_create.side_effect = [_text("בוצע", rid="r1")]
     orch = env.make()
     orch.record_approval_message_id("chat1", "STANZA-1")
     assert orch.resolve_button_tap("chat1", "STANZA-1", _request("כן"), user_role="godfather") is not None
     assert orch.resolve_button_tap("chat1", "STANZA-1", _request("כן"), user_role="godfather") is None
-    assert env.client.responses.create.call_count == 1
+    assert approved_create.call_count == 1
 
 
 def test_any_new_typed_turn_supersedes_outstanding_approval_buttons(env):
