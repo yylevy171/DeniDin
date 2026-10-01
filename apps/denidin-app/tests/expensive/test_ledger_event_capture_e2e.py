@@ -744,10 +744,14 @@ class TestLedgerEventCaptureE2E:
             # is a multi-field approval block (e.g. "מע״מ: כולל מע״מ" on one
             # line, "אישור — כן/לא?" on another, unrelated, line) - scanning
             # the whole message for a bare "?" anywhere would misfire on that
-            # unrelated trailing approval question.
+            # unrelated trailing approval question. "Included" is accepted in
+            # either wording - "כולל" ("including") or "כלול" ("included", e.g.
+            # "מע״מ: כלול") - and so is excluded in either wording.
             vat_keywords = ('מע"מ', "מע״מ", "מעמ")
+            included_words = ("כולל", "כלול")
             hedge_phrases = (
-                "לא כולל", "אינו כולל", "אינה כוללת", "לא ידוע", "לא צוין", "?",
+                "לא כולל", "לא כלול", "אינו כולל", "אינו כלול", "אינה כוללת",
+                "לא ידוע", "לא צוין", "?",
             )
             all_bot_texts = [t["reply"] for t in detour_transcript] + seen_texts
             for text in all_bot_texts:
@@ -757,7 +761,7 @@ class TestLedgerEventCaptureE2E:
                     if not any(k in line for k in vat_keywords):
                         continue
                     hedges = [h for h in hedge_phrases if h in line]
-                    assert "כולל" in line and not hedges, (
+                    assert any(w in line for w in included_words) and not hedges, (
                         f"bugfix-061: a בנק (bank deposit) event's VAT is unconditionally "
                         f"included - the bot must never mention VAT as unresolved/excluded/ "
                         f"a question. Offending line: {line!r} (hedge phrases found: {hedges!r}); "
