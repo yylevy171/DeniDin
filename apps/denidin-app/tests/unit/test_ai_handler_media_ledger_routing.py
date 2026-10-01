@@ -41,6 +41,12 @@ class TestBuildLedgerStashText:
         assert "--- טקסט שחולץ מהתמונה (מילה במילה) ---" in stash
         assert "אישור העברה בנקאית" in stash
 
+    # TODO(063 backbone): DOCX reading is not yet adjusted to the backbone. This test
+    # covers only the legacy path (MediaHandler / AIHandler's interface). With the
+    # backbone flag ON, DOCXExtractor runs through _ExtractorAIHandlerShim
+    # (src/capabilities/media_analysis/handler.py), which has no get_response, so the
+    # analysis always fails. Update this test, or add a backbone counterpart, once DOCX
+    # reading is adjusted to the backbone.
     def test_agreement_docx_stash_uses_document_header_and_frame(self):
         stash = build_ledger_stash_text(
             "הסכם שכר טרחה בין הצדדים...", None, "הסכם", source_medium="document"

@@ -63,6 +63,12 @@ class TestConstitutionUsage:
         assert "I am DeniDin" in text_content["text"]
         assert "Analyze this image" in text_content["text"]
     
+    # TODO(063 backbone): DOCX reading is not yet adjusted to the backbone. This test
+    # covers only the legacy path (MediaHandler / AIHandler's interface). With the
+    # backbone flag ON, DOCXExtractor runs through _ExtractorAIHandlerShim
+    # (src/capabilities/media_analysis/handler.py), which has no get_response, so the
+    # analysis always fails. Update this test, or add a backbone counterpart, once DOCX
+    # reading is adjusted to the backbone.
     def test_docx_extractor_uses_constitution_not_system_prompt(self):
         """DOCXExtractor must use constitution in user prompt, NOT system_prompt parameter."""
         mock_denidin = Mock()
@@ -204,6 +210,12 @@ class TestCaptionContext:
         assert result["extraction_quality"] in ["high", "medium", "low", "failed"]
         assert "raw_response" in result
     
+    # TODO(063 backbone): DOCX reading is not yet adjusted to the backbone. This test
+    # covers only the legacy path (MediaHandler / AIHandler's interface). With the
+    # backbone flag ON, DOCXExtractor runs through _ExtractorAIHandlerShim
+    # (src/capabilities/media_analysis/handler.py), which has no get_response, so the
+    # analysis always fails. Update this test, or add a backbone counterpart, once DOCX
+    # reading is adjusted to the backbone.
     def test_docx_extractor_includes_caption_in_analysis(self):
         """DOCXExtractor should include caption in AI analysis prompt."""
         mock_denidin = Mock()
@@ -244,6 +256,12 @@ class TestCaptionContext:
         # Check that caption was included in the request
         assert call_args is not None
     
+    # TODO(063 backbone): DOCX reading is not yet adjusted to the backbone. This test
+    # covers only the legacy path (MediaHandler / AIHandler's interface). With the
+    # backbone flag ON, DOCXExtractor runs through _ExtractorAIHandlerShim
+    # (src/capabilities/media_analysis/handler.py), which has no get_response, so the
+    # analysis always fails. Update this test, or add a backbone counterpart, once DOCX
+    # reading is adjusted to the backbone.
     def test_docx_extractor_analysis_guided_by_caption(self):
         """DOCXExtractor prompt should instruct AI to focus on user's question when caption exists."""
         mock_denidin = Mock()

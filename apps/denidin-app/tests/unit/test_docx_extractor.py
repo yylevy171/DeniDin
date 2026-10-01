@@ -18,6 +18,12 @@ from src.handlers.extractors.docx_extractor import DOCXExtractor
 from src.models.media import Media
 
 
+# TODO(063 backbone): DOCX reading is not yet adjusted to the backbone. This test
+# covers only the legacy path (MediaHandler / AIHandler's interface). With the
+# backbone flag ON, DOCXExtractor runs through _ExtractorAIHandlerShim
+# (src/capabilities/media_analysis/handler.py), which has no get_response, so the
+# analysis always fails. Update this test, or add a backbone counterpart, once DOCX
+# reading is adjusted to the backbone.
 @pytest.fixture
 def mock_denidin_context():
     """Create mock DeniDin context."""
