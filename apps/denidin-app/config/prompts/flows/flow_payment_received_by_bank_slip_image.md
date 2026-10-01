@@ -7,7 +7,7 @@ Flows it may load: `flow_deposit_provided_by_user`, `flow_issue_invoice_receipt_
 
 Follow these steps in order, to the letter.
 
-1. Load `cap_media_analysis` and read the slip. Use `cap_send_to_user` to report what it contains (payer, amount, date, bank details) so the user can see what you understood. If the image is not a bank slip, stop using this flow and decide what it is from its content.
+1. The slip must have been read with `cap_media_analysis`'s `analyze_media` (load it and read the slip now if it was not). Use `cap_send_to_user` to report what it contains (payer, amount, date, bank number, branch and account) so the user can see what you understood. If its `missing_required_fields` is not empty, ask the user for exactly those details and wait for them. If the image is not a bank slip, stop using this flow and decide what it is from its content.
 2. Load `flow_deposit_provided_by_user` for the payer named on the slip.
 3. Load `flow_invoicing_query` and check whether an existing Morning document already covers this payment (same client, similar amount).
    - No document covers it: load `flow_issue_invoice_receipt_combo`.

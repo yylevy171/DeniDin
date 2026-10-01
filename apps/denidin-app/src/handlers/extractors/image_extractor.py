@@ -274,9 +274,9 @@ class ImageExtractor(MediaExtractor):
         # back with garbled text and a dropped fee tier. Forcing "high" processes the image
         # at full resolution (more tiles), matching what document/text-heavy images need.
         logger.info(f"[ImageExtractor._vision_extract] Sending request to OpenAI Vision API")
-        response = self.ai_handler.client.responses.create(
-            model=self.vision_model,
-            input=[
+        request_kwargs = {
+            "model": self.vision_model,
+            "input": [
                 {
                     "role": "user",
                     "content": [
@@ -285,10 +285,16 @@ class ImageExtractor(MediaExtractor):
                     ]
                 }
             ],
-            max_output_tokens=self.config.ai_reply_max_tokens
-        )
-        audit_wire("openai", "in", "ImageExtractor._vision_extract", response)
-        debug_wire("openai", "in", "ImageExtractor._vision_extract", response)
+            "max_output_tokens": self.config.ai_reply_max_tokens,
+        }
+        # boundary 'vision' (2026-10-01): the vision model, not the conversational
+        # one - and the request is logged too, so a trace shows exactly what the
+        # vision model was told (the image itself is redacted by wire_log).
+        audit_wire("vision", "out", "ImageExtractor._vision_extract", request_kwargs)
+        debug_wire("vision", "out", "ImageExtractor._vision_extract", request_kwargs)
+        response = self.ai_handler.client.responses.create(**request_kwargs)
+        audit_wire("vision", "in", "ImageExtractor._vision_extract", response)
+        debug_wire("vision", "in", "ImageExtractor._vision_extract", response)
 
         raw_response = cast(str, response.output_text)
         logger.info(f"[ImageExtractor._vision_extract] Raw OpenAI response ({len(raw_response)} chars):")

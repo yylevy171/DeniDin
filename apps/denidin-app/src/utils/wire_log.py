@@ -26,7 +26,11 @@ now deleted - `rawlog.py`/`whatsapp_audit_log.py` no longer exist.)
   history), a WhatsApp webhook/send payload with binary fields redacted,
   anything else via `repr()`.
 
-`boundary` is `'openai'` or `'whatsapp'`. `direction` is `'out'` (app -> the
+`boundary` is `'openai'`, `'vision'` or `'whatsapp'`. `'vision'` is the media
+extractors' vision-model call (config.ai_vision_model, possibly a different model
+from the conversational one) - same OpenAI API and payload shapes as `'openai'`,
+named apart so a trace never confuses the two; its inline image data URL is
+redacted before logging. `direction` is `'out'` (app -> the
 other side) or `'in'` (the other side -> app). `context` is a short label
 for the specific call site (e.g. `'_run_resolution_loop (first round)'`,
 `'text'`, `'reaction'`, `'webhook'`) - free text, not an enum.
@@ -55,6 +59,19 @@ logger = get_logger(__name__)
 # "jpegThumbnail: Image preview in base64"). downloadUrl (a plain URL, not
 # binary) and everything else is safe and logged as-is.
 _BINARY_FIELD_NAMES = {"jpegThumbnail"}
+
+
+def _redact_data_urls(value: Any) -> Any:
+    """Deep-copy `value`, replacing any inline `data:` URL string (the image a
+    vision request carries, base64, often megabytes) with a short placeholder.
+    Applied to every `vision` payload before logging."""
+    if isinstance(value, dict):
+        return {key: _redact_data_urls(val) for key, val in value.items()}
+    if isinstance(value, list):
+        return [_redact_data_urls(item) for item in value]
+    if isinstance(value, str) and value.startswith("data:"):
+        return f"<redacted data URL, {len(value)} chars>"
+    return value
 
 
 def _redact_binary_fields(value: Any) -> Any:
@@ -132,7 +149,9 @@ def _summarize(boundary: str, direction: str, payload: Any) -> str:
     section rather than a hand-rolled one-line summary that could never
     structurally match it no matter how much detail got stuffed in."""
     import json  # pylint: disable=import-outside-toplevel
-    if boundary == "openai":
+    if boundary == "vision" and direction == "out" and isinstance(payload, dict):
+        return json.dumps(_redact_data_urls(payload), ensure_ascii=False, default=str)
+    if boundary in ("openai", "vision"):
         if direction == "out" and isinstance(payload, dict):
             named = dict(payload)
             named["instructions"] = _name_instructions(payload.get("instructions"))
@@ -165,6 +184,8 @@ def debug_wire(boundary: str, direction: str, context: str, payload: Any) -> Non
     try:
         if boundary == "whatsapp" and isinstance(payload, (dict, list)):
             payload = _redact_binary_fields(copy.deepcopy(payload))
+        if boundary == "vision" and isinstance(payload, (dict, list)):
+            payload = _redact_data_urls(payload)
         dump_fn = getattr(payload, "model_dump_json", None)
         content = dump_fn() if callable(dump_fn) else repr(payload)
         logger.debug(f"[WIRE-DEBUG] boundary={boundary!r} direction={direction!r} context={context!r} payload={content}")

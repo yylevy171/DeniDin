@@ -29,6 +29,12 @@ six boundaries during one turn or test run, in chronological order, verbatim:
 6. **Morning MCP → model** — that same `mcp_call` item's `output`/`error`
    field.
 
+Plus, for a media turn, **app → VISION MODEL** / **VISION MODEL → app**
+(`boundary='vision'`): the media extractors' own call to
+`config.ai_vision_model` — possibly a different model from the conversational
+one, so it is never labeled plain "MODEL". The request is shown with the image's
+inline data URL redacted.
+
 This governs **both** message pipelines in `apps/denidin-app` — the legacy
 `ai_handler.py` path and the flag-gated `src/backbone/backbone.py` path
 (Feature 063) — both call the exact same two logging functions, just under

@@ -248,6 +248,17 @@ def render_openai_debug_out(data: dict) -> str:
                     tool_name = _CALL_ID_TO_TOOL.get(call_id, "<unknown tool - call_id not seen yet>")
                     lines.append(f"- app's reply to `{tool_name}` (call_id=`{call_id}`):")
                     lines.append(code_block(_readable_text(item.get("output")), "text"))
+                elif isinstance(item, dict) and isinstance(item.get("content"), list):
+                    # A multi-part message (e.g. a vision request: prompt text + image) -
+                    # each part shown on its own, the text readable rather than escaped.
+                    lines.append(f"- message (role={item.get('role')}):")
+                    for part in item["content"]:
+                        if isinstance(part, dict) and part.get("type") == "input_text":
+                            lines.append(code_block(part.get("text", ""), "text"))
+                        elif isinstance(part, dict) and part.get("type") == "input_image":
+                            lines.append(f"  - image: `{part.get('image_url')}` detail=`{part.get('detail')}`")
+                        else:
+                            lines.append(code_block(json.dumps(part, ensure_ascii=False), "json"))
                 else:
                     lines.append(code_block(json.dumps(item, ensure_ascii=False), "json"))
             parts.append("\n".join(lines))
@@ -326,6 +337,10 @@ def category_label(boundary: str, direction: str, context: str) -> str:
         return "APP → USER" if direction == "out" else "USER ← APP (send result)"
     if boundary == "openai":
         return "APP → MODEL" if direction == "out" else "MODEL → APP"
+    if boundary == "vision":
+        # The media extractors' vision model (config.ai_vision_model) - possibly
+        # a different model from the conversational one, so named apart.
+        return "APP → VISION MODEL" if direction == "out" else "VISION MODEL → APP"
     return f"UNKNOWN boundary={boundary!r}"
 
 
@@ -334,9 +349,9 @@ def _render_openai_or_whatsapp_body(boundary: str, direction: str, payload_text:
     alike, since both now carry the same structured shape (see wire_log.py's
     2026-09-29 audit_wire rewrite)."""
     data = try_literal_or_json(payload_text)
-    if boundary == "openai" and direction == "out":
+    if boundary in ("openai", "vision") and direction == "out":
         return render_openai_debug_out(data) if data is not None else code_block(payload_text, "text")
-    if boundary == "openai" and direction == "in":
+    if boundary in ("openai", "vision") and direction == "in":
         return render_openai_debug_in(data) if data is not None else payload_text
     return render_whatsapp_debug(data, payload_text)
 

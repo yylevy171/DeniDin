@@ -19,10 +19,10 @@ and real capture happens automatically via `denidin.py`'s shared, unmodified
 full reasoning) — silently re-running the legacy shortcut inline here would risk
 double-capturing the same event. This capability's own job is extraction only.
 """
+import json
 import logging
 from typing import Any, Dict, Optional
 
-from src.backbone.capability_tags import CapabilityTag
 from src.constants.error_messages import BACKBONE_NO_MEDIA_ATTACHED
 
 logger = logging.getLogger(__name__)
@@ -38,9 +38,13 @@ class _ExtractorAIHandlerShim:
         self.client = backbone.client
 
     def _load_constitution(self) -> str:
-        return str(self._backbone.load_backbone()) + "\n\n" + str(
-            self._backbone.load_capability_prompt(CapabilityTag.MEDIA_ANALYSIS)
-        )
+        """Nothing - the extractors prepend this to their own extraction prompt, and
+        the vision model is not the conversational model: it gets the extraction
+        prompt alone (2026-10-01). Prepending the backbone + this capability's prompt
+        told a tool-less vision model to load capabilities, call analyze_media and
+        answer the user, so it wrote fake tool calls before its JSON and the JSON
+        no longer parsed (T1, 2026-10-01)."""
+        return ""
 
     def capture_ledger_events_from_text(self, text: str, today_timestamp: Optional[int] = None):
         del text, today_timestamp
@@ -82,6 +86,21 @@ def _record_extracted_text(backbone, turn_context: Dict[str, Any], extracted_tex
                         extracted_text=extracted_text or None)
 
 
+def _format_result(result: Dict[str, Any]) -> tuple:
+    """The analyze_media tool output for the model, plus the text to store on the
+    media message. Carries everything the extractors return that the model needs
+    to choose what to do next - doc_type, fields, missing_required_fields
+    (image/PDF) or document_analysis (DOCX) - not just the text. extracted_text
+    falls back to raw_response when the structured text is empty, the extractors'
+    own "never leave the user with nothing" fallback (bugfix-028 B5)."""
+    extracted_text = result.get("extracted_text") or result.get("raw_response") or ""
+    payload: Dict[str, Any] = {"extracted_text": extracted_text}
+    for key in ("doc_type", "fields", "missing_required_fields", "document_analysis", "warnings"):
+        if result.get(key):
+            payload[key] = result[key]
+    return json.dumps(payload, ensure_ascii=False, indent=2), extracted_text
+
+
 def dispatch_direct_tool_call(backbone, tool_name: str, args: Dict[str, Any],
                                turn_context: Dict[str, Any]) -> str:
     """Executes one `analyze_media` call directly on the ongoing chain
@@ -94,22 +113,16 @@ def dispatch_direct_tool_call(backbone, tool_name: str, args: Dict[str, Any],
     media_extraction: an ALREADY-computed result (test fixture / future
     caller) is formatted as-is, never paying for a second real AI call."""
     del tool_name, args
-    media_extraction = turn_context.get("media_extraction")
-    if media_extraction:
-        extracted_text = media_extraction.get("extracted_text", "")
-        analysis = media_extraction.get("document_analysis", {})
-        _record_extracted_text(backbone, turn_context, extracted_text)
-        return f"Extracted text: {extracted_text}\n\nDocument analysis: {analysis}"
+    result = turn_context.get("media_extraction")
+    if not result:
+        media = turn_context.get("media")
+        media_type = turn_context.get("media_type")
+        if media is None or media_type is None:
+            return BACKBONE_NO_MEDIA_ATTACHED
+        extractor = _build_extractor(media_type, _ExtractorContextShim(backbone))
+        result = extractor.analyze_media(media, caption=turn_context.get("caption", ""),
+                                          today_timestamp=turn_context.get("timestamp"))
 
-    media = turn_context.get("media")
-    media_type = turn_context.get("media_type")
-    if media is None or media_type is None:
-        return BACKBONE_NO_MEDIA_ATTACHED
-
-    extractor = _build_extractor(media_type, _ExtractorContextShim(backbone))
-    result = extractor.analyze_media(media, caption=turn_context.get("caption", ""),
-                                      today_timestamp=turn_context.get("timestamp"))
-    extracted_text = result.get("extracted_text", "")
-    analysis = result.get("document_analysis", {})
+    output, extracted_text = _format_result(result)
     _record_extracted_text(backbone, turn_context, extracted_text)
-    return f"Extracted text: {extracted_text}\n\nDocument analysis: {analysis}"
+    return output
