@@ -42,6 +42,7 @@ from tests.e2e_helpers import (
     assert_response_exists,
     ClarificationAnswerBank,
     converse_until_ledger_events_captured,
+    wipe_chat_messages_on_disk,
 )
 
 logger = logging.getLogger(__name__)
@@ -115,6 +116,16 @@ class TestLedgerEventCaptureTextBilled:
             f"would write into production/dev ledger data"
         )
         return denidin.denidin_app
+
+    @pytest.fixture(autouse=True)
+    def _clean_chat_around_every_test(self, denidin_app):
+        """Every test here talks in GODFATHER_CHAT_ID: start each one with that chat
+        empty and leave it empty afterwards (stored messages + the backbone's loaded
+        capabilities/flows), so no test sees - or leaves - another's conversation."""
+        storage_dir = denidin_app.ai_handler.session_manager.storage_dir
+        wipe_chat_messages_on_disk(storage_dir, GODFATHER_CHAT_ID)
+        yield
+        wipe_chat_messages_on_disk(storage_dir, GODFATHER_CHAT_ID)
 
     # Per-test event cleanup (before AND after every test) is handled directory-wide
     # by tests/billed/conftest.py's _clean_ledger_events_around_every_test autouse

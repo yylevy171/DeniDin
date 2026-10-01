@@ -89,6 +89,7 @@ from tests.billed.denidin_mcp_e2e_helpers import (
     require_live_morning_tunnel,
 )
 from tests.e2e_helpers import (
+    assert_no_errors_sent_to_user,
     persisted_ledger_events_for_chat,
     ClarificationAnswerBank,
     create_real_notification,
@@ -841,6 +842,8 @@ class TestLedgerEventCaptureE2E:
                     f"expected a non-null slowest_tool_name for this multi-tool-call "
                     f"flow, got row={dict(row)!r}"
                 )
+
+            assert_no_errors_sent_to_user(chat_id)
         finally:
             # diff3 (2026-09-07): leave Morning net-clean - a full credit note
             # (type 330) for the 320 this run issued. Signed tax docs can never

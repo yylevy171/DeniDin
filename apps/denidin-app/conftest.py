@@ -234,7 +234,16 @@ def pytest_runtest_setup(item):
     Clears all existing loggers to ensure test logs go to test_logs directory.
     """
     global _current_test_file
-    
+
+    # 2026-09-30: the start of this test, for tests/e2e_helpers.assert_no_errors_sent_to_user.
+    # Billed/expensive tests only - the helper refuses to run anywhere else (unset here).
+    if item.get_closest_marker("billed") or item.get_closest_marker("expensive"):
+        from src.utils.time_utils import now_local  # pylint: disable=import-outside-toplevel
+        from tests import e2e_helpers  # pylint: disable=import-outside-toplevel
+        e2e_helpers.CURRENT_TEST_STARTED_AT = now_local()
+    elif "tests.e2e_helpers" in sys.modules:
+        sys.modules["tests.e2e_helpers"].CURRENT_TEST_STARTED_AT = None
+
     # Get the test file name (e.g., 'test_ai_handler.py' -> 'test_ai_handler')
     test_file = Path(item.fspath).stem
     _current_test_file = test_file
