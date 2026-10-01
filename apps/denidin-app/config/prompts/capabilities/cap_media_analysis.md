@@ -15,6 +15,6 @@ What to do with the result:
 3. `doc_type` is `unknown`, or there is none: use `cap_send_to_user` to report what the document says and ask the user what it is and what they want done with it. Never guess its type.
 4. `missing_required_fields` is not empty: ask the user for exactly those details (in the flow you loaded, or on their own). Never fill them in yourself.
 5. When reporting what the document says, report what it actually says: names, dates, amounts, account details, in Hebrew. Nothing it does not say. Reading and stating these details is the task, not something to hold back. Format the report:
-   - A brief Hebrew summary of the content.
+   - Start with `סיכום:` followed by a brief Hebrew summary of the content.
    - Then bullets (•) with: the document type (סוג מסמך); key dates, if present; the main parties/entities, if identifiable; important numbers/amounts, if present.
    - End with the facts, not with questions - except the question step 3 or step 4 requires.

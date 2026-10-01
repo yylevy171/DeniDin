@@ -24,6 +24,7 @@ from src.backbone.prompt_cache import MtimePromptCache
 from src.backbone.resolution_tools import RESOLUTION_TOOLS, extract_resolution_tool_calls
 from src.capabilities.toolsets import (
     WRITE_TOOL_NAMES,
+    WRITE_TOOLS_BY_TAG,
     build_capability_tools,
     dispatch_local_tool,
     extract_local_calls,
@@ -46,7 +47,7 @@ from src.core.turn_result import (
     log_possible_hallucinated_confirmation, reply_or_fallback,
 )
 from src.core.write_guards import (
-    approved_write_not_run_message, is_affirmative_reply, tally_write_executions,
+    approved_write_not_run_message, is_affirmative_reply, tally_write_executions, write_subject,
 )
 from src.core.model_calls import (
     build_fallback_response, record_mcp_tool_calls, telemetry_span, timed_model_call,
@@ -245,12 +246,16 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
 
         # Item4 (2026-10-01): True when this turn answers an approval-buttons prompt
         # with a yes - the turn that runs the approved write. Its model calls are
-        # never retried, and what it executed is checked (_apply_write_guards).
+        # run with the SDK's own retries off (as legacy's approval call), and what it
+        # executed is checked (_apply_write_guards).
         # _turn_write_calls collects what it executed: every raw Morning mcp_call item
         # (any tool - a read's output can be the failure detail, as in legacy) and each
         # local write ({name, output, error}); only writes are counted.
         self._turn_is_approved_write: bool = False
         self._turn_write_calls: List[Any] = []
+        # Every capability loaded at any round of this turn - names what a never-ran
+        # approved write was about (a reminder, a document, a client).
+        self._turn_seen_tags: set = set()
 
         # The inbound WhatsAppMessage this turn answers (request.original_message) -
         # the addressing for internal notes stored mid-turn (see record_planning_status).
@@ -560,6 +565,7 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
             # turn (Item4). Any new turn supersedes whatever approval buttons were
             # outstanding.
             self._turn_write_calls = []
+            self._turn_seen_tags = set()
             self._turn_is_approved_write = False
             if effective_chat_id:
                 approval_was_pending = bool(
@@ -637,6 +643,7 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
         previous_response_id chaining - which retains neither - never loses
         either. Returns (tags, instructions, tools)."""
         tags = self._get_active_tags(chat_id)
+        self._turn_seen_tags.update(tags)
         tools = list(RESOLUTION_TOOLS) + list(BACKBONE_TOOLS) + build_capability_tools(self, tags, turn_context)
         instructions = self.build_instructions(
             tags, "", request.timestamp, active_flows=self._get_active_flows(chat_id),
@@ -823,12 +830,13 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
         # Retry + Feature 080 timing via the shared model_calls.timed_model_call (also
         # AIHandler._timed_llm_call's): a failed call is timed and counted too.
         if self._turn_is_approved_write:
-            # Never retried at any layer (Item4, legacy _call_openai_approval_api's
-            # rule): a retried call can run the approved write a second time.
+            # Same as legacy _call_openai_approval_api (Item4): the OpenAI SDK's own
+            # retries are off (max_retries=0) for the turn that runs the approved write;
+            # the shared explicit 424 retry still applies.
             response = timed_model_call(
                 self._turn_telemetry_builder,
                 lambda: self.client.with_options(max_retries=0).responses.create(**kwargs),
-                context=context, retry=False,
+                context=context,
             )
         else:
             response = timed_model_call(
@@ -935,7 +943,8 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
                 "[022] APPROVED TOOL NEVER RAN: approved turn for chat=%r request=%s executed no write. "
                 "Reply that was replaced: %r", self._turn_chat_id, request.request_id, final_text)
             self._turn_offered_approval = False
-            return approved_write_not_run_message(executions.failure_detail)
+            possible_writes = [name for tag in self._turn_seen_tags for name in WRITE_TOOLS_BY_TAG.get(tag, ())]
+            return approved_write_not_run_message(executions.failure_detail, write_subject(possible_writes))
         return final_text
 
     def _finalize_response(self, request: AIRequest, final_text: str) -> AIResponse:

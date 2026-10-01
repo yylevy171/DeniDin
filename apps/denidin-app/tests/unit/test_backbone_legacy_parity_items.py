@@ -1,5 +1,5 @@
 """Unit tests (2026-10-01) for the backbone legacy-parity items:
-Item4 (approved-write safeguards: no retry, duplicate execution, write never ran - the
+Item4 (approved-write safeguards: SDK retries off, duplicate execution, write never ran - the
 shared core.write_guards, also legacy's), Item7 (a turn is never left silent by
 accident), Item14 (group-only etiquette section), Item17 (DOCX analysis works through
 the backbone's extractor shim)."""
@@ -19,9 +19,8 @@ from src.capabilities.media_analysis.handler import (
 from src.constants.error_messages import (
     APPROVAL_POSSIBLY_DUPLICATED, BACKBONE_UNEXPECTED_ERROR, LEDGER_FOLLOWUP_FAILED_TRY_AGAIN,
 )
-from src.core.model_calls import timed_model_call
 from src.core.write_guards import (
-    approved_write_not_run_message, is_affirmative_reply, tally_write_executions,
+    approved_write_not_run_message, is_affirmative_reply, tally_write_executions, write_subject,
 )
 from src.models.config import AppConfiguration
 from src.models.media import Media
@@ -80,7 +79,7 @@ def _approved_turn(prompts_root, responses):
 
 # --- Item4 -------------------------------------------------------------------
 
-def test_approved_turn_that_ran_the_write_once_keeps_its_reply_and_never_retries(prompts_root):
+def test_approved_turn_that_ran_the_write_once_keeps_its_reply_sdk_retries_off(prompts_root):
     client, response = _approved_turn(prompts_root, [
         _response([_mcp("create_invoice"), _send("החשבונית הופקה")]),
     ])
@@ -104,6 +103,28 @@ def test_approved_turn_where_no_write_ran_tells_the_user_nothing_was_done(prompt
                    _send("הופקה בהצלחה")]),
     ])
     assert response.response_text == approved_write_not_run_message(" (המסמך לא נמצא)")
+    assert "המסמך לא נמצא" in response.response_text
+
+
+def test_never_ran_message_names_a_reminder_when_the_approval_was_about_a_reminder(prompts_root):
+    client = MagicMock()
+    client.with_options.return_value.responses.create.side_effect = [
+        _response([_call("load_capabilities", {"capabilities": ["cap_reminders_write"]}, "c1")], "r1"),
+        _response([_send("נוצרה")], "r2"),
+    ]
+    backbone = _backbone(prompts_root, client)
+    backbone.session_manager.set_approval_message_id("chat1", "approval-msg")
+    response = backbone.turn_with_rounds(_request("כן"), chat_id="chat1")
+    assert "לא נוצרה, לא שונתה ולא נמחקה שום תזכורת" in response.response_text
+    assert "מסמך" not in response.response_text
+
+
+def test_never_ran_message_is_hebrew_only():
+    message = approved_write_not_run_message(' ({"error": "Client not found"})', "document")
+    assert "Client not found" not in message and "error" not in message
+    assert message == "אישרת, אבל הפעולה לא בוצעה בפועל. לא נוצר שום מסמך. נסי שוב או ספרי לי איך להמשיך."
+    assert write_subject(["add_client"]) == "client"
+    assert write_subject(["create_invoice", "create_reminder"]) == ""
 
 
 def test_a_yes_without_outstanding_approval_buttons_is_an_ordinary_turn(prompts_root):
@@ -124,16 +145,14 @@ def test_shared_tally_counts_local_writes_and_takes_the_first_failure_text():
     assert is_affirmative_reply("‏כן") and not is_affirmative_reply("לא נכון, אל תפיק")
 
 
-def test_timed_model_call_without_retry_never_retries_a_424():
-    calls = []
-
-    def failing():
-        calls.append(1)
-        raise APIStatusError("424", response=MagicMock(status_code=424), body=None)
-
-    with pytest.raises(APIStatusError):
-        timed_model_call(None, failing, context="t", retry=False)
-    assert len(calls) == 1
+def test_approved_turn_still_retries_once_on_a_424(prompts_root):
+    """The shared explicit 424 retry applies on the approved turn too (one ~2s backoff)."""
+    client, response = _approved_turn(prompts_root, [
+        APIStatusError("424", response=MagicMock(status_code=424), body=None),
+        _response([_mcp("create_invoice"), _send("החשבונית הופקה")]),
+    ])
+    assert response.response_text == "החשבונית הופקה"
+    assert client.with_options.return_value.responses.create.call_count == 2
 
 
 # --- Item7 -------------------------------------------------------------------

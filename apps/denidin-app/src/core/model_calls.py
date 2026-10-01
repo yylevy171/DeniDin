@@ -84,23 +84,15 @@ def sane_source_epoch(epoch: Optional[int]) -> Optional[int]:
     return epoch
 
 
-def timed_model_call(builder: Optional[Any], call_fn: Callable[[], Any], *, context: str,
-                     retry: bool = True) -> Any:
+def timed_model_call(builder: Optional[Any], call_fn: Callable[[], Any], *, context: str) -> Any:
     """2026-10-01 consolidation: the ONE timed responses.create() call (Feature 080,
     REQ-080-04) - moved out of AIHandler._timed_llm_call, also used by the backbone (which
     used to record only successful calls). call_fn runs through call_model_with_retry;
     the call is timed and recorded into `builder` on success AND failure alike (a
     timed-out/errored call still consumed wall-clock time), the call's own exception
     propagating unchanged. Recording is a no-op when `builder` is None; the retry always
-    applies.
-
-    retry=False (Item4, 2026-10-01): no explicit retry at all - for a call that may
-    execute an already-approved write (a retried call can run it a second time). The
-    caller also turns off the SDK's own retries (client.with_options(max_retries=0))."""
-    if retry:
-        retrying_call_fn = lambda: call_model_with_retry(call_fn, context=context)  # noqa: E731
-    else:
-        retrying_call_fn = call_fn
+    applies."""
+    retrying_call_fn = lambda: call_model_with_retry(call_fn, context=context)  # noqa: E731
     if builder is None:
         return retrying_call_fn()
     from src.managers.telemetry_manager import monotonic_ms  # pylint: disable=import-outside-toplevel

@@ -194,11 +194,6 @@ class TestWhatsAppE2E:
         image_path = assert_image_path_persisted(denidin_app, '972522968679@c.us')
         logger.info(f"✅ image_path persisted and resolves to real file: {image_path}")
 
-    # TODO(063 backbone): DOCX reading is not yet adjusted to the backbone. With the
-    # backbone flag ON, analyze_media runs DOCXExtractor through
-    # src/capabilities/media_analysis/handler.py's _ExtractorAIHandlerShim, which has no
-    # get_response - DOCXExtractor._analyze_document calls it, so the document's analysis
-    # always fails. Update this test once DOCX reading is adjusted to the backbone.
     @pytest.mark.expensive
     def test_e2e_docx_no_caption(self, denidin_app, http_server):
         """

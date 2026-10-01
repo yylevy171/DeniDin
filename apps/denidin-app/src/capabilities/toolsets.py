@@ -55,6 +55,14 @@ _REMINDER_WRITE_TOOLS = ("create_reminder", "modify_reminder", "delete_reminder"
 WRITE_TOOL_NAMES = frozenset(_MORNING_INVOICE_WRITE_TOOLS + _MORNING_CLIENT_WRITE_TOOLS
                              + _REMINDER_WRITE_TOOLS)
 
+# tag -> the write tools that capability carries (what an approval answered while it
+# was loaded could have been about).
+WRITE_TOOLS_BY_TAG: Dict[CapabilityTag, tuple] = {
+    CapabilityTag.INVOICING_WRITE: _MORNING_INVOICE_WRITE_TOOLS,
+    CapabilityTag.CLIENT_WRITE: _MORNING_CLIENT_WRITE_TOOLS,
+    CapabilityTag.REMINDERS_WRITE: _REMINDER_WRITE_TOOLS,
+}
+
 # tag -> Morning MCP tool names this capability makes available. Write
 # capabilities carry ONLY their write tools; reading is a separate capability
 # the model itself decides to load.

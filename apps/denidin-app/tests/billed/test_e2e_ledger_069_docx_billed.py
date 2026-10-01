@@ -41,11 +41,6 @@ from tests.e2e_helpers import create_real_notification, get_response
 _HTTP_PORT = 8770
 
 
-# TODO(063 backbone): DOCX reading is not yet adjusted to the backbone. With the
-# backbone flag ON, analyze_media runs DOCXExtractor through
-# src/capabilities/media_analysis/handler.py's _ExtractorAIHandlerShim, which has no
-# get_response - DOCXExtractor._analyze_document calls it, so the document's analysis
-# always fails. Update this test once DOCX reading is adjusted to the backbone.
 @pytest.mark.billed
 class TestLedgerPostTurnCaptureDocx:
 

@@ -26,7 +26,7 @@ from src.managers.session_manager import SessionManager, Session
 from src.core.turn_context import load_rolling_window, recall_memory_context
 from src.core.write_guards import (
     AFFIRMATIVE_REPLIES, approved_write_not_run_message, is_affirmative_reply, mcp_error_text,
-    tally_write_executions,
+    tally_write_executions, write_subject,
 )
 from src.core.turn_result import (
     extract_mcp_call_items, finish_reason_of, fit_for_whatsapp,
@@ -1368,8 +1368,7 @@ class AIHandler:
     # Feature 080 (REQ-080-04): telemetry instrumentation helpers.
     # ------------------------------------------------------------------
 
-    def _timed_llm_call(self, call_fn: Callable[[], Any], *, context: str = "responses.create",
-                        retry: bool = True) -> Any:
+    def _timed_llm_call(self, call_fn: Callable[[], Any], *, context: str = "responses.create") -> Any:
         """Wraps one responses.create() call site with an explicit retry for the OpenAI SDK's
         own retry gap (2026-09-30 - see model_calls.call_model_with_retry's docstring),
         plus timing + token accounting, recorded into the active turn's TelemetryBuilder
@@ -1383,7 +1382,7 @@ class AIHandler:
         backbone."""
         from src.core.model_calls import timed_model_call
 
-        return timed_model_call(_active_telemetry_builder.get(), call_fn, context=context, retry=retry)
+        return timed_model_call(_active_telemetry_builder.get(), call_fn, context=context)
 
     def _timed_tool_call(self, tool_name: str, call_fn: Callable[[], Any], *, is_morning_tool: bool = False) -> Any:
         """Same contract as _timed_llm_call, for local function-tool dispatch and remote MCP
@@ -3884,8 +3883,7 @@ class AIHandler:
         # AppConfiguration.max_retries' own docstring) via .with_options(...)
         # right here, rather than relying on any outer/shared retry layer to
         # respect this. No retry of this call is ever safe, at any layer.
-        response = self._timed_llm_call(lambda: self.client.with_options(max_retries=0).responses.create(**kwargs),  # type: ignore[call-overload]
-                                        retry=False)
+        response = self._timed_llm_call(lambda: self.client.with_options(max_retries=0).responses.create(**kwargs))  # type: ignore[call-overload]
         audit_wire("openai", "in", "_call_openai_approval_api", response)
         debug_wire("openai", "in", "_call_openai_approval_api", response)
         logger.info(
@@ -4003,7 +4001,8 @@ class AIHandler:
                 return self._fallback_response_for(
                     request, effective_chat_id, user_obj, user_role, sender, user_phone,
                     sender_phone, is_group, chat_name,
-                    approved_write_not_run_message(executions.failure_detail),
+                    approved_write_not_run_message(
+                        executions.failure_detail, write_subject([pending.tool_name])),
                 )
 
             self.pending_approval_manager.clear(effective_chat_id)

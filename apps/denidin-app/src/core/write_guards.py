@@ -115,7 +115,46 @@ def tally_write_executions(calls: Iterable[Any], write_tool_names: Iterable[str]
     return result
 
 
-def approved_write_not_run_message(failure_detail: str) -> str:
-    """The reply when the user approved a write and it never ran (bugfix-028 B4(b))."""
-    return (f"אישרת, אבל הפעולה לא בוצעה בפועל{failure_detail}. "
-            f"לא נוצר שום מסמך. נסי שוב או ספרי לי איך להמשיך.")
+# What was NOT done, by what the approved write was about (2026-10-01): a reminder
+# write that never ran must not be reported as "no document was created".
+_NOTHING_DONE = {
+    "document": "לא נוצר שום מסמך",
+    "client": "לא נוסף ולא עודכן שום לקוח",
+    "reminder": "לא נוצרה, לא שונתה ולא נמחקה שום תזכורת",
+}
+_NOTHING_DONE_GENERIC = "לא בוצע שום שינוי"
+
+_INVOICE_WRITE_TOOLS = frozenset((
+    "create_invoice", "create_transaction_account", "create_combo_document",
+    "create_credit_note", "create_receipt", "create_combo_document_as_reference",
+    "cancel_transaction_account",
+))
+_CLIENT_WRITE_TOOLS = frozenset(("add_client", "update_client"))
+_REMINDER_WRITE_TOOLS = frozenset(("create_reminder", "modify_reminder", "delete_reminder"))
+
+_HEBREW_LETTER = re.compile(r"[\u05d0-\u05ea]")
+
+
+def write_subject(tool_names: Iterable[str]) -> str:
+    """"document" / "client" / "reminder" when every one of `tool_names` (the writes the
+    approval could have been about) is of that one kind; "" when mixed or none."""
+    kinds = set()
+    for name in tool_names:
+        if name in _INVOICE_WRITE_TOOLS:
+            kinds.add("document")
+        elif name in _CLIENT_WRITE_TOOLS:
+            kinds.add("client")
+        elif name in _REMINDER_WRITE_TOOLS:
+            kinds.add("reminder")
+    return kinds.pop() if len(kinds) == 1 else ""
+
+
+def approved_write_not_run_message(failure_detail: str, subject: str = "") -> str:
+    """The reply when the user approved a write and it never ran (bugfix-028 B4(b)).
+    Hebrew only: the failure detail (a tool's own output/error text) is shown only
+    when it is Hebrew text, never raw English/JSON. `subject` (write_subject) names
+    what was not done."""
+    detail = failure_detail if _HEBREW_LETTER.search(failure_detail or "") else ""
+    nothing_done = _NOTHING_DONE.get(subject, _NOTHING_DONE_GENERIC)
+    return (f"אישרת, אבל הפעולה לא בוצעה בפועל{detail}. "
+            f"{nothing_done}. נסי שוב או ספרי לי איך להמשיך.")
