@@ -25,6 +25,10 @@ from src.utils.time_utils import now_local, local_from_timestamp, to_local
 from src.utils.wire_log import audit_wire, debug_wire
 from src.managers.session_manager import SessionManager, Session
 from src.core.turn_context import load_rolling_window, recall_memory_context
+from src.core.turn_result import (
+    extract_mcp_call_items, finish_reason_of, fit_for_whatsapp,
+    log_possible_hallucinated_confirmation,
+)
 from src.managers.roll_marker_store import RollMarkerStore
 from src.managers.memory_manager import MemoryManager
 from src.managers.ledger_event_manager import LedgerEventManager, is_incomplete_capture
@@ -3047,17 +3051,10 @@ class AIHandler:
         (no `default=str` there) and crashes with `TypeError: Object of
         type HTTPError is not JSON serializable`. Nothing downstream of
         this extraction point should ever have to know `item.error` might
-        not be a string - normalize once, here, at the boundary."""
-        return [
-            {
-                "name": item.name,
-                "error": str(item.error) if item.error is not None else None,
-                "arguments": item.arguments,
-                "output": item.output,
-            }
-            for item in (response.output or [])
-            if getattr(item, "type", None) == "mcp_call"
-        ]
+        not be a string - normalize once, here, at the boundary.
+        2026-10-01: delegates to the shared core.turn_result.extract_mcp_call_items,
+        also used by the backbone."""
+        return extract_mcp_call_items(response)
 
     def _run_local_tool_dispatch_loop(
         self, request: AIRequest, response, effective_chat_id: Optional[str],
@@ -3325,21 +3322,9 @@ class AIHandler:
             # the backbone.
             from src.core.model_calls import record_mcp_tool_calls
             record_mcp_tool_calls(_active_telemetry_builder.get(), mcp_calls)
-        elif tools and any(
-            phrase in response_text
-            for phrase in ("הוצאה בהצלחה", "סומנה כשולמה", "בוטלה בהצלחה", "נוסף בהצלחה")
-        ):
-            # Invoicing tools were offered this turn and the reply reads like
-            # a state-changing confirmation, but no mcp_call was made - the
-            # model may have pattern-completed a fabricated success from
-            # earlier turns instead of actually calling the tool. Log only;
-            # this is a detection safety net, not a behavior change.
-            logger.warning(
-                f"Possible hallucinated invoicing confirmation for request "
-                f"{request.request_id}: reply text suggests a state-changing "
-                f"action succeeded, but no MCP tool was called. "
-                f"Reply: {response_text!r}"
-            )
+        # Invoicing tools offered, a confirmation-sounding reply, no mcp_call: log a
+        # possible fabricated success (shared core.turn_result helper, 2026-10-01).
+        log_possible_hallucinated_confirmation(request.request_id, response_text, bool(tools), mcp_calls)
 
         # Feature 022: a document-creation tool call may come back as an
         # mcp_approval_request instead of an mcp_call - nothing executed on
@@ -3449,9 +3434,7 @@ class AIHandler:
         # (the ledger follow-up call when one happened, else the original
         # call) so finish_reason/model reflect whichever turn actually
         # produced response_text.
-        finish_reason = "stop"
-        if getattr(usage_response, "incomplete_details", None) is not None:
-            finish_reason = usage_response.incomplete_details.reason or "incomplete"
+        finish_reason = finish_reason_of(usage_response)
 
         ai_response = AIResponse(
             request_id=request.request_id,
@@ -3468,10 +3451,8 @@ class AIHandler:
             offer_approval_buttons=new_pending_approval_created or new_local_tool_pending_created
         )
 
-        # Check if response needs truncation for WhatsApp
-        if len(response_text) > 4000:
-            ai_response = ai_response.truncate_for_whatsapp()
-            logger.warning("Response truncated to 4000 chars for WhatsApp")
+        # Cut to WhatsApp's limit when longer (shared core.turn_result helper).
+        ai_response = fit_for_whatsapp(ai_response)
 
         # Retain the most recent response for observability (audit logging,
         # E2E test verification of mcp_calls) - purely additive, read-only
@@ -4274,8 +4255,7 @@ class AIHandler:
             is_truncated=False,
             offer_approval_buttons=False,
         )
-        if len(response_text) > 4000:
-            ai_response = ai_response.truncate_for_whatsapp()
+        ai_response = fit_for_whatsapp(ai_response)
         self.last_response = ai_response
         return ai_response
 

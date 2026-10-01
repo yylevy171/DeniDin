@@ -38,6 +38,10 @@ from src.tool_actions.messaging_actions import (
     build_react_to_message_payload, send_progress_update_message,
 )
 from src.core.turn_context import load_rolling_window, recall_memory_context
+from src.core.turn_result import (
+    extract_mcp_call_items, finish_reason_of, fit_for_whatsapp,
+    log_possible_hallucinated_confirmation,
+)
 from src.core.model_calls import (
     build_fallback_response, record_mcp_tool_calls, telemetry_span, timed_model_call,
     tool_call_span,
@@ -224,6 +228,12 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
         # activity under the flag-on path too, not an empty list.
         self._turn_mcp_calls: List[Dict[str, Any]] = []
 
+        # This turn's token usage summed over every model call, and the last call's
+        # response (its model/finish reason are the turn's) - reported on the returned
+        # AIResponse exactly as AIHandler reports them (2026-10-01).
+        self._turn_tokens = [0, 0, 0]  # total, input (prompt), output (completion)
+        self._turn_last_response: Optional[Any] = None
+
         # The inbound WhatsAppMessage this turn answers (request.original_message) -
         # the addressing for internal notes stored mid-turn (see record_planning_status).
         self._turn_original_message: Optional[Any] = None
@@ -373,17 +383,11 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
         """Pulls every `mcp_call`-type item off one API response's `.output` - same
         shape/reasoning as AIHandler._extract_mcp_call_items (this session's earlier
         fix for the identical bug class in the legacy dispatch loop), reimplemented
-        here as new code (REQ-063-07)."""
-        return [
-            {
-                "name": item.name,
-                "error": item.error,
-                "arguments": item.arguments,
-                "output": item.output,
-            }
-            for item in (response.output or [])
-            if getattr(item, "type", None) == "mcp_call"
-        ]
+        here as new code (REQ-063-07). 2026-10-01: the shared
+        core.turn_result.extract_mcp_call_items (also AIHandler's) - it normalizes
+        `error` to a string, which this copy did not (a raw HTTPError crashed message
+        storage on the legacy path once, 2026-09-15)."""
+        return extract_mcp_call_items(response)
 
     # ------------------------------------------------------------------
     # The resolution loop (contracts/capability-resolution-loop.md)
@@ -391,7 +395,7 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
 
     def turn_with_rounds(  # pylint: disable=too-many-locals
             self, request: AIRequest, chat_id: Optional[str] = None, *,
-            user_role: str = "client", sender: Optional[str] = None,
+            user_role: str = "godfather", sender: Optional[str] = None,
             recipient: Optional[str] = None, user_phone: Optional[str] = None,
             is_group: bool = False, chat_name: Optional[str] = None,
             sender_phone: Optional[str] = None,
@@ -482,6 +486,8 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
             # Reset per-turn MCP-call accumulator (2026-09-15) - see __init__'s
             # _turn_mcp_calls docstring.
             self._turn_mcp_calls = []
+            self._turn_tokens = [0, 0, 0]
+            self._turn_last_response = None
             self._turn_original_message = request.original_message
             # Reset per-turn approval-buttons flag (2026-09-16) - see __init__'s
             # _turn_offered_approval docstring.
@@ -784,6 +790,12 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
         audit_wire("openai", "in", context, response)
         debug_wire("openai", "in", context, response)
         self._turn_mcp_calls.extend(self._extract_mcp_call_items(response))
+        usage = getattr(response, "usage", None)
+        if usage is not None:
+            self._turn_tokens[0] += int(getattr(usage, "total_tokens", 0) or 0)
+            self._turn_tokens[1] += int(getattr(usage, "input_tokens", 0) or 0)
+            self._turn_tokens[2] += int(getattr(usage, "output_tokens", 0) or 0)
+        self._turn_last_response = response
         return response
 
     def _dispatch_resolution_tool(self, tool_name: str, args: Dict[str, Any], chat_id: str) -> str:
@@ -861,19 +873,28 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
         which asks WhatsAppHandler to render the reply as tappable buttons."""
         should_reply = should_reply_for(final_text)
         offer_approval_buttons = bool(self._turn_offered_approval)
-        return AIResponse(
+        # Same shared post-turn steps as AIHandler._finalize_response (2026-10-01):
+        # the possible-fabricated-confirmation warning (tools are always offered on
+        # this path), the turn's real token totals / model / finish reason, and the
+        # WhatsApp length cut.
+        log_possible_hallucinated_confirmation(request.request_id, final_text, True, self._turn_mcp_calls)
+        last = self._turn_last_response
+        model = getattr(last, "model", None)
+        finish_reason = finish_reason_of(last) if last is not None else "stop"
+        total_tokens, prompt_tokens, completion_tokens = self._turn_tokens
+        return fit_for_whatsapp(AIResponse(
             request_id=request.request_id,
             response_text=final_text,
-            tokens_used=0,
-            prompt_tokens=0,
-            completion_tokens=0,
-            model=request.model,
-            finish_reason="stop",
+            tokens_used=total_tokens,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            model=model if isinstance(model, str) and model else request.model,
+            finish_reason=finish_reason if isinstance(finish_reason, str) else "stop",
             timestamp=request.timestamp or int(now_local().timestamp()),
             should_reply=should_reply,
             offer_approval_buttons=offer_approval_buttons,
             mcp_calls=list(self._turn_mcp_calls),
-        )
+        ))
 
     @staticmethod
     def _create_fallback_response(request_id: str, message: str) -> AIResponse:
@@ -886,10 +907,12 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
 
     @staticmethod
     def _resolve_role(user_role: str) -> Role:
+        """Clients are out of scope for the backbone for now (2026-10-01, explicit
+        decision): an unknown/missing role is treated as godfather."""
         try:
             return Role(user_role.upper())
         except ValueError:
-            return Role.CLIENT
+            return Role.GODFATHER
 
     def _load_conversation_history(self, chat_id: Optional[str],
                                    exclude_message_id: Optional[str] = None) -> List[Dict[str, Any]]:
