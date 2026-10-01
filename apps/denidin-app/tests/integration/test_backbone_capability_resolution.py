@@ -122,7 +122,7 @@ def test_reminders_read_lists_real_reminders(env):
     assert "לשלם לספק" in kws[2]["input"][0]["output"]
 
 
-def test_invoicing_write_attaches_shared_never_approval_mcp_entry(env):
+def test_invoicing_write_attaches_its_never_approval_mcp_entry(env):
     env.client.responses.create.side_effect = [
         _fc("load_capabilities", {"capabilities": ["cap_invoicing_write"]}),
         _fc("approval_with_yes_no_buttons", {"text": "להפיק חשבונית?"}, rid="r2"),
@@ -209,17 +209,23 @@ def test_approval_message_id_persists_across_restart(env):
     assert restarted.get_session("chat1").approval_message_id == "STANZA-1"
 
 
-def test_invoicing_and_client_capabilities_share_one_mcp_entry_with_union(env):
+def test_each_morning_capability_gets_its_own_fixed_mcp_entry(env):
+    """2026-10-01 (T1): a Morning capability loaded mid-turn adds its OWN entry
+    (own server_label, fixed tools); entries already sent never change - OpenAI
+    lists a label's tools only once per chain."""
     env.client.responses.create.side_effect = [
         _fc("load_capabilities", {"capabilities": ["cap_invoicing_write"]}, rid="r1"),
         _fc("load_capabilities", {"capabilities": ["cap_client_write"]}, rid="r2"),
         _text("סיימתי", rid="r3"),
     ]
     env.make().turn_with_rounds(_request(), chat_id="chat1", user_role="godfather")
-    last = _sent_kwargs(env)[-1]
-    mcps = [t for t in last["tools"] if t.get("type") == "mcp"]
-    assert len(mcps) == 1
-    assert {"create_invoice", "add_client", "update_client"} <= set(mcps[0]["allowed_tools"])
+    sent = _sent_kwargs(env)
+    second = {t["server_label"]: t for t in sent[1]["tools"] if t.get("type") == "mcp"}
+    last = {t["server_label"]: t for t in sent[-1]["tools"] if t.get("type") == "mcp"}
+    assert set(second) == {"morning-invoices-invoicing-write"}
+    assert set(last) == {"morning-invoices-invoicing-write", "morning-invoices-client-write"}
+    assert last["morning-invoices-invoicing-write"] == second["morning-invoices-invoicing-write"]
+    assert set(last["morning-invoices-client-write"]["allowed_tools"]) == {"add_client", "update_client"}
 
 
 def test_media_analysis_uses_already_extracted_result_without_real_ai(env):

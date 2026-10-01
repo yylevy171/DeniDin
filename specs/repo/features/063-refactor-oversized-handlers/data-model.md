@@ -13,7 +13,7 @@ capabilities: the backbone is one tool-driven loop (`contracts/capability-resolu
 
 | Value | Domain | Mode | Prompt file | Tools / backing code |
 |---|---|---|---|---|
-| `cap_invoicing_write` | Invoicing/Morning | Write | `cap_invoicing_write.md` | Morning MCP tools (shared MCP entry, `require_approval:"never"`) |
+| `cap_invoicing_write` | Invoicing/Morning | Write | `cap_invoicing_write.md` | Morning MCP tools (its own MCP entry/`server_label`, `require_approval:"never"`) |
 | `cap_invoicing_read` | Invoicing/Morning | Read | `cap_invoicing_read.md` | Morning MCP tools |
 | `cap_client_write` | Morning clients | Write | `cap_client_write.md` | Morning MCP tools (`add_client`/`update_client`) |
 | `cap_client_read` | Morning clients | Read | `cap_client_read.md` | Morning MCP tools |

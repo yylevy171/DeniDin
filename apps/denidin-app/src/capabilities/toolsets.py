@@ -12,9 +12,10 @@ Two tool shapes exist, both attached identically:
 - **Local function tools** (reminders, ledger query, media analysis, docx):
   the model emits a `function_call`, the backbone dispatches it to that
   capability's own `dispatch_direct_tool_call` and feeds back the result.
-- **Morning MCP tools** (invoicing read/write, client read/write): all four
-  capabilities share ONE remote Morning MCP server entry, restricted via
-  `allowed_tools` to the union of every loaded capability's tool names, with
+- **Morning MCP tools** (invoicing read/write, client read/write): each loaded
+  capability gets its OWN remote Morning MCP server entry - same server URL and
+  token, its own `server_label` and its own fixed `allowed_tools` (see
+  build_morning_mcp_tools for why), with
   `require_approval: "never"` uniformly - OpenAI executes those calls
   server-side (they come back as `mcp_call` items, never as calls this app
   dispatches). Approval before a write is NEVER an MCP-protocol handshake:
@@ -58,37 +59,54 @@ MORNING_MCP_TOOL_NAMES: Dict[CapabilityTag, tuple] = {
 }
 
 
-def build_morning_mcp_tool(backbone, tags: List[CapabilityTag],
-                            turn_context: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
-    """The single Morning MCP `tools` entry for every loaded Morning-backed
-    capability in `tags`, or None when none is loaded / the server is
-    unavailable / unconfigured (logged - the capability then simply has no
-    tools this round, same fallback the old per-capability builders had)."""
-    names: List[str] = []
-    for tag in tags:
-        for name in MORNING_MCP_TOOL_NAMES.get(tag, ()):
-            if name not in names:
-                names.append(name)
-    if not names:
-        return None
+def morning_server_label_for(base_label: str, tag: CapabilityTag) -> str:
+    """The Morning MCP `server_label` for one capability's entry, e.g.
+    'morning-invoices' + cap_invoicing_read -> 'morning-invoices-invoicing-read'."""
+    return f"{base_label}-{tag.value.removeprefix('cap_').replace('_', '-')}"
+
+
+def build_morning_mcp_tools(backbone, tags: List[CapabilityTag],
+                            turn_context: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    """One Morning MCP `tools` entry per loaded Morning-backed capability in
+    `tags` - all on the same server URL/token, each with its own server_label
+    and its own fixed `allowed_tools`. Empty when none is loaded / the server
+    is unavailable / unconfigured (logged - the capabilities then simply have
+    no tools this round).
+
+    Why one entry per capability (2026-10-01, T1): OpenAI fetches an MCP
+    server's tool list ONCE per previous_response_id chain, keyed by
+    server_label, the first time that label appears - widening the same
+    label's `allowed_tools` later in the chain is silently ignored. With one
+    shared entry, a capability loaded mid-turn never reached the model
+    (T1: cap_invoicing_read loaded, list_invoices never callable). Verified
+    against the real API: a label added mid-chain gets its own listing and
+    its tools are callable; an existing label's widened allowed_tools are not.
+    Each label's tool set here is fixed, so it never needs re-listing."""
+    loaded = [tag for tag in dict.fromkeys(tags) if MORNING_MCP_TOOL_NAMES.get(tag)]
+    if not loaded:
+        return []
     locator = getattr(backbone, "morning_mcp_locator", None)
     if locator is None:
-        return None
+        return []
     turn_context = turn_context or {}
     connection = resolve_morning_mcp_connection(
         locator, backbone.config, turn_context.get("request_id"), turn_context.get("role"),
     )
     if connection is None:
-        return None
+        return []
     server_url, auth_token, mcp_config = connection
-    return {
-        "type": "mcp",
-        "server_label": mcp_config.get("morning_server_label", "morning-invoices"),
-        "server_url": server_url,
-        "allowed_tools": names,
-        "require_approval": "never",
-        "headers": {"Authorization": f"Bearer {auth_token}"},
-    }
+    base_label = mcp_config.get("morning_server_label", "morning-invoices")
+    return [
+        {
+            "type": "mcp",
+            "server_label": morning_server_label_for(base_label, tag),
+            "server_url": server_url,
+            "allowed_tools": list(MORNING_MCP_TOOL_NAMES[tag]),
+            "require_approval": "never",
+            "headers": {"Authorization": f"Bearer {auth_token}"},
+        }
+        for tag in loaded
+    ]
 
 
 def _local_tools_by_tag() -> Dict[CapabilityTag, Any]:
@@ -129,9 +147,7 @@ def build_capability_tools(backbone, tags: List[CapabilityTag],
             if tool["name"] not in seen:
                 seen.add(tool["name"])
                 tools.append(tool)
-    mcp_tool = build_morning_mcp_tool(backbone, tags, turn_context)
-    if mcp_tool is not None:
-        tools.append(mcp_tool)
+    tools.extend(build_morning_mcp_tools(backbone, tags, turn_context))
     return tools
 
 

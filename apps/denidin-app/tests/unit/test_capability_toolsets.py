@@ -10,7 +10,7 @@ from src.backbone.capability_tags import CapabilityTag
 from src.capabilities.toolsets import (
     MORNING_MCP_TOOL_NAMES,
     build_capability_tools,
-    build_morning_mcp_tool,
+    build_morning_mcp_tools,
     dispatch_local_tool,
     extract_local_calls,
     local_tool_owners,
@@ -39,17 +39,30 @@ def test_every_domain_tag_has_a_defined_toolset():
     assert tool_less == []
 
 
-def test_morning_mcp_entry_is_one_never_approval_union_of_loaded_capabilities():
-    tool = build_morning_mcp_tool(_orch(), [CapabilityTag.INVOICING_WRITE, CapabilityTag.CLIENT_WRITE])
-    assert tool["type"] == "mcp"
-    assert tool["require_approval"] == "never"
-    assert "create_invoice" in tool["allowed_tools"] and "add_client" in tool["allowed_tools"]
-    assert len(tool["allowed_tools"]) == len(set(tool["allowed_tools"]))  # de-duplicated (resolve_client_name shared)
+def test_morning_mcp_one_never_approval_entry_per_loaded_capability_same_server():
+    """2026-10-01 (T1): OpenAI lists an MCP server's tools once per chain per
+    server_label, so each capability needs its own label with a FIXED tool set -
+    one shared, widening entry hid tools loaded mid-turn."""
+    tools = build_morning_mcp_tools(
+        _orch(), [CapabilityTag.CLIENT_READ, CapabilityTag.INVOICING_READ, CapabilityTag.CLIENT_READ])
+    assert [t["server_label"] for t in tools] == [
+        "morning-invoices-client-read", "morning-invoices-invoicing-read"]
+    for tool, tag in zip(tools, (CapabilityTag.CLIENT_READ, CapabilityTag.INVOICING_READ)):
+        assert tool["type"] == "mcp"
+        assert tool["require_approval"] == "never"
+        assert tool["server_url"] == "https://x.example/mcp"
+        assert tool["allowed_tools"] == list(MORNING_MCP_TOOL_NAMES[tag])
 
 
-def test_morning_mcp_entry_absent_when_no_morning_capability_loaded_or_server_unavailable():
-    assert build_morning_mcp_tool(_orch(), [CapabilityTag.REMINDERS_WRITE]) is None
-    assert build_morning_mcp_tool(_orch(with_mcp=False), [CapabilityTag.INVOICING_READ]) is None
+def test_morning_mcp_entry_for_a_capability_never_changes_with_what_else_is_loaded():
+    alone = build_morning_mcp_tools(_orch(), [CapabilityTag.CLIENT_READ])
+    with_more = build_morning_mcp_tools(_orch(), [CapabilityTag.CLIENT_READ, CapabilityTag.INVOICING_WRITE])
+    assert with_more[0] == alone[0]
+
+
+def test_morning_mcp_entries_absent_when_no_morning_capability_loaded_or_server_unavailable():
+    assert build_morning_mcp_tools(_orch(), [CapabilityTag.REMINDERS_WRITE]) == []
+    assert build_morning_mcp_tools(_orch(with_mcp=False), [CapabilityTag.INVOICING_READ]) == []
 
 
 def test_build_capability_tools_grows_with_the_loaded_set():
@@ -115,7 +128,7 @@ def test_write_capabilities_carry_only_write_tools_never_read_tools():
         MORNING_MCP_TOOL_NAMES[CapabilityTag.CLIENT_READ])
     for write_tag in (CapabilityTag.INVOICING_WRITE, CapabilityTag.CLIENT_WRITE):
         assert not set(MORNING_MCP_TOOL_NAMES[write_tag]) & read_names
-    tool = build_morning_mcp_tool(_orch(), [CapabilityTag.CLIENT_WRITE])
+    (tool,) = build_morning_mcp_tools(_orch(), [CapabilityTag.CLIENT_WRITE])
     assert set(tool["allowed_tools"]) == {"add_client", "update_client"}
 
 

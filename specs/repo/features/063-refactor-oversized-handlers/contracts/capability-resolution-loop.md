@@ -23,7 +23,7 @@ Status: implemented 2026-09-24; flows level added 2026-09-25.
 
 ## Toolsets (`capabilities/toolsets.py`)
 - Local function tools (reminders, ledger query, media analysis, docx): dispatched by the backbone via each capability's `dispatch_direct_tool_call`.
-- Morning MCP tools (invoicing/client read+write): one shared MCP entry, `allowed_tools` = union of loaded tags, `require_approval: "never"`, executed by OpenAI. Write approval is the plain `approval_with_yes_no_buttons` tool, never an MCP handshake.
+- Morning MCP tools (invoicing/client read+write): one MCP entry per loaded capability - same server URL/token, its own `server_label` (`<morning_server_label>-<capability>`, e.g. `morning-invoices-invoicing-read`) and its own fixed `allowed_tools`, `require_approval: "never"`, executed by OpenAI. Never one shared, widening entry: OpenAI lists a label's tools only once per `previous_response_id` chain, so tools added to an existing label mid-turn are never seen (T1, 2026-10-01, verified against the real API). Write approval is the plain `approval_with_yes_no_buttons` tool, never an MCP handshake.
 - Ledger capture is not a capability: it is `denidin.py`'s shared post-turn recognition.
 - Tool-name collisions across capabilities are out of scope.
 
