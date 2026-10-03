@@ -7,9 +7,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.backbone.backbone import Backbone, PLAIN_TEXT_REPLY_REMINDER
+from src.backbone.backbone import PLAIN_TEXT_REPLY_REMINDER
 from src.constants.error_messages import BACKBONE_UNEXPECTED_ERROR
-from tests.backbone_test_support import make_session_manager
+from tests.backbone_test_support import make_backbone, make_session_manager
 from src.models.config import AppConfiguration
 from src.models.message import AIRequest
 
@@ -27,7 +27,7 @@ def _backbone(prompts_root, client):
         green_api_instance_id="x", green_api_token="y", ai_api_key="z",
         backbone_config={"base_dir": str(prompts_root)},
     )
-    return Backbone(client, config, session_manager=make_session_manager())
+    return make_backbone(client, config, session_manager=make_session_manager())
 
 
 def _request():
@@ -56,9 +56,8 @@ def _resp(items, rid, text=""):
     return r
 
 
-def _run(backbone, progress_callback=None):
-    return backbone.turn_with_rounds(_request(), chat_id="chat1", user_role="godfather",
-                                     progress_callback=progress_callback)
+def _run(backbone):
+    return backbone.single_turn(_request(), chat_id="chat1", user_role="godfather")
 
 
 def test_backbone_tools_attached_every_round(prompts_root):
@@ -77,10 +76,10 @@ def test_reaction_dispatched_and_output_submitted(prompts_root):
         _resp([_function_call_item("send_to_user", "call_2", {"text": "בוצע."})], "resp_2"),
     ]
     backbone = _backbone(prompts_root, client)
-    backbone.green_api_bot = MagicMock()
-    with patch("src.tool_actions.messaging_actions.send_reaction", return_value=True) as mock_send:
+    backbone.denidin.green_api_bot = MagicMock()
+    with patch("src.handlers.whatsapp_handler.send_reaction", return_value=True) as mock_send:
         response = _run(backbone)
-    mock_send.assert_called_once_with(backbone.green_api_bot, "chat1", "msg1", "👍")
+    mock_send.assert_called_once_with(backbone.denidin.green_api_bot, "chat1", "msg1", "👍")
     assert response.response_text == "בוצע."
     follow = client.responses.create.call_args_list[1].kwargs
     assert follow["previous_response_id"] == "resp_1"
@@ -88,15 +87,17 @@ def test_reaction_dispatched_and_output_submitted(prompts_root):
     assert follow["input"][0]["type"] == "function_call_output"
 
 
-def test_progress_update_uses_active_callback(prompts_root):
+def test_progress_update_is_sent_through_denidin(prompts_root):
     client = MagicMock()
     client.responses.create.side_effect = [
         _resp([_function_call_item("send_progress_update", "call_1", {"text": "רגע..."})], "resp_1"),
         _resp([_function_call_item("send_to_user", "call_2", {"text": "תשובה סופית."})], "resp_2"),
     ]
-    cb = MagicMock()
-    response = _run(_backbone(prompts_root, client), progress_callback=cb)
-    cb.assert_called_once_with("רגע...")
+    backbone = _backbone(prompts_root, client)
+    # REQ-063-08: DeniDin sends (and stores) it in the chat's turn in progress.
+    backbone.denidin.send_progress_update = MagicMock(return_value=True)
+    response = _run(backbone)
+    backbone.denidin.send_progress_update.assert_called_once_with("chat1", "רגע...")
     assert response.response_text == "תשובה סופית."
 
 
@@ -135,7 +136,7 @@ def test_follow_up_failure_falls_back_to_first_round_text(prompts_root):
         RuntimeError("network error"),
     ]
     backbone = _backbone(prompts_root, client)
-    backbone.green_api_bot = MagicMock()
-    with patch("src.tool_actions.messaging_actions.send_reaction", return_value=True):
+    backbone.denidin.green_api_bot = MagicMock()
+    with patch("src.handlers.whatsapp_handler.send_reaction", return_value=True):
         response = _run(backbone)
     assert response.response_text == "טקסט מקורי."

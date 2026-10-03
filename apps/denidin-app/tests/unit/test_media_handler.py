@@ -12,9 +12,9 @@ import json
 import pytest
 from unittest.mock import Mock, MagicMock, patch
 from pathlib import Path
-from src.core.chat_log import ChatLog
 from src.handlers.media_handler import MediaHandler
 from src.models.media_attachment import MediaAttachment
+from tests.denidin_test_support import make_config, make_denidin, make_ledger_event_manager, make_session_manager
 
 
 class TestMediaHandlerHappyPaths:
@@ -651,7 +651,7 @@ def _store_received(denidin, message_id, chat_id, timestamp):
     then only fills in what it learns (image_path, extracted_text, ledger_event_ids)."""
     from datetime import datetime, timezone
     from src.models.message import WhatsAppMessage
-    denidin.chat_log.store_inbound(WhatsAppMessage(
+    denidin.store_inbound(WhatsAppMessage(
         message_id=message_id, chat_id=chat_id, sender_id=chat_id, sender_name="John",
         text_content="[photo sent]", timestamp=timestamp, message_type="imageMessage",
         is_group=False, received_timestamp=datetime.now(timezone.utc),
@@ -678,16 +678,12 @@ class TestLedgerEventPersistenceViaMediaHandler:
         from src.managers.session_manager import SessionManager
         from src.managers.ledger_event_manager import LedgerEventManager
 
-        denidin = Mock()
-        denidin.config.data_root = str(tmp_path)
-        denidin.ai_handler.session_manager = SessionManager(
-            storage_dir=str(tmp_path / "sessions")
+        return make_denidin(
+            make_config(data_root=str(tmp_path)),
+            session_manager=make_session_manager(storage_dir=str(tmp_path / "sessions")),
+            ledger_event_manager=make_ledger_event_manager(storage_dir=str(tmp_path / "events")),
+            ai_manager=Mock(),  # the extractors' AI side - stubbed per test
         )
-        denidin.ai_handler.ledger_event_manager = LedgerEventManager(
-            storage_dir=str(tmp_path / "events")
-        )
-        denidin.chat_log = ChatLog(denidin.ai_handler.session_manager, None, rbac_enabled=False)
-        return denidin
 
     def test_recognised_bank_image_surfaces_stash_and_does_not_persist(
         self, real_denidin_context, tmp_path
@@ -734,10 +730,10 @@ class TestLedgerEventPersistenceViaMediaHandler:
         assert result["ledger_stash_source_type"] == "בנק"
         assert "9,440" in result["ledger_stash"]
 
-        events_dir = real_denidin_context.ai_handler.ledger_event_manager.storage_dir
+        events_dir = real_denidin_context.ledger_event_manager.storage_dir
         assert list(events_dir.glob("*.json")) == []
 
-        session_manager = real_denidin_context.ai_handler.session_manager
+        session_manager = real_denidin_context.session_manager
         session = session_manager.get_session("972500000000@c.us")
         session_dir = session_manager.storage_dir / session.session_id
         user_messages = []
@@ -789,7 +785,7 @@ class TestLedgerEventPersistenceViaMediaHandler:
         assert result["ledger_stash_source_type"] == "הסכם"
         assert "התקבל קובץ מסמך (DOCX)" in result["ledger_stash"]
         assert "מהמסמך (מילה במילה)" in result["ledger_stash"]
-        events_dir = real_denidin_context.ai_handler.ledger_event_manager.storage_dir
+        events_dir = real_denidin_context.ledger_event_manager.storage_dir
         assert list(events_dir.glob("*.json")) == []
 
     def test_no_ledger_event_leaves_message_ledger_event_ids_empty(
@@ -817,10 +813,10 @@ class TestLedgerEventPersistenceViaMediaHandler:
             timestamp=1770000400, message_id="media-msg-2",
         )
 
-        events_dir = real_denidin_context.ai_handler.ledger_event_manager.storage_dir
+        events_dir = real_denidin_context.ledger_event_manager.storage_dir
         assert list(events_dir.glob("*.json")) == []
 
-        session_manager = real_denidin_context.ai_handler.session_manager
+        session_manager = real_denidin_context.session_manager
         session = session_manager.get_session("972500000001@c.us")
         session_dir = session_manager.storage_dir / session.session_id
         user_messages = []
@@ -847,16 +843,12 @@ class TestExtractedTextPersistence:
         from src.managers.session_manager import SessionManager
         from src.managers.ledger_event_manager import LedgerEventManager
 
-        denidin = Mock()
-        denidin.config.data_root = str(tmp_path)
-        denidin.ai_handler.session_manager = SessionManager(
-            storage_dir=str(tmp_path / "sessions")
+        return make_denidin(
+            make_config(data_root=str(tmp_path)),
+            session_manager=make_session_manager(storage_dir=str(tmp_path / "sessions")),
+            ledger_event_manager=make_ledger_event_manager(storage_dir=str(tmp_path / "events")),
+            ai_manager=Mock(),  # the extractors' AI side - stubbed per test
         )
-        denidin.ai_handler.ledger_event_manager = LedgerEventManager(
-            storage_dir=str(tmp_path / "events")
-        )
-        denidin.chat_log = ChatLog(denidin.ai_handler.session_manager, None, rbac_enabled=False)
-        return denidin
 
     def _process_and_get_user_message(self, real_denidin_context, tmp_path, analyze_media_result,
                                        message_id, chat_id):
@@ -880,7 +872,7 @@ class TestExtractedTextPersistence:
         )
         assert result["success"] is True
 
-        session_manager = real_denidin_context.ai_handler.session_manager
+        session_manager = real_denidin_context.session_manager
         session = session_manager.get_session(chat_id)
         session_dir = session_manager.storage_dir / session.session_id
         with (session_dir / "messages" / f"{message_id}.json").open(encoding="utf-8") as f:

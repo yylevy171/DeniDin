@@ -24,7 +24,7 @@ actual @bot.router.message-decorated `handle_text_message` - CONSTITUTION
     Green API textMessage webhook (godfather sender)
       -> handle_text_message (real router handler, not a direct internal call)
       -> WhatsAppHandler.process_notification
-      -> AIHandler.get_response
+      -> AIHandler.single_turn
            -> client.responses.create (real OpenAI Responses API call)
               with the real Morning MCP server registered as a remote tool
               (reached over its already-open ngrok tunnel, bearer-authenticated)
@@ -596,9 +596,7 @@ def test_godfather_add_client_near_duplicate_name_is_asked_before_creating(denid
     near_duplicate_name = f"{chaser_spelling} {family_name}"
     seed_email = _random_seed_email()
 
-    import denidin
-
-    ask_response, ask_ai_response = _send_turn(
+    ask_response, ask_ai_response, ask_notification = _send_turn_with_notification(
         chat_id=GODFATHER_CHAT_ID,
         text=(
             f"תוסיף לקוח חדש בשם {near_duplicate_name}, מייל {seed_email}, "
@@ -613,13 +611,13 @@ def test_godfather_add_client_near_duplicate_name_is_asked_before_creating(denid
         f"chance to flag the near-duplicate: "
         f"{ask_ai_response.mcp_calls if ask_ai_response else None!r}"
     )
-    pending = denidin.denidin_app.ai_handler.pending_approval_manager.get(GODFATHER_CHAT_ID)
-    assert pending is None or pending.tool_name != "add_client", (
-        f"add_client got a pending approval immediately, with NO chance for "
+    # What the godfather sees (REQ-063-08): no approval prompt with buttons yet.
+    assert get_button_send(ask_notification) is None, (
+        f"add_client was put up for approval immediately, with NO chance for "
         f"the godfather to say 'that's actually the same person' about the "
         f"just-seeded, genuinely similar client {seed_name!r} - this is "
         f"exactly the silent-duplicate risk the courtesy check exists to "
-        f"prevent: {pending!r}"
+        f"prevent: {get_button_send(ask_notification)!r}"
     )
     assert _strip_invisible_marks(seed_name) in (ask_response or ""), (
         f"Expected the reply to explicitly name the existing similar client "
@@ -631,7 +629,7 @@ def test_godfather_add_client_near_duplicate_name_is_asked_before_creating(denid
     # Confirming intent to create anyway (not "use the existing one") must
     # still work - the courtesy check blocks SILENT creation, not creation
     # itself once the godfather has actually seen and rejected the match.
-    confirm_response, confirm_ai_response = _send_turn(
+    confirm_response, confirm_ai_response, confirm_notification = _send_turn_with_notification(
         chat_id=GODFATHER_CHAT_ID,
         text=(
             "לא, זה לא אותו לקוח, זה אדם אחר לגמרי - אני יודע שיש לקוח עם שם "
@@ -639,11 +637,13 @@ def test_godfather_add_client_near_duplicate_name_is_asked_before_creating(denid
         ),
         id_prefix="E2E_ADD_CLIENT_NEARDUP_CONFIRMNEW",
     )
-    pending = denidin.denidin_app.ai_handler.pending_approval_manager.get(GODFATHER_CHAT_ID)
-    assert pending is not None and pending.tool_name == "add_client", (
+    # What the godfather sees (REQ-063-08): an approval prompt with buttons naming
+    # the new client.
+    buttons = get_button_send(confirm_notification)
+    assert buttons is not None and _strip_invisible_marks(near_duplicate_name) in _strip_invisible_marks(buttons["body"]), (
         f"After explicitly insisting on a new client despite the near-"
-        f"duplicate warning, no pending add_client approval was created. "
-        f"Reply: {confirm_response!r}, calls: "
+        f"duplicate warning, no approval prompt for adding {near_duplicate_name!r} "
+        f"was shown. Reply: {confirm_response!r}, calls: "
         f"{confirm_ai_response.mcp_calls if confirm_ai_response else None!r}"
     )
 

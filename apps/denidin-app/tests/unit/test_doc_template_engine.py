@@ -12,13 +12,14 @@ from docx import Document as DocxDocument
 from docx.oxml.ns import qn
 
 from src.managers.doc_template_engine import DocTemplateEngine
+from tests.denidin_test_support import make_doc_template_engine
 
 TEMPLATES_DIR = Path(__file__).resolve().parents[2] / "config" / "fee_agreement_templates"
 
 
 @pytest.fixture
 def engine(tmp_path):
-    return DocTemplateEngine(templates_dir=TEMPLATES_DIR, tmp_dir=tmp_path / "fee_agreements")
+    return make_doc_template_engine(templates_dir=TEMPLATES_DIR, tmp_dir=tmp_path / "fee_agreements")
 
 
 class TestListVariants:

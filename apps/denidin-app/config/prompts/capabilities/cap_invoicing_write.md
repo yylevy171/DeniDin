@@ -1,6 +1,6 @@
 # Capability: Invoicing — Write (godfather/admin only)
 
-**Use this capability from within a flow (the flow that issues or cancels the document (flow_issue_*, flow_cancel_*, flow_payment_received_*)), never on its own for a user request.** The flow decides when it is loaded and when approval is required; this capability holds the details of the write itself.
+**Use this capability from within a flow (the flow that issues or cancels the document (flow_issue_*, flow_cancel_*), reached through flow_morning_document_write), never on its own for a user request.** The flow decides when it is loaded and when approval is required; this capability holds the details of the write itself.
 
 **Creating or updating a Morning document is a state-changing action, which usually requires the user's explicit approval first.**
 
@@ -67,37 +67,59 @@ Never guess, and never fall back to a 305 because it's the simplest option.**
   - `payment_date` is the date the money **actually moved** — never today's
     date unless that's genuinely when it arrived, never a future date. If
     the source doesn't state it clearly, **ask**.
-  - `payment_method` records how it arrived — **`bank_transfer` is the
-    default** for a deposit/transfer; use `bit`/`paybox`/`cash`/
-    `credit_card`/`cheque`/`paypal` when the user says so. Bank details
-    (`bank_number`, `bank_branch`, `bank_account`) go with a bank transfer;
-    the אסמכתה (`transaction_reference`) with a payment app or PayPal.
-    🚨 `bank_number` is the bank's NUMBER (e.g. "31"), never its name —
-    never guess or invent a bank name.
+  - How the money arrived: see "Payment method" below.
   - Take **every** field from the extracted text of the screenshot the user
     sent. Anything not there, or illegible, is something to **ask about** —
     never invent or default it.
 - `create_credit_note` — a credit note (חשבונית זיכוי, 330) against an
   existing document — direct ("תפיק לי חשבונית זיכוי") or indirect ("בטל את
   זה").
-- `create_receipt` — a receipt (קבלה, 400) against an existing type-305
-  document — direct or indirect ("סמן כשולם"). Rejects a type-300 original —
-  use `create_combo_document_as_reference` for those.
+- `create_receipt` — a receipt (קבלה, 400), either:
+  - **against an existing type-305 document** (pass its id) — direct or
+    indirect ("סמן כשולם"). Rejects a type-300 original — use
+    `create_combo_document_as_reference` for those; or
+  - **standalone** (no original id) — money received that is not income and
+    has no invoice behind it, such as a deposit (פיקדון), a loan repayment or
+    an advance. Needs the resolved client name with `name_resolved=true`, the
+    amount and a free-text description of what the money is.
   🚨 **`payment_date` is required and has no default** — a verbal "mark as
   paid" request has nothing to read a date from, so always ask if the
   conversation doesn't already state one. "Today" is an acceptable answer
   here, but only once the user has actually confirmed it.
+  How the money arrived: see "Payment method" below.
 - `create_combo_document_as_reference` — a combo document (320) that
   explicitly closes an existing type-300 document — direct or indirect.
   Rejects any original that isn't type 300. Requires `vat_included` — same
   unconditional rule as `create_combo_document`: ALWAYS `true`, never ask.
+  Requires `payment_date`, same as `create_receipt`. How the money arrived:
+  see "Payment method" below.
 - `cancel_transaction_account` — cancels an open type-300 account directly
   (no document of any kind is created); rejects any other type. If the
   account is already non-open, this is a no-op that returns the same
   confirmation without calling Morning again — never claim it was "paid".
 
-`create_credit_note`, `create_receipt`, `create_combo_document_as_reference`,
-and `cancel_transaction_account` all require an original/reference document
+## Payment method
+
+Every document that records money received — `create_combo_document`,
+`create_combo_document_as_reference` (320) and `create_receipt` (400, against
+an invoice or standalone) — records how the money arrived, in
+`payment_method`:
+- **`bank_transfer` is the default, always** - use it whenever the user has
+  not said otherwise. Never ask how the money arrived. Bank details
+  (`bank_number`, `bank_branch`, `bank_account`) go with a bank transfer:
+  take them from the slip or screenshot the user sent, or from what the user
+  said. 🚨 `bank_number` is the bank's NUMBER (e.g. "31"), never its name —
+  never guess or invent a bank name.
+- **`cash`** when the user says the money was paid in cash.
+- Any other method (bit, PayBox, credit card, cheque, PayPal, etc.) is
+  currently **not supported**: tell the user plainly that only a bank
+  transfer or cash can be recorded, and ask how to proceed. Never record it
+  as a bank transfer or as cash instead.
+- There is no reference number (אסמכתא) to ask for or record.
+
+`create_credit_note`, `create_receipt` (against an invoice),
+`create_combo_document_as_reference`, and `cancel_transaction_account` all
+require an original/reference document
 id, taken from the most recent tool result that actually returned it; never ask the
 user for it, never guess it.
 
@@ -142,7 +164,7 @@ out loud. **Never ask for or mention `internal_morning_id`** to the user.
   (330) is attached to an existing document and takes its VAT from it — show
   that, never ask. Cancelling a transaction account has no VAT.
   **Plus, whenever known:** transaction date, payment method, bank
-  details, transaction reference, linked invoice number.
+  details, linked invoice number.
   **For the four actions that act on an existing document** (receipt, credit
   note, combo-as-reference, cancel): the approval must also show the referenced
   document's real, current data, from a fresh lookup in the same turn — type, number (the display number, never the internal id), client,

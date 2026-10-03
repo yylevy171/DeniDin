@@ -1,7 +1,8 @@
 """
-Integration test: flag-on text-message dispatch (denidin.py's
-_process_conversational_message) reaches Backbone.turn_with_rounds
-instead of AIHandler.get_response; flag-off dispatch is provably unchanged.
+Integration test: text-message dispatch (denidin.py's _process_conversational_message)
+reaches the one AI implementation's single_turn (REQ-063-08: denidin_app.ai_manager -
+the Backbone with the flag on, AIHandler with it off; which one is decided once, in
+initialize_app - see test_initialize_app_backbone_flag.py).
 
 Added 2026-09-14 (Feature 063) after a real billed test showed text turns were
 NEVER routed to the backbone at all - only media dispatch and button-tap
@@ -60,19 +61,21 @@ def _base_fake_denidin():
     fake_denidin.group_membership_resolver = None
     fake_denidin.whatsapp_handler.validate_message_type.return_value = True
     fake_denidin.whatsapp_handler.process_notification.return_value = _fake_message()
-    fake_denidin.ai_handler.user_manager.get_user.return_value.is_blocked = False
-    fake_denidin.ai_handler.user_manager.get_user.return_value.role = Role.GODFATHER
+    fake_denidin.receive.return_value = _fake_message()  # REQ-063-08: DeniDin parses + stores
+    fake_denidin.user_manager.get_user.return_value.is_blocked = False
+    fake_denidin.user_manager.get_user.return_value.role = Role.GODFATHER
     return fake_denidin
 
 
 @pytest.mark.integration
-def test_flag_on_text_dispatch_calls_backbone_not_legacy_handler():
+def test_text_dispatch_calls_the_ai_managers_single_turn_once():
     fake_denidin = _base_fake_denidin()
-    fake_denidin.backbone.turn_with_rounds.return_value = AIResponse(
+    response = AIResponse(
         request_id="r1", response_text="לאישור — תזכורת חדשה...", tokens_used=0,
         prompt_tokens=0, completion_tokens=0, model="gpt-5.6-luna",
         finish_reason="stop", timestamp=1735689600,
     )
+    fake_denidin.ai_manager.single_turn.return_value = response
 
     original_app = denidin_module.denidin_app
     denidin_module.denidin_app = fake_denidin
@@ -81,29 +84,11 @@ def test_flag_on_text_dispatch_calls_backbone_not_legacy_handler():
     finally:
         denidin_module.denidin_app = original_app
 
-    fake_denidin.backbone.turn_with_rounds.assert_called_once()
-    fake_denidin.ai_handler.get_response.assert_not_called()
-    # RBAC role resolved off ai_handler's own UserManager and passed through -
-    # the backbone has no UserManager of its own (REQ-063-03).
-    call_kwargs = fake_denidin.backbone.turn_with_rounds.call_args.kwargs
-    assert call_kwargs["user_role"] == Role.GODFATHER
-
-
-@pytest.mark.integration
-def test_flag_off_text_dispatch_is_unchanged():
-    fake_denidin = _base_fake_denidin()
-    fake_denidin.backbone = None
-    fake_denidin.ai_handler.get_response.return_value = AIResponse(
-        request_id="r1", response_text="שלום!", tokens_used=0,
-        prompt_tokens=0, completion_tokens=0, model="gpt-5.6-luna",
-        finish_reason="stop", timestamp=1735689600,
-    )
-
-    original_app = denidin_module.denidin_app
-    denidin_module.denidin_app = fake_denidin
-    try:
-        denidin_module._process_conversational_message(_text_notification())  # pylint: disable=protected-access
-    finally:
-        denidin_module.denidin_app = original_app
-
-    fake_denidin.ai_handler.get_response.assert_called_once()
+    fake_denidin.ai_manager.single_turn.assert_called_once()
+    # The RBAC phone is passed; each implementation resolves the role from it itself.
+    call_kwargs = fake_denidin.ai_manager.single_turn.call_args.kwargs
+    assert call_kwargs["user_phone"] == "111@c.us"
+    assert call_kwargs["chat_id"] == "111@c.us"
+    assert "user_role" not in call_kwargs
+    # The turn's AIResponse is kept on DeniDin (observability / E2E tests).
+    assert fake_denidin.last_response is response

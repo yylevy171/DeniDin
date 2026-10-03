@@ -19,11 +19,11 @@ class FlowTag(str, Enum):
 
     ADD_CLIENT = "flow_add_client"
     MODIFY_CLIENT = "flow_modify_client"
+    MORNING_DOCUMENT_WRITE = "flow_morning_document_write"
     ISSUE_INVOICE_FOR_PAYMENT_DUE = "flow_issue_invoice_for_payment_due"
     ISSUE_INVOICE_RECEIPT_COMBO = "flow_issue_invoice_receipt_combo"
     ISSUE_TRANSACTION_ACCOUNT = "flow_issue_transaction_account"
     ISSUE_RECEIPT_WITHOUT_INVOICE = "flow_issue_receipt_without_invoice"
-    PAYMENT_RECEIVED_BY_BANK_SLIP_IMAGE = "flow_payment_received_by_bank_slip_image"
     ISSUE_PAYMENT_RECEIVED_WITH_REFERENCE_DOC = "flow_issue_payment_received_with_reference_doc"
     CANCEL_DOCUMENT_WITH_CREDIT_NOTE = "flow_cancel_document_with_credit_note"
     CANCEL_TRANSACTION_ACCOUNT = "flow_cancel_transaction_account"
@@ -61,6 +61,15 @@ FLOW_INFO: tuple = (
         " approval. Not for creating a client and not for documents."
     ),
     FlowInfo(
+        FlowTag.MORNING_DOCUMENT_WRITE,
+        "Anything that may mean creating or cancelling a Morning document: a tax invoice, a combo "
+        "invoice/receipt, a receipt, a transaction account, a credit note, or cancelling a "
+        "transaction account (\"תפיק חשבונית\", \"תוציא קבלה\", \"סמן כשולם\", \"בטל את "
+        "החשבונית\"). Works out exactly which document the user means - asking when it is unclear "
+        "- and then loads the flow for that document. Not for clients and not for reading "
+        "documents."
+    ),
+    FlowInfo(
         FlowTag.ISSUE_INVOICE_FOR_PAYMENT_DUE,
         "Issuing a new tax invoice (305) for a client, for money that is still owed (\"תפיק חשבונית "
         "ללקוח X\"). Never for money that has already arrived. Money that has already arrived "
@@ -82,15 +91,9 @@ FLOW_INFO: tuple = (
     ),
     FlowInfo(
         FlowTag.ISSUE_RECEIPT_WITHOUT_INVOICE,
-        "Recording a standalone receipt (400) with no invoice behind it, for example a refundable "
-        "deposit. A receipt against an existing invoice belongs to "
+        "Recording a standalone receipt (400) with no invoice behind it, for example a deposit. "
+        "A receipt against an existing invoice belongs to "
         "flow_issue_payment_received_with_reference_doc."
-    ),
-    FlowInfo(
-        FlowTag.PAYMENT_RECEIVED_BY_BANK_SLIP_IMAGE,
-        "A bank slip or payment screenshot arrived. Reads it, records the payer, and gets the "
-        "payment recorded in Morning the right way: a new combo document when nothing covers it, or"
-        " a document against an existing one."
     ),
     FlowInfo(
         FlowTag.ISSUE_PAYMENT_RECEIVED_WITH_REFERENCE_DOC,
@@ -112,14 +115,17 @@ FLOW_INFO: tuple = (
     FlowInfo(
         FlowTag.FEE_AGREEMENT_PROVIDED_BY_USER,
         "The user reports or forwards a fee agreement (הסכם) - as text or as an image - made with a"
-        " client. An agreement must never belong to a client Morning does not manage, so this makes"
-        " sure the client exists first. Recording the agreement in the ledger happens automatically"
-        " after the turn."
+        " client, or logs hours worked for a client (e.g. \"רן אורפני 4 שעות על היום\" - a work-log"
+        " entry, never a reminder request). An agreement must never belong to a client Morning does"
+        " not manage, so this makes sure the client exists first. Recording the agreement in the"
+        " ledger happens automatically after the turn."
     ),
     FlowInfo(
         FlowTag.DEPOSIT_PROVIDED_BY_USER,
-        "The user reports or forwards a bank deposit (text or a bank slip image). Makes sure the "
-        "payer exists as a client in Morning first. Recording the deposit in the ledger happens "
+        "The user reports or forwards a bank deposit or a payment received - as text, or as a bank"
+        " slip or payment screenshot. Reads the slip, makes sure the client exists in Morning, and"
+        " when the user asks for a Morning document for it (or it is unclear whether they do), "
+        "hands over to flow_morning_document_write. Recording the deposit in the ledger happens "
         "automatically after the turn."
     ),
     FlowInfo(

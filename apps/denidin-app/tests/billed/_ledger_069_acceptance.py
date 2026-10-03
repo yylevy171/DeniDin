@@ -284,7 +284,7 @@ def _extractor_output_for_chat(denidin_app) -> Dict[str, Any]:
     the detour's plain-text answers. (`ledger_events` stays `[]` — MediaHandler
     does not persist the structured list; the substring match against the blob is
     the meaningful check. Known limitation B4, acceptance-regression-map.md.)"""
-    sm = denidin_app.ai_handler.session_manager
+    sm = denidin_app.session_manager
     session = sm.get_session(GODFATHER_CHAT_ID)
     for mid in session.message_ids:
         msg = sm.load_message(session, mid)
@@ -597,7 +597,7 @@ def assert_no_ledger_event(denidin_app, chat_id: str) -> None:
 
 
 def session_id_for_chat(denidin_app, chat_id: str) -> str:
-    return denidin_app.ai_handler.session_manager.get_session(chat_id).session_id
+    return denidin_app.session_manager.get_session(chat_id).session_id
 
 
 # --------------------------------------------------------------------------- #

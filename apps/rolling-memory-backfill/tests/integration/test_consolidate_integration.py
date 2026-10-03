@@ -23,15 +23,13 @@ import pytest
 
 import consolidate_sessions as cli
 from _denidin_loader import (
-    MemoryManager,
-    RollMarkerStore,
     collection_name_for_chat,
     local_calendar_date,
     now_local,
 )
 from src.managers.message_integrity import assert_message_integrity
-from src.managers.session_manager import SessionManager
 from src.services import daily_summary_roll_service as roll_service
+from tests.backfill_test_support import make_roll_context, make_session_manager
 
 GROUP = "120363210094632983@g.us"
 SOLO = "972522968679@c.us"
@@ -102,7 +100,7 @@ def fragmented(tmp_path):
 def _reconcile_warnings(sessions_dir, caplog):
     caplog.clear()
     with caplog.at_level(logging.WARNING):
-        sm = SessionManager(storage_dir=str(sessions_dir))
+        sm = make_session_manager(str(sessions_dir))
     warns = [r.message for r in caplog.records if "maps to" in r.message and "session dirs" in r.message]
     return sm, warns
 
@@ -131,7 +129,7 @@ class TestConsolidationThroughRealSessionManager:
 
     def test_rolling_window_spans_the_merged_history(self, fragmented):
         cli.main(["--data-root", str(fragmented.data_root)])
-        sm = SessionManager(storage_dir=str(fragmented.sessions))
+        sm = make_session_manager(str(fragmented.sessions))
 
         # group user turns get the Feature 039 "[sender_name] " prefix
         win14 = sm.get_rolling_window(GROUP, window_days=14)
@@ -160,17 +158,10 @@ class TestConsolidationThroughRealSessionManager:
 class TestNightlyRollOverConsolidatedData:
     def _global_context(self, data_root, fake_openai_client):
         memory_block = {"session": {"window_days": 14}, "roll": {"hour": 2, "catchup_lookback_days": 40}}
-        sm = SessionManager(storage_dir=str(data_root / "sessions"))
-        rms = RollMarkerStore(str(data_root / "memory_rolls"))
-        mm = MemoryManager(storage_dir=str(data_root / "memory"),
-                           embedding_model="text-embedding-3-large", ai_client=fake_openai_client)
-        return SimpleNamespace(
-            session_manager=sm,
-            ai_handler=SimpleNamespace(roll_marker_store=rms, memory_manager=mm,
-                                       client=fake_openai_client,
-                                       config=SimpleNamespace(ai_model="gpt-5.6-luna", memory=memory_block)),
-            config=SimpleNamespace(memory=memory_block),
-        ), rms, mm
+        gc = make_roll_context(data_root, memory=memory_block, ai_model="gpt-5.6-luna",
+                               ai_embedding_model="text-embedding-3-large",
+                               ai_client=fake_openai_client)
+        return gc, gc.roll_marker_store, gc.memory_manager
 
     def _daily_summaries(self, mm, chat):
         safe = collection_name_for_chat(chat)

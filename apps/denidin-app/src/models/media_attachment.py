@@ -13,7 +13,7 @@ from typing import Optional
 class MediaAttachment:
     """
     Media file metadata for WhatsApp messages.
-    
+
     Attributes:
         media_type: File category - 'image', 'pdf', 'docx'
         file_url: Green API download URL
@@ -23,7 +23,7 @@ class MediaAttachment:
         page_count: Number of pages (PDFs only)
         caption: WhatsApp message text sent with file (user's question/comment)
     """
-    
+
     media_type: str
     file_url: str
     file_path: str
@@ -31,11 +31,11 @@ class MediaAttachment:
     file_size: int
     page_count: Optional[int] = None
     caption: str = ""
-    
+
     def validate(self) -> None:
         """
         Validate attachment meets requirements.
-        
+
         Raises:
             ValueError: If file size exceeds 10MB or PDF has >10 pages
         """
@@ -45,7 +45,7 @@ class MediaAttachment:
             raise ValueError(
                 f"File too large: {self.file_size} bytes (max {max_size})"
             )
-        
+
         # CHK003-004: Page count validation for PDFs
         if self.media_type == 'pdf' and self.page_count and self.page_count > 10:
             raise ValueError(f"PDF has {self.page_count} pages (max 10)")

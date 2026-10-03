@@ -265,7 +265,7 @@ def test_bugfix_058_error_reply_sent_to_user_is_persisted_in_session(
         denidin.denidin_app = broken_app
         if broken_app.green_api_bot is None:
             broken_app.green_api_bot = object()
-        broken_app.ai_handler.green_api_bot = broken_app.green_api_bot
+        broken_app.ai_manager.green_api_bot = broken_app.green_api_bot
 
         notification = create_real_notification(build_text_webhook(
             chat_id=GODFATHER_CHAT_ID,
@@ -277,7 +277,7 @@ def test_bugfix_058_error_reply_sent_to_user_is_persisted_in_session(
         reply = get_response(notification)
 
         assert reply, "the user received no message at all (expected the fallback error text)"
-        window = broken_app.ai_handler.session_manager.get_rolling_window(GODFATHER_CHAT_ID)
+        window = broken_app.session_manager.get_rolling_window(GODFATHER_CHAT_ID)
         persisted = json.dumps(window, ensure_ascii=False)
         assert reply in persisted, (
             f"bugfix-058: the error message the user saw was not persisted in the "

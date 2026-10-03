@@ -166,10 +166,10 @@ def send_reaction(bot: Any, chat_id: str, id_message: str, reaction: str) -> boo
             time.sleep(1.0)
             continue
 
+        error_text = f", error={transport_error}" if transport_error is not None else ""
         logger.warning(
             f"Failed to send reaction (chatId={chat_id}, idMessage={id_message}, "
-            f"reaction={reaction!r}): code={code!r}"
-            + (f", error={transport_error}" if transport_error is not None else "")
+            f"reaction={reaction!r}): code={code!r}{error_text}"
         )
         return False
 

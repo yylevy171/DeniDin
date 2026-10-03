@@ -2,9 +2,7 @@
 on-demand capability, the read/write split (cap_invoicing_read never resolves
 names; flow_invoicing_query does the resolution through cap_client_read), and
 the real shipped prompt files (config/prompts) matching the code's catalogs."""
-import json
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -12,12 +10,13 @@ import pytest
 from src.backbone.capability_tags import ALWAYS_PRESENT_CAPABILITIES, CapabilityTag
 from src.backbone.flow_tags import FlowTag
 from src.backbone.resolution_tools import RESOLUTION_TOOLS
-from src.backbone.backbone import Backbone
 from src.capabilities.toolsets import (
     MORNING_MCP_TOOL_NAMES, build_capability_tools, local_tool_owners,
 )
 from src.managers.session_manager import SessionManager
 from src.models.config import AppConfiguration
+from tests.backbone_test_support import make_backbone
+from tests.denidin_test_support import make_session_manager
 
 PROMPTS = Path(__file__).parent.parent.parent / "config" / "prompts"
 
@@ -28,8 +27,8 @@ def orch(tmp_path):
         green_api_instance_id="x", green_api_token="y", ai_api_key="z",
         backbone_config={"base_dir": str(PROMPTS.parent)},
     )
-    return Backbone(MagicMock(), config,
-                                session_manager=SessionManager(storage_dir=str(tmp_path / "s")))
+    return make_backbone(MagicMock(), config,
+                                session_manager=make_session_manager(storage_dir=str(tmp_path / "s")))
 
 
 def test_every_tag_flow_and_always_present_capability_has_a_real_prompt_file():

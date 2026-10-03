@@ -45,7 +45,6 @@ def dispatch_direct_tool_call(backbone, tool_name: str, args: Dict[str, Any],
     if fee_agreement_tools is None:
         return json.dumps({"error": "יצירת מסמכי הסכם שכר טרחה אינה מוגדרת כרגע."}, ensure_ascii=False)
     chat_id = turn_context.get("chat_id")
-    whatsapp_handler = getattr(backbone, "whatsapp_handler", None)
     if tool_name == "get_fee_agreement_template":
         result = fee_agreement_tools.handle_get_template(args.get("variant_id"))
     elif tool_name == "render_fee_agreement_document":
@@ -53,12 +52,7 @@ def dispatch_direct_tool_call(backbone, tool_name: str, args: Dict[str, Any],
     elif tool_name == "verify_fee_agreement_document":
         result = fee_agreement_tools.handle_verify(args.get("document_id"))
     elif tool_name == "send_fee_agreement_document":
-        if whatsapp_handler is None:
-            result = {"error": "שליחת מסמכים אינה מוגדרת כרגע."}
-        else:
-            result = fee_agreement_tools.handle_send(
-                args.get("document_id"), whatsapp_handler, chat_id, args.get("caption", ""),
-            )
+        result = fee_agreement_tools.handle_send(args.get("document_id"), chat_id, args.get("caption", ""))
     else:
         result = {"error": f"unknown tool: {tool_name!r}"}
     return json.dumps(result, ensure_ascii=False)

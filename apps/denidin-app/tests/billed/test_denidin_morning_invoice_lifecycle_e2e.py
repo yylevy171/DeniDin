@@ -66,7 +66,14 @@ logger = logging.getLogger(__name__)
 KNOWN_INVOICE_NUMBER = "52046"
 KNOWN_INVOICE_CLIENT = "רימונה כהן"
 KNOWN_INVOICE_AMOUNT_IL = "156.75"
-KNOWN_INVOICE_STATUS_HE = "שולם"  # paid
+# Every Hebrew form a correct "paid" status may take (masculine/feminine/plural,
+# verb and adjective). Plain substrings - "שולם" ends in a final mem, so it does
+# not match "שולמה"/"משולמת", which is why each form is listed.
+_PAID_STATUS_FORMS_HE = (
+    "שולם", "שולמה", "שולמו",
+    "משולם", "משולמת", "משולמים", "משולמות",
+    "נפרע", "נפרעה",
+)
 
 
 @pytest.mark.billed
@@ -110,12 +117,13 @@ def test_godfather_gets_invoice_details_via_whatsapp(denidin_app):
     assert KNOWN_INVOICE_AMOUNT_IL in response, (
         f"Bot reply missing amount {KNOWN_INVOICE_AMOUNT_IL}. Full reply: {response!r}"
     )
-    # Accept either inflected form: "שולם" (masculine) or "שולמה" (feminine,
-    # correctly agreeing with the feminine noun "חשבונית") - the model isn't
-    # wrong to use either, so the assertion shouldn't pin one over the other.
-    assert KNOWN_INVOICE_STATUS_HE in response or "שולמה" in response, (
-        f"Bot reply missing status {KNOWN_INVOICE_STATUS_HE!r} (or its feminine "
-        f"form 'שולמה'). Full reply: {response!r}"
+    # Accept any inflection of "paid" - "שולם"/"שולמה"/"שולמו" (verb), the
+    # adjective "משולם"/"משולמת"/... (2026-10-02: a real, correct reply said
+    # "סגורה ומשולמת"), or "נפרע"/"נפרעה" (settled) - the model isn't wrong to
+    # use any of them, so the assertion shouldn't pin one over the other.
+    assert any(form in response for form in _PAID_STATUS_FORMS_HE), (
+        f"Bot reply missing a 'paid' status (any of {_PAID_STATUS_FORMS_HE}). "
+        f"Full reply: {response!r}"
     )
 
 

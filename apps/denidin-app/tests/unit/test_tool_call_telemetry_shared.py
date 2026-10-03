@@ -8,12 +8,15 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.backbone.backbone import Backbone
-from src.core.model_calls import record_mcp_tool_calls, timed_tool_call, tool_call_span
+from src.core.ai_manager import AIManager
+record_mcp_tool_calls = AIManager.record_mcp_tool_calls
+timed_tool_call = AIManager.timed_tool_call
+tool_call_span = AIManager.tool_call_span
 from src.managers.telemetry_manager import TelemetryBuilder, TelemetryManager
 from src.models.config import AppConfiguration
 from src.models.message import AIRequest
-from tests.backbone_test_support import make_session_manager
+from tests.backbone_test_support import make_backbone, make_session_manager
+from tests.denidin_test_support import make_telemetry_manager
 
 
 def _builder():
@@ -79,7 +82,7 @@ def _mcp_call(name):
 
 
 def test_backbone_turn_records_round_spans_and_mcp_calls(prompts_root, tmp_path):
-    telemetry_manager = TelemetryManager(str(tmp_path / "data"))
+    telemetry_manager = make_telemetry_manager(str(tmp_path / "data"))
     client = MagicMock()
     client.responses.create.side_effect = [
         _response([_mcp_call("resolve_client_name"),
@@ -88,12 +91,12 @@ def test_backbone_turn_records_round_spans_and_mcp_calls(prompts_root, tmp_path)
     ]
     config = AppConfiguration(green_api_instance_id="x", green_api_token="y", ai_api_key="z",
                               backbone_config={"base_dir": str(prompts_root)})
-    backbone = Backbone(client, config, session_manager=make_session_manager(),
+    backbone = make_backbone(client, config, session_manager=make_session_manager(),
                         telemetry_manager=telemetry_manager)
     request = AIRequest(user_prompt="מי הלקוח?", constitution="", max_tokens=1000,
                         model="gpt-5.6-luna", chat_id="chat1", message_id="msg1")
 
-    backbone.turn_with_rounds(request, chat_id="chat1", user_role="godfather")
+    backbone.single_turn(request, chat_id="chat1", user_role="godfather")
 
     row = telemetry_manager.get_latest_by_chat("chat1")
     assert row["llm_turns_count"] == 2

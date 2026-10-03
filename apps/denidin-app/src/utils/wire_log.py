@@ -188,6 +188,7 @@ def debug_wire(boundary: str, direction: str, context: str, payload: Any) -> Non
             payload = _redact_data_urls(payload)
         dump_fn = getattr(payload, "model_dump_json", None)
         content = dump_fn() if callable(dump_fn) else repr(payload)
-        logger.debug(f"[WIRE-DEBUG] boundary={boundary!r} direction={direction!r} context={context!r} payload={content}")
+        logger.debug(f"[WIRE-DEBUG] boundary={boundary!r} direction={direction!r} "
+                     f"context={context!r} payload={content}")
     except Exception as e:  # pylint: disable=broad-except
         logger.error(f"[WIRE-DEBUG] {context} {direction}: failed to log: {e}", exc_info=True)

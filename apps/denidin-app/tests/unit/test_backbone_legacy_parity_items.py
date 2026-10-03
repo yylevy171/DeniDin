@@ -12,20 +12,21 @@ import pytest
 from docx import Document
 from openai import APIStatusError
 
-from src.backbone.backbone import Backbone
 from src.capabilities.media_analysis.handler import (
-    _ExtractorContextShim, _build_extractor, _format_result,
+    _build_extractor, _format_result,
 )
 from src.constants.error_messages import (
     APPROVAL_POSSIBLY_DUPLICATED, BACKBONE_UNEXPECTED_ERROR, LEDGER_FOLLOWUP_FAILED_TRY_AGAIN,
 )
-from src.core.write_guards import (
-    approved_write_not_run_message, is_affirmative_reply, tally_write_executions, write_subject,
-)
+from src.core.ai_manager import AIManager
+approved_write_not_run_message = AIManager.approved_write_not_run_message
+is_affirmative_reply = AIManager.is_affirmative_reply
+tally_write_executions = AIManager.tally_write_executions
+write_subject = AIManager.write_subject
 from src.models.config import AppConfiguration
 from src.models.media import Media
 from src.models.message import AIRequest, NO_REPLY_SENTINEL
-from tests.backbone_test_support import make_session_manager
+from tests.backbone_test_support import make_backbone, make_session_manager
 
 GROUP_MARKER = "Group Conversation Etiquette (this chat is a WhatsApp group)"
 
@@ -60,7 +61,7 @@ def _send(text, call_id="s1"):
 def _backbone(prompts_root, client):
     config = AppConfiguration(green_api_instance_id="x", green_api_token="y", ai_api_key="z",
                               backbone_config={"base_dir": str(prompts_root)})
-    return Backbone(client, config, session_manager=make_session_manager())
+    return make_backbone(client, config, session_manager=make_session_manager())
 
 
 def _request(text="שלום"):
@@ -74,7 +75,7 @@ def _approved_turn(prompts_root, responses):
     client.with_options.return_value.responses.create.side_effect = responses
     backbone = _backbone(prompts_root, client)
     backbone.session_manager.set_approval_message_id("chat1", "approval-msg")
-    return client, backbone.turn_with_rounds(_request("כן"), chat_id="chat1")
+    return client, backbone.single_turn(_request("כן"), chat_id="chat1")
 
 
 # --- Item4 -------------------------------------------------------------------
@@ -114,7 +115,7 @@ def test_never_ran_message_names_a_reminder_when_the_approval_was_about_a_remind
     ]
     backbone = _backbone(prompts_root, client)
     backbone.session_manager.set_approval_message_id("chat1", "approval-msg")
-    response = backbone.turn_with_rounds(_request("כן"), chat_id="chat1")
+    response = backbone.single_turn(_request("כן"), chat_id="chat1")
     assert "לא נוצרה, לא שונתה ולא נמחקה שום תזכורת" in response.response_text
     assert "מסמך" not in response.response_text
 
@@ -130,7 +131,7 @@ def test_never_ran_message_is_hebrew_only():
 def test_a_yes_without_outstanding_approval_buttons_is_an_ordinary_turn(prompts_root):
     client = MagicMock()
     client.responses.create.return_value = _response([_send("בסדר")])
-    response = _backbone(prompts_root, client).turn_with_rounds(_request("כן"), chat_id="chat1")
+    response = _backbone(prompts_root, client).single_turn(_request("כן"), chat_id="chat1")
     assert response.response_text == "בסדר"
     client.with_options.assert_not_called()
 
@@ -160,7 +161,7 @@ def test_approved_turn_still_retries_once_on_a_424(prompts_root):
 def test_empty_send_to_user_text_replies_with_an_error_not_silence(prompts_root):
     client = MagicMock()
     client.responses.create.return_value = _response([_send("   ")])
-    response = _backbone(prompts_root, client).turn_with_rounds(_request(), chat_id="chat1")
+    response = _backbone(prompts_root, client).single_turn(_request(), chat_id="chat1")
     assert response.response_text == BACKBONE_UNEXPECTED_ERROR
     assert response.should_reply is True
 
@@ -171,7 +172,7 @@ def test_failed_follow_up_call_replies_with_try_again(prompts_root):
         _response([_call("record_planning_status", {"where_i_was": "x"}, "c1")]),
         RuntimeError("network down"),
     ]
-    response = _backbone(prompts_root, client).turn_with_rounds(_request(), chat_id="chat1")
+    response = _backbone(prompts_root, client).single_turn(_request(), chat_id="chat1")
     assert response.response_text == LEDGER_FOLLOWUP_FAILED_TRY_AGAIN
 
 
@@ -179,14 +180,14 @@ def test_hitting_the_round_limit_replies_with_an_error(prompts_root):
     client = MagicMock()
     client.responses.create.return_value = _response(
         [_call("record_planning_status", {"where_i_was": "x"}, "c1")])
-    response = _backbone(prompts_root, client).turn_with_rounds(_request(), chat_id="chat1")
+    response = _backbone(prompts_root, client).single_turn(_request(), chat_id="chat1")
     assert response.response_text == BACKBONE_UNEXPECTED_ERROR
 
 
 def test_a_deliberate_no_reply_stays_silent(prompts_root):
     client = MagicMock()
     client.responses.create.return_value = _response([_send(NO_REPLY_SENTINEL)])
-    response = _backbone(prompts_root, client).turn_with_rounds(_request(), chat_id="chat1")
+    response = _backbone(prompts_root, client).single_turn(_request(), chat_id="chat1")
     assert response.should_reply is False
 
 
@@ -196,7 +197,7 @@ def test_a_deliberate_no_reply_stays_silent(prompts_root):
 def test_group_etiquette_is_in_the_instructions_only_in_a_group(prompts_root, is_group):
     client = MagicMock()
     client.responses.create.return_value = _response([_send("שלום")])
-    _backbone(prompts_root, client).turn_with_rounds(_request(), chat_id="chat1", is_group=is_group)
+    _backbone(prompts_root, client).single_turn(_request(), chat_id="chat1", is_group=is_group)
     instructions = client.responses.create.call_args.kwargs["instructions"]
     assert (GROUP_MARKER in instructions) is is_group
 
@@ -219,7 +220,7 @@ def test_docx_analysis_works_through_the_backbone_shim(prompts_root):
     client = MagicMock()
     client.responses.create.return_value = SimpleNamespace(output_text="סוג מסמך: הסכם שכר טרחה")
     backbone = _backbone(prompts_root, client)
-    extractor = _build_extractor("docx", _ExtractorContextShim(backbone))
+    extractor = _build_extractor("docx", SimpleNamespace(config=backbone.config, ai_manager=backbone))
 
     result = extractor.analyze_media(_docx_media("הסכם שכר טרחה בין משה כהן לבין המשרד"))
 

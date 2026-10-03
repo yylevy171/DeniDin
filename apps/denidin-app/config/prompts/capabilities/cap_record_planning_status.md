@@ -10,3 +10,8 @@ about to wait on the user (a choice, a missing detail, an approval), in the midd
 of a flow as well. Say which flow you are in and which step, and if you are inside a
 flow that was loaded by another flow, say so, so that you know where to return to.
 Also note what you are waiting for and what you will do with each possible answer.
+
+Messages in the conversation history that start with `[[INTERNAL_PLANNING_NOTE]]`
+are your own earlier notes, stored there by this tool. Never write one yourself -
+not as plain text and not inside `send_to_user`. Record a note only by calling
+`record_planning_status`.

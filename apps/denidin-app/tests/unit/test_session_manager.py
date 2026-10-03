@@ -5,18 +5,20 @@ Tests conversation history management with role-based token limits.
 Written following TDD workflow - tests BEFORE implementation.
 """
 
+from unittest.mock import MagicMock
+
 import pytest
 import json
 import os
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import Mock, patch
 from src.managers.session_manager import SessionManager, Session, Message
 from src.handlers.media_handler import MediaHandler
 from src.managers.ledger_event_manager import LedgerEventManager
 from src.models.user import Role
+from tests.denidin_test_support import make_config, make_denidin, make_ledger_event_manager, make_session_manager
 
 
 @pytest.fixture
@@ -30,7 +32,7 @@ def temp_session_dir(tmp_path):
 @pytest.fixture
 def session_manager(temp_session_dir):
     """Create SessionManager instance for testing."""
-    manager = SessionManager(
+    manager = make_session_manager(
         storage_dir=str(temp_session_dir),
     )
     yield manager
@@ -389,12 +391,12 @@ class TestPersistence:
         chat_id = "1234567890@c.us"
         
         # Create session with first manager
-        manager1 = SessionManager(storage_dir=str(temp_session_dir))
+        manager1 = make_session_manager(storage_dir=str(temp_session_dir))
         manager1.add_message(chat_id, "user", "Persisted message", "client")
         session_id = manager1.get_session(chat_id).session_id
         
         # Create new manager (simulates restart)
-        manager2 = SessionManager(storage_dir=str(temp_session_dir))
+        manager2 = make_session_manager(storage_dir=str(temp_session_dir))
         session = manager2.get_session(chat_id)
         
         assert session.session_id == session_id
@@ -435,11 +437,8 @@ class TestSessionManagement:
 def _store_received_media(denidin_context, chat_id, message_id):
     """The media message as denidin.py stores it on receipt (2026-09-30)."""
     from datetime import datetime, timezone
-    from src.core.chat_log import ChatLog
     from src.models.message import WhatsAppMessage
-    denidin_context.chat_log = ChatLog(
-        denidin_context.ai_handler.session_manager, None, rbac_enabled=False)
-    denidin_context.chat_log.store_inbound(WhatsAppMessage(
+    denidin_context.store_inbound(WhatsAppMessage(
         message_id=message_id, chat_id=chat_id, sender_id=chat_id, sender_name="John",
         text_content="Check out this image!", timestamp=int(datetime.now(timezone.utc).timestamp()),
         message_type="imageMessage", is_group=False,
@@ -461,20 +460,11 @@ class TestImagePathStorage:
         chat_id = "1234567890@c.us"
         saved_file_path = tmp_path / "media" / "DD-1234567890-abc123.jpg"
 
-        denidin_context = SimpleNamespace(
-            config=SimpleNamespace(
-                data_root=str(tmp_path),
-                ai_vision_model="gpt-4o-mini",
-                ai_model="gpt-4o-mini",
-            ),
-            ai_handler=SimpleNamespace(
-                session_manager=session_manager,
-                # Feature 033: MediaHandler.__init__ now also wires a
-                # LedgerEventManager - real instance (not a Mock), matching
-                # this suite's real-internal-components convention, even
-                # though this specific test never exercises it directly.
-                ledger_event_manager=LedgerEventManager(storage_dir=str(tmp_path / "events")),
-            ),
+        denidin_context = make_denidin(
+            make_config(data_root=str(tmp_path), ai_vision_model="gpt-4o-mini", ai_model="gpt-4o-mini"),
+            session_manager=session_manager,
+            ai_manager=MagicMock(),  # the extractors' AI side - unused by these tests
+            ledger_event_manager=make_ledger_event_manager(storage_dir=str(tmp_path / "events")),
         )
         media_handler = MediaHandler(denidin_context)
         # 2026-09-30: the media message is stored on receipt; _store_media_turn fills in
@@ -494,8 +484,8 @@ class TestImagePathStorage:
         with open(message_file) as f:
             message_data = json.load(f)
 
-        # role is the real role - "client" (the RBAC-disabled fallback).
-        assert message_data["role"] == "client"
+        # role is the real role - "godfather" (the default role when none is known).
+        assert message_data["role"] == "godfather"
         assert message_data["image_path"] == "media/DD-1234567890-abc123.jpg"
     
     def test_image_path_optional(self, session_manager):
@@ -529,16 +519,11 @@ class TestExtractedTextStorage:
         chat_id = "1234567890@c.us"
         saved_file_path = tmp_path / "media" / "DD-1234567890-abc123.jpg"
 
-        denidin_context = SimpleNamespace(
-            config=SimpleNamespace(
-                data_root=str(tmp_path),
-                ai_vision_model="gpt-4o-mini",
-                ai_model="gpt-4o-mini",
-            ),
-            ai_handler=SimpleNamespace(
-                session_manager=session_manager,
-                ledger_event_manager=LedgerEventManager(storage_dir=str(tmp_path / "events")),
-            ),
+        denidin_context = make_denidin(
+            make_config(data_root=str(tmp_path), ai_vision_model="gpt-4o-mini", ai_model="gpt-4o-mini"),
+            session_manager=session_manager,
+            ai_manager=MagicMock(),  # the extractors' AI side - unused by these tests
+            ledger_event_manager=make_ledger_event_manager(storage_dir=str(tmp_path / "events")),
         )
         media_handler = MediaHandler(denidin_context)
         _store_received_media(denidin_context, chat_id, "msg-media-1")
@@ -634,7 +619,7 @@ class TestMessageLedgerEventIds:
         session = session_manager.get_session(chat_id)
         session_dir = session_manager.storage_dir / session.session_id
 
-        reloaded_manager = SessionManager(storage_dir=str(temp_session_dir))
+        reloaded_manager = make_session_manager(storage_dir=str(temp_session_dir))
         with open(session_dir / "messages" / f"{message_id}.json", encoding="utf-8") as f:
             data = json.load(f)
         assert data["ledger_event_ids"] == ["B28072614260"]

@@ -11,7 +11,8 @@ See contracts/capability-resolution-loop.md (the loop) and contracts/prompt-asse
 import json
 import logging
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
+
 
 from src.backbone.backbone_tools import (
     BACKBONE_TOOLS,
@@ -33,26 +34,14 @@ from src.capabilities.toolsets import (
 from src.constants.error_messages import (
     APPROVAL_POSSIBLY_DUPLICATED, BACKBONE_UNEXPECTED_ERROR, LEDGER_FOLLOWUP_FAILED_TRY_AGAIN,
 )
-from src.models.config import AppConfiguration
-from src.models.message import AIRequest, AIResponse, should_reply_for
+from src.models.message import AIRequest, AIResponse, WhatsAppMessage, should_reply_for
 from src.models.user import Role
 from src.utils.capability_audit_log import log_capability_action, log_loading_action
 from src.utils.logger import read_version, DEFAULT_VERSION_FILE
 from src.tool_actions.messaging_actions import (
     build_react_to_message_payload, send_progress_update_message,
 )
-from src.core.turn_context import load_rolling_window, recall_memory_context
-from src.core.turn_result import (
-    extract_mcp_call_items, finish_reason_of, fit_for_whatsapp,
-    log_possible_hallucinated_confirmation, reply_or_fallback,
-)
-from src.core.write_guards import (
-    approved_write_not_run_message, is_affirmative_reply, tally_write_executions, write_subject,
-)
-from src.core.model_calls import (
-    build_fallback_response, record_mcp_tool_calls, telemetry_span, timed_model_call,
-    tool_call_span,
-)
+from src.core.ai_manager import AIManager
 from src.utils.wire_log import audit_wire, debug_wire
 from src.utils.time_utils import now_local, local_from_timestamp
 
@@ -66,6 +55,23 @@ logger = logging.getLogger(__name__)
 # the old cap of 10, which silently dropped a genuinely-produced final
 # send_to_user answer - see the loop-cap fallback's own known bug noted below.
 MAX_BACKBONE_TOOL_LOOP_ITERATIONS = 100
+
+# The backbone flows: the flows shown in the backbone's own "## Flows" catalog.
+# Every other flow is reached only through a flow that offers it (the Morning
+# document flows through flow_morning_document_write). Flows themselves don't
+# know who loads them, and load_flows still accepts any flow.
+BACKBONE_FLOWS: Tuple[FlowTag, ...] = (
+    FlowTag.ADD_CLIENT,
+    FlowTag.MODIFY_CLIENT,
+    FlowTag.MORNING_DOCUMENT_WRITE,
+    FlowTag.FEE_AGREEMENT_PROVIDED_BY_USER,
+    FlowTag.DEPOSIT_PROVIDED_BY_USER,
+    FlowTag.USER_QUESTION,
+    FlowTag.INVOICING_QUERY,
+    FlowTag.GENERATE_FEE_AGREEMENT_DOCX,
+    FlowTag.CREATE_REMINDER,
+    FlowTag.MODIFY_REMINDER,
+)
 
 # A reply reaches the user ONLY through send_to_user / approval_with_yes_no_buttons
 # (2026-09-30). A round that ends in plain text (no tool call) is never sent: the model
@@ -88,84 +94,16 @@ _DEFAULT_BACKBONE_CONFIG = {
 }
 
 
-class Backbone:  # pylint: disable=too-many-instance-attributes
-    """The new backbone kernel. Same call SHAPE as the entry points
-    `denidin.py`'s routing layer already calls against `AIHandler`
-    (`turn_with_rounds` ~ `AIHandler.get_response`, `resolve_button_tap`) -
-    denidin.py dispatches explicitly by name (REQ-063-07), not via a
-    duck-typed interface, so the two implementations' method names don't
-    need to match."""
+class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
+    """The new backbone kernel - the AI implementation when the backbone flag is on
+    (REQ-063-08). DeniDin's Shared Managers are handed in (AIManager's keyword arguments), never
+    built here; the backbone never imports or calls the legacy AIHandler."""
 
-    def __init__(self, ai_client: Any, config: AppConfiguration, *,
-                 session_manager: Any,
-                 reminder_manager: Optional[Any] = None,
-                 ledger_event_manager: Optional[Any] = None,
-                 morning_mcp_locator: Optional[Any] = None,
-                 green_api_bot: Optional[Any] = None,
-                 memory_manager: Optional[Any] = None,
-                 user_manager: Optional[Any] = None,
-                 own_whatsapp_number: str = "",
-                 telemetry_manager: Optional[Any] = None,
-                 fee_agreement_tools: Optional[Any] = None,
-                 whatsapp_handler: Optional[Any] = None,
-                 chat_log: Optional[Any] = None):
-        self.client = ai_client
-        # 2026-09-30: the shared src/core/chat_log.ChatLog. Messages are stored at the
-        # WhatsApp boundary (received / sent), never by the backbone; the backbone uses
-        # it only for what never crosses that boundary (its planning notes) and for facts
-        # learned mid-turn (a media message's extracted text).
-        self.chat_log = chat_log
-        self.config = config
-        self.reminder_manager = reminder_manager
-        self.ledger_event_manager = ledger_event_manager
-        self.morning_mcp_locator = morning_mcp_locator
-        # green_api_bot (2026-09-14): the SAME live bot instance AIHandler already
-        # uses for react_to_message's real send_reaction side effect (Feature 084)
-        # - shared, unmodified (REQ-063-03). None is tolerated (unit tests, or a
-        # misconfigured process) - a reaction call is then a logged no-op, never
-        # a crash (mirrors send_reaction's own "never raises" contract).
-        self.green_api_bot = green_api_bot
-        # session_manager: the SAME SessionManager instance AIHandler already uses
-        # (REQ-063-03) - gives every round this turn real conversation history via
-        # get_rolling_window, same shape/source the legacy path has always used,
-        # and is the sole home of the loaded-capability set. Required: the app
-        # cannot run without it.
-        self.session_manager = session_manager
-        # memory_manager/user_manager/own_whatsapp_number (2026-09-15, closing a
-        # real gap found by full re-audit against spec.md/plan.md: session
-        # persistence AND long-term memory recall were never wired into this
-        # backbone at all - every flag-on turn's rolling window and recalled
-        # memories were silently empty, forever, regardless of prior turns. All
-        # three are the SAME shared instances AIHandler already owns (REQ-063-03) -
-        # memory_manager for ChromaDB daily_summary recall, user_manager only for
-        # RBAC-scoped recall (allowed_memory_scopes/can_see_all_memories), and
-        # own_whatsapp_number for the assistant message's own persisted sender JID
-        # (mirrors AIHandler.own_whatsapp_number, resolved once at startup).
-        self.memory_manager = memory_manager
-        self.user_manager = user_manager
-        self.own_whatsapp_number = own_whatsapp_number
-        # telemetry_manager (2026-09-15, closing a real gap: Feature 080's
-        # per-request latency/token telemetry was never wired into this
-        # backbone at all - every flag-on turn wrote zero RequestTelemetry
-        # rows, silently, forever). The SAME shared TelemetryManager instance
-        # AIHandler already owns (REQ-063-03) - None whenever the flag is off or
-        # telemetry was never configured, same "complete no-op" contract
-        # AIHandler.get_response's own docstring describes. Unlike the legacy
-        # path's contextvar-based threading (needed because AIHandler's OpenAI
-        # call sites are spread across many separate methods), this backbone
-        # already threads all per-turn state as plain instance attributes (see
-        # _turn_mcp_calls etc. above), so a TelemetryBuilder is simply one more
-        # such attribute (_turn_telemetry_builder, set in turn_with_rounds) -
-        # simpler, same end result.
-        self.telemetry_manager = telemetry_manager
+    def __init__(self, denidin: Any):
+        super().__init__(denidin)
+        config = self.config
+        # The telemetry builder of the turn in progress (set in single_turn).
         self._turn_telemetry_builder: Optional[Any] = None
-        # fee_agreement_tools/whatsapp_handler (2026-09-16, cap_docx_write capability,
-        # resolution redesign): the SAME FeeAgreementToolHandler/
-        # WhatsAppHandler instances ai_handler.py already owns (REQ-063-03) - None
-        # tolerated (unit tests, or a misconfigured process), in which case
-        # cap_docx_write returns a friendly "not configured" text rather than crashing.
-        self.fee_agreement_tools = fee_agreement_tools
-        self.whatsapp_handler = whatsapp_handler
         # _app_version (2026-09-17, closing a real gap found by direct user
         # review: build_instructions never told the model its own version at
         # all, unlike AIHandler._load_constitution's "YOUR CURRENT VERSION
@@ -183,7 +121,7 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
         # new persisted cross-turn state the resolution redesign adds: a plain
         # internal-note history entry, threaded back into the next turn purely
         # via the existing rolling-window conversation history (no new store, no
-        # schema). Reset every turn in turn_with_rounds.
+        # schema). Reset every turn in single_turn.
         self._turn_planning_status: Optional[str] = None
 
         self._backbone_content: str = ""
@@ -196,24 +134,22 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
         self._user_memory_content: str = ""
         self._user_memory_mtime: Optional[float] = None
 
-        # Set once per turn_with_rounds() call, read by the resolution loop for
+        # Set once per single_turn() call, read by the resolution loop for
         # every round within that SAME turn (2026-09-14). Deliberately a plain
         # instance attribute, not threaded as an explicit parameter through
         # every one of the ~6 call sites across src/capabilities/* + planning.py
-        # - this process handles one webhook turn at a time (same assumption
-        # AIHandler.own_whatsapp_number already makes), so there is no real
+        # - this process handles one webhook turn at a time, so there is no real
         # concurrent-turn clobbering risk in practice.
         self._turn_conversation_history: List[Dict[str, Any]] = []
 
-        # Set once per turn_with_rounds() call, same lifecycle/reasoning as
+        # Set once per single_turn() call, same lifecycle/reasoning as
         # _turn_conversation_history above - read by the loop's
         # backbone-tool resolution (send_progress_update/react_to_message) for
         # every round this turn makes.
-        self._turn_progress_callback: Optional[Callable[[str], None]] = None
         self._turn_chat_id: Optional[str] = None
         self._turn_message_id: Optional[str] = None
 
-        # Set False at the top of every turn_with_rounds() call; flipped True by
+        # Set False at the top of every single_turn() call; flipped True by
         # ApprovalCapability.handle() iff the approval capability was used
         # THIS turn (2026-09-16) - _finalize_response reads this instead of
         # checking pending-approval managers to decide whether to offer
@@ -221,7 +157,7 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
         # pending-approval record of its own.
         self._turn_offered_approval: bool = False
 
-        # Set once per turn_with_rounds() call (2026-09-15) - the ChromaDB
+        # Set once per single_turn() call (2026-09-15) - the ChromaDB
         # daily_summary semantic recall for this turn's own query, appended into
         # every round's instructions the same way AIHandler appends it to
         # `constitution` (see _recall_memory's own docstring for the exact
@@ -362,7 +298,7 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
         # load order, so the same set always yields the same bytes (cache hits).
         flows = sorted(set(active_flows or []), key=list(FlowTag).index)
         tags = sorted(set(tags), key=list(CapabilityTag).index)
-        flow_catalog = flow_catalog_text(list(FlowTag))
+        flow_catalog = flow_catalog_text(list(BACKBONE_FLOWS))
         loaded_line = (
             "## Loaded flows\n\n" + (", ".join(f.value for f in flows) if flows else "(none)")
             + "\n\n## Loaded capabilities\n\n"
@@ -411,56 +347,37 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
         shape/reasoning as AIHandler._extract_mcp_call_items (this session's earlier
         fix for the identical bug class in the legacy dispatch loop), reimplemented
         here as new code (REQ-063-07). 2026-10-01: the shared
-        core.turn_result.extract_mcp_call_items (also AIHandler's) - it normalizes
+        AIManager.extract_mcp_call_items (also AIHandler's) - it normalizes
         `error` to a string, which this copy did not (a raw HTTPError crashed message
         storage on the legacy path once, 2026-09-15)."""
-        return extract_mcp_call_items(response)
+        return AIManager.extract_mcp_call_items(response)
 
     # ------------------------------------------------------------------
     # The resolution loop (contracts/capability-resolution-loop.md)
     # ------------------------------------------------------------------
 
-    def turn_with_rounds(  # pylint: disable=too-many-locals
+    def single_turn(  # pylint: disable=too-many-locals
             self, request: AIRequest, chat_id: Optional[str] = None, *,
-            user_role: str = "godfather", sender: Optional[str] = None,
+            user_role: Optional[str] = None, sender: Optional[str] = None,
             recipient: Optional[str] = None, user_phone: Optional[str] = None,
             is_group: bool = False, chat_name: Optional[str] = None,
-            sender_phone: Optional[str] = None,
-            progress_callback: Optional[Callable[[str], None]] = None,
-            is_media: bool = False,
-            media_extraction: Optional[Dict[str, Any]] = None,
-            media: Optional[Any] = None,
-            media_type: Optional[str] = None) -> AIResponse:
-        """The backbone's entry point: resolves one WhatsApp turn (one incoming
-        message → one final reply) via one or more OpenAI call "rounds" (2026-09-30
-        rename, from the generic `get_response` — see `_call_model`'s "first round"/
-        "follow-up round" context labels: a turn is NOT guaranteed to be a single
-        OpenAI call, since the model may spend a round loading a flow/capability
-        before it can actually answer). Same call SHAPE `AIHandler.get_response`
-        already exposes (chat_id/user_role/sender/... in, `AIResponse` out) so
-        denidin.py's `backbone is not None` branches can call either
-        implementation the same way, but denidin.py already dispatches explicitly by
-        name (REQ-063-07) - there's no duck-typed/polymorphic interface requiring the
-        two method NAMES to match, which is what made this rename safe.
+            sender_phone: Optional[str] = None) -> AIResponse:
+        """The backbone's AIManager.single_turn (REQ-063-08): resolves one WhatsApp turn
+        (one incoming message → one final reply) via one or more OpenAI call "rounds" -
+        see `_call_model`'s "first round"/"follow-up round" context labels: a turn is
+        NOT guaranteed to be a single OpenAI call, since the model may spend a round
+        loading a flow/capability before it can actually answer.
 
-        media_extraction: an ALREADY-computed extraction result
-        (extracted_text/document_analysis/media_type), when a caller has one to hand
-        (e.g. a test fixture, or a future caller of this method directly). None for
-        a text turn.
+        user_role: None (denidin.py's call) resolves it from user_phone (else
+        sender_phone) off DeniDin's UserManager - 'godfather' when unknown.
 
-        media/media_type (2026-09-15, REQ-063-04a real design): the RAW, not-yet-
-        extracted media for a media turn — denidin.py's flag-on media dispatch
-        downloads and validates the file (reusing the unmodified low-level
-        `MediaFileManager.download_file`/`validate_file_size`/`validate_format`,
-        REQ-063-03), builds a `Media` object, and hands it here as-is, WITHOUT
-        running any extraction call first. This is the real design per
-        contracts/capability-resolution-loop.md: the model is told only "media
-        attached, type X, caption Y" — no content — and itself CHOOSES whether
-        to `load_capabilities(["cap_media_analysis"])` and call its `analyze_media` tool;
-        only then does `src/capabilities/media_analysis/handler.py` make the
-        real vision/PDF/DOCX extraction call, via `turn_context["media"]`/
-        `["media_type"]` below. media_extraction (above) and media/media_type are
-        mutually exclusive in practice — a caller passes at most one.
+        A media turn (REQ-063-04a) carries its file on `request.media` - the RAW, not-yet-
+        extracted bytes: denidin.py's flag-on media dispatch downloads and validates the
+        file and hands it here WITHOUT running any extraction call first. The model is told
+        only "media attached, type X, caption Y" - no content - and itself loads
+        `cap_media_analysis` and calls its `analyze_media` tool; only then does
+        `src/capabilities/media_analysis/handler.py` run the real vision/PDF/DOCX
+        extraction on `turn_context["media"]`.
         """
         # The ENTIRE turn below is wrapped in one top-level try/except, mirroring
         # AIHandler._get_response_impl's own APITimeoutError/RateLimitError/
@@ -471,43 +388,47 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
         # telemetry_manager docstring), 2026-09-30 consolidation: the telemetry
         # lifecycle itself (one TelemetryBuilder per turn, recorded on the way out -
         # success OR exception alike, complete no-op when self.telemetry_manager is
-        # None) is now the ONE shared model_calls.telemetry_span
-        # implementation, also used by AIHandler.get_response - the two were
+        # None) is now the ONE shared AIManager.telemetry_span
+        # implementation, also used by AIHandler.single_turn - the two were
         # byte-for-byte identical in shape before this change, just stored the
         # active builder differently (this class's own instance attribute vs.
         # AIHandler's module-level contextvar), which telemetry_span is agnostic to.
+        if user_role is None:
+            # REQ-063-08: the role RBAC gates on is resolved here, off DeniDin's own
+            # UserManager (user_phone is the RBAC phone - the group's most-permissive
+            # member for a group turn), never by the caller.
+            user_role = self._role_for_phone(user_phone or sender_phone)
         effective_chat_id_for_telemetry = chat_id or request.chat_id
-        with telemetry_span(self.telemetry_manager, request.request_id, effective_chat_id_for_telemetry) as builder:
+        with self.telemetry_span(request.request_id, effective_chat_id_for_telemetry) as builder:
             self._turn_telemetry_builder = builder
-            return self._turn_with_rounds_body(
+            return self._single_turn_body(
                 request, chat_id=chat_id, user_role=user_role, sender=sender, recipient=recipient,
                 user_phone=user_phone, is_group=is_group, chat_name=chat_name, sender_phone=sender_phone,
-                progress_callback=progress_callback, is_media=is_media, media_extraction=media_extraction,
-                media=media, media_type=media_type,
             )
 
-    def _turn_with_rounds_body(  # pylint: disable=too-many-locals,too-many-arguments
+    def _role_for_phone(self, phone: Optional[str]) -> str:
+        """The phone's role, or 'godfather' (the default role) when it can't be resolved."""
+        if self.user_manager is None or not phone:
+            return "godfather"
+        user = self.user_manager.get_user(phone)
+        return user.role if user else "godfather"
+
+    def _single_turn_body(  # pylint: disable=too-many-locals,too-many-arguments
             self, request: AIRequest, *, chat_id: Optional[str], user_role: str,
             sender: Optional[str], recipient: Optional[str], user_phone: Optional[str],
-            is_group: bool, chat_name: Optional[str], sender_phone: Optional[str],
-            progress_callback: Optional[Callable[[str], None]], is_media: bool,
-            media_extraction: Optional[Dict[str, Any]], media: Optional[Any],
-            media_type: Optional[str]) -> AIResponse:
-        """The actual per-turn logic, split out of turn_with_rounds so the telemetry_span
+            is_group: bool, chat_name: Optional[str], sender_phone: Optional[str]) -> AIResponse:
+        """The actual per-turn logic, split out of single_turn so the telemetry_span
         context manager above wraps it cleanly (a context manager's body can't easily
         `return` from inside a try/except/finally spanning the whole call otherwise)."""
         # Message addressing (sender/recipient/group) is no longer needed here - every
-        # message is stored at the WhatsApp boundary by ChatLog (2026-09-30).
+        # message is stored at the WhatsApp boundary by DeniDin (2026-09-30).
         del sender, recipient, chat_name
         try:
             role = self._resolve_role(user_role)
             effective_chat_id = chat_id or request.chat_id
             # Backbone-tool dispatch context (2026-09-14, same per-turn-instance-attribute
-            # lifecycle/reasoning as _turn_conversation_history) - progress_callback is
-            # the caller's real "send this text to the user right now" hook
-            # (denidin.py's notification.answer wrapper in production), chat_id/
-            # message_id are react_to_message's real dispatch target/default.
-            self._turn_progress_callback = progress_callback
+            # lifecycle/reasoning as _turn_conversation_history) - chat_id/message_id are
+            # send_progress_update's and react_to_message's real dispatch target/default.
             self._turn_chat_id = effective_chat_id
             self._turn_message_id = request.message_id
             # Reset per-turn MCP-call accumulator (2026-09-15) - see __init__'s
@@ -532,15 +453,13 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
                 "user_phone": user_phone or sender_phone,
                 "chat_id": effective_chat_id,
                 "sender_phone": sender_phone,
-                "media_extraction": media_extraction,
-                "media": media,
-                "media_type": media_type,
+                # The turn's attached file (None for a text turn) - analyze_media reads it.
+                "media": request.media,
                 "timestamp": request.timestamp,
                 # The stored inbound message this turn answers - analyze_media fills
                 # its extracted text into it (2026-09-30).
                 "message_id": request.message_id,
-                "is_media": is_media,
-                "caption": request.user_prompt if is_media else "",
+                "caption": request.user_prompt if request.media is not None else "",
                 # Group chats get the group etiquette section (Item14).
                 "is_group": is_group,
             }
@@ -571,20 +490,20 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
                 approval_was_pending = bool(
                     self.session_manager.get_session(effective_chat_id).approval_message_id)
                 self._turn_is_approved_write = (
-                    approval_was_pending and is_affirmative_reply(request.user_prompt))
+                    approval_was_pending and self.is_affirmative_reply(request.user_prompt))
                 self.session_manager.set_approval_message_id(effective_chat_id, None)
-            final_text = self._run_resolution_loop(request, turn_context, is_media=is_media)
+            final_text = self._run_resolution_loop(request, turn_context)
             final_text = self._apply_write_guards(request, final_text)
 
             # Feature 080: the turn's Morning MCP calls, recorded the same way
             # AIHandler._finalize_response records them (shared helper).
             if self._turn_mcp_calls:
                 logger.info("MCP calls for request %s: %s", request.request_id, self._turn_mcp_calls)
-            record_mcp_tool_calls(self._turn_telemetry_builder, self._turn_mcp_calls)
+            self.record_mcp_tool_calls(self._turn_telemetry_builder, self._turn_mcp_calls)
             return self._finalize_response(request, final_text)
         except Exception as exc:  # pylint: disable=broad-except
             logger.error(
-                "Unexpected error in Backbone.turn_with_rounds for request %s: %s",
+                "Unexpected error in Backbone.single_turn for request %s: %s",
                 request.request_id, exc, exc_info=True,
             )
             # Nothing to store here: the user's message was stored on receipt, every
@@ -655,21 +574,19 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _first_round_user_content(request: AIRequest, turn_context: Dict[str, Any], *,
-                                   is_media: bool) -> str:
+    def _first_round_user_content(request: AIRequest) -> str:
         """The user message the first round sends. For a media turn (2026-09-30) the
         model gets NO media bytes here - only a marker saying a file is attached (type +
         filename), followed by the caption if any; backbone.md tells it to load
         cap_media_analysis and call analyze_media, which does the real extraction."""
-        if not is_media:
+        if request.media is None:
             return request.user_prompt
-        type_label = MEDIA_TYPE_LABELS.get(turn_context.get("media_type"), "קובץ")
-        filename = getattr(turn_context.get("media"), "filename", "") or ""
+        type_label = MEDIA_TYPE_LABELS.get(request.media.media_type or "", "קובץ")
+        filename = request.media.filename or ""
         marker = f"[מדיה מצורפת: {type_label}, קובץ: {filename}]"
         return f"{marker}\n{request.user_prompt}" if request.user_prompt else marker
 
-    def _run_resolution_loop(self, request: AIRequest, turn_context: Dict[str, Any],
-                                 *, is_media: bool = False) -> str:
+    def _run_resolution_loop(self, request: AIRequest, turn_context: Dict[str, Any]) -> str:
         """The tool-driven "resolution" loop - one continuous conversation, no
         "initial call"/"turn" concept beyond the API's own call chaining.
         Every round (including the first) rebuilds instructions AND tools from
@@ -680,11 +597,10 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
         until send_to_user / approval_with_yes_no_buttons is called, or the
         cap is hit (falls back to the last round's plain text - "never leave
         a turn silent")."""
-        chat_id = turn_context.get("chat_id")
+        chat_id: str = turn_context["chat_id"]  # every turn has a chat
         tags, instructions, tools = self._build_round_inputs(request, chat_id, turn_context)
         input_items = list(self._turn_conversation_history)
-        input_items.append({"role": "user", "content": self._first_round_user_content(
-            request, turn_context, is_media=is_media)})
+        input_items.append({"role": "user", "content": self._first_round_user_content(request)})
 
         response = self._call_model("_run_resolution_loop (first round)", {
             "model": request.model,
@@ -698,8 +614,8 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
         for _loop_round in range(MAX_BACKBONE_TOOL_LOOP_ITERATIONS):
             # Feature 080 telemetry, matching AIHandler._run_local_tool_dispatch_loop: each
             # round's tool dispatch AND its follow-up model call are timed as one
-            # "local_tools" tool call (the shared model_calls.tool_call_span).
-            with tool_call_span(self._turn_telemetry_builder, "local_tools"):
+            # "local_tools" tool call (the shared AIManager.tool_call_span).
+            with self.tool_call_span(self._turn_telemetry_builder, "local_tools"):
                 round_result = self._execute_round_calls(
                     request, turn_context, chat_id=chat_id, tags=tags, response=response)
                 if round_result is None:
@@ -722,7 +638,7 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
                     outputs, final_text = round_result
                 if final_text is not None:
                     # Empty send_to_user text: an error reply, never silence (Item7).
-                    return reply_or_fallback(final_text, BACKBONE_UNEXPECTED_ERROR)
+                    return self.reply_or_fallback(final_text, BACKBONE_UNEXPECTED_ERROR)
 
                 try:
                     # Recompute BOTH instructions and tools from the (possibly
@@ -739,7 +655,7 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
                     })
                 except Exception as exc:  # pylint: disable=broad-except
                     logger.error("Resolution-loop follow-up call failed (non-fatal): %s", exc)
-                    return reply_or_fallback(getattr(response, "output_text", ""),
+                    return self.reply_or_fallback(getattr(response, "output_text", ""),
                                              LEDGER_FOLLOWUP_FAILED_TRY_AGAIN)
 
         logger.warning(
@@ -747,7 +663,7 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
             "without a send_to_user call - returning whatever text the last round carries.",
             MAX_BACKBONE_TOOL_LOOP_ITERATIONS, request.request_id,
         )
-        return reply_or_fallback(getattr(response, "output_text", ""), BACKBONE_UNEXPECTED_ERROR)
+        return self.reply_or_fallback(getattr(response, "output_text", ""), BACKBONE_UNEXPECTED_ERROR)
 
     def _execute_round_calls(self, request: AIRequest, turn_context: Dict[str, Any], *, chat_id: str,
                               tags: List[CapabilityTag], response: Any
@@ -806,14 +722,13 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
         for call_id, tool_name, args in calls:
             if tool_name == "send_progress_update":
                 sent = send_progress_update_message(
-                    self._turn_progress_callback, self._turn_telemetry_builder,
-                    self._turn_chat_id, args.get("text"),
+                    self.denidin, self._turn_telemetry_builder, self._turn_chat_id, args.get("text"),
                 )
-                # Stored by the send itself (the progress callback), like every message.
+                # Stored by the send itself (DeniDin.send_progress_update), like every message.
                 payload = {"sent": sent}
             else:
                 payload = build_react_to_message_payload(
-                    self.green_api_bot, self.session_manager, request, self._turn_chat_id, args, call_id,
+                    self.denidin, request, self._turn_chat_id, args, call_id,
                 )
             outputs.append({"type": "function_call_output", "call_id": call_id,
                             "output": json.dumps(payload, ensure_ascii=False)})
@@ -823,23 +738,23 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
         """One Responses API call, wire-logged both directions, its mcp_call
         items accumulated for this turn, telemetry recorded. 2026-09-30: retries
         explicitly once on an HTTP 424 (a gap the OpenAI SDK's own max_retries
-        never covers - see model_calls.call_model_with_retry's docstring),
+        never covers - see AIManager.call_model_with_retry's docstring),
         the same shared retry AIHandler._timed_llm_call also uses."""
         audit_wire("openai", "out", context, kwargs)
         debug_wire("openai", "out", context, kwargs)
-        # Retry + Feature 080 timing via the shared model_calls.timed_model_call (also
+        # Retry + Feature 080 timing via the shared AIManager.timed_model_call (also
         # AIHandler._timed_llm_call's): a failed call is timed and counted too.
         if self._turn_is_approved_write:
             # Same as legacy _call_openai_approval_api (Item4): the OpenAI SDK's own
             # retries are off (max_retries=0) for the turn that runs the approved write;
             # the shared explicit 424 retry still applies.
-            response = timed_model_call(
+            response = self.timed_model_call(
                 self._turn_telemetry_builder,
                 lambda: self.client.with_options(max_retries=0).responses.create(**kwargs),
                 context=context,
             )
         else:
-            response = timed_model_call(
+            response = self.timed_model_call(
                 self._turn_telemetry_builder, lambda: self.client.responses.create(**kwargs), context=context,
             )
         audit_wire("openai", "in", context, response)
@@ -876,8 +791,8 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
             )
             # Stored the moment it's recorded, as a clearly-tagged internal note (never
             # sent to the user) - flows into later turns via the rolling window.
-            if self.chat_log is not None and self._turn_original_message is not None:
-                self.chat_log.store_note(
+            if self._turn_original_message is not None:
+                self.denidin.store_outbound(
                     self._turn_original_message,
                     f"[[INTERNAL_PLANNING_NOTE]]\n{self._turn_planning_status}",
                 )
@@ -924,13 +839,13 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
 
     def _apply_write_guards(self, request: AIRequest, final_text: str) -> str:
         """Item4 (2026-10-01): the legacy approval-resolution checks, on the turn that
-        answers approval buttons with a yes (shared core.write_guards). A write that
+        answers approval buttons with a yes (shared AIManager). A write that
         ran more than once, or no write at all, replaces the reply - the user is never
         told an approved action succeeded when it ran twice or not at all. Any other
         turn, or an approved turn that ran each write exactly once, keeps its reply."""
         if not self._turn_is_approved_write:
             return final_text
-        executions = tally_write_executions(self._turn_write_calls, WRITE_TOOL_NAMES)
+        executions = self.tally_write_executions(self._turn_write_calls, WRITE_TOOL_NAMES)
         if executions.duplicated:
             logger.error(
                 "[022] DUPLICATE EXECUTION DETECTED: approved turn for chat=%r request=%s ran %s "
@@ -944,7 +859,7 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
                 "Reply that was replaced: %r", self._turn_chat_id, request.request_id, final_text)
             self._turn_offered_approval = False
             possible_writes = [name for tag in self._turn_seen_tags for name in WRITE_TOOLS_BY_TAG.get(tag, ())]
-            return approved_write_not_run_message(executions.failure_detail, write_subject(possible_writes))
+            return self.approved_write_not_run_message(executions.failure_detail, self.write_subject(possible_writes))
         return final_text
 
     def _finalize_response(self, request: AIRequest, final_text: str) -> AIResponse:
@@ -960,12 +875,12 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
         # the possible-fabricated-confirmation warning (tools are always offered on
         # this path), the turn's real token totals / model / finish reason, and the
         # WhatsApp length cut.
-        log_possible_hallucinated_confirmation(request.request_id, final_text, True, self._turn_mcp_calls)
+        self.log_possible_hallucinated_confirmation(request.request_id, final_text, True, self._turn_mcp_calls)
         last = self._turn_last_response
         model = getattr(last, "model", None)
-        finish_reason = finish_reason_of(last) if last is not None else "stop"
+        finish_reason = self.finish_reason_of(last) if last is not None else "stop"
         total_tokens, prompt_tokens, completion_tokens = self._turn_tokens
-        return fit_for_whatsapp(AIResponse(
+        return self.fit_for_whatsapp(AIResponse(
             request_id=request.request_id,
             response_text=final_text,
             tokens_used=total_tokens,
@@ -981,12 +896,12 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
 
     @staticmethod
     def _create_fallback_response(request_id: str, message: str) -> AIResponse:
-        """2026-09-30 consolidation: delegates to model_calls.build_fallback_response,
+        """2026-09-30 consolidation: delegates to AIManager.build_fallback_response,
         the one shared implementation also used by AIHandler._create_fallback_response - the
         two were byte-identical AIResponse shapes before this change. Unlike the legacy
         fallback strings (English, predating this session's Hebrew-only audit), `message`
         here is always one of the Hebrew BACKBONE_* constants in error_messages.py."""
-        return build_fallback_response(request_id, message)
+        return AIManager.build_fallback_response(request_id, message)
 
     @staticmethod
     def _resolve_role(user_role: str) -> Role:
@@ -999,12 +914,12 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
 
     def _load_conversation_history(self, chat_id: Optional[str],
                                    exclude_message_id: Optional[str] = None) -> List[Dict[str, Any]]:
-        """Feature 070 rolling window via the shared core.turn_context.load_rolling_window.
+        """Feature 070 rolling window via the AIManager.load_rolling_window.
         Godfather/Admin-only scope for now (explicit decision, 2026-09-14): always the
         godfather/admin token limit from config.memory['session']['max_tokens_by_role']."""
         session_config = (self.config.memory or {}).get('session', {})
-        return load_rolling_window(
-            self.session_manager, chat_id,
+        return self.load_rolling_window(
+            chat_id,
             window_days=session_config.get('window_days', 14),
             max_tokens=session_config.get('max_tokens_by_role', {}).get('godfather', 100000),
             exclude_message_ids=[exclude_message_id] if exclude_message_id else None,
@@ -1012,40 +927,79 @@ class Backbone:  # pylint: disable=too-many-instance-attributes
 
     def _recall_memory(self, user_prompt: str, chat_id: Optional[str],
                         user_phone: Optional[str], sender_phone: Optional[str]) -> str:
-        """Long-term daily_summary recall via the shared core.turn_context.recall_memory_context
+        """Long-term daily_summary recall via the AIManager.recall_memory_context
         (the same call AIHandler.create_request makes): RBAC-filtered when user_manager is
         available, plain recall otherwise. "" (never raises) when nothing is found."""
         longterm_config = (self.config.memory or {}).get('longterm', {})
-        return recall_memory_context(
-            self.memory_manager, query=user_prompt, chat_id=chat_id,
+        return self.recall_memory_context(
+            query=user_prompt, chat_id=chat_id,
             top_k=longterm_config.get('daily_summary_top_k', 10),
             min_similarity=longterm_config.get('min_similarity', 0.7),
-            user_manager=self.user_manager, user_phone=user_phone or sender_phone,
+            user_phone=user_phone or sender_phone,
         )
 
     # ------------------------------------------------------------------
     # Button-tap resolution (a tap is just an ordinary "כן"/"לא" turn)
     # ------------------------------------------------------------------
 
-    def record_approval_message_id(self, chat_id: str, message_id: str) -> None:
-        """Called by denidin.py right after an approval-buttons message is
-        actually sent: remembers its idMessage so a later tap can be matched
-        against it (Feature 047's stale-tap guard)."""
+    def record_sent_message_id(self, chat_id: str, message_id: str) -> None:
+        """Called by denidin.py right after a reply is actually sent: remembers its
+        idMessage so a later tap on an approval-buttons message can be matched against
+        it (Feature 047's stale-tap guard)."""
         self.session_manager.set_approval_message_id(chat_id, message_id)
 
-    def resolve_button_tap(self, chat_id: str, stanza_id: str, request: AIRequest, *,
-                            user_role: str = "godfather", **turn_kwargs: Any) -> Optional[AIResponse]:
+    def resolve_button_tap(self, message: WhatsAppMessage, selected_id: str, stanza_id: str, *,
+                           user_role: Optional[str] = None) -> Optional[AIResponse]:
         """Feature 047's stale-tap guard: a tap is live only if its `stanza_id`
         exactly equals the idMessage of the approval-buttons message this chat
         is currently offering (Session.approval_message_id). A stale/superseded/
         already-used tap returns None - the caller sends nothing at all. A live
-        tap is consumed (cleared, so a second tap on the same message is stale)
-        and then resolved like a typed "כן"/"לא": `request` is the caller's
-        synthetic "כן"/"לא" AIRequest, run through the ordinary turn_with_rounds()
-        loop, where the model reads its own history and acts on the answer.
-        `turn_kwargs` (progress_callback, sender, user_phone, ...) are passed through to
-        turn_with_rounds unchanged, so a tap turn behaves exactly like a typed one."""
+        tap is consumed and resolved like a typed "כן"/"לא": a synthetic AIRequest
+        carrying that answer runs through the ordinary single_turn() loop, where the
+        model reads its own history and acts on it - with the same progress updates and
+        sender/chat details a typed reply gets (2026-09-30)."""
+        chat_id = message.chat_id
         if self.session_manager.get_session(chat_id).approval_message_id != stanza_id:
             logger.info("[047] Stale button tap ignored: chat=%r stanza_id=%r", chat_id, stanza_id)
             return None
-        return self.turn_with_rounds(request, chat_id=chat_id, user_role=user_role, **turn_kwargs)
+        if user_role is None:
+            user_role = self._role_for_phone(message.sender_id)
+        # 2026-09-15 (T7/T10): the tap needs a real AIRequest (model, max_tokens) for
+        # its approval-resolution call - mirrors the legacy tap's synthetic request.
+        request = AIRequest(
+            user_prompt="כן" if selected_id == "denidin_approve" else "לא",
+            constitution="",
+            max_tokens=self.config.ai_reply_max_tokens,
+            model=self.config.ai_model,
+            chat_id=chat_id,
+            message_id=message.message_id,
+            original_message=message,
+        )
+        return self.single_turn(
+            request, chat_id=chat_id, user_role=user_role,
+            sender=message.sender_display_name, user_phone=message.sender_id,
+            sender_phone=message.sender_id, is_group=message.is_group,
+            chat_name=message.chat_name,
+        )
+
+    def extraction_prompt_prefix(self) -> str:
+        """Nothing - the extractors prepend this to their own extraction prompt, and
+        the vision model is not the conversational model: it gets the extraction
+        prompt alone (2026-10-01). Prepending the backbone + a capability's prompt
+        told a tool-less vision model to load capabilities, call analyze_media and
+        answer the user, so it wrote fake tool calls before its JSON and the JSON
+        no longer parsed (T1, 2026-10-01)."""
+        return ""
+
+    def capture_ledger_events_from_text(self, text: str, today_timestamp: Optional[int] = None
+                                        ) -> List[Dict]:
+        """No inline capture here: extracted text goes back through the model, and
+        capture happens through DeniDin's shared post-turn recognition once the turn is
+        persisted - running it inline too would risk capturing the same event twice."""
+        del text, today_timestamp
+        logger.info(
+            "cap_media_analysis capability: inline ledger capture skipped here - "
+            "capture happens automatically via the shared post-turn recognition "
+            "mechanism once this turn is persisted (see ledger_events/handler.py)."
+        )
+        return []

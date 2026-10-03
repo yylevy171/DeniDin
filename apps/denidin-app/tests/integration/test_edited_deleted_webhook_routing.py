@@ -83,7 +83,7 @@ class TestEditedDeletedWebhookRouting:
     def _window_contents(self, denidin_app):
         return [
             m.get("content", "")
-            for m in denidin_app.ai_handler.session_manager.get_rolling_window(CHAT_ID)
+            for m in denidin_app.session_manager.get_rolling_window(CHAT_ID)
         ]
 
     # ---------- editedMessage ----------
@@ -130,7 +130,7 @@ class TestEditedDeletedWebhookRouting:
         denidin_module.dispatch_notification("editedMessage", n)
 
         assert n._sent == []
-        window = denidin_app.ai_handler.session_manager.get_rolling_window(fresh_chat)
+        window = denidin_app.session_manager.get_rolling_window(fresh_chat)
         assert any(m.get("content") == "[הודעה קודמת נערכה] תיקון" for m in window)
 
     def test_redelivered_edited_message_is_logged_only_once(self, denidin_app):
@@ -148,7 +148,7 @@ class TestEditedDeletedWebhookRouting:
         fresh_chat = f"9725001{int(time.time()) % 1000000}@c.us"
         ts = int(time.time())
         # 2026-09-16 (real bug found+fixed): this test used to reuse the shared,
-        # module-level CHAT_ID - but denidin_app.ai_handler.session_manager is a
+        # module-level CHAT_ID - but denidin_app.session_manager is a
         # genuinely long-lived, disk-persisted session (Feature 070: "never
         # expires, never recreated"), so a `.count(...) == 1` assertion against a
         # shared chat is not hermetic across repeated runs of this suite against
@@ -176,7 +176,7 @@ class TestEditedDeletedWebhookRouting:
             n = self._notification(event)
             denidin_module.dispatch_notification("editedMessage", n)
 
-        window = denidin_app.ai_handler.session_manager.get_rolling_window(fresh_chat)
+        window = denidin_app.session_manager.get_rolling_window(fresh_chat)
         contents = [m.get("content", "") for m in window]
         assert contents.count("[הודעה קודמת נערכה] פעם אחת בלבד") == 1
 

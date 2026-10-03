@@ -279,6 +279,8 @@ resolution.md`'s new "Dynamic tool-attachment" section for the full corrected co
       `(call_id, tool_name, args)` shape as `backbone_tools.extract_backbone_tool_calls`).
       `src/capabilities/reminders/handler.py`: `dispatch_direct_tool_call` (direct-execute entry
       point against `ReminderManager`, no `call_capability_step` involved). Done.
+      (2026-10-03: `reminders/tools.py` and `ledger_events/tools.py` were pure re-exports and are
+      deleted - the schemas live in `src/tool_actions/tool_schemas.py`.)
 - [X] T073 Unit suite green (`tests/unit -k "backbone or reminders"`, 111/111 passed; full
       `tests/unit` run to confirm no unrelated regression). `reminders/handler.py`'s existing
       `write()`/`read()` (the old `call_capability_step`-based path) are left in place, unused by
@@ -316,3 +318,19 @@ resolution.md`'s new "Dynamic tool-attachment" section for the full corrected co
 
 ## Resolution redesign — implemented 2026-09-24
 See `contracts/capability-resolution-loop.md`. Unit + integration suites green (1753 passed). Remaining: the 10 billed capability tests (need explicit go-ahead via sanctioned scripts).
+
+## App ownership and the AIManager (REQ-063-08) — approved 2026-10-02
+Design: plan.md "App Ownership and the AIManager". The billed/expensive test plan (`RERUN_LIST_063_DOC_WRITE.md`) is paused until this section is done.
+- [x] T076 `initialize_app` builds DeniDin's data (users, sessions, roll markers, memory, ledger events, reminders, Morning MCP locator, telemetry, chat log, doc templates + fee-agreement handler, own number, OpenAI client, memory/rbac switches) and hands it to `DeniDin`; `last_response` stays on `DeniDin`.
+- [x] T077 `AIManager` abstract base: shared `create_request`, Morning MCP tool building, the `src/core/` logic; abstract `single_turn()`, `resolve_button_tap()`, and the two extractor hooks.
+- [x] T078 `AIHandler(AIManager)`: given the shared data, keeps only legacy-only state (both pending-approval managers); `get_response` → `single_turn`; the sent-approval-message-id wiring moves inside it. Flag-off behavior unchanged.
+- [x] T079 `Backbone(AIManager)`: given the shared data, no reach into `AIHandler`; `turn_with_rounds` → `single_turn`; extractor hooks replace `_ExtractorAIHandlerShim`/`_ExtractorContextShim`.
+- [x] T080 `initialize_app` builds exactly one `ai_manager` by the flag; with the flag on no `AIHandler` and no pending-approval manager exists.
+- [x] T081 `LedgerEventRecognizer` — own class/file: after-turn recognition, `LEDGER_EVENT_TOOL`, `build_ledger_stash_text`.
+- [x] T082 `AccountingReconciler` — own class in `accounting_reconciliation_service.py`: sweep + capture; uses `ai_manager` for Morning tools and the client.
+- [x] T083 Services (reminder delivery, daily-summary roll, capability reset), `media_handler`, extractors read data from `DeniDin` and only AI needs from `ai_manager`.
+- [x] T084 Outside callers: `player/run_player.py`, `apps/rolling-memory-backfill` (+2 tests), `scripts/run_reaction_scenario*.py`, `scripts/model_sanity_check.py`.
+- [x] T085 Tests read `denidin_app.*`; ST10 step 3 and `_seed_client` check the user-visible approval prompt + buttons, not legacy state (billed edits — need sign-off). Done 2026-10-02: `_send_button_tap`/`_seed_client` read the approval-buttons message actually sent to the chat (`approval_buttons_on_screen`); the near-duplicate add-client test checks the buttons prompt shown.
+- [x] T086 Guards: with the flag on `AIHandler` is never constructed; nothing outside `AIHandler` imports the `ai_handler` module; unit + integration green on both flag settings. Done 2026-10-02: `test_initialize_app_backbone_flag.py` (both settings), `test_ai_handler_import_guard.py`; 1868 unit+integration passed.
+- [x] T087 Review follow-ups (2026-10-03): "Shared Managers" - `src/managers/shared_managers.py`, a frozen, typed `SharedManagers` dataclass (`build_shared_managers`), required typed `AIManager` constructor args; no re-exports from `ai_handler` (callers import from the real modules); mypy 0 errors, pylint 9.88 (complexity metrics only); `.github/ARCHITECTURE.md` describes both code paths. Billed/expensive test review: the approval-buttons tracker is scoped to the live app (no leakage between tests); `test_accounting_reconciliation_billed`, `test_rolling_memory_billed`, `test_ai_handler_real_api` use the real `initialize_app` context (the implementation the flag selects) instead of a hand-built `AIHandler`; the reconciliation fixture now wipes the ledger before the manager loads its dedup cache.
+- [x] T088 Everything built on `DeniDin` (plan.md design 7, 2026-10-03): every manager + `AIHandler`/`Backbone` take `DeniDin` as their only constructor arg; `build_denidin_objects`; `ChatLog`, `shared_managers.py` and progress callbacks deleted; `WhatsAppHandler` owns the own number + `@DeniDin` rewrite; `DeniDin` stores/sends/`begin_turn`/`end_turn`/`send_progress_update`/`send_document`/`send_reaction`; `BackfillDeniDin`/`WebappDeniDin`. 1870 unit+integration, 62 backfill, 99 webapp backend passed; mypy 0 errors; pylint no E/W.

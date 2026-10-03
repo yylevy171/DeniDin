@@ -83,7 +83,7 @@ def test_create_document_for_existing_client_happy_path(denidin_app):
     # rather than answering from stale session memory left by an unrelated test.
     (ask_response, ask_ai_response), (response, ai_response) = _send_turn_and_approve(
         chat_id=ADMIN_ISOLATED_CHAT_ID,
-        text=f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח עבור {description}",
+        text=f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח כולל מע\"מ עבור {description}",
         id_prefix="E2E_027_HAPPY",
     )
 
@@ -179,7 +179,7 @@ def _run_similarly_named_client_flow(real_name: str, typed_name: str, id_prefix:
     turns = [
         _send_turn(
             chat_id=GODFATHER_CHAT_ID,
-            text=f"תפיק חשבונית חדשה עבור {typed_name} על סך {amount} שח עבור {description}",
+            text=f"תפיק חשבונית חדשה עבור {typed_name} על סך {amount} שח כולל מע\"מ עבור {description}",
             id_prefix=f"{id_prefix}_ASK",
         )
     ]
@@ -288,7 +288,7 @@ def test_create_document_for_new_client_full_flow_happy_path(denidin_app):
     seed_email = _random_seed_email()
     amount = _random_amount()
     description = _random_description()
-    request_text = f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח עבור {description}"
+    request_text = f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח כולל מע\"מ עבור {description}"
 
     # Turn 1/2: ask + approve create_invoice - the client doesn't exist yet.
     # The model may discover this either of two legitimate ways: by actually
@@ -392,7 +392,7 @@ def test_create_document_for_new_client_full_flow_happy_path(denidin_app):
     # genuine multi-step flow (ask -> approve -> add_client -> retry create_invoice ->
     # verify) - a RequestTelemetry row for the LAST turn must exist with plausible
     # non-zero timing/token data.
-    telemetry_manager = denidin_app.ai_handler.telemetry_manager
+    telemetry_manager = denidin_app.telemetry_manager
     if telemetry_manager is not None:  # None whenever the feature flag is off
         row = telemetry_manager.get_latest_by_chat(GODFATHER_CHAT_ID)
         assert row is not None, f"expected a telemetry row for chat={GODFATHER_CHAT_ID!r}"
@@ -410,7 +410,7 @@ def test_create_document_for_new_client_declines_client_creation(denidin_app):
     client_name, _, _ = _seed_client(GODFATHER_CHAT_ID, "E2E_027_DECLINE", create=False)
     amount = _random_amount()
     description = _random_description()
-    request_text = f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח עבור {description}"
+    request_text = f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח כולל מע\"מ עבור {description}"
 
     _send_turn_and_approve(chat_id=GODFATHER_CHAT_ID, text=request_text, id_prefix="E2E_027_DECLINE_ASK")
 
@@ -460,7 +460,7 @@ def test_create_document_for_new_client_creates_client_but_declines_document(den
     seed_email = _random_seed_email()
     amount = _random_amount()
     description = _random_description()
-    request_text = f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח עבור {description}"
+    request_text = f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח כולל מע\"מ עבור {description}"
 
     _send_turn_and_approve(chat_id=GODFATHER_CHAT_ID, text=request_text, id_prefix="E2E_027_SEMINEG_ASK")
 
@@ -537,7 +537,7 @@ def test_create_document_for_new_client_asked_for_missing_info_then_provided(den
     seed_email = _random_seed_email()
     amount = _random_amount()
     description = _random_description()
-    request_text = f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח עבור {description}"
+    request_text = f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח כולל מע\"מ עבור {description}"
 
     _send_turn_and_approve(chat_id=GODFATHER_CHAT_ID, text=request_text, id_prefix="E2E_027_ASKINFO_ASK")
 
@@ -601,7 +601,7 @@ def test_create_document_for_new_client_missing_info_not_provided_stops_flow(den
     client_name, _, _ = _seed_client(GODFATHER_CHAT_ID, "E2E_027_NOINFO", create=False)
     amount = _random_amount()
     description = _random_description()
-    request_text = f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח עבור {description}"
+    request_text = f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח כולל מע\"מ עבור {description}"
 
     _send_turn_and_approve(chat_id=GODFATHER_CHAT_ID, text=request_text, id_prefix="E2E_027_NOINFO_ASK")
 

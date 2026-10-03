@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any, List
 import uuid
 
+from src.models.media import Media
 from src.utils.time_utils import now_local
 
 # Feature 039's "send nothing this turn" signal. Defined here rather than in
@@ -174,9 +175,13 @@ class AIRequest:
     # message through AIRequest (already threaded everywhere downstream
     # needs it) rather than threading yet another individual scalar
     # (sender/user_phone/etc. already exist as separate params on
-    # get_response/create_request and this was exactly the pattern that
+    # single_turn/create_request and this was exactly the pattern that
     # caused the conflation in the first place).
     original_message: Optional["WhatsAppMessage"] = None
+    # The file attached to this turn (its bytes, MIME type, filename and media_type), or
+    # None for a text turn (Feature 063). Only the Backbone's media turns carry one - the
+    # legacy path processes media in MediaHandler, never through single_turn.
+    media: Optional[Media] = None
 
     def __post_init__(self):
         """Auto-generate fields if not provided"""

@@ -1,5 +1,6 @@
 """Unit tests for src/capabilities/toolsets.py - the uniform per-capability
 tool attachment every domain CapabilityTag goes through (2026-09-24)."""
+import functools
 import json
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -7,6 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from src.backbone.capability_tags import CapabilityTag
+from src.core.ai_manager import AIManager
 from src.capabilities.toolsets import (
     MORNING_MCP_TOOL_NAMES,
     build_capability_tools,
@@ -23,6 +25,9 @@ def _orch(with_mcp=True, fee_tools=None):
     orch.config.mcp = {"morning_auth_token": "tok"} if with_mcp else {}
     orch.morning_mcp_locator.current_server_url.return_value = "https://x.example/mcp" if with_mcp else None
     orch.fee_agreement_tools = fee_tools
+    # The real shared Morning MCP connection/entry builders (AIManager) over the mocks.
+    orch.morning_mcp_connection = functools.partial(AIManager.morning_mcp_connection, orch)
+    orch.morning_mcp_entry = AIManager.morning_mcp_entry
     return orch
 
 

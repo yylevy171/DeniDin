@@ -64,11 +64,10 @@ def _boot_denidin_app():
     }
     app = denidin.initialize_app(config_dict)
     denidin.denidin_app = app
-    # ai_handler.react_to_message needs a non-None bot object to call send_reaction on
+    # react_to_message needs a non-None bot object to call send_reaction on
     # (only __main__ sets a real one). This manual driver stubs send_reaction() itself
     # (ReactionCaptureStub), so any non-None placeholder is fine here.
     app.green_api_bot = object()
-    app.ai_handler.green_api_bot = app.green_api_bot
     return app
 
 
@@ -99,7 +98,7 @@ def _apply_scenario_role(app, scenario):
     resolved - never mutates config/config.json itself.
     """
     phone = scenario["chat_id"].split("@")[0]
-    user_manager = app.ai_handler.user_manager
+    user_manager = app.user_manager
     role = scenario.get("role")
     if role == "godfather":
         user_manager.godfather_phone = phone

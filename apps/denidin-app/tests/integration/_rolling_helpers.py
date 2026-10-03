@@ -52,13 +52,16 @@ def fake_client(capture, *, embed_dim=8):
 
 
 def roll_context(handler):
-    """A `global_context`-shaped SimpleNamespace over a real `AIHandler` for
+    """A `global_context`-shaped SimpleNamespace (the fields the roll reads off the
+    DeniDin object) over a real `AIHandler`'s data for
     `daily_summary_roll_service._sweep_daily_roll` / `_roll_one_chat_day` — all
     real components (session_manager, roll_marker_store, memory_manager, client,
     config); nothing mocked but the OpenAI boundary inside `handler.client`."""
     return SimpleNamespace(
         session_manager=handler.session_manager,
-        ai_handler=handler,
+        roll_marker_store=handler.roll_marker_store,
+        memory_manager=handler.memory_manager,
+        ai_client=handler.client,
         config=handler.config,
     )
 

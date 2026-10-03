@@ -98,7 +98,7 @@ class TestGroupEtiquetteBilled:
         from whatsapp_api_client_python.API import GreenAPI
 
         app = denidin.denidin_app
-        if app is None or not getattr(app.ai_handler, "own_whatsapp_number", ""):
+        if app is None or not getattr(app, "own_whatsapp_number", ""):
             config_dict = {
                 'green_api_instance_id': config.green_api_instance_id,
                 'green_api_token': config.green_api_token,
@@ -249,7 +249,7 @@ class TestGroupEtiquetteBilled:
         # A miss here means the live getWaSettings call genuinely failed - a
         # real problem to surface, not silently skip past (the whole point of
         # item 7 was that this test skipped on literally every run).
-        own_number = denidin_app.ai_handler.own_whatsapp_number
+        own_number = denidin_app.own_whatsapp_number
         assert own_number, (
             "own_whatsapp_number was not resolved - the fixture's real Green API "
             "getWaSettings() call failed or returned no 'phone' field. Check "

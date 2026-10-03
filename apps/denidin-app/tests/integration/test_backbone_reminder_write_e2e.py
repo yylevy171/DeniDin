@@ -17,11 +17,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.backbone.backbone import Backbone
-from tests.backbone_test_support import make_session_manager
+from tests.backbone_test_support import make_backbone, make_session_manager
 from src.managers.reminder_manager import ReminderManager
 from src.models.config import AppConfiguration
 from src.models.message import AIRequest, AIResponse
+from tests.denidin_test_support import make_reminder_manager
 
 
 def _fake_function_call_response(name: str, arguments: dict, response_id: str = "resp"):
@@ -69,8 +69,8 @@ def test_flag_on_turn_creates_reminder_directly_and_response_shape_matches_legac
         ),
     ]
 
-    reminder_manager = ReminderManager(storage_dir=str(tmp_path / "data" / "reminders"))
-    backbone = Backbone(
+    reminder_manager = make_reminder_manager(storage_dir=str(tmp_path / "data" / "reminders"))
+    backbone = make_backbone(
         ai_client, config,
         reminder_manager=reminder_manager, session_manager=make_session_manager(),
     )
@@ -80,7 +80,7 @@ def test_flag_on_turn_creates_reminder_directly_and_response_shape_matches_legac
         model="gpt-5.6-luna", chat_id="chat1", message_id="msg1",
     )
 
-    response = backbone.turn_with_rounds(request, chat_id="chat1", user_role="godfather")
+    response = backbone.single_turn(request, chat_id="chat1", user_role="godfather")
 
     # Same AIResponse shape denidin.py's existing callers already expect.
     assert isinstance(response, AIResponse)

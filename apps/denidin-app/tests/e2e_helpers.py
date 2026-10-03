@@ -78,7 +78,7 @@ def wipe_chat_messages_on_disk(sessions_storage_dir, chat_id: str) -> None:
     no in-process cache to fight.
 
     `sessions_storage_dir` is the session store root (a `Path` or str — e.g.
-    `denidin_app.ai_handler.session_manager.storage_dir`, a read-only locate).
+    `denidin_app.session_manager.storage_dir`, a read-only locate).
     No-op-safe when the chat / index / files don't exist yet.
     """
     import sqlite3
@@ -322,7 +322,7 @@ def assert_image_path_persisted(denidin_app, chat_id):
     "user"/"assistant" value this check actually means, same field
     SessionManager.get_conversation_history_for_session already switched to.
     """
-    session_manager = denidin_app.ai_handler.session_manager
+    session_manager = denidin_app.session_manager
     session_id = session_manager.chat_to_session[chat_id]
     messages_dir = Path(session_manager.storage_dir) / session_id / "messages"
 
@@ -376,7 +376,7 @@ def assert_extracted_text_persisted(denidin_app, chat_id):
 
     Returns the extracted_text string, for further assertions if a caller wants them.
     """
-    session_manager = denidin_app.ai_handler.session_manager
+    session_manager = denidin_app.session_manager
     session_id = session_manager.chat_to_session[chat_id]
     messages_dir = Path(session_manager.storage_dir) / session_id / "messages"
 
@@ -675,8 +675,8 @@ def persisted_ledger_events_for_chat(denidin_app, chat_id):
     plus `_ledger_069_acceptance.ledger_events_for_chat` and
     `_ledger_069_post_turn_base.events_reader`.
     """
-    session_id = denidin_app.ai_handler.session_manager.get_session(chat_id).session_id
-    events_dir = Path(denidin_app.ai_handler.ledger_event_manager.storage_dir)
+    session_id = denidin_app.session_manager.get_session(chat_id).session_id
+    events_dir = Path(denidin_app.ledger_event_manager.storage_dir)
     out = []
     for f in events_dir.glob("*.json"):
         data = json.loads(f.read_text(encoding="utf-8"))
@@ -692,7 +692,7 @@ def persisted_ledger_events_for_chat(denidin_app, chat_id):
 # Every E2E test should end with `assert_no_errors_sent_to_user(chat_id)`. It
 # needs no instrumentation in the test: it reads what DeniDin actually sent,
 # straight from the chat's stored session messages (every outbound message is
-# stored right after its send - src/core/chat_log.py), limited to the current
+# stored right after its send - DeniDin.store_outbound), limited to the current
 # test's own messages. Any failure to read them fails the test - an unverifiable
 # conversation is never a pass. Reactions are not stored, so they are not
 # covered; a failure the model admits to in text (the case that motivated
@@ -731,7 +731,7 @@ def _messages_sent_to_user(chat_id: str, since: datetime) -> list:
 
     app = denidin.denidin_app
     assert app is not None, "assert_no_errors_sent_to_user: denidin.denidin_app is not initialized"
-    session_manager = app.ai_handler.session_manager
+    session_manager = app.session_manager
     # known_chats() first: get_session() would silently CREATE an empty session.
     assert chat_id in session_manager.known_chats(), (
         f"assert_no_errors_sent_to_user: no stored session for chat {chat_id!r}"

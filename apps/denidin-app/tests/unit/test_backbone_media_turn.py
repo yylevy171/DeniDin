@@ -6,18 +6,17 @@ and MediaFileManager.store_media."""
 import time
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from src.backbone.backbone import Backbone
 from src.capabilities.media_analysis.handler import dispatch_direct_tool_call
-from src.core.chat_log import ChatLog
 from src.managers.media_file_manager import MediaFileManager
 from src.models.config import AppConfiguration
 from src.models.media import Media
 from src.models.message import AIRequest, WhatsAppMessage
-from tests.backbone_test_support import make_session_manager
+from tests.backbone_test_support import make_backbone, make_session_manager
 
 CHAT_ID = "972501234567@c.us"
 SENDER = "972501234567@c.us"
@@ -32,9 +31,7 @@ def backbone(tmp_path):
         green_api_instance_id="x", green_api_token="y", ai_api_key="z",
         backbone_config={"base_dir": str(base)},
     )
-    session_manager = make_session_manager()
-    chat_log = ChatLog(session_manager, None, rbac_enabled=False)
-    return Backbone(MagicMock(), config, session_manager=session_manager, chat_log=chat_log)
+    return make_backbone(MagicMock(), config, session_manager=make_session_manager())
 
 
 def _inbound(text="", message_id="msg-media-1"):
@@ -46,17 +43,21 @@ def _inbound(text="", message_id="msg-media-1"):
     )
 
 
-def _request(user_prompt: str) -> AIRequest:
+def _tap_message():
+    """The tapped buttons message's sender/chat details, as WhatsAppMessage carries them."""
+    from types import SimpleNamespace
+    return SimpleNamespace(chat_id=CHAT_ID, sender_id=SENDER, message_id="TAP-1",
+                           sender_display_name="Yaron", is_group=False, chat_name=None)
+
+
+def _request(user_prompt: str, media=None) -> AIRequest:
     return AIRequest(user_prompt=user_prompt, constitution="", max_tokens=100,
                      model="m", chat_id=CHAT_ID, message_id="msg-media-1",
-                     timestamp=1_780_000_000)
+                     timestamp=1_780_000_000, media=media)
 
 
-def _media_context(media_type="image", filename="receipt.jpg", **extra):
-    ctx = {"is_media": True, "media_type": media_type,
-           "media": Media(data=b"x", mime_type="image/jpeg", filename=filename)}
-    ctx.update(extra)
-    return ctx
+def _media(media_type="image", filename="receipt.jpg"):
+    return Media(data=b"x", mime_type="image/jpeg", filename=filename, media_type=media_type)
 
 
 def _stored_messages(backbone):
@@ -67,30 +68,29 @@ def _stored_messages(backbone):
 
 class TestFirstRoundMarker:
     def test_text_turn_is_the_plain_prompt(self, backbone):
-        assert Backbone._first_round_user_content(_request("שלום"), {}, is_media=False) == "שלום"
+        assert Backbone._first_round_user_content(_request("שלום")) == "שלום"
 
     def test_media_turn_with_caption_prefixes_the_marker(self):
-        content = Backbone._first_round_user_content(
-            _request("מה זה?"), _media_context(), is_media=True)
+        content = Backbone._first_round_user_content(_request("מה זה?", _media()))
         assert content == "[מדיה מצורפת: תמונה, קובץ: receipt.jpg]\nמה זה?"
 
     def test_media_turn_without_caption_is_the_marker_only(self):
-        content = Backbone._first_round_user_content(
-            _request(""), _media_context("pdf", "agreement.pdf"), is_media=True)
+        content = Backbone._first_round_user_content(_request("", _media("pdf", "agreement.pdf")))
         assert content == "[מדיה מצורפת: PDF, קובץ: agreement.pdf]"
 
     def test_docx_label(self):
-        content = Backbone._first_round_user_content(
-            _request(""), _media_context("docx", "a.docx"), is_media=True)
+        content = Backbone._first_round_user_content(_request("", _media("docx", "a.docx")))
         assert content.startswith("[מדיה מצורפת: מסמך Word,")
 
 
 class TestAnalyzeMediaFillsExtractedTextIntoTheStoredMessage:
     def _analyze(self, backbone, extracted_text):
-        backbone.chat_log.store_inbound(_inbound("מה זה?"))
-        ctx = {"chat_id": CHAT_ID, "message_id": "msg-media-1",
-               "media_extraction": {"extracted_text": extracted_text, "document_analysis": {}}}
-        dispatch_direct_tool_call(backbone, "analyze_media", {}, ctx)
+        backbone.denidin.store_inbound(_inbound("מה זה?"))
+        ctx = {"chat_id": CHAT_ID, "message_id": "msg-media-1", "media": _media()}
+        with patch("src.handlers.extractors.image_extractor.ImageExtractor") as mock_extractor_cls:
+            mock_extractor_cls.return_value.analyze_media.return_value = {
+                "extracted_text": extracted_text, "document_analysis": {}}
+            dispatch_direct_tool_call(backbone, "analyze_media", {}, ctx)
         [stored] = _stored_messages(backbone)
         return stored
 
@@ -129,37 +129,32 @@ class TestStoreMedia:
 
 class _RecordingBackbone(Backbone):
     """Records what a turn is run with instead of calling the model."""
-    def turn_with_rounds(self, request, **kwargs):  # pylint: disable=arguments-differ
+    def single_turn(self, request, **kwargs):  # pylint: disable=arguments-differ
         self.turn_kwargs = kwargs
         return "ran"
 
 
 class TestButtonTapRunsAsAFullTurn:
-    """2026-09-30: a live tap's turn gets the same progress_callback and sender/chat
-    details as a typed turn - its progress updates were silently dropped before."""
+    """2026-09-30: a live tap's turn gets the same sender/chat details as a typed turn
+    (REQ-063-08: its progress updates go through DeniDin's turn in progress, which
+    denidin.py begins around the tap - no callback is passed)."""
 
-    def test_live_tap_passes_progress_callback_and_sender_details(self, backbone):
-        tapping = _RecordingBackbone(MagicMock(), backbone.config,
+    def test_live_tap_passes_sender_details(self, backbone):
+        tapping = make_backbone(MagicMock(), backbone.config, backbone_class=_RecordingBackbone,
                                      session_manager=backbone.session_manager)
         tapping.session_manager.set_approval_message_id(CHAT_ID, "WA-BUTTONS-1")
-        progress = MagicMock()
-
         result = tapping.resolve_button_tap(
-            chat_id=CHAT_ID, stanza_id="WA-BUTTONS-1", request=_request("כן"),
-            user_role="godfather", sender="Yaron", user_phone=SENDER,
-            progress_callback=progress)
+            _tap_message(), "denidin_approve", "WA-BUTTONS-1", user_role="godfather")
 
         assert result == "ran"
-        assert tapping.turn_kwargs["progress_callback"] is progress
         assert tapping.turn_kwargs["sender"] == "Yaron"
         assert tapping.turn_kwargs["user_phone"] == SENDER
 
     def test_stale_tap_runs_nothing(self, backbone):
-        tapping = _RecordingBackbone(MagicMock(), backbone.config,
+        tapping = make_backbone(MagicMock(), backbone.config, backbone_class=_RecordingBackbone,
                                      session_manager=backbone.session_manager)
         tapping.session_manager.set_approval_message_id(CHAT_ID, "WA-BUTTONS-1")
 
         assert tapping.resolve_button_tap(
-            chat_id=CHAT_ID, stanza_id="WA-OLD", request=_request("כן"),
-            progress_callback=MagicMock()) is None
+            _tap_message(), "denidin_approve", "WA-OLD") is None
         assert not hasattr(tapping, "turn_kwargs")

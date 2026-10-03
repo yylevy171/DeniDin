@@ -8,6 +8,7 @@ import pytest
 from src.handlers.ai_handler import AIHandler, NO_REPLY_SENTINEL
 from src.models.config import AppConfiguration
 from src.models.message import AIRequest
+from tests.ai_handler_test_support import make_ai_handler
 
 
 @pytest.fixture
@@ -62,11 +63,11 @@ class TestNoReplySentinelDetection:
     def test_sentinel_response_sets_should_reply_false(self, memory_enabled_config):
         client = MagicMock()
         client.responses.create.return_value = _mock_response(NO_REPLY_SENTINEL)
-        handler = AIHandler(client, memory_enabled_config)
+        handler = make_ai_handler(client, memory_enabled_config)
         handler.session_manager.add_message_with_tokens = Mock()
         handler.session_manager.get_conversation_history = Mock(return_value=[])
 
-        response = handler.get_response(_make_request(), chat_id="chat_123", sender="Godfather")
+        response = handler.single_turn(_make_request(), chat_id="chat_123", sender="Godfather")
 
         assert response.should_reply is False
         assert response.response_text == NO_REPLY_SENTINEL
@@ -74,27 +75,27 @@ class TestNoReplySentinelDetection:
     def test_sentinel_response_does_not_persist_assistant_message(self, memory_enabled_config):
         client = MagicMock()
         client.responses.create.return_value = _mock_response(NO_REPLY_SENTINEL)
-        handler = AIHandler(client, memory_enabled_config)
+        handler = make_ai_handler(client, memory_enabled_config)
         handler.session_manager.add_message_with_tokens = Mock()
         handler.session_manager.get_conversation_history = Mock(return_value=[])
 
-        handler.get_response(_make_request(), chat_id="chat_123", sender="Godfather")
+        handler.single_turn(_make_request(), chat_id="chat_123", sender="Godfather")
 
-        # 2026-09-30: messages are stored at the WhatsApp boundary (src/core/chat_log.py) -
+        # 2026-09-30: messages are stored at the WhatsApp boundary (DeniDin.store_inbound/store_outbound) -
         # the user's on receipt, a reply only once it's sent - so AIHandler itself stores
         # nothing, and a no-reply turn (nothing sent) adds nothing. The boundary side is
-        # covered by test_chat_log.py::test_a_no_reply_turn_stores_nothing.
+        # covered by test_denidin_message_store.py::test_a_no_reply_turn_stores_nothing.
         assert handler.session_manager.add_message_with_tokens.call_count == 0
 
     def test_sentinel_with_extra_whitespace_still_detected(self, memory_enabled_config):
         """Trailing/leading whitespace around the sentinel is trimmed before comparison."""
         client = MagicMock()
         client.responses.create.return_value = _mock_response(f"  {NO_REPLY_SENTINEL}  ")
-        handler = AIHandler(client, memory_enabled_config)
+        handler = make_ai_handler(client, memory_enabled_config)
         handler.session_manager.add_message_with_tokens = Mock()
         handler.session_manager.get_conversation_history = Mock(return_value=[])
 
-        response = handler.get_response(_make_request(), chat_id="chat_123", sender="Godfather")
+        response = handler.single_turn(_make_request(), chat_id="chat_123", sender="Godfather")
 
         assert response.should_reply is False
 
@@ -103,21 +104,21 @@ class TestNoReplySentinelDetection:
         sent as-is - never silently drop a real reply on a partial match."""
         client = MagicMock()
         client.responses.create.return_value = _mock_response(f"{NO_REPLY_SENTINEL} extra text")
-        handler = AIHandler(client, memory_enabled_config)
+        handler = make_ai_handler(client, memory_enabled_config)
         handler.session_manager.add_message_with_tokens = Mock()
         handler.session_manager.get_conversation_history = Mock(return_value=[])
 
-        response = handler.get_response(_make_request(), chat_id="chat_123", sender="Godfather")
+        response = handler.single_turn(_make_request(), chat_id="chat_123", sender="Godfather")
 
         assert response.should_reply is True
 
     def test_normal_response_sets_should_reply_true(self, memory_enabled_config):
         client = MagicMock()
         client.responses.create.return_value = _mock_response("Hello! How can I help?")
-        handler = AIHandler(client, memory_enabled_config)
+        handler = make_ai_handler(client, memory_enabled_config)
         handler.session_manager.add_message_with_tokens = Mock()
         handler.session_manager.get_conversation_history = Mock(return_value=[])
 
-        response = handler.get_response(_make_request(), chat_id="chat_123", sender="Godfather")
+        response = handler.single_turn(_make_request(), chat_id="chat_123", sender="Godfather")
 
         assert response.should_reply is True

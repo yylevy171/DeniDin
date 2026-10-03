@@ -86,13 +86,15 @@ CREATE_REMINDER_TOOL: Dict[str, Any] = {
                     },
                     "first_occurrence_at": {
                         "type": "string",
-                        "description": "ISO-8601 local datetime of the FIRST occurrence, must be strictly in the future after rounding.",
+                        "description": ("ISO-8601 local datetime of the FIRST occurrence, must be "
+                                        "strictly in the future after rounding."),
                     },
                     "end_condition": {"type": "string", "enum": ["never", "after_n", "until_date"]},
                     "end_count": {"type": ["integer", "null"], "description": "Required iff end_condition=after_n."},
                     "end_until": {
                         "type": ["string", "null"],
-                        "description": "ISO-8601 local date, required iff end_condition=until_date, must not be in the past.",
+                        "description": ("ISO-8601 local date, required iff end_condition=until_date, "
+                                        "must not be in the past."),
                     },
                 },
                 "required": [
@@ -214,7 +216,8 @@ MODIFY_REMINDER_TOOL: Dict[str, Any] = {
             },
             "new_recurrence": {
                 "type": ["object", "null"],
-                "description": "Only meaningful for scope=whole_series on a recurring reminder; same shape as create_reminder's recurrence.",
+                "description": ("Only meaningful for scope=whole_series on a recurring reminder; "
+                                "same shape as create_reminder's recurrence."),
                 "properties": CREATE_REMINDER_TOOL["parameters"]["properties"]["recurrence"]["properties"],
                 "required": CREATE_REMINDER_TOOL["parameters"]["properties"]["recurrence"]["required"],
                 "additionalProperties": False,
@@ -247,7 +250,8 @@ DELETE_REMINDER_TOOL: Dict[str, Any] = {
         "properties": {
             "reminder_id": {"type": "string"},
             "scope": {"type": "string", "enum": ["single_occurrence", "whole_series"]},
-            "occurrence_date_hint": {"type": ["string", "null"], "description": "Required iff scope=single_occurrence."},
+            "occurrence_date_hint": {"type": ["string", "null"],
+                                     "description": "Required iff scope=single_occurrence."},
         },
         "required": ["reminder_id", "scope", "occurrence_date_hint"],
         "additionalProperties": False,

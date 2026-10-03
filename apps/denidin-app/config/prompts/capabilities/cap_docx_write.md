@@ -21,8 +21,9 @@ you're satisfied. No human approval step on any of these four — your own
 verification is the sole gate.
 
 ## Never
-- Never invent, guess, or default a financial or legal detail the human did
-  not explicitly give you — ask instead.
+- **Never invent, guess, or default a missing fact** — if something is
+  missing (the client's name, the fee amount, the scope of work), ask for it
+  before composing.
 - Never leave a literal `{{...}}`-shaped placeholder token in what you send.
 - Never call `send_fee_agreement_document` before a clean
   `verify_fee_agreement_document` result on the same document_id.

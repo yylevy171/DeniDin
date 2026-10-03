@@ -18,12 +18,13 @@ from src.handlers.ai_handler import AIHandler
 from src.models.config import AppConfiguration
 from src.models.message import WhatsAppMessage, AIRequest
 from src.models.user import Role, MemoryScope
+from tests.ai_handler_test_support import make_ai_handler
 
 
 class TestAIHandlerRBACInitialization:
     """Test that AIHandler initializes UserManager with RBAC configuration."""
     
-    @patch('src.handlers.ai_handler.UserManager')
+    @patch('denidin.UserManager')
     def test_initializes_user_manager_with_config(self, mock_user_manager_class):
         """AIHandler should initialize UserManager with godfather_phone and user_roles from config."""
         # Arrange
@@ -46,22 +47,24 @@ class TestAIHandlerRBACInitialization:
         ai_client = MagicMock()
         
         # Act
-        handler = AIHandler(ai_client, config)
+        handler = make_ai_handler(ai_client, config)
         
         # Assert
-        mock_user_manager_class.assert_called_once_with(
-            godfather_phone="+972501234567",
-            admin_phones=["+972509999999"],
-            blocked_phones=["+972505555555"]
-        )
+        # REQ-063-08: built on DeniDin, reading godfather_phone/user_roles off its config
+        mock_user_manager_class.assert_called_once_with(handler.denidin)
+        assert handler.denidin.config.godfather_phone == "+972501234567"
+        assert handler.denidin.config.user_roles == {
+            "admin_phones": ["+972509999999"],
+            "blocked_phones": ["+972505555555"],
+        }
         assert handler.user_manager is not None
 
 
 class TestAIHandlerRBACMemoryRecall:
     """Test that AIHandler uses RBAC-filtered memory recall."""
     
-    @patch('src.handlers.ai_handler.UserManager')
-    @patch('src.handlers.ai_handler.MemoryManager')
+    @patch('denidin.UserManager')
+    @patch('denidin.MemoryManager')
     def test_create_request_uses_rbac_recall(self, mock_memory_manager_class, mock_user_manager_class):
         """create_request should use recall_with_rbac_filter() with user permissions."""
         # Arrange
@@ -87,7 +90,7 @@ class TestAIHandlerRBACMemoryRecall:
         )
         
         # Mock UserManager
-        mock_user_manager = Mock()
+        mock_user_manager = Mock(admin_phones=[], blocked_phones=[])  # read by the startup log
         mock_user = Mock()
         mock_user.role = Role.CLIENT
         mock_user.allowed_memory_scopes = [MemoryScope.PUBLIC, MemoryScope.PRIVATE]
@@ -104,7 +107,7 @@ class TestAIHandlerRBACMemoryRecall:
         mock_memory_manager_class.return_value = mock_memory_manager
         
         ai_client = MagicMock()
-        handler = AIHandler(ai_client, config)
+        handler = make_ai_handler(ai_client, config)
         
         message = WhatsAppMessage(
             message_id="test-msg-1",
@@ -135,8 +138,8 @@ class TestAIHandlerRBACMemoryRecall:
         assert "RECALLED MEMORIES" in request.constitution
         assert "Test memory" in request.constitution
     
-    @patch('src.handlers.ai_handler.UserManager')
-    @patch('src.handlers.ai_handler.MemoryManager')
+    @patch('denidin.UserManager')
+    @patch('denidin.MemoryManager')
     def test_godfather_can_see_all_memories(self, mock_memory_manager_class, mock_user_manager_class):
         """GODFATHER user should have can_see_all_memories=True."""
         # Arrange
@@ -162,7 +165,7 @@ class TestAIHandlerRBACMemoryRecall:
         )
         
         # Mock UserManager - GODFATHER user
-        mock_user_manager = Mock()
+        mock_user_manager = Mock(admin_phones=[], blocked_phones=[])  # read by the startup log
         mock_user = Mock()
         mock_user.role = Role.GODFATHER
         mock_user.allowed_memory_scopes = [MemoryScope.PUBLIC, MemoryScope.PRIVATE]
@@ -177,7 +180,7 @@ class TestAIHandlerRBACMemoryRecall:
         mock_memory_manager_class.return_value = mock_memory_manager
         
         ai_client = MagicMock()
-        handler = AIHandler(ai_client, config)
+        handler = make_ai_handler(ai_client, config)
         
         message = WhatsAppMessage(
             message_id="test-msg-1",
@@ -200,8 +203,8 @@ class TestAIHandlerRBACMemoryRecall:
 class TestAIHandlerRBACTokenLimits:
     """Test that AIHandler enforces per-role token limits."""
     
-    @patch('src.handlers.ai_handler.UserManager')
-    @patch('src.handlers.ai_handler.SessionManager')
+    @patch('denidin.UserManager')
+    @patch('denidin.SessionManager')
     def test_enforces_client_token_limit(self, mock_session_manager_class, mock_user_manager_class):
         """CLIENT role should be limited to 4000 tokens."""
         # Arrange
@@ -224,7 +227,7 @@ class TestAIHandlerRBACTokenLimits:
         )
         
         # Mock UserManager
-        mock_user_manager = Mock()
+        mock_user_manager = Mock(admin_phones=[], blocked_phones=[])  # read by the startup log
         mock_user = Mock()
         mock_user.role = Role.CLIENT
         mock_user.token_limit = 4000
@@ -245,7 +248,7 @@ class TestAIHandlerRBACTokenLimits:
         mock_completion.model = "gpt-4o-mini"
         ai_client.chat.completions.create.return_value = mock_completion
         
-        handler = AIHandler(ai_client, config)
+        handler = make_ai_handler(ai_client, config)
         
         request = AIRequest(
             user_prompt="Test prompt",
@@ -257,7 +260,7 @@ class TestAIHandlerRBACTokenLimits:
         )
         
         # Act
-        response = handler.get_response(
+        response = handler.single_turn(
             request,
             chat_id="1234567890@c.us",
             user_phone="+972501111111",
@@ -275,8 +278,8 @@ class TestAIHandlerRBACTokenLimits:
         calls = mock_session_manager.get_rolling_window.call_args_list
         assert any(call.kwargs.get('max_tokens') == 4000 for call in calls)
     
-    @patch('src.handlers.ai_handler.UserManager')
-    @patch('src.handlers.ai_handler.SessionManager')
+    @patch('denidin.UserManager')
+    @patch('denidin.SessionManager')
     def test_enforces_godfather_token_limit(self, mock_session_manager_class, mock_user_manager_class):
         """GODFATHER role should get 100K token limit."""
         # Arrange
@@ -299,7 +302,7 @@ class TestAIHandlerRBACTokenLimits:
         )
         
         # Mock UserManager
-        mock_user_manager = Mock()
+        mock_user_manager = Mock(admin_phones=[], blocked_phones=[])  # read by the startup log
         mock_user = Mock()
         mock_user.role = Role.GODFATHER
         mock_user.token_limit = 100000
@@ -320,7 +323,7 @@ class TestAIHandlerRBACTokenLimits:
         mock_completion.model = "gpt-4o-mini"
         ai_client.chat.completions.create.return_value = mock_completion
         
-        handler = AIHandler(ai_client, config)
+        handler = make_ai_handler(ai_client, config)
         
         request = AIRequest(
             user_prompt="Test prompt",
@@ -332,7 +335,7 @@ class TestAIHandlerRBACTokenLimits:
         )
         
         # Act
-        response = handler.get_response(
+        response = handler.single_turn(
             request,
             chat_id="1234567890@c.us",
             user_phone="+972501234567",
@@ -352,7 +355,7 @@ class TestAIHandlerRBACTokenLimits:
 class TestAIHandlerRBACBlockedUsers:
     """Test that BLOCKED users are rejected."""
     
-    @patch('src.handlers.ai_handler.UserManager')
+    @patch('denidin.UserManager')
     def test_blocked_user_rejected_in_create_request(self, mock_user_manager_class):
         """BLOCKED user should be rejected in create_request()."""
         # Arrange
@@ -372,7 +375,7 @@ class TestAIHandlerRBACBlockedUsers:
         )
         
         # Mock UserManager to return BLOCKED user
-        mock_user_manager = Mock()
+        mock_user_manager = Mock(admin_phones=[], blocked_phones=[])  # read by the startup log
         mock_user = Mock()
         mock_user.role = Role.BLOCKED
         mock_user.is_blocked = True
@@ -380,7 +383,7 @@ class TestAIHandlerRBACBlockedUsers:
         mock_user_manager_class.return_value = mock_user_manager
         
         ai_client = MagicMock()
-        handler = AIHandler(ai_client, config)
+        handler = make_ai_handler(ai_client, config)
         
         message = WhatsAppMessage(
             message_id="test-msg-1",
@@ -396,7 +399,7 @@ class TestAIHandlerRBACBlockedUsers:
         with pytest.raises(PermissionError, match="User is blocked"):
             handler.create_request(message, user_phone="+972505555555")
     
-    @patch('src.handlers.ai_handler.UserManager')
+    @patch('denidin.UserManager')
     def test_blocked_user_rejected_in_get_response(self, mock_user_manager_class):
         """BLOCKED user should be rejected in get_response()."""
         # Arrange
@@ -416,7 +419,7 @@ class TestAIHandlerRBACBlockedUsers:
         )
         
         # Mock UserManager to return BLOCKED user
-        mock_user_manager = Mock()
+        mock_user_manager = Mock(admin_phones=[], blocked_phones=[])  # read by the startup log
         mock_user = Mock()
         mock_user.role = Role.BLOCKED
         mock_user.is_blocked = True
@@ -424,7 +427,7 @@ class TestAIHandlerRBACBlockedUsers:
         mock_user_manager_class.return_value = mock_user_manager
         
         ai_client = MagicMock()
-        handler = AIHandler(ai_client, config)
+        handler = make_ai_handler(ai_client, config)
         
         request = AIRequest(
             user_prompt="Test prompt",
@@ -437,7 +440,7 @@ class TestAIHandlerRBACBlockedUsers:
         
         # Act & Assert
         with pytest.raises(PermissionError, match="User is blocked"):
-            handler.get_response(
+            handler.single_turn(
                 request,
                 chat_id="5555555555@c.us",
                 user_phone="+972505555555",

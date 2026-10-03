@@ -24,7 +24,6 @@ import hashlib
 import json
 from datetime import timedelta
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -188,14 +187,10 @@ def test_backfill_ac4_end_to_end_billed(tmp_path, capsys):
         embedding_model=ai_cfg["ai_embedding_model"],
         ai_client=OpenAI(api_key=ai_cfg["ai_api_key"]),
     )
-    ctx = SimpleNamespace(
-        session_manager=session_manager,
-        ai_handler=SimpleNamespace(
-            roll_marker_store=roll_marker_store, memory_manager=mem,
-            client=OpenAI(api_key=ai_cfg["ai_api_key"]),
-            config=SimpleNamespace(ai_model=ai_cfg["ai_model"], memory=ai_cfg["memory"]),
-        ),
-        config=SimpleNamespace(memory=ai_cfg["memory"]),
+    ctx = cli.RollContext(
+        session_manager=session_manager, roll_marker_store=roll_marker_store, memory_manager=mem,
+        ai_client=OpenAI(api_key=ai_cfg["ai_api_key"]),
+        config=cli.RollConfig(ai_model=ai_cfg["ai_model"], memory=ai_cfg["memory"]),
     )
     roll_service._sweep_daily_roll(ctx, now=now_local(), lookback_days=21, log_prefix="[TEST] ")
     for c in chats:

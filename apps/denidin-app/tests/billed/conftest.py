@@ -157,7 +157,7 @@ def denidin_app(denidin_config, live_morning_tunnel):
     # scripts/run_reaction_scenario.py's manual driver.
     if denidin.denidin_app.green_api_bot is None:
         denidin.denidin_app.green_api_bot = object()
-    denidin.denidin_app.ai_handler.green_api_bot = denidin.denidin_app.green_api_bot
+    denidin.denidin_app.ai_manager.green_api_bot = denidin.denidin_app.green_api_bot
     return denidin.denidin_app
 
 

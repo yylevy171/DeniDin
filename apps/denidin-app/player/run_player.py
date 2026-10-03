@@ -10,6 +10,7 @@ This is the driver core only (US1's main loop) - no relevancy/reconciliation/
 review-queue wiring yet (later phases, per tasks.md's sequencing).
 """
 import argparse
+import dataclasses
 import json
 import sys
 from datetime import date, datetime, timedelta, timezone
@@ -45,8 +46,8 @@ def _build_config_dict(config_path: str, data_root: str) -> dict:
     2026-08-19 fix: `data_root` alone does NOT, by itself, control where
     SessionManager/MemoryManager write - both read a fixed storage_dir
     straight out of config.memory.session/.longterm, completely independent
-    of data_root (see ai_handler.py's SessionManager/MemoryManager
-    construction). This was a real, previously-unnoticed gap in this exact
+    of data_root (see SessionManager's/MemoryManager's
+    construction, in each manager's own constructor off DeniDin's config). This was a real, previously-unnoticed gap in this exact
     function - it never surfaced because the one prepared example player
     config's data_root ("test_data") happened to coincidentally match
     config.test.json's own hardcoded memory paths. For any OTHER data_root,
@@ -65,39 +66,23 @@ def _build_config_dict(config_path: str, data_root: str) -> dict:
     because the dataclass default (1) happened to match this file's
     config.player_prod.json value (also 1) - harmless today, but silent if
     that value were ever changed. Added below alongside every other field.
+
+    2026-10-03: the whole loaded config is passed through (dataclasses.asdict), and only
+    the data paths are overridden - hand-picking keys kept silently dropping every new
+    field (e.g. ledger_recognition_context_window_hours, fee_agreements, reminders), so a
+    player run diverged from the app on whichever AI implementation the flag selects.
     """
     from src.models.config import AppConfiguration
 
     config = AppConfiguration.from_file(config_path)
     config.validate()
 
-    memory = dict(config.memory)  # never mutate the loaded config
-    session_cfg = dict(memory.get('session', {}))
-    session_cfg['storage_dir'] = str(Path(data_root) / "sessions")
-    memory['session'] = session_cfg
-
-    longterm_cfg = dict(memory.get('longterm', {}))
-    longterm_cfg['storage_dir'] = str(Path(data_root) / "memory")
-    memory['longterm'] = longterm_cfg
-
-    return {
-        'green_api_instance_id': config.green_api_instance_id,
-        'green_api_token': config.green_api_token,
-        'ai_api_key': config.ai_api_key,
-        'ai_model': config.ai_model,
-        'ai_vision_model': config.ai_vision_model,
-        'ai_embedding_model': config.ai_embedding_model,
-        'ai_reply_max_tokens': config.ai_reply_max_tokens,
-        'max_retries': config.max_retries,
-        'log_level': config.log_level,
-        'data_root': data_root,
-        'feature_flags': config.feature_flags,
-        'godfather_phone': config.godfather_phone,
-        'memory': memory,
-        'constitution_config': config.constitution_config,
-        'user_roles': config.user_roles,
-        'mcp': config.mcp,
-    }
+    config_dict = dataclasses.asdict(config)  # a deep copy - the loaded config is never mutated
+    config_dict['data_root'] = data_root
+    memory = config_dict['memory']
+    memory.setdefault('session', {})['storage_dir'] = str(Path(data_root) / "sessions")
+    memory.setdefault('longterm', {})['storage_dir'] = str(Path(data_root) / "memory")
+    return config_dict
 
 
 def _last_assistant_reply(denidin_module, chat_id: str) -> str:
@@ -105,7 +90,7 @@ def _last_assistant_reply(denidin_module, chat_id: str) -> str:
     own persisted conversation history) - used only to detect "the model
     asked a clarifying question" (a "?" in the reply), never to fabricate or
     guess at content."""
-    session_manager = denidin_module.denidin_app.ai_handler.session_manager
+    session_manager = denidin_module.denidin_app.session_manager
     history = session_manager.get_conversation_history(chat_id)
     if history and history[-1]["role"] == "assistant":
         return history[-1]["content"] or ""
@@ -168,7 +153,7 @@ def run_replay(
     # 2026-08-19: initialize_app's own _fetch_own_whatsapp_number(green_api=None)
     # always resolves to "" (no live Green API to ask) - PlayerConfig.whatsapp_own_number
     # is the operator-supplied substitute, same idea as sender_map.
-    denidin.denidin_app.ai_handler.own_whatsapp_number = whatsapp_own_number
+    denidin.denidin_app.whatsapp_handler.own_whatsapp_number = whatsapp_own_number
 
     resolved_extract_dir = extract_dir or (data_root / "_player_extracted")
     all_messages = parse_export(export_zip, resolved_extract_dir)

@@ -6,6 +6,8 @@ CHK111: Caption is WhatsApp message text from webhook
 import pytest
 from unittest.mock import Mock, MagicMock, patch, ANY
 from src.handlers.whatsapp_handler import WhatsAppHandler
+from tests.denidin_test_support import make_denidin
+import denidin as denidin_module
 from src.constants.error_messages import FAILED_TO_PROCESS_FILE_DEFAULT
 from whatsapp_chatbot_python import Notification
 
@@ -13,7 +15,18 @@ from whatsapp_chatbot_python import Notification
 @pytest.fixture
 def whatsapp_handler():
     """Create WhatsAppHandler instance"""
-    return WhatsAppHandler()
+    return WhatsAppHandler(make_denidin())
+
+
+def _handle_media(whatsapp_handler, notification, media_handler, monkeypatch):
+    """The legacy media path as denidin.py runs it (2026-10-02: moved off WhatsAppHandler
+    onto denidin.py): the message is received, then handed to MediaHandler."""
+    app = whatsapp_handler.denidin
+    app.whatsapp_handler = whatsapp_handler
+    app.media_handler = media_handler
+    monkeypatch.setattr(denidin_module, "denidin_app", app)
+    message = app.receive(notification)
+    return denidin_module._handle_media_message(notification, message)
 
 
 @pytest.fixture
@@ -159,7 +172,7 @@ class TestMediaHandlerIntegration:
     """Test integration between WhatsAppHandler and MediaHandler"""
     
     def test_route_media_to_media_handler_and_send_summary(
-        self, whatsapp_handler, mock_notification_image, mock_media_handler
+        self, whatsapp_handler, mock_notification_image, mock_media_handler, monkeypatch
     ):
         """Test that media messages are routed to MediaHandler and summary is sent"""
         # Mock successful processing
@@ -171,9 +184,7 @@ class TestMediaHandlerIntegration:
         }
         
         # Inject MediaHandler into WhatsAppHandler
-        whatsapp_handler.media_handler = mock_media_handler
-        
-        whatsapp_handler.handle_media_message(mock_notification_image)
+        _handle_media(whatsapp_handler, mock_notification_image, mock_media_handler, monkeypatch)
         
         # Verify MediaHandler was called with correct parameters (CHK111: caption from webhook)
         # message_id=ANY (Feature 033): a fresh UUID generated per-call, matching
@@ -200,7 +211,7 @@ class TestMediaHandlerIntegration:
         assert "SuperMarket" in sent_message
     
     def test_send_error_message_on_processing_failure(
-        self, whatsapp_handler, mock_notification_document, mock_media_handler
+        self, whatsapp_handler, mock_notification_document, mock_media_handler, monkeypatch
     ):
         """Test that MediaHandler failures send user-friendly error messages"""
         # Mock failed processing
@@ -210,9 +221,7 @@ class TestMediaHandlerIntegration:
         }
         
         # Inject MediaHandler into WhatsAppHandler
-        whatsapp_handler.media_handler = mock_media_handler
-        
-        whatsapp_handler.handle_media_message(mock_notification_document)
+        _handle_media(whatsapp_handler, mock_notification_document, mock_media_handler, monkeypatch)
         
         # Verify error message was sent to user (exact constant)
         mock_notification_document.answer.assert_called_once_with(
@@ -224,7 +233,7 @@ class TestCaptionHandling:
     """Test CHK111: Caption is WhatsApp message text"""
     
     def test_caption_extracted_from_webhook_not_file_metadata(
-        self, whatsapp_handler, mock_media_handler
+        self, whatsapp_handler, mock_media_handler, monkeypatch
     ):
         """Test that caption comes from webhook messageData, not file embedded metadata"""
         # Create notification with caption in fileMessageData (CHK111)
@@ -255,16 +264,14 @@ class TestCaptionHandling:
             "document_metadata": Mock()
         }
         
-        whatsapp_handler.media_handler = mock_media_handler
-        
-        whatsapp_handler.handle_media_message(notification)
+        _handle_media(whatsapp_handler, notification, mock_media_handler, monkeypatch)
         
         # Verify caption from webhook was passed to MediaHandler (CHK111)
         call_kwargs = mock_media_handler.process_media_message.call_args[1]
         assert call_kwargs['caption'] == 'User typed this question'
     
     def test_missing_caption_sends_empty_string(
-        self, whatsapp_handler, mock_media_handler
+        self, whatsapp_handler, mock_media_handler, monkeypatch
     ):
         """Test that missing caption results in empty string, not None"""
         # Create notification without caption (using correct nested structure)
@@ -295,9 +302,7 @@ class TestCaptionHandling:
             "document_metadata": Mock()
         }
         
-        whatsapp_handler.media_handler = mock_media_handler
-        
-        whatsapp_handler.handle_media_message(notification)
+        _handle_media(whatsapp_handler, notification, mock_media_handler, monkeypatch)
         
         # Verify empty string was passed, not None
         call_kwargs = mock_media_handler.process_media_message.call_args[1]

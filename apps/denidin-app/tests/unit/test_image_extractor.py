@@ -14,6 +14,7 @@ import pytest
 from unittest.mock import Mock
 from src.handlers.extractors.image_extractor import ImageExtractor
 from src.models.media import Media
+from tests.extractor_test_support import make_extractor_ai_manager
 
 
 class TestImageExtractor:
@@ -23,15 +24,15 @@ class TestImageExtractor:
     def mock_denidin(self):
         """Create mock DeniDin context."""
         denidin = Mock()
-        denidin.ai_handler = Mock()
-        denidin.ai_handler._load_constitution.return_value = ""
+        denidin.ai_manager = make_extractor_ai_manager()
+        denidin.ai_manager.extraction_prompt_prefix.return_value = ""
         # Feature 024: ledger classification is a separate AIHandler call now
         # (capture_ledger_events_from_text, plural since 2026-07-30 - a single
         # document can genuinely warrant more than one capture), not extracted
         # from the vision response - default to "nothing captured" so these
         # pre-024 extraction tests reflect realistic behavior rather than an
         # unconfigured Mock.
-        denidin.ai_handler.capture_ledger_events_from_text.return_value = []
+        denidin.ai_manager.capture_ledger_events_from_text.return_value = []
         denidin.config = Mock()
         denidin.config.ai_vision_model = "gpt-4o"
         denidin.config.ai_reply_max_tokens = 1000
@@ -58,7 +59,7 @@ class TestImageExtractor:
             "TEXT:\nשלום עולם\nזה מסמך בעברית\nCONFIDENCE: high\nNOTES: Clear Hebrew text"
         )
         mock_response.output = []  # no function_call items - real API responses always have a list here
-        mock_denidin.ai_handler.client.responses.create.return_value = mock_response
+        mock_denidin.ai_manager.client.responses.create.return_value = mock_response
         
         result = extractor.analyze_media(test_media)
         
@@ -78,12 +79,12 @@ class TestImageExtractor:
         mock_response = Mock()
         mock_response.output_text = "TEXT:\nMulti-tier agreement\nCONFIDENCE: high"
         mock_response.output = []
-        mock_denidin.ai_handler.client.responses.create.return_value = mock_response
+        mock_denidin.ai_manager.client.responses.create.return_value = mock_response
 
         component_1 = {"source_type": "הסכם", "amount": "2,000₪"}
         component_2 = {"source_type": "הסכם", "amount": "4,000₪"}
         component_3 = {"source_type": "הסכם", "amount": "8,000₪"}
-        mock_denidin.ai_handler.capture_ledger_events_from_text.return_value = [
+        mock_denidin.ai_manager.capture_ledger_events_from_text.return_value = [
             component_1, component_2, component_3
         ]
 
@@ -101,7 +102,7 @@ class TestImageExtractor:
             "TEXT:\nLine 1\n\nLine 2\n\nLine 3\nCONFIDENCE: high"
         )
         mock_response.output = []  # no function_call items - real API responses always have a list here
-        mock_denidin.ai_handler.client.responses.create.return_value = mock_response
+        mock_denidin.ai_manager.client.responses.create.return_value = mock_response
         
         result = extractor.analyze_media(test_media)
         
@@ -120,7 +121,7 @@ class TestImageExtractor:
             "TEXT:\n\nCONFIDENCE: low\nNOTES: No visible text"
         )
         mock_response.output = []  # no function_call items - real API responses always have a list here
-        mock_denidin.ai_handler.client.responses.create.return_value = mock_response
+        mock_denidin.ai_manager.client.responses.create.return_value = mock_response
         
         result = extractor.analyze_media(test_media)
         
@@ -133,7 +134,7 @@ class TestImageExtractor:
         Test graceful failure on OCR errors.
         CHK007: Graceful degradation.
         """
-        mock_denidin.ai_handler.client.chat.completions.side_effect = Exception("Vision API failed")
+        mock_denidin.ai_manager.client.chat.completions.side_effect = Exception("Vision API failed")
         
         result = extractor.analyze_media(test_media)
         
@@ -152,13 +153,13 @@ class TestImageExtractor:
         mock_response = Mock()
         mock_response.output_text = "TEXT:\ntest\nCONFIDENCE: high"
         mock_response.output = []  # no function_call items - real API responses always have a list here
-        mock_denidin.ai_handler.client.responses.create.return_value = mock_response
+        mock_denidin.ai_manager.client.responses.create.return_value = mock_response
         
         extractor.analyze_media(test_media)
         
         # Verify vision API was called
-        assert mock_denidin.ai_handler.client.responses.create.called
-        call_args = mock_denidin.ai_handler.client.responses.create.call_args
+        assert mock_denidin.ai_manager.client.responses.create.called
+        call_args = mock_denidin.ai_manager.client.responses.create.call_args
 
         # Check that prompt includes Hebrew/RTL requirements
         input_items = call_args[1]["input"]
@@ -176,7 +177,7 @@ class TestImageExtractor:
             "TEXT:\nThis is clear, readable text.\nCONFIDENCE: high\nNOTES: Image quality excellent"
         )
         mock_response.output = []  # no function_call items - real API responses always have a list here
-        mock_denidin.ai_handler.client.responses.create.return_value = mock_response
+        mock_denidin.ai_manager.client.responses.create.return_value = mock_response
         
         result = extractor.analyze_media(test_media)
         
@@ -192,7 +193,7 @@ class TestImageExtractor:
             "TEXT:\nSomewhat blurry text\nCONFIDENCE: medium\nNOTES: Some characters unclear"
         )
         mock_response.output = []  # no function_call items - real API responses always have a list here
-        mock_denidin.ai_handler.client.responses.create.return_value = mock_response
+        mock_denidin.ai_manager.client.responses.create.return_value = mock_response
         
         result = extractor.analyze_media(test_media)
         
@@ -209,7 +210,7 @@ class TestImageExtractor:
         mock_response = Mock()
         mock_response.output_text = "AI analysis response"
         mock_response.output = []  # no function_call items - real API responses always have a list here
-        mock_denidin.ai_handler.client.responses.create.return_value = mock_response
+        mock_denidin.ai_manager.client.responses.create.return_value = mock_response
         
         result = extractor.analyze_media(test_media)
         
@@ -217,5 +218,5 @@ class TestImageExtractor:
         assert result["raw_response"] == "AI analysis response"
 
         # Verify the API was called
-        assert mock_denidin.ai_handler.client.responses.create.called
+        assert mock_denidin.ai_manager.client.responses.create.called
 

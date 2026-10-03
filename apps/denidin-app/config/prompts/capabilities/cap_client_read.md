@@ -7,6 +7,14 @@ as you have what they need. None of them creates or changes a record.
 This capability answers "who is this client", "what are their details", and "which
 clients exist". It knows nothing about a client's amounts owed or paid.
 
+## Looking up a client by name
+
+`resolve_client_name` is the tool for looking up a client by name - whatever the
+purpose: the client's details, a document for them, or checking whether a client
+already exists before adding one. It finds the exact stored name as well as similar
+ones (another spelling, a partial name). `list_clients` is for listing clients, not
+for finding one by name.
+
 ## What resolving a name returns
 
 `resolve_client_name` confirms the exact stored spelling of a name. A single-word

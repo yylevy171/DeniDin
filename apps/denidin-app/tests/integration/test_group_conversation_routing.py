@@ -3,8 +3,8 @@ Component-Integration Test: Media Path Stays Outside Group Etiquette (Feature 03
 
 Verifies the architectural boundary documented in HANDOFF.md and denidin.py's
 handle_image_message: media messages route straight to
-WhatsAppHandler.handle_media_message -> MediaHandler, NEVER through
-_process_conversational_message / AIHandler.get_response - so none of US1
+denidin._handle_media_message -> MediaHandler, NEVER through
+_process_conversational_message / AIHandler.single_turn - so none of US1
 (no-mention-gate), US4a (should_reply sentinel), or US5/US7 (named-addressee
 etiquette) can apply to media, regardless of what the caption says.
 
@@ -82,7 +82,7 @@ class TestMediaPathBypassesGroupEtiquette:
         it caused tests/integration/test_media_webhook_routing.py's
         test_image_message_user_gets_response to observe this stub's canned response
         instead of its own expected download-failure error)."""
-        media_handler = denidin_app.whatsapp_handler.media_handler
+        media_handler = denidin_app.media_handler
         monkeypatch.setattr(
             media_handler.media_file_manager, 'download_file',
             lambda file_url: (b"fake_image_bytes", True)
@@ -153,7 +153,7 @@ class TestMediaPathBypassesGroupEtiquette:
             f"Expected the real analysis summary to be sent back, got: {sent}"
         )
 
-        session_manager = denidin_app.ai_handler.session_manager
+        session_manager = denidin_app.session_manager
         session = session_manager.get_session(GROUP_CHAT_ID)
         messages_dir = session_manager.storage_dir / session.session_id / "messages"
         stored = []
@@ -187,7 +187,7 @@ class TestMediaPathBypassesGroupEtiquette:
         """A caption that would trigger US5/US7's [[NO_REPLY]] path if it were plain
         text (naming someone other than DeniDin) is NOT etiquette-filtered on the
         media path - proving the scope boundary from research.md Sec 9: media never
-        reaches AIHandler.get_response / the no-reply sentinel at all."""
+        reaches AIHandler.single_turn / the no-reply sentinel at all."""
         from denidin import handle_image_message
 
         self._stub_external_boundaries(

@@ -68,13 +68,12 @@ def mocked_denidin_app(monkeypatch):
 
     mock_app = Mock()
     mock_app.whatsapp_handler = mock_whatsapp_handler
-    mock_app.ai_handler = mock_ai_handler
+    # REQ-063-08: DeniDin parses (WhatsAppHandler) and stores the message it received
+    mock_app.receive.return_value = mock_whatsapp_handler.process_notification.return_value
+    mock_app.ai_manager = mock_ai_handler
     mock_app.group_membership_resolver = None
-    # Feature 063: a bare Mock() auto-vivifies .backbone as a truthy
-    # Mock, which would wrongly route this test through the (unmocked) backbone
-    # path instead of the legacy ai_handler path it exercises - same fixture gap
-    # already fixed once for test_denidin_media_ledger_routing.py.
-    mock_app.backbone = None
+    # Feature 063: a bare Mock() auto-vivifies .backbone_enabled as truthy.
+    mock_app.backbone_enabled = False
 
     monkeypatch.setattr(denidin_module, 'denidin_app', mock_app)
     return mock_app
@@ -82,25 +81,27 @@ def mocked_denidin_app(monkeypatch):
 
 class TestNoReplyDispatchSkipsSend:
     def test_should_reply_false_skips_send_response(self, mocked_denidin_app):
-        mocked_denidin_app.ai_handler.get_response.return_value = _make_ai_response(should_reply=False)
+        mocked_denidin_app.ai_manager.single_turn.return_value = _make_ai_response(should_reply=False)
 
         denidin_module._process_conversational_message(_make_notification())
 
-        mocked_denidin_app.whatsapp_handler.send_response.assert_not_called()
+        mocked_denidin_app.send_response.assert_not_called()
+        mocked_denidin_app.send_text.assert_not_called()
 
     def test_should_reply_true_sends_response(self, mocked_denidin_app):
-        mocked_denidin_app.ai_handler.get_response.return_value = _make_ai_response(should_reply=True)
+        mocked_denidin_app.ai_manager.single_turn.return_value = _make_ai_response(should_reply=True)
 
         denidin_module._process_conversational_message(_make_notification())
 
-        mocked_denidin_app.whatsapp_handler.send_response.assert_called_once()
+        mocked_denidin_app.send_response.assert_called_once()
 
     def test_should_reply_false_does_not_raise_or_send_fallback(self, mocked_denidin_app):
         """no-reply is a first-class successful outcome, not an error path - no
         fallback error message should be sent either."""
-        mocked_denidin_app.ai_handler.get_response.return_value = _make_ai_response(should_reply=False)
+        mocked_denidin_app.ai_manager.single_turn.return_value = _make_ai_response(should_reply=False)
 
         # Should not raise
         denidin_module._process_conversational_message(_make_notification())
 
-        mocked_denidin_app.whatsapp_handler.send_response.assert_not_called()
+        mocked_denidin_app.send_response.assert_not_called()
+        mocked_denidin_app.send_text.assert_not_called()

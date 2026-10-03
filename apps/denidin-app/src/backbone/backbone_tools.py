@@ -16,7 +16,7 @@ dangling).
 """
 import json
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 from src.tool_actions.tool_schemas import REACT_TO_MESSAGE_TOOL, SEND_PROGRESS_UPDATE_TOOL
 

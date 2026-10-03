@@ -13,7 +13,7 @@ Verifies the two new Green API notification types this feature adds routing for:
 ENTRY POINT: User shares 2+ contacts via WhatsApp
 FLOW: Green API webhook (typeMessage=contactsArrayMessage) -> bot.router ->
       handle_contacts_array_message -> friendly decline reply
-VERIFICATION: exact friendly-message constant sent, and denidin_app.ai_handler never invoked.
+VERIFICATION: exact friendly-message constant sent, and denidin_app.ai_manager never invoked.
 """
 
 import pytest
@@ -121,7 +121,7 @@ class TestContactsArrayMessageRouting:
         # AIHandler at all, so the exact friendly-decline constant below - rather than an
         # AI-generated Hebrew reply, an exception from a placeholder OpenAI key, or the
         # multi-second latency a real API round trip would add - is itself the proof that
-        # AIHandler.get_response was never reached.
+        # AIHandler.single_turn was never reached.
         sent_message = self._get_sent_message(notification)
         assert sent_message == CONTACT_CARD_ONE_AT_A_TIME, (
             f"Expected friendly one-at-a-time decline (constant): {CONTACT_CARD_ONE_AT_A_TIME}\n"

@@ -177,6 +177,72 @@ the legacy path (unchanged, as today) and the new capability handlers — zero c
 legacy file, including imports; everything else in the new path is independent new code, selected
 at startup per REQ-063-07.
 
+## App Ownership and the AIManager (REQ-063-08, approved 2026-10-02)
+
+**Problem.** `initialize_app` built `AIHandler` unconditionally, and `AIHandler`'s constructor built
+DeniDin's data (`UserManager`, `SessionManager`, `RollMarkerStore`, `LedgerEventManager`,
+`MemoryManager`, `ReminderManager`, `MorningMcpLocator`, `DocTemplateEngine`/`FeeAgreementToolHandler`).
+The backbone, `DeniDin`, every background service, `media_handler`, the media extractors, the player,
+scripts and tests all reached that data through `ai_handler`. With the flag on, the legacy object still
+existed, so a read of state only legacy writes (e.g. `ai_handler.pending_approval_manager.get(chat)`)
+silently returned `None` instead of failing.
+
+**Design.**
+
+1. **`DeniDin` owns the data.** `initialize_app` always builds: `UserManager`, `SessionManager`,
+   `RollMarkerStore`, `MemoryManager` (when memory is on), `LedgerEventManager`, `ReminderManager`,
+   `MorningMcpLocator`, `TelemetryManager`, `ChatLog`, `DocTemplateEngine` + `FeeAgreementToolHandler`,
+   `own_whatsapp_number`, the OpenAI client, `memory_enabled`/`rbac_enabled` (from config), and holds
+   `last_response` (the most recent `AIResponse`, set by both paths at the end of a turn). It hands them to
+   `DeniDin` and to the one `AIManager` it builds.
+2. **`AIManager`** — an abstract base class; `AIHandler` and `Backbone` are its two implementations.
+   `DeniDin.ai_manager` holds exactly one. Flag on: `Backbone` only — no `AIHandler`, no
+   `PendingApprovalManager`, no `PendingLocalToolApprovalManager`. Flag off: `AIHandler` only, given the
+   shared data instead of building it, keeping only its legacy-only state; behavior unchanged.
+   - Single implementations in the base class, used by both: `create_request`; Morning MCP tool building
+     (incl. `tool_actions/morning_mcp.py`'s connection lookup); what is today `src/core/model_calls.py`,
+     `turn_context.py`, `turn_result.py`, `write_guards.py`.
+   - Abstract, one per implementation: `single_turn()` (today `AIHandler.get_response` /
+     `Backbone.turn_with_rounds`), `resolve_button_tap()`, and the media extractors' two hooks — the
+     instructions to prepend to an extraction prompt (legacy: the constitution; backbone: none) and inline
+     ledger capture from extracted text (legacy: real; backbone: none). This retires the backbone's
+     `_ExtractorAIHandlerShim`.
+   - Legacy-only wiring in `denidin.py` (attaching the sent approval message id, lines ~561/~1410) moves
+     inside `AIHandler`.
+3. **Not `AIManager` methods:** `chat_log` (DeniDin data); `LedgerEventRecognizer` — its own class and
+   file: the after-turn recognition call plus `LEDGER_EVENT_TOOL` and `build_ledger_stash_text`;
+   `AccountingReconciler` — its own class in `accounting_reconciliation_service.py`, owning its sweep and
+   capture, using `ai_manager` only for the Morning tools and the client. `src/tool_actions/`
+   (`reminder_actions`, `messaging_actions`, `tool_schemas`) stays as separate modules.
+4. **Readers.** Services, `media_handler`, the extractors, the player, scripts and tests read data from
+   `DeniDin` and `ai_manager` only for AI needs (the extractors: client + the two hooks; the reconciler:
+   Morning tools + client; the daily-summary roll: the client). Nothing outside `AIHandler` imports from
+   the `ai_handler` module.
+5. **Outside denidin-app.** webapp backend: no change (uses the managers directly). `player/run_player.py`:
+   reads/sets `session_manager`/`own_whatsapp_number` on `denidin_app`. `apps/rolling-memory-backfill`
+   (`backfill_daily_summaries.py` + 2 tests): builds the new context shape instead of an `ai_handler`
+   stand-in. `apps/prod-ledger-backfill`: no change (a stale comment only).
+6. **Tests.** Read `denidin_app.*`. ST10's "add_client approval is pending" check and `_seed_client`'s
+   "an approval is already pending" check are rewritten against what the user sees (the approval prompt
+   and its buttons), never legacy state. New guards: with the flag on, `AIHandler` is never constructed;
+   nothing outside `AIHandler` imports the `ai_handler` module; unit + integration suites on both flag
+   settings.
+
+7. **Everything is built on `DeniDin` (2026-10-03, supersedes the constructor wiring in 1 and the
+   `chat_log` in 3).** Every manager and the AI implementation takes the `DeniDin` object as its only
+   constructor argument, reads its settings off `denidin.config`, and reaches other objects and DeniDin's
+   own methods through it — no callbacks (progress updates, reactions, sending a document all call
+   `DeniDin` directly), no manager-to-manager constructor wiring, cross-references read at use time and
+   `None`-guarded. `ChatLog` and `build_shared_managers`/`SharedManagers` are deleted:
+   `build_denidin_objects(denidin)` builds every object but the AI implementation. `WhatsAppHandler` owns
+   the own number and the `@<number>`→`@DeniDin` rewrite (applied while parsing) and knows nothing of
+   sessions; `SessionManager` stores what it's given and knows nothing of WhatsApp; `DeniDin` coordinates
+   by value (`receive`, `send_text`/`send_response`, `store_inbound`/`store_outbound`/`update_message`,
+   `begin_turn`/`end_turn` + `send_progress_update`, `send_document`, `send_reaction`). The legacy media
+   and unsupported-type replies move from `WhatsAppHandler` into `denidin.py`. Outside the app, the
+   backfill and the webapp build their own minimal stand-in (`BackfillDeniDin`, `WebappDeniDin`); the
+   player runs the real `initialize_app`.
+
 ## Complexity Tracking
 
 *No Constitution Check violations — table intentionally empty.*

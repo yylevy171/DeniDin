@@ -175,7 +175,7 @@ class TestFeeAgreementGenerationFlow:
         over chat_index.db + the session directory (no in-memory cache), so
         the next turn for this chat_id transparently creates a brand new
         session."""
-        sm = denidin_app.ai_handler.session_manager
+        sm = denidin_app.session_manager
         session_id = sm._index_lookup(chat_id) or sm.chat_to_session.get(chat_id)
         if session_id is None:
             return

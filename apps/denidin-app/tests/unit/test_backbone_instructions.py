@@ -6,8 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from src.backbone.capability_tags import CapabilityTag
-from src.backbone.backbone import Backbone
-from tests.backbone_test_support import make_session_manager
+from tests.backbone_test_support import make_backbone, make_session_manager
 from src.models.config import AppConfiguration
 
 
@@ -25,7 +24,7 @@ def _backbone(prompts_root):
         green_api_instance_id="x", green_api_token="y", ai_api_key="z",
         backbone_config={"base_dir": str(prompts_root)},
     )
-    return Backbone(MagicMock(), config, session_manager=make_session_manager())
+    return make_backbone(MagicMock(), config, session_manager=make_session_manager())
 
 
 def test_assembly_order_backbone_then_capability_then_context_then_date(prompts_root):

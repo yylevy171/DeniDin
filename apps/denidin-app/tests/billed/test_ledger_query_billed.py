@@ -192,7 +192,7 @@ class TestLedgerQueryBilled:
         # Safety guard (mirrors test_ledger_event_capture_billed.py's precedent):
         # LedgerEventManager.storage_dir MUST resolve under this test's isolated
         # data_root, never real production/dev data.
-        actual_events_dir = Path(denidin.denidin_app.ai_handler.ledger_event_manager.storage_dir).resolve()
+        actual_events_dir = Path(denidin.denidin_app.ledger_event_manager.storage_dir).resolve()
         expected_root = Path(config.data_root).resolve()
         assert actual_events_dir.is_relative_to(expected_root), (
             f"LedgerEventManager.storage_dir={actual_events_dir} is NOT under this "
@@ -265,7 +265,7 @@ class TestLedgerQueryBilled:
               percent=None, message_id="seed", timestamp=None,
               description="תיאור", reference_hint=None, trigger_condition=None,
               component_label="בסיס"):
-        return denidin_app.ai_handler.ledger_event_manager.add_ledger_event(
+        return denidin_app.ledger_event_manager.add_ledger_event(
             session_id="s", event={
                 "source_type": source_type, "event_subtype": event_subtype,
                 "client_name": client_name, "payer_name": payer_name,
@@ -337,7 +337,7 @@ class TestLedgerQueryBilled:
             "payment": None,
             "linked_document": linked_document,
         }
-        return denidin_app.ai_handler.ledger_event_manager.add_ledger_event(
+        return denidin_app.ledger_event_manager.add_ledger_event(
             session_id="accounting-reconciliation",
             event={
                 "source_type": "חשבונית", "event_subtype": "הפקה",
@@ -440,7 +440,7 @@ class TestLedgerQueryBilled:
         # this multi-turn disambiguation drives at least one real query_ledger_events
         # round-trip per turn - a RequestTelemetry row for the LAST turn ("both") must
         # exist, with a plausible non-zero duration and at least one recorded LLM call.
-        telemetry_manager = denidin_app.ai_handler.telemetry_manager
+        telemetry_manager = denidin_app.telemetry_manager
         if telemetry_manager is not None:  # None whenever the feature flag is off
             row = telemetry_manager.get_latest_by_chat(chat_id)
             assert row is not None, f"expected a telemetry row for chat={chat_id!r}"
@@ -493,7 +493,7 @@ class TestLedgerQueryBilled:
         # Feature 080 acceptance scenario (user-stories.md, Telemetry assertion):
         # this aggregation query (client resolution -> ledger scan -> computed answer)
         # must produce a RequestTelemetry row with plausible non-zero timing/token data.
-        telemetry_manager = denidin_app.ai_handler.telemetry_manager
+        telemetry_manager = denidin_app.telemetry_manager
         if telemetry_manager is not None:  # None whenever the feature flag is off
             row = telemetry_manager.get_latest_by_chat(chat_id)
             assert row is not None, f"expected a telemetry row for chat={chat_id!r}"

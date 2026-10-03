@@ -3,76 +3,33 @@ Media Analysis capability (Feature 063) — the 7th domain capability, folding i
 was previously two standalone files (`prompts/image_analysis.txt`, `prompts/docx_analysis.txt`)
 outside any capability structure at all.
 
-Reuses the existing, unmodified `src/handlers/extractors/{image,pdf,docx}_extractor.py`
-classes (REQ-063-03: "imported, not duplicated") via a small duck-typing shim, since
-those classes are written against `AIHandler`'s interface
-(`denidin_context.ai_handler.client` / `._load_constitution()` /
-`.capture_ledger_events_from_text()`), not against the new backbone directly.
-
-Scope note (a real `analyze_media` tool, see dispatch_direct_tool_call): the
-extractors' own inline ledger-capture side effect
-(`ai_handler.capture_ledger_events_from_text`) is stubbed here (logged, returns no
-events) — REQ-063-04a's actual design routes extracted text back through the model,
-and real capture happens automatically via `denidin.py`'s shared, unmodified
-`_run_post_turn_ledger_recognition` once the turn is persisted (see
-`src/capabilities/ledger_events/handler.py::capture()`'s own docstring for the
-full reasoning) — silently re-running the legacy shortcut inline here would risk
-double-capturing the same event. This capability's own job is extraction only.
+Reuses the existing `src/handlers/extractors/{image,pdf,docx}_extractor.py` classes
+(REQ-063-03: "imported, not duplicated"). An extractor takes the DeniDin object and
+uses its `ai_manager` (REQ-063-08) - here, the backbone itself: its extraction prompt
+prefix is empty and its inline ledger capture a no-op (real capture happens through
+DeniDin's shared post-turn recognition once the turn is persisted).
+This capability's own job is extraction only.
 """
 import json
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Tuple
 
 from src.constants.error_messages import BACKBONE_NO_MEDIA_ATTACHED
 
 logger = logging.getLogger(__name__)
 
 
-class _ExtractorAIHandlerShim:
-    """Duck-types the subset of AIHandler's interface handlers/extractors/*.py
-    actually call, so the unmodified extractor classes can run against the new
-    backbone instead of the legacy AIHandler."""
-
-    def __init__(self, backbone):
-        self._backbone = backbone
-        self.client = backbone.client
-
-    def _load_constitution(self) -> str:
-        """Nothing - the extractors prepend this to their own extraction prompt, and
-        the vision model is not the conversational model: it gets the extraction
-        prompt alone (2026-10-01). Prepending the backbone + this capability's prompt
-        told a tool-less vision model to load capabilities, call analyze_media and
-        answer the user, so it wrote fake tool calls before its JSON and the JSON
-        no longer parsed (T1, 2026-10-01)."""
-        return ""
-
-    def capture_ledger_events_from_text(self, text: str, today_timestamp: Optional[int] = None):
-        del text, today_timestamp
-        logger.info(
-            "cap_media_analysis capability: inline ledger capture skipped here — "
-            "capture happens automatically via the shared post-turn recognition "
-            "mechanism once this turn is persisted (see ledger_events/handler.py)."
-        )
-        return []
-
-
-class _ExtractorContextShim:
-    def __init__(self, backbone):
-        self.config = backbone.config
-        self.ai_handler = _ExtractorAIHandlerShim(backbone)
-
-
-def _build_extractor(media_type: str, context_shim: "_ExtractorContextShim"):
+def _build_extractor(media_type: str, extractor_context: Any):
     # pylint: disable=import-outside-toplevel
     if media_type == "image":
         from src.handlers.extractors.image_extractor import ImageExtractor
-        return ImageExtractor(context_shim)
+        return ImageExtractor(extractor_context)
     if media_type == "pdf":
         from src.handlers.extractors.pdf_extractor import PDFExtractor
-        return PDFExtractor(context_shim)
+        return PDFExtractor(extractor_context)
     if media_type == "docx":
         from src.handlers.extractors.docx_extractor import DOCXExtractor
-        return DOCXExtractor(context_shim)
+        return DOCXExtractor(extractor_context)
     raise ValueError(f"Unsupported media_type for extraction: {media_type!r}")
 
 
@@ -80,13 +37,11 @@ def _record_extracted_text(backbone, turn_context: Dict[str, Any], extracted_tex
     """Fills the extracted text into the turn's already-stored media message the moment
     it's known (2026-09-30), same field the legacy media path sets; "" normalizes to None
     (Message.extracted_text contract)."""
-    chat_log = getattr(backbone, "chat_log", None)
-    if chat_log is not None:
-        chat_log.update(turn_context.get("chat_id"), turn_context.get("message_id"),
-                        extracted_text=extracted_text or None)
+    backbone.denidin.update_message(turn_context.get("chat_id"), turn_context.get("message_id"),
+                                    extracted_text=extracted_text or None)
 
 
-def _format_result(result: Dict[str, Any]) -> tuple:
+def _format_result(result: Dict[str, Any]) -> Tuple[str, str]:
     """The analyze_media tool output for the model, plus the text to store on the
     media message. Carries everything the extractors return that the model needs
     to choose what to do next - doc_type, fields, missing_required_fields
@@ -111,22 +66,17 @@ def dispatch_direct_tool_call(backbone, tool_name: str, args: Dict[str, Any],
     """Executes one `analyze_media` call directly on the ongoing chain
     (2026-09-24 "resolution" redesign - no separate "use" step, no note).
 
-    media/media_type (REQ-063-04a): denidin.py's flag-on media dispatch hands
-    the backbone RAW, not-yet-extracted media; the real vision/PDF/DOCX
-    extraction only happens here, when the model calls the tool, via the
-    unmodified extractor classes (same MIME dispatch `MediaHandler` uses).
-    media_extraction: an ALREADY-computed result (test fixture / future
-    caller) is formatted as-is, never paying for a second real AI call."""
+    turn_context["media"] (REQ-063-04a): the turn's RAW, not-yet-extracted file
+    (request.media); the real vision/PDF/DOCX extraction only happens here, when the
+    model calls the tool, via the unmodified extractor classes (same MIME dispatch
+    `MediaHandler` uses), chosen by the file's own media_type."""
     del tool_name, args
-    result = turn_context.get("media_extraction")
-    if not result:
-        media = turn_context.get("media")
-        media_type = turn_context.get("media_type")
-        if media is None or media_type is None:
-            return BACKBONE_NO_MEDIA_ATTACHED
-        extractor = _build_extractor(media_type, _ExtractorContextShim(backbone))
-        result = extractor.analyze_media(media, caption=turn_context.get("caption", ""),
-                                          today_timestamp=turn_context.get("timestamp"))
+    media = turn_context.get("media")
+    if media is None or media.media_type is None:
+        return BACKBONE_NO_MEDIA_ATTACHED
+    extractor = _build_extractor(media.media_type, backbone.denidin)
+    result = extractor.analyze_media(media, caption=turn_context.get("caption", ""),
+                                     today_timestamp=turn_context.get("timestamp"))
 
     output, extracted_text = _format_result(result)
     _record_extracted_text(backbone, turn_context, extracted_text)

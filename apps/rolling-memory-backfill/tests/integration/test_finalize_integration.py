@@ -18,7 +18,7 @@ import pytest
 
 import finalize_migration as cli
 from _denidin_loader import assert_message_integrity, local_calendar_date, now_local
-from src.managers.session_manager import SessionManager
+from tests.backfill_test_support import make_session_manager
 
 GROUP = "120363210094632983@g.us"
 SOLO = "972522968679@c.us"
@@ -29,7 +29,7 @@ def consolidated(tmp_path):
     dr = tmp_path / "data"
     sessions = dr / "sessions"
     sessions.mkdir(parents=True)
-    sm = SessionManager(storage_dir=str(sessions))
+    sm = make_session_manager(str(sessions))
     n = now_local()
     # GROUP: messages 30, 20, 16, 13, 5, 1 days ago  -> after finalize, only 13/5/1 stay live
     for d in (30, 20, 16, 13, 5, 1):
@@ -44,7 +44,7 @@ def consolidated(tmp_path):
 
 
 def _live_archived(sessions_dir: Path, chat: str):
-    sm = SessionManager(storage_dir=str(sessions_dir))
+    sm = make_session_manager(str(sessions_dir))
     s = sm.get_session(chat)
     sdir = Path(sm.storage_dir) / (s.storage_path or s.session_id)
     live = {json.loads((sdir / "messages" / f"{m}.json").read_text())["content"] for m in s.message_ids}
@@ -80,11 +80,11 @@ def test_finalize_is_idempotent(consolidated):
 
 def test_report_only_writes_nothing(consolidated, capsys):
     sessions = consolidated / "sessions"
-    before = SessionManager(storage_dir=str(sessions)).get_session(GROUP).message_ids[:]
+    before = make_session_manager(str(sessions)).get_session(GROUP).message_ids[:]
     rc = cli.main(["--data-root", str(consolidated), "--report-only"])
     out = capsys.readouterr().out
     assert rc == 0 and "would move" in out and GROUP in out
-    after = SessionManager(storage_dir=str(sessions)).get_session(GROUP).message_ids
+    after = make_session_manager(str(sessions)).get_session(GROUP).message_ids
     assert after == before                                   # unchanged
 
 

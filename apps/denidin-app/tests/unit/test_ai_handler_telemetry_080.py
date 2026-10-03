@@ -1,4 +1,4 @@
-"""Feature 080 — telemetry instrumentation wiring inside AIHandler.get_response().
+"""Feature 080 — telemetry instrumentation wiring inside AIHandler.single_turn().
 
 The feature flag that used to gate this has been removed (2026-09-12, explicit operator
 instruction - never gated by request); telemetry is now always active whenever a
@@ -18,6 +18,8 @@ from src.handlers.ai_handler import AIHandler
 from src.managers.telemetry_manager import TelemetryManager
 from src.models.config import AppConfiguration
 from src.models.message import WhatsAppMessage
+from tests.ai_handler_test_support import make_ai_handler
+from tests.denidin_test_support import make_telemetry_manager
 
 
 @pytest.fixture
@@ -44,12 +46,12 @@ def mock_ai_client():
 
 @pytest.fixture
 def telemetry_manager(tmp_path):
-    return TelemetryManager(str(tmp_path / "data"))
+    return make_telemetry_manager(str(tmp_path / "data"))
 
 
 @pytest.fixture
 def ai_handler(mock_config, mock_ai_client, telemetry_manager):
-    return AIHandler(mock_ai_client, mock_config, telemetry_manager=telemetry_manager)
+    return make_ai_handler(mock_ai_client, mock_config, telemetry_manager=telemetry_manager)
 
 
 @pytest.fixture
@@ -82,7 +84,7 @@ class TestTelemetryWiring:
         )
 
         request = ai_handler.create_request(sample_whatsapp_message)
-        ai_handler.get_response(request)
+        ai_handler.single_turn(request)
 
         row = telemetry_manager.get(request.request_id)
         assert row is not None
@@ -96,7 +98,7 @@ class TestTelemetryWiring:
         # Pins AIHandler's own no-op path when telemetry_manager=None (a test constructing
         # AIHandler directly without one, e.g. many pre-080 unit tests still do this) - not
         # a feature-flag concern any more, just an ordinary Optional-dependency no-op.
-        handler = AIHandler(mock_ai_client, mock_config, telemetry_manager=None)
+        handler = make_ai_handler(mock_ai_client, mock_config, telemetry_manager=None)
         mock_ai_client.responses.create.return_value = Mock(
             output_text="Success response",
             usage=Mock(total_tokens=50, input_tokens=10, output_tokens=40),
@@ -105,7 +107,7 @@ class TestTelemetryWiring:
         )
 
         request = handler.create_request(sample_whatsapp_message)
-        handler.get_response(request)
+        handler.single_turn(request)
 
         assert telemetry_manager.get(request.request_id) is None
 
@@ -118,7 +120,7 @@ class TestTelemetryWiring:
         mock_ai_client.responses.create.side_effect = RuntimeError("simulated failure")
 
         request = ai_handler.create_request(sample_whatsapp_message)
-        ai_handler.get_response(request)  # AIHandler's own error handling returns a fallback,
+        ai_handler.single_turn(request)  # AIHandler's own error handling returns a fallback,
                                            # never raises out to the caller - see test_ai_handler_retry.py
 
         row = telemetry_manager.get(request.request_id)

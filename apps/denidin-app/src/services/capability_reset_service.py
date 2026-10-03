@@ -19,7 +19,7 @@ polling period. Top-level config field, deliberately not a feature flag.
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
-# type: ignore[import-untyped] on both - no stub package exists for apscheduler
+# apscheduler ships no type stubs - hence the import-untyped ignore on its imports.
 from apscheduler.schedulers.background import BackgroundScheduler  # type: ignore[import-untyped]
 from apscheduler.triggers.interval import IntervalTrigger  # type: ignore[import-untyped]
 
@@ -73,7 +73,7 @@ def start_capability_reset_scheduler(global_context: Any, reset_minutes: int,
         return None
     scheduler = BackgroundScheduler()
     scheduler.add_job(
-        func=lambda: sweep_idle_capabilities(global_context.ai_handler.session_manager, reset_minutes),
+        func=lambda: sweep_idle_capabilities(global_context.session_manager, reset_minutes),
         trigger=trigger or IntervalTrigger(minutes=SWEEP_INTERVAL_MINUTES),
         id=CAPABILITY_RESET_JOB_ID,
         max_instances=1,

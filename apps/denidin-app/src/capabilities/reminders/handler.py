@@ -13,7 +13,7 @@ import json
 import logging
 from typing import Any, Dict
 
-from src.capabilities.reminders.tools import (
+from src.tool_actions.tool_schemas import (
     CREATE_REMINDER_TOOL,
     DELETE_REMINDER_TOOL,
     LIST_REMINDERS_TOOL,
@@ -46,7 +46,7 @@ def dispatch_direct_tool_call(backbone, tool_name: str, args: Dict[str, Any],
         return json.dumps({"reminders": build_list_reminders_summary(backbone.reminder_manager)},
                           ensure_ascii=False)
 
-    chat_id = turn_context.get("chat_id")
+    chat_id: str = turn_context["chat_id"]  # every turn has a chat
     role = turn_context.get("role")
     created_by_phone, literal_role = resolve_literal_sender(
         turn_context.get("sender_phone") or turn_context.get("user_phone") or chat_id, role,

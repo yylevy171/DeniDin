@@ -8,7 +8,7 @@ Supports UUID-based architecture with separate file storage for messages.
 import json
 import sqlite3
 import uuid
-from dataclasses import dataclass, asdict, field, fields
+from dataclasses import dataclass, asdict, field, fields as dataclass_fields
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Collection, List, Optional, Dict
@@ -151,7 +151,7 @@ class Session:
     # and is cleared by the capabilities_reset_minutes idle sweep - see
     # Backbone's own docstring for the full contract. Deliberately a
     # Session field, not a Backbone instance attribute: it must
-    # survive across separate get_response() calls for the same chat (a button
+    # survive across separate single_turn() calls for the same chat (a button
     # tap is a new webhook, not a new conversation), and persisting it here reuses
     # the exact save path every other message write already goes through - no new
     # data model, no new file, per explicit user instruction to not maintain a
@@ -180,21 +180,20 @@ class SessionManager:
     - Date-based archival to expired/YYYY-MM-DD/ folders
     """
 
-    def __init__(
-        self,
-        storage_dir: str = "data/sessions",
-    ):
+    def __init__(self, denidin: Any):
         """
         Initialize SessionManager.
 
         Args:
-            storage_dir: Directory for session storage. The caller composes this
-                (SessionManager never reads AppConfiguration). `chat_index.db`
-                lives directly under it.
+            denidin: the DeniDin object (REQ-063-08) - the storage directory is its
+                config's memory.session.storage_dir (default data/sessions);
+                `chat_index.db` lives directly under it.
 
         Feature 070: there is no idle-expiry timeout - sessions never expire.
         """
-        self.storage_dir = Path(storage_dir)
+        self.denidin = denidin
+        session_config = (denidin.config.memory or {}).get('session', {}) or {}
+        self.storage_dir = Path(session_config.get('storage_dir', 'data/sessions'))
         self.storage_dir.mkdir(parents=True, exist_ok=True)
 
         # In-memory index: whatsapp_chat -> session_id. NON-AUTHORITATIVE cache
@@ -306,7 +305,7 @@ class SessionManager:
         logs ONE warning - never raises TypeError. Generic: not an allowlist for
         `pending_ledger_events`, so a future field removal can't strand older
         session.json files either."""
-        valid = {f.name for f in fields(Session)}
+        valid = {f.name for f in dataclass_fields(Session)}
         unknown = sorted(k for k in data if k not in valid)
         if unknown:
             logger.warning(
@@ -611,7 +610,7 @@ class SessionManager:
             return None
         with open(message_file, encoding="utf-8") as f:
             data = json.load(f)
-        known = {f.name for f in Message.__dataclass_fields__.values()}
+        known = {f.name for f in dataclass_fields(Message)}
         return Message(**{k: v for k, v in data.items() if k in known})
 
     def append_ledger_event_ids(
@@ -1092,4 +1091,3 @@ class SessionManager:
         """
         session = self.get_session(chat_id)
         return session.total_tokens
-

@@ -4,7 +4,7 @@ Supports loading from JSON/YAML files and validation.
 """
 import json
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from typing import Any, Optional, Dict
 
 
@@ -229,16 +229,16 @@ class AppConfiguration:
             for section in ['session', 'longterm']:
                 if section in config_data['memory'] and 'storage_dir' in config_data['memory'][section]:
                     storage_dir = config_data['memory'][section]['storage_dir']
-                    
+
                     # Skip absolute paths (start with / or drive letter on Windows)
                     if storage_dir.startswith('/') or (len(storage_dir) > 1 and storage_dir[1] == ':'):
                         continue
-                    
+
                     # Backward compatibility: strip data_root prefix if present
                     # Old configs have "data/sessions", new configs have "sessions"
                     if storage_dir.startswith(f'{data_root}/'):
                         storage_dir = storage_dir[len(data_root)+1:]  # Strip "data/" prefix
-                    
+
                     # Combine data_root with relative storage_dir
                     config_data['memory'][section]['storage_dir'] = f'{data_root}/{storage_dir}'
 
@@ -275,7 +275,7 @@ class AppConfiguration:
                 config_data['logging'][key] = value
 
         # Filter out unknown keys (backward compatibility for removed config fields)
-        valid_fields = {f.name for f in cls.__dataclass_fields__.values()}
+        valid_fields = {f.name for f in fields(cls)}
         filtered_config = {k: v for k, v in config_data.items() if k in valid_fields}
 
         return cls(**filtered_config)

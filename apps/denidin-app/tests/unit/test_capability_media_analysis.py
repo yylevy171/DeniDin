@@ -5,9 +5,21 @@ import json
 from unittest.mock import MagicMock, patch
 
 from src.capabilities.media_analysis.handler import (
-    _ExtractorAIHandlerShim, dispatch_direct_tool_call,
+    dispatch_direct_tool_call,
 )
 from src.constants.error_messages import BACKBONE_NO_MEDIA_ATTACHED
+from src.models.media import Media
+
+
+def _image(media_type="image"):
+    return Media(data=b"x", mime_type="image/jpeg", filename="slip.jpg", media_type=media_type)
+
+
+def _analyze_with(extraction):
+    """analyze_media on an attached image whose (patched) extractor returns `extraction`."""
+    with patch("src.handlers.extractors.image_extractor.ImageExtractor") as mock_extractor_cls:
+        mock_extractor_cls.return_value.analyze_media.return_value = extraction
+        return dispatch_direct_tool_call(MagicMock(), "analyze_media", {}, {"media": _image()})
 
 
 def test_no_media_in_turn_context_returns_fallback():
@@ -15,8 +27,8 @@ def test_no_media_in_turn_context_returns_fallback():
 
 
 def test_dispatches_to_image_extractor_for_image_media_type():
-    fake_media = MagicMock()
-    turn_context = {"media": fake_media, "media_type": "image", "caption": "a receipt", "timestamp": 12345}
+    fake_media = _image()
+    turn_context = {"media": fake_media, "caption": "a receipt", "timestamp": 12345}
 
     with patch("src.handlers.extractors.image_extractor.ImageExtractor") as mock_extractor_cls:
         instance = mock_extractor_cls.return_value
@@ -25,14 +37,6 @@ def test_dispatches_to_image_extractor_for_image_media_type():
 
     instance.analyze_media.assert_called_once_with(fake_media, caption="a receipt", today_timestamp=12345)
     assert json.loads(result)["extracted_text"] == "Bank transfer 500 NIS"
-
-
-def test_already_extracted_result_is_formatted_without_a_second_call():
-    turn_context = {"media_extraction": {"extracted_text": "hello", "document_analysis": {"k": 1}}}
-    with patch("src.handlers.extractors.image_extractor.ImageExtractor") as mock_extractor_cls:
-        result = dispatch_direct_tool_call(MagicMock(), "analyze_media", {}, turn_context)
-    mock_extractor_cls.assert_not_called()
-    assert json.loads(result) == {"extracted_text": "hello", "document_analysis": {"k": 1}}
 
 
 def test_output_carries_the_extractors_classification_and_fields():
@@ -47,8 +51,7 @@ def test_output_carries_the_extractors_classification_and_fields():
         "raw_response": "העברה מאסולין אסתר 554",
         "model_used": "vision-model",
     }
-    result = json.loads(dispatch_direct_tool_call(
-        MagicMock(), "analyze_media", {}, {"media_extraction": extraction}))
+    result = json.loads(_analyze_with(extraction))
     assert result == {
         "extracted_text": "העברה מאסולין אסתר 554",
         "doc_type": "bank",
@@ -61,21 +64,21 @@ def test_empty_structured_text_falls_back_to_the_raw_response():
     """The extractors' own fallback (bugfix-028 B5): when the structured text is
     empty, the raw vision output is passed on rather than nothing."""
     extraction = {"extracted_text": "", "raw_response": "raw vision output", "doc_type": "unknown"}
-    result = json.loads(dispatch_direct_tool_call(
-        MagicMock(), "analyze_media", {}, {"media_extraction": extraction}))
+    result = json.loads(_analyze_with(extraction))
     assert result["extracted_text"] == "raw vision output"
 
 
 def test_extractors_get_no_conversational_prompt_to_prepend():
     """The vision model gets its extraction prompt alone - never the backbone or a
     capability prompt (2026-10-01: those made it write fake tool calls before its
-    JSON). The shim's _load_constitution is what the extractors prepend."""
-    assert _ExtractorAIHandlerShim(MagicMock())._load_constitution() == ""
+    JSON). extraction_prompt_prefix is what the extractors prepend."""
+    from src.backbone.backbone import Backbone
+    assert Backbone.extraction_prompt_prefix(MagicMock()) == ""
 
 
 def test_unsupported_media_type_raises():
     try:
-        dispatch_direct_tool_call(MagicMock(), "analyze_media", {}, {"media": MagicMock(), "media_type": "video"})
+        dispatch_direct_tool_call(MagicMock(), "analyze_media", {}, {"media": _image("video")})
         assert False, "expected ValueError"
     except ValueError:
         pass

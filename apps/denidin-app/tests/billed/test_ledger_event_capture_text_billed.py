@@ -108,7 +108,7 @@ class TestLedgerEventCaptureTextBilled:
         # production/dev data root - a wiring mistake here would write test noise into
         # the real financial ledger. Fails loud and immediately rather than silently
         # polluting data/events/ or dev_data/events/.
-        actual_events_dir = Path(denidin.denidin_app.ai_handler.ledger_event_manager.storage_dir).resolve()
+        actual_events_dir = Path(denidin.denidin_app.ledger_event_manager.storage_dir).resolve()
         expected_root = Path(config.data_root).resolve()
         assert actual_events_dir.is_relative_to(expected_root), (
             f"LedgerEventManager.storage_dir={actual_events_dir} is NOT under this "
@@ -122,7 +122,7 @@ class TestLedgerEventCaptureTextBilled:
         """Every test here talks in GODFATHER_CHAT_ID: start each one with that chat
         empty and leave it empty afterwards (stored messages + the backbone's loaded
         capabilities/flows), so no test sees - or leaves - another's conversation."""
-        storage_dir = denidin_app.ai_handler.session_manager.storage_dir
+        storage_dir = denidin_app.session_manager.storage_dir
         wipe_chat_messages_on_disk(storage_dir, GODFATHER_CHAT_ID)
         yield
         wipe_chat_messages_on_disk(storage_dir, GODFATHER_CHAT_ID)
@@ -206,7 +206,7 @@ class TestLedgerEventCaptureTextBilled:
         """Reads the real persisted message record off disk (session_manager's
         actual storage), for field-level assertions beyond the ledger_event_ids
         cross-check below."""
-        session_manager = denidin_app.ai_handler.session_manager
+        session_manager = denidin_app.session_manager
         session_id = session_manager.chat_to_session[chat_id]
         message_file = session_manager.storage_dir / session_id / "messages" / f"{message_id}.json"
         with open(message_file, encoding='utf-8') as f:

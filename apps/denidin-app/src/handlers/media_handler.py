@@ -9,7 +9,6 @@ formats the extractor's analysis into user-friendly summaries.
 """
 
 from typing import Any, Dict, List, Optional
-from datetime import datetime
 
 from src.models.media import Media
 from src.models.media_attachment import MediaAttachment
@@ -18,8 +17,7 @@ from src.handlers.extractors.pdf_extractor import PDFExtractor
 from src.handlers.extractors.docx_extractor import DOCXExtractor
 from src.managers.media_file_manager import MediaFileManager
 from src.utils.logger import get_logger
-from src.utils.time_utils import now_local
-from src.handlers.ai_handler import build_ledger_stash_text
+from src.managers.ledger_event_recognizer import build_ledger_stash_text
 
 logger = get_logger(__name__)
 
@@ -27,7 +25,7 @@ logger = get_logger(__name__)
 class MediaHandler:
     """
     Drives complete media processing workflow.
-    
+
     Workflow:
     1. Validate file size
     2. Download file to memory
@@ -38,34 +36,26 @@ class MediaHandler:
     7. Save raw text to storage
     8. Format summary from document_analysis
     9. Return MediaAttachment + summary
-    
+
     Design: Extractors process in-memory Media objects, not file paths.
     Files are saved AFTER extraction for archival/audit purposes.
     """
-    
+
     def __init__(self, denidin_context):
         """
         Initialize MediaHandler with DeniDin context.
-        
+
         Args:
-            denidin_context: Global DeniDin context with config, AI handler, etc.
+            denidin_context: Global DeniDin context with config, its data and its AI manager.
         """
         self.denidin = denidin_context
-        self.config = denidin_context.config
-        # bugfix-017: media messages were never linked to the session at all
-        # (spec 003's REQ-INT-001), reusing the same SessionManager the text
-        # path (AIHandler._finalize_response) already stores through.
-        self.session_manager = denidin_context.ai_handler.session_manager
-        # Feature 033: same LedgerEventManager instance AIHandler uses for the text
-        # path - single source of truth, no risk of the two paths diverging.
-        self.ledger_event_manager = denidin_context.ai_handler.ledger_event_manager
 
         # Initialize components
         self.media_file_manager = MediaFileManager(denidin_context)
         self.image_extractor = ImageExtractor(denidin_context)
         self.pdf_extractor = PDFExtractor(denidin_context)
         self.docx_extractor = DOCXExtractor(denidin_context)
-    
+
     def process_media_message(
         self,
         file_url: str,
@@ -89,7 +79,7 @@ class MediaHandler:
             sender_phone: WhatsApp sender JID, straight from Green API's
                 senderData.sender (e.g. "972501234567@c.us") - always carries the
                 full JID suffix, same convention as Session.whatsapp_chat (verified
-                by reading the real caller, WhatsAppHandler.handle_media_message;
+                by reading the real caller, denidin.py's _handle_media_message;
                 an earlier version of this docstring showed a bare-digits example,
                 which never matched actual runtime behavior)
             chat_id: WhatsApp chat ID (bugfix-017: needed to link this turn to a
@@ -119,17 +109,17 @@ class MediaHandler:
                 return self._error_response(
                     "Unable to download this file. Please try sending it again."
                 )
-            
+
             # Step 2: Validate file size from downloaded content (CHK001-002, CHK075)
             actual_file_size = len(content)
             self.media_file_manager.validate_file_size(actual_file_size)
-            
+
             # Step 3: Validate format and determine media type (CHK039-041)
             media_type = self.media_file_manager.validate_format(filename, mime_type)
-            
+
             # Step 4: Create Media object for in-memory processing
             media = Media(data=content, mime_type=mime_type, filename=filename)
-            
+
             # Step 5: Extract text + document analysis (Phase 4 extractors)
             # Analyzers work with in-memory Media objects, not file paths
             # Pass caption to provide user context for analysis
@@ -141,16 +131,16 @@ class MediaHandler:
             # wall-clock "today" - see AIHandler._build_instructions's
             # today_timestamp docstring for the full rationale.
             analysis_result = self._extract_text(media_type, media, caption, today_timestamp=timestamp)
-            
+
             # Step 6: Create storage folder (CHK019: UTC timestamps)
             storage_folder = self.media_file_manager.create_storage_path()
-            
+
             # Step 7: Save file with DD-{sender_phone}-{uuid}.{ext} naming
             # File saved AFTER analysis for archival purposes
             file_path = self.media_file_manager.save_file(
                 content, storage_folder, filename, sender_phone
             )
-            
+
             # Step 8: Compose what the user actually reads, from the extractor's
             # extracted text plus anything worth adding.
             # bugfix-028: the extractor no longer authors this - it extracts and
@@ -159,14 +149,14 @@ class MediaHandler:
             # confirmation missing details we need, is something to ask about
             # rather than to proceed on silently. "When it's not clear - ASK."
             summary = self._compose_user_message(analysis_result)
-            
+
             # Verify we got a summary from the AI
             if not summary:
                 return self._error_response(
                     "Unable to analyze this file. "
                     "The AI did not return a summary."
                 )
-            
+
             # Step 9: Create MediaAttachment model
             attachment = MediaAttachment(
                 media_type=media_type,
@@ -278,7 +268,7 @@ class MediaHandler:
                 "document_analysis": analysis_result.get("document_analysis") or {},
                 "media_type": media_type,
             }
-            
+
         except ValueError as e:
             # Validation errors (file size, format, page count)
             return self._error_response(str(e))
@@ -294,17 +284,14 @@ class MediaHandler:
     ) -> None:
         """2026-09-30: the media message itself was already stored the moment it was
         received (denidin.py's _process_media_message, under `message_id`), and the
-        summary reply is stored when it's actually sent (WhatsAppHandler.send_text) - so
+        summary reply is stored when it's actually sent (DeniDin.send_text) - so
         this only fills in what was learned while processing it: image_path (bugfix-009,
         relative to data_root), extracted_text (Feature 043; None when nothing was
         extracted) and ledger_event_ids (Feature 033). Never raises."""
-        chat_log = getattr(self.denidin, "chat_log", None)
-        if chat_log is None:
-            return
         facts: Dict[str, Any] = {"image_path": image_path, "extracted_text": extracted_text}
         if ledger_event_ids:
             facts["ledger_event_ids"] = list(ledger_event_ids)
-        chat_log.update(chat_id, message_id, **facts)
+        self.denidin.update_message(chat_id, message_id, **facts)
 
     def _extract_text(self, media_type: str, media: Media, caption: str = "",
                        today_timestamp: Optional[int] = None) -> Dict:
@@ -325,13 +312,12 @@ class MediaHandler:
         """
         if media_type == 'image':
             return self.image_extractor.analyze_media(media, caption=caption, today_timestamp=today_timestamp)
-        elif media_type == 'pdf':
+        if media_type == 'pdf':
             return self.pdf_extractor.analyze_media(media, caption=caption, today_timestamp=today_timestamp)
-        elif media_type == 'docx':
+        if media_type == 'docx':
             return self.docx_extractor.analyze_media(media, caption=caption, today_timestamp=today_timestamp)
-        else:
-            raise ValueError(f"Unknown media type: {media_type}")
-    
+        raise ValueError(f"Unknown media type: {media_type}")
+
     # bugfix-028: Hebrew labels for the fields a bank confirmation must carry,
     # used to ask for them by name rather than by their internal keys.
     _FIELD_LABELS_HE = {
@@ -379,10 +365,10 @@ class MediaHandler:
     def _error_response(self, message: str) -> Dict:
         """
         Standard error response format.
-        
+
         Args:
             message: User-friendly error message
-        
+
         Returns:
             Error response dict
         """

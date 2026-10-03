@@ -10,7 +10,7 @@ You are reading an image, PDF, or DOCX the user sent. Loading this capability at
 - `document_analysis` (DOCX): its document type and summary.
 
 What to do with the result:
-1. `doc_type` is `bank`: load `flow_payment_received_by_bank_slip_image`.
+1. `doc_type` is `bank`: load `flow_deposit_provided_by_user`.
 2. `doc_type` is `agreement`: load `flow_fee_agreement_provided_by_user`.
 3. `doc_type` is `unknown`, or there is none: use `cap_send_to_user` to report what the document says and ask the user what it is and what they want done with it. Never guess its type.
 4. `missing_required_fields` is not empty: ask the user for exactly those details (in the flow you loaded, or on their own). Never fill them in yourself.

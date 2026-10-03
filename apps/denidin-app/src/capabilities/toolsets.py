@@ -32,7 +32,6 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from src.backbone.capability_tags import CapabilityTag
-from src.tool_actions.morning_mcp import resolve_morning_mcp_connection
 
 logger = logging.getLogger(__name__)
 
@@ -100,26 +99,18 @@ def build_morning_mcp_tools(backbone, tags: List[CapabilityTag],
     loaded = [tag for tag in dict.fromkeys(tags) if MORNING_MCP_TOOL_NAMES.get(tag)]
     if not loaded:
         return []
-    locator = getattr(backbone, "morning_mcp_locator", None)
-    if locator is None:
-        return []
     turn_context = turn_context or {}
-    connection = resolve_morning_mcp_connection(
-        locator, backbone.config, turn_context.get("request_id"), turn_context.get("role"),
-    )
+    connection = backbone.morning_mcp_connection(turn_context.get("request_id"), turn_context.get("role"))
     if connection is None:
         return []
-    server_url, auth_token, mcp_config = connection
-    base_label = mcp_config.get("morning_server_label", "morning-invoices")
+    base_label = connection[2].get("morning_server_label", "morning-invoices")
     return [
-        {
-            "type": "mcp",
-            "server_label": morning_server_label_for(base_label, tag),
-            "server_url": server_url,
-            "allowed_tools": list(MORNING_MCP_TOOL_NAMES[tag]),
-            "require_approval": "never",
-            "headers": {"Authorization": f"Bearer {auth_token}"},
-        }
+        backbone.morning_mcp_entry(
+            connection,
+            server_label=morning_server_label_for(base_label, tag),
+            allowed_tools=list(MORNING_MCP_TOOL_NAMES[tag]),
+            require_approval="never",
+        )
         for tag in loaded
     ]
 
@@ -129,14 +120,14 @@ def _local_tools_by_tag() -> Dict[CapabilityTag, Any]:
     capability's own package, so src/backbone never hard-depends on them)."""
     # pylint: disable=import-outside-toplevel
     from src.backbone.resolution_tools import APPROVAL_WITH_YES_NO_BUTTONS_TOOL
-    from src.capabilities.ledger_events.tools import QUERY_LEDGER_EVENTS_TOOL
     from src.capabilities.media_analysis.tools import ANALYZE_MEDIA_TOOL
-    from src.capabilities.reminders.tools import (
-        CREATE_REMINDER_TOOL, LIST_REMINDERS_TOOL, MODIFY_DELETE_REMINDER_TOOLS,
+    from src.tool_actions.tool_schemas import (
+        CREATE_REMINDER_TOOL, DELETE_REMINDER_TOOL, LIST_REMINDERS_TOOL, MODIFY_REMINDER_TOOL,
+        QUERY_LEDGER_EVENTS_TOOL,
     )
     return {
         CapabilityTag.REMINDERS_READ: [LIST_REMINDERS_TOOL],
-        CapabilityTag.REMINDERS_WRITE: [CREATE_REMINDER_TOOL] + list(MODIFY_DELETE_REMINDER_TOOLS),
+        CapabilityTag.REMINDERS_WRITE: [CREATE_REMINDER_TOOL, MODIFY_REMINDER_TOOL, DELETE_REMINDER_TOOL],
         CapabilityTag.LEDGER_QUERY: [QUERY_LEDGER_EVENTS_TOOL],
         CapabilityTag.MEDIA_ANALYSIS: [ANALYZE_MEDIA_TOOL],
         CapabilityTag.APPROVAL_WITH_BUTTONS: [APPROVAL_WITH_YES_NO_BUTTONS_TOOL],

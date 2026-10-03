@@ -11,11 +11,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.core.chat_log import ChatLog
 from src.handlers.ai_handler import AIHandler
 from src.models.config import AppConfiguration
 from src.models.message import WhatsAppMessage
 from tests.helpers.seed import seed_message
+from tests.ai_handler_test_support import make_ai_handler
 
 CHAT = "972501234567@c.us"
 
@@ -61,17 +61,17 @@ def _config(tmp_path):
 
 
 def _turn(handler, text, message_id="m-new"):
-    """One turn as the WhatsApp boundary drives it (2026-09-30, src/core/chat_log.py):
-    the user's message is stored on receipt, then the reply once "sent"."""
-    chat_log = ChatLog(handler.session_manager, handler.user_manager, rbac_enabled=True)
+    """One turn as the WhatsApp boundary drives it (2026-09-30, DeniDin stores every
+    message): the user's message is stored on receipt, then the reply once "sent"."""
+    app = handler.denidin
     m = WhatsAppMessage(
         message_id=message_id, chat_id=CHAT, sender_id=CHAT, sender_name="Avi",
         text_content=text, timestamp=0, message_type="text",
     )
-    chat_log.store_inbound(m)
+    app.store_inbound(m)
     request = handler.create_request(m, chat_id=CHAT, user_phone=CHAT)
-    response = handler.get_response(request, chat_id=CHAT, user_phone=CHAT, sender="Avi", recipient="DeniDin")
-    chat_log.store_outbound(m, response.response_text)
+    response = handler.single_turn(request, chat_id=CHAT, user_phone=CHAT, sender="Avi", recipient="DeniDin")
+    app.store_outbound(m, response.response_text)
     return response
 
 
@@ -79,7 +79,7 @@ def _turn(handler, text, message_id="m-new"):
 class TestRollingWindowThroughAIHandler:
     def test_input_items_are_the_rolling_window_plus_new_turn(self, tmp_path):
         capture = []
-        handler = AIHandler(_fake_client(capture), _config(tmp_path))
+        handler = make_ai_handler(_fake_client(capture), _config(tmp_path))
         # 3 simulated days; window_days=2 so the oldest is out of window.
         seed_message(handler.session_manager, CHAT, "user", "יום ראשון", 2)
         seed_message(handler.session_manager, CHAT, "assistant", "קיבלתי", 2)
@@ -104,7 +104,7 @@ class TestRollingWindowThroughAIHandler:
 
     def test_restart_continues_the_same_session(self, tmp_path, caplog):
         cap1 = []
-        h1 = AIHandler(_fake_client(cap1), _config(tmp_path))
+        h1 = make_ai_handler(_fake_client(cap1), _config(tmp_path))
         _turn(h1, "ראשון", "m-1")
         sid = h1.session_manager.get_session(CHAT).session_id
         counter_after_1 = h1.session_manager.get_session(CHAT).message_counter
@@ -113,7 +113,7 @@ class TestRollingWindowThroughAIHandler:
         cap2 = []
         caplog.clear()
         with caplog.at_level("INFO"):
-            h2 = AIHandler(_fake_client(cap2), _config(tmp_path))
+            h2 = make_ai_handler(_fake_client(cap2), _config(tmp_path))
             _turn(h2, "שני", "m-2")
 
         assert h2.session_manager.get_session(CHAT).session_id == sid

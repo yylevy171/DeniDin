@@ -4,7 +4,7 @@ conversational pipeline as a synthetic `textMessage` turn - preserving the
 original chat/sender/timestamp - instead of answering with the plain media
 summary.
 
-Mocks WhatsAppHandler + `_process_conversational_message` to isolate the routing
+Stubs `_handle_media_message` + `_process_conversational_message` to isolate the routing
 decision; the end-to-end path is `tests/integration/
 test_ledger_client_resolution_routing.py`.
 """
@@ -42,22 +42,22 @@ def _make_media_notification():
 def app(monkeypatch):
     a = Mock()
     a.green_api_bot = None
-    # Feature 063: a bare Mock() auto-vivifies backbone as a truthy
-    # attribute, which would incorrectly route this test through the new
-    # backbone path instead of the legacy path it's actually exercising -
-    # explicit None matches every real denidin_app instance with the flag off.
-    a.backbone = None
-    a.ai_handler.user_manager.get_user.return_value = Mock(is_blocked=False)
+    # Feature 063: a bare Mock() auto-vivifies backbone_enabled as truthy, which
+    # would route this test through the backbone path instead of the legacy path
+    # it's actually exercising - explicit False matches a real flag-off denidin_app.
+    a.backbone_enabled = False
+    a.user_manager.get_user.return_value = Mock(is_blocked=False)
     monkeypatch.setattr(denidin_module, 'denidin_app', a)
     return a
 
 
 def test_ledger_stash_result_is_routed_as_synthetic_text_turn(app, monkeypatch):
-    app.whatsapp_handler.handle_media_message.return_value = {
+    monkeypatch.setattr(denidin_module, '_handle_media_message',
+                        lambda notification, message: {
         "success": True,
         "ledger_stash": "📸 התקבלה תמונה של אסמכתת העברה/הפקדה בנקאית.\nסכום: 9,440₪",
         "ledger_stash_source_type": "בנק",
-    }
+    })
     seen = {}
 
     def _fake_conv(notification, *, internal=False):
@@ -82,7 +82,8 @@ def test_ledger_stash_result_is_routed_as_synthetic_text_turn(app, monkeypatch):
 
 
 def test_no_ledger_stash_does_not_route_a_synthetic_turn(app, monkeypatch):
-    app.whatsapp_handler.handle_media_message.return_value = {"success": True, "summary": "ok"}
+    monkeypatch.setattr(denidin_module, '_handle_media_message',
+                        lambda notification, message: {"success": True, "summary": "ok"})
     called = []
     monkeypatch.setattr(denidin_module, '_process_conversational_message',
                         lambda n: called.append(n))
@@ -93,7 +94,8 @@ def test_no_ledger_stash_does_not_route_a_synthetic_turn(app, monkeypatch):
 
 
 def test_none_result_is_tolerated(app, monkeypatch):
-    app.whatsapp_handler.handle_media_message.return_value = None
+    monkeypatch.setattr(denidin_module, '_handle_media_message',
+                        lambda notification, message: None)
     monkeypatch.setattr(denidin_module, '_process_conversational_message',
                         lambda n: (_ for _ in ()).throw(AssertionError("should not route")))
 

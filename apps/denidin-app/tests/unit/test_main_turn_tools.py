@@ -34,6 +34,7 @@ import pytest
 from src.handlers import ai_handler as ai_handler_module
 from src.handlers.ai_handler import AIHandler
 from src.models.config import AppConfiguration
+from tests.ai_handler_test_support import make_ai_handler
 
 
 GODFATHER_PHONE = "972500000002"
@@ -63,7 +64,7 @@ def mock_config(tmp_path):
 
 @pytest.fixture
 def ai_handler(mock_config):
-    return AIHandler(MagicMock(), mock_config)
+    return make_ai_handler(MagicMock(), mock_config)
 
 
 class TestDeletedInlineCaptureMachinery:

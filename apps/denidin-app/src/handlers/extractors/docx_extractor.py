@@ -42,15 +42,6 @@ class DOCXExtractor(MediaExtractor):
             return "הסכם"
         return "generic"
 
-    def __init__(self, denidin_context):
-        """
-        Initialize with DeniDin global context.
-        
-        Args:
-            denidin_context: DeniDin instance with ai_handler and config
-        """
-        super().__init__(denidin_context)
-    
     def analyze_media(self, media: Media, caption: str = "",
                        today_timestamp: Optional[int] = None, analyze: bool = True) -> Dict:
         """
@@ -76,7 +67,7 @@ class DOCXExtractor(MediaExtractor):
             media: Media object containing DOCX data in memory
             analyze: If True, use AI to analyze document (Phase 4)
             caption: User's message/question sent with the document (optional)
-            
+
         Returns:
             {
                 "raw_response": str,  # AI analysis response
@@ -86,19 +77,19 @@ class DOCXExtractor(MediaExtractor):
             }
         """
         warnings: List[str] = []
-        
+
         try:
             # Open DOCX from in-memory bytes
             docx_stream = io.BytesIO(media.data)
             doc = Document(docx_stream)
-            
+
             # Extract all paragraph text
             paragraphs = []
             for para in doc.paragraphs:
                 text = para.text.strip()
                 if text:
                     paragraphs.append(text)
-            
+
             # Extract text from tables
             for table in doc.tables:
                 for row in table.rows:
@@ -106,25 +97,25 @@ class DOCXExtractor(MediaExtractor):
                         cell_text = cell.text.strip()
                         if cell_text and cell_text not in paragraphs:
                             paragraphs.append(cell_text)
-            
+
             # CHK010: Preserve paragraph structure with double newlines
             extracted_text = "\n\n".join(paragraphs)
-            
+
             # CHK078: Empty document handling
             if not extracted_text:
                 warnings.append("Document appears empty")
-            
+
             # Phase 4: Optional AI-powered document analysis
             model_used = "python-docx"
             extraction_quality = "high"  # python-docx is deterministic
             raw_response = ""
-            
+
             if analyze and extracted_text:
                 # Call AI to analyze the extracted text
                 analysis_result = self._analyze_document(extracted_text, caption)
                 raw_response = analysis_result.get("raw_response", "")
                 model_used = f"python-docx + {analysis_result['model_used']}"
-            
+
             return {
                 "raw_response": raw_response,
                 # Feature 069 (Phase 10): deterministic doc-type signal (no AI) so
@@ -157,15 +148,15 @@ class DOCXExtractor(MediaExtractor):
                 "warnings": [f"DOCX analysis failed: {str(e)}"],
                 "model_used": "python-docx"
             }
-    
+
     def _analyze_document(self, text: str, caption: str = "") -> Dict:
         """
         Analyze extracted text using AI to determine document type and extract insights.
-        
+
         Args:
             text: Extracted text from DOCX
             caption: User's message/question sent with the document (optional)
-            
+
         Returns:
             {
                 "raw_response": str,  # Full AI response from prompt
@@ -182,16 +173,16 @@ class DOCXExtractor(MediaExtractor):
         truncated_text = text[:max_chars]
         if len(text) > max_chars:
             truncated_text += "\n[... text truncated for analysis ...]"
-        
+
         # Build prompt with optional user context
         user_context = f"\n\nUser's question/message: {caption}" if caption else ""
         addressing_note = " addressing the user's question" if caption else ""
         focusing_note = ", focusing on what the user asked about" if caption else ""
-        
+
         # Load prompt template from file (go up 4 levels: extractors → handlers → src → denidin-app)
         prompt_path = Path(__file__).parent.parent.parent.parent / "prompts" / "docx_analysis.txt"
         prompt_template = prompt_path.read_text(encoding="utf-8")
-        
+
         # Format prompt with context
         prompt = prompt_template.format(
             document_text=truncated_text,
@@ -199,27 +190,25 @@ class DOCXExtractor(MediaExtractor):
             addressing_note=addressing_note,
             focusing_note=focusing_note
         )
-        
+
         logger.info(f"[DOCXExtractor._analyze_document] Exact prompt being sent ({len(prompt)} chars):")
         logger.info(f"[DOCXExtractor._analyze_document] {prompt}")
-        
+
         try:
             # Load constitution and prepend to prompt (NO system message!)
-            constitution = self.ai_handler._load_constitution()
+            constitution = self.ai_manager.extraction_prompt_prefix()
             full_prompt = f"{constitution}\n\n{prompt}" if constitution else prompt
-            
+
             logger.debug(f"[DOCXExtractor._analyze_document] Full prompt length: {len(full_prompt)} chars")
             logger.debug(f"[DOCXExtractor._analyze_document] Constitution loaded: {bool(constitution)}")
-            logger.debug(f"[DOCXExtractor._analyze_document] Constitution preview: {constitution[:200] if constitution else 'NONE'}")
-            
+            constitution_preview = constitution[:200] if constitution else 'NONE'
+            logger.debug(f"[DOCXExtractor._analyze_document] Constitution preview: {constitution_preview}")
+
             # One standalone text call (Item17, 2026-10-01) - not a conversational turn:
             # no session, no tools. Was ai_handler.get_response, which on the legacy path
             # ran a full chat turn under a fake "docx-analysis" chat and on the backbone
-            # did not exist (the media_analysis shim has no get_response), so the
-            # analysis was always empty there. Both paths' ai_handler expose `.client`.
-            from src.core.model_calls import single_prompt_text
-            response_text = single_prompt_text(
-                self.ai_handler.client,
+            # did not exist, so the analysis was always empty there.
+            response_text = self.ai_manager.single_prompt_text(
                 model=self.config.ai_model,
                 prompt=full_prompt,
                 max_output_tokens=self.config.ai_reply_max_tokens,
@@ -239,7 +228,7 @@ class DOCXExtractor(MediaExtractor):
                 },
                 "model_used": self.config.ai_model  # Text model, not vision
             }
-            
+
         except Exception as e:
             # Fallback on AI failure
             logger.error(f"[DOCXExtractor._analyze_document] Analysis failed: {str(e)}", exc_info=True)
@@ -252,4 +241,3 @@ class DOCXExtractor(MediaExtractor):
                 },
                 "model_used": self.config.ai_model
             }
-

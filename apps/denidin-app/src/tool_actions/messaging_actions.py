@@ -6,8 +6,6 @@ bodies unchanged - one implementation, used by both paths.
 import logging
 from typing import Any, Dict, Optional
 
-from src.utils.green_api_bot import send_reaction
-
 logger = logging.getLogger(__name__)
 
 
@@ -25,8 +23,9 @@ def resolve_react_to_message_target(
     if effective_chat_id:
         try:
             session = session_manager.get_session(effective_chat_id)
-            if session.active_document_message_id:
-                return session.active_document_message_id
+            active_document_message_id: Optional[str] = session.active_document_message_id
+            if active_document_message_id:
+                return active_document_message_id
         except Exception as e:  # pylint: disable=broad-except
             logger.warning(f"[084] Could not resolve active_document_message_id: {e}")
 
@@ -34,50 +33,42 @@ def resolve_react_to_message_target(
 
 
 def build_react_to_message_payload(
-    green_api_bot, session_manager, request, effective_chat_id: Optional[str],
-    arguments: Dict[str, Any], call_id: str,
+    denidin, request, effective_chat_id: Optional[str], arguments: Dict[str, Any], call_id: str,
 ) -> Dict[str, Any]:
     """One parsed react_to_message call: resolves the target message, sends the
-    reaction, and returns the tool's output payload ({"status": "ok"|"failed"})."""
+    reaction (DeniDin.send_reaction), and returns the tool's output payload
+    ({"status": "ok"|"failed"})."""
     emoji = arguments.get("emoji", "")
     explicit_message_id = arguments.get("message_id")
+    session_manager = getattr(denidin, "session_manager", None)
     target_id = resolve_react_to_message_target(
         session_manager, request, effective_chat_id, explicit_message_id
     )
-    if not target_id or not effective_chat_id or green_api_bot is None:
+    if not target_id or not effective_chat_id:
         logger.warning(
             f"[084] react_to_message call {call_id!r}: nothing to react "
-            f"through (target_id={target_id!r}, chat_id={effective_chat_id!r}, "
-            f"green_api_bot_set={green_api_bot is not None})"
+            f"to (target_id={target_id!r}, chat_id={effective_chat_id!r})"
         )
         return {"status": "failed"}
 
-    success = send_reaction(green_api_bot, effective_chat_id, target_id, emoji)
+    success = denidin.send_reaction(effective_chat_id, target_id, emoji)
     return {"status": "ok" if success else "failed"}
 
 
-def send_progress_update_message(callback, builder, chat_id, text) -> bool:
-    """Sends one interim progress message through the turn's active callback;
-    returns whether it was sent. Best-effort - never raises."""
-    sent = False
-    if text and callback is not None:
-        try:
-            # The callback itself (denidin.py's _progress_callback_with_typing_refresh,
-            # the only concrete callback ever passed in) already wire-logs both the
-            # 'out' send and its 'in' result - logging again here duplicated every
-            # progress update's 'out' line in the wire log (found 2026-09-29, via
-            # debug_exact_calls trace review: a "sent it twice?" question that turned
-            # out to be a logging-only duplicate, not a real double send).
-            callback(text)
-            sent = True
-            if builder is not None:
-                builder.mark_progress_update_sent()
-        except Exception as e:  # pylint: disable=broad-except
-            # Best-effort, per runtime_constitution.md: a failed interim send must
-            # never fail the turn - the real final answer still has to go out below.
-            logger.warning(f"[080] send_progress_update: failed to send interim message: {e}")
-    elif not text:
+def send_progress_update_message(denidin, builder, chat_id: Optional[str], text: Optional[str]) -> bool:
+    """Sends one interim progress message in the turn in progress in `chat_id`
+    (DeniDin.send_progress_update - which wire-logs and stores it); returns whether it
+    was sent. Best-effort - never raises."""
+    if not text:
         logger.warning("[080] send_progress_update called with no text argument - nothing sent")
-    else:
-        logger.debug("[080] send_progress_update called but no progress_callback is active - nothing sent")
+        return False
+    try:
+        sent = bool(denidin.send_progress_update(chat_id, text))
+    except Exception as e:  # pylint: disable=broad-except
+        # Best-effort, per runtime_constitution.md: a failed interim send must
+        # never fail the turn - the real final answer still has to go out below.
+        logger.warning(f"[080] send_progress_update: failed to send interim message: {e}")
+        return False
+    if sent and builder is not None:
+        builder.mark_progress_update_sent()
     return sent

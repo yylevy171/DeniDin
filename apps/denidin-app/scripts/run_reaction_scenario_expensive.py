@@ -107,7 +107,6 @@ def _boot_denidin_app():
     app = denidin.initialize_app(config_dict)
     denidin.denidin_app = app
     app.green_api_bot = object()  # see run_reaction_scenario.py's own comment
-    app.ai_handler.green_api_bot = app.green_api_bot
     return app
 
 

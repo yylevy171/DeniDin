@@ -3,7 +3,7 @@ Component-Integration Test: Reminder Creation Conversation Routing (Feature 054,
 
 Verifies the full real router-dispatch path for creating a reminder: a real
 textMessage-shaped Green API notification -> bot.router -> handle_text_message ->
-WhatsAppHandler -> AIHandler.get_response -> _finalize_response ->
+WhatsAppHandler -> AIHandler.single_turn -> _finalize_response ->
 _handle_reminder_creation_proposal -> a PendingLocalToolApproval is set and an
 interactive-buttons approval prompt is sent - all real internal objects and
 real router dispatch (CONSTITUTION SS V), only the OpenAI client's
@@ -126,7 +126,7 @@ class TestReminderCreationRouting:
             model="gpt-5.6-luna",
             usage=SimpleNamespace(total_tokens=8, input_tokens=6, output_tokens=2),
         )
-        monkeypatch.setattr(denidin_app.ai_handler.client.responses, 'create', lambda **kwargs: response)
+        monkeypatch.setattr(denidin_app.ai_manager.client.responses, 'create', lambda **kwargs: response)
 
     def test_create_reminder_call_produces_pending_approval_and_button_prompt(self, denidin_app, monkeypatch):
         """
@@ -144,8 +144,8 @@ class TestReminderCreationRouting:
 
         # Ensure a clean pending-state (process-global denidin_app is reused
         # across test files within one pytest session).
-        denidin_app.ai_handler.pending_local_tool_approval_manager.clear(GODFATHER_CHAT_ID)
-        denidin_app.ai_handler.pending_approval_manager.clear(GODFATHER_CHAT_ID)
+        denidin_app.ai_manager.pending_local_tool_approval_manager.clear(GODFATHER_CHAT_ID)
+        denidin_app.ai_manager.pending_approval_manager.clear(GODFATHER_CHAT_ID)
 
         due_at = (now_local() + timedelta(hours=1)).isoformat()
         self._stub_create_reminder_response(denidin_app, monkeypatch, {
@@ -162,7 +162,7 @@ class TestReminderCreationRouting:
 
         handle_text_message(notification)
 
-        pending = denidin_app.ai_handler.pending_local_tool_approval_manager.get(GODFATHER_CHAT_ID)
+        pending = denidin_app.ai_manager.pending_local_tool_approval_manager.get(GODFATHER_CHAT_ID)
         assert pending is not None
         assert pending.tool_name == "create_reminder"
         assert pending.response_id == "resp_integration_1"
@@ -174,9 +174,9 @@ class TestReminderCreationRouting:
         assert "כן/לא" in button_send["body"]
 
         # Nothing persisted yet - only pending.
-        assert denidin_app.ai_handler.reminder_manager.list_active() == []
+        assert denidin_app.reminder_manager.list_active() == []
 
-        denidin_app.ai_handler.pending_local_tool_approval_manager.clear(GODFATHER_CHAT_ID)
+        denidin_app.ai_manager.pending_local_tool_approval_manager.clear(GODFATHER_CHAT_ID)
 
     def test_client_role_never_receives_create_reminder_tool_over_the_real_route(self, denidin_app, monkeypatch):
         """RBAC gate (FR-001), exercised through the real router/handler/RBAC-
@@ -196,7 +196,7 @@ class TestReminderCreationRouting:
                 usage=SimpleNamespace(total_tokens=4, input_tokens=3, output_tokens=1),
             )
 
-        monkeypatch.setattr(denidin_app.ai_handler.client.responses, 'create', capture_and_respond)
+        monkeypatch.setattr(denidin_app.ai_manager.client.responses, 'create', capture_and_respond)
 
         notification = self._create_notification(
             client_chat_id, client_chat_id, "Test Client",
@@ -207,4 +207,4 @@ class TestReminderCreationRouting:
 
         tool_names = [t.get("name") for t in (captured_kwargs.get("tools") or [])]
         assert "create_reminder" not in tool_names
-        assert denidin_app.ai_handler.pending_local_tool_approval_manager.get(client_chat_id) is None
+        assert denidin_app.ai_manager.pending_local_tool_approval_manager.get(client_chat_id) is None

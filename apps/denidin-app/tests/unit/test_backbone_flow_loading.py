@@ -14,12 +14,13 @@ import pytest
 from src.backbone.capability_tags import ALWAYS_PRESENT_CAPABILITIES, CapabilityTag
 from src.backbone.flow_tags import FLOW_INFO, FlowTag, flow_catalog_text
 from src.backbone.resolution_tools import RESOLUTION_TOOLS
-from src.backbone.backbone import Backbone
 from src.managers.session_manager import SessionManager
 from src.models.config import AppConfiguration
 from src.models.message import AIRequest
 from src.services.capability_reset_service import sweep_idle_capabilities
 from src.utils.time_utils import now_local
+from tests.backbone_test_support import make_backbone
+from tests.denidin_test_support import make_session_manager
 
 
 @pytest.fixture
@@ -39,7 +40,7 @@ def env(tmp_path):
         green_api_instance_id="x", green_api_token="y", ai_api_key="z",
         backbone_config={"base_dir": str(base)},
     )
-    return SimpleNamespace(config=config, sessions=SessionManager(storage_dir=str(tmp_path / "sessions")))
+    return SimpleNamespace(config=config, sessions=make_session_manager(storage_dir=str(tmp_path / "sessions")))
 
 
 def _call(name, args=None, resp_id="r"):
@@ -52,7 +53,7 @@ def _request():
 
 
 def _orch(env, client=None):
-    return Backbone(client or MagicMock(), env.config, session_manager=env.sessions)
+    return make_backbone(client or MagicMock(), env.config, session_manager=env.sessions)
 
 
 def test_flow_tools_are_offered_and_plural():
@@ -114,12 +115,37 @@ def test_reset_to_backbone_clears_both_sets(env):
 def test_instructions_carry_flow_catalog_loaded_flow_blueprints_and_lines(env):
     orch = _orch(env)
     plain = orch.build_instructions(None)
-    assert "## Flows" in plain and "flow_issue_invoice_for_payment_due:" in plain and "FLOW[" not in plain
+    assert "## Flows" in plain and "flow_morning_document_write:" in plain and "FLOW[" not in plain
     assert "## Loaded flows\n\n(none)" in plain
     loaded = orch.build_instructions([CapabilityTag.CLIENT_READ], active_flows=[FlowTag.ADD_CLIENT])
     assert "FLOW[flow_add_client]" in loaded and "CAP[cap_client_read]" in loaded
     assert loaded.index("FLOW[flow_add_client]") < loaded.index("CAP[cap_client_read]")
     assert "## Loaded flows\n\nflow_add_client" in loaded
+
+
+def test_flow_catalog_shows_only_the_backbone_flows(env):
+    """The backbone's own flow catalog lists only BACKBONE_FLOWS. The Morning
+    document flows are reached through flow_morning_document_write, which names
+    each of them - yet load_flows still accepts them directly."""
+    from pathlib import Path
+    from src.backbone.backbone import BACKBONE_FLOWS
+    document_flows = {
+        FlowTag.ISSUE_INVOICE_FOR_PAYMENT_DUE, FlowTag.ISSUE_INVOICE_RECEIPT_COMBO,
+        FlowTag.ISSUE_TRANSACTION_ACCOUNT, FlowTag.ISSUE_RECEIPT_WITHOUT_INVOICE,
+        FlowTag.ISSUE_PAYMENT_RECEIVED_WITH_REFERENCE_DOC, FlowTag.CANCEL_DOCUMENT_WITH_CREDIT_NOTE,
+        FlowTag.CANCEL_TRANSACTION_ACCOUNT,
+    }
+    assert set(BACKBONE_FLOWS) == set(FlowTag) - document_flows
+    plain = _orch(env).build_instructions(None)
+    for flow in document_flows:
+        assert f"{flow.value}:" not in plain, flow
+    write_flow = (Path(__file__).parent.parent.parent / "config" / "prompts" / "flows"
+                  / "flow_morning_document_write.md").read_text(encoding="utf-8")
+    for flow in document_flows:
+        assert f"`{flow.value}`" in write_flow, flow
+    orch = _orch(env)
+    orch._dispatch_resolution_tool("load_flows", {"flows": ["flow_issue_transaction_account"]}, "c")
+    assert orch._get_active_flows("c") == [FlowTag.ISSUE_TRANSACTION_ACCOUNT]
 
 
 def test_flows_persist_across_turns_and_rebuild_every_round(env):
@@ -128,13 +154,13 @@ def test_flows_persist_across_turns_and_rebuild_every_round(env):
         _call("load_flows", {"flows": ["flow_add_client"]}, "r1"),
         _call("send_to_user", {"text": "x"}, "r2"),
     ]
-    _orch(env, client).turn_with_rounds(_request(), chat_id="chat1", user_role="godfather")
+    _orch(env, client).single_turn(_request(), chat_id="chat1", user_role="godfather")
     first, second = (c.kwargs for c in client.responses.create.call_args_list)
     assert "FLOW[flow_add_client]" not in first["instructions"] and "FLOW[flow_add_client]" in second["instructions"]
 
     client2 = MagicMock()
     client2.responses.create.return_value = _call("send_to_user", {"text": "y"})
-    _orch(env, client2).turn_with_rounds(_request(), chat_id="chat1", user_role="godfather")
+    _orch(env, client2).single_turn(_request(), chat_id="chat1", user_role="godfather")
     assert "FLOW[flow_add_client]" in client2.responses.create.call_args.kwargs["instructions"]
 
 

@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from webapp_backend.ledger_reader import LedgerEventManager
+from webapp_backend.webapp_denidin import WebappDeniDin
 
 logger = logging.getLogger("webapp_backend")
 
@@ -534,7 +535,7 @@ class ClientsReader:
         events_fn: Optional[Callable[[], List[Dict[str, Any]]]] = None,
         generation_fn: Callable[[], int] = lambda: 0,
     ) -> None:
-        self._events_dir = str(Path(data_root) / "events")
+        self._denidin = WebappDeniDin(data_root)
         self._clients_dir = Path(clients_data_root)
         self._official_clients_fn = official_clients_fn
         # When wired to the app's shared LedgerReader, events come from its in-memory index
@@ -591,7 +592,7 @@ class ClientsReader:
         if self._events_fn is not None:
             all_events = self._events_fn()
         else:
-            all_events = LedgerEventManager(self._events_dir).list_events()
+            all_events = LedgerEventManager(self._denidin).list_events()
 
         stats, unmatched, amount_to_clients = _aggregate_events(all_events, official_clients, manual_mapping)
         _apply_comment_rules(stats, client_comments)

@@ -66,8 +66,8 @@ CAPABILITY_INFO: tuple = (
         "transaction account, a credit note, or a combo tax-invoice/receipt - or "
         "cancelling a transaction account. Writes only: finding the client or the "
         "existing document, and getting approval, are the calling flow's job, so "
-        "load it only through that flow (flow_issue_*, flow_cancel_*, "
-        "flow_payment_received_*), never directly. Not for creating or updating a "
+        "load it only through that flow (reached through "
+        "flow_morning_document_write), never directly. Not for creating or updating a "
         "client record - see cap_client_write.",
     ),
     CapabilityInfo(

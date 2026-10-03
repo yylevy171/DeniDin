@@ -5,47 +5,37 @@ Phase 5 (002+007): Memory system integration
 Phase 6: RBAC (Role-Based Access Control)
 """
 import contextvars
-import copy
 import json
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, cast, Optional, List, Dict
+from typing import Any, Callable, cast, Optional, List, Dict
 
-from openai import OpenAI, APITimeoutError, RateLimitError, APIError
-from src.models.config import AppConfiguration
+from openai import APITimeoutError, RateLimitError, APIError
 from src.models.message import (
     WhatsAppMessage, AIRequest, AIResponse,
     NO_REPLY_SENTINEL as _NO_REPLY_SENTINEL, should_reply_for,
 )
 from src.utils.logger import get_logger, read_version, DEFAULT_VERSION_FILE
-from src.utils.green_api_bot import send_reaction
-from src.utils.time_utils import now_local, local_from_timestamp, to_local
+from src.utils.time_utils import now_local, local_from_timestamp
 from src.utils.wire_log import audit_wire, debug_wire
-from src.managers.session_manager import SessionManager, Session
-from src.core.turn_context import load_rolling_window, recall_memory_context
-from src.core.write_guards import (
-    AFFIRMATIVE_REPLIES, approved_write_not_run_message, is_affirmative_reply, mcp_error_text,
-    tally_write_executions, write_subject,
+from src.core.ai_manager import AIManager, MORNING_READ_MCP_TOOLS, MORNING_WRITE_MCP_TOOLS
+from src.managers.ledger_event_manager import is_incomplete_capture
+from src.managers.ledger_event_recognizer import (
+    LEDGER_EVENT_TOOL, LEDGER_QUERY_AUTHORIZED_ROLES,
 )
-from src.core.turn_result import (
-    extract_mcp_call_items, finish_reason_of, fit_for_whatsapp,
-    log_possible_hallucinated_confirmation,
+from src.utils.function_calls import (
+    extract_all_function_calls, extract_function_call, extract_function_call_id,
 )
-from src.managers.roll_marker_store import RollMarkerStore
-from src.managers.memory_manager import MemoryManager
-from src.managers.ledger_event_manager import LedgerEventManager, is_incomplete_capture
-from src.managers.user_manager import UserManager
 from src.managers.pending_approval_manager import (
     PendingApprovalManager, PendingApproval, BUTTON_ID_APPROVE
 )
 from src.managers.reminder_manager import (
-    ReminderManager, ReminderPastDateError, ReminderCapExceededError, ReminderNotFoundError,
+    ReminderPastDateError, ReminderCapExceededError, ReminderNotFoundError,
     InvalidRecurrenceError, OccurrenceNotFoundError,
 )
-from src.managers.doc_template_engine import DocTemplateEngine
 from src.handlers.fee_agreement_tools import (
-    FeeAgreementToolHandler, GET_FEE_AGREEMENT_TEMPLATE_TOOL,
+    GET_FEE_AGREEMENT_TEMPLATE_TOOL,
     RENDER_FEE_AGREEMENT_DOCUMENT_TOOL,
     VERIFY_FEE_AGREEMENT_DOCUMENT_TOOL, SEND_FEE_AGREEMENT_DOCUMENT_TOOL,
 )
@@ -53,7 +43,17 @@ from src.managers.pending_local_tool_approval_manager import (
     PendingLocalToolApprovalManager, PendingLocalToolApproval,
 )
 from src.models.user import Role
-from src.handlers.morning_mcp_locator import MorningMcpLocator
+from src.tool_actions.messaging_actions import (
+    build_react_to_message_payload, resolve_react_to_message_target, send_progress_update_message,
+)
+from src.tool_actions.reminder_actions import (
+    build_list_reminders_summary, execute_reminder_action, resolve_literal_sender,
+    format_reminder_schedule as _format_reminder_schedule,
+)
+from src.tool_actions.tool_schemas import (
+    CREATE_REMINDER_TOOL, LIST_REMINDERS_TOOL, MODIFY_REMINDER_TOOL, DELETE_REMINDER_TOOL,
+    SEND_PROGRESS_UPDATE_TOOL, QUERY_LEDGER_EVENTS_TOOL, REACT_TO_MESSAGE_TOOL,
+)
 from src.constants.error_messages import (
     APPROVAL_FAILED_TRY_AGAIN, APPROVAL_POSSIBLY_DUPLICATED, LEDGER_FOLLOWUP_FAILED_TRY_AGAIN,
     REMINDER_ACTION_FAILED_TRY_AGAIN, REMINDER_PAST_DATE_REJECTED, REMINDER_CAP_EXCEEDED,
@@ -91,12 +91,8 @@ MORNING_MCP_AUTHORIZED_ROLES = (Role.GODFATHER, Role.ADMIN)
 # this app's existing blanket-access pattern, not a reminder-specific rule.
 REMINDER_AUTHORIZED_ROLES = (Role.GODFATHER, Role.ADMIN)
 
-# Roles authorized to have the query_ledger_events tool attached (Feature 044)
-# - its own distinct constant (not a reuse of MORNING_MCP_AUTHORIZED_ROLES/
-# REMINDER_AUTHORIZED_ROLES, even though the values coincide today), matching
-# this codebase's existing per-feature-constant convention (research.md
-# Decision 9).
-LEDGER_QUERY_AUTHORIZED_ROLES = (Role.GODFATHER, Role.ADMIN)
+# Roles authorized to have the query_ledger_events tool attached (Feature 044) -
+# defined with the ledger recognition, which is gated by the same predicate.
 
 # Feature 039 (US4a): the model outputs this exact string as its entire response_text
 # to mean "send nothing back" (e.g. a group message clearly directed at someone else,
@@ -111,7 +107,7 @@ LEDGER_QUERY_AUTHORIZED_ROLES = (Role.GODFATHER, Role.ADMIN)
 NO_REPLY_SENTINEL = _NO_REPLY_SENTINEL
 
 # Feature 080 (REQ-080-04, research.md R3 as revised during implementation): the active
-# turn's TelemetryBuilder, if any. Set once at the top of get_response() (try/finally around
+# turn's TelemetryBuilder, if any. Set once at the top of single_turn() (try/finally around
 # the whole turn), read by every instrumented responses.create()/tool-dispatch call site via
 # .get() (defaults to None - "no telemetry this call", the correct behavior whenever the
 # feature flag is off or telemetry_manager was never configured). Thread-local by default
@@ -122,16 +118,6 @@ NO_REPLY_SENTINEL = _NO_REPLY_SENTINEL
 # across concurrent chats on different threads.
 _active_telemetry_builder: "contextvars.ContextVar[Optional[Any]]" = contextvars.ContextVar(
     "denidin_active_telemetry_builder", default=None
-)
-
-# Feature 080 (REQ-080-02): same contextvar shape/rationale as
-# _active_telemetry_builder above, for the send_progress_update local tool - set once at
-# the top of get_response() to the caller's real send function (e.g. a wrapper around
-# notification.answer), read by _handle_send_progress_update whenever the model actually
-# calls the tool. `None` (never set - most callers don't pass progress_callback, and the
-# flag being off means the tool is never attached anyway) makes the handler a no-op.
-_active_progress_callback: "contextvars.ContextVar[Optional[Callable[[str], None]]]" = contextvars.ContextVar(
-    "denidin_active_progress_callback", default=None
 )
 
 # Architectural fix (2026-08-25): _finalize_response used to run the local-tool
@@ -171,34 +157,6 @@ _active_progress_callback: "contextvars.ContextVar[Optional[Callable[[str], None
 # expected or desired behavior.
 MAX_LOCAL_TOOL_LOOP_ITERATIONS = 10
 
-def _normalize_self_mentions(text: str, own_whatsapp_number: str) -> str:
-    """bugfix-024: rewrite an @-mention of DeniDin's own WhatsApp number (WhatsApp's
-    native @-mention picker inserts the mentioned contact's raw phone number into
-    message text, never a display name - confirmed via a real Green API getWaSettings
-    call, see bugfix-024's spec; this was previously, and wrongly, assumed to always
-    render as "@DisplayName") into the name-shaped "@DeniDin" form the model's
-    existing, already-verified "@Name" addressee judgment knows how to recognize (see
-    runtime_constitution.md's Group Conversation Etiquette section and US7's case6
-    billed test) - a deterministic, code-level check performed BEFORE the text ever
-    reaches the model, not something left to model judgment (CONSTITUTION.md "NO
-    UNVERIFIED THIRD-PARTY ASSUMPTIONS").
-
-    A plain substring replace, not a regex: the real, verified mention format is an
-    exact match on `own_whatsapp_number`'s own bare-digit string (both the real
-    getWaSettings response and a real captured mention text use the identical bare
-    format, 2026-08-05) - no confirmed case involves a different digit format (e.g. a
-    "+" prefix) needing normalization, so handling one isn't justified. `str.replace`
-    already rewrites every occurrence, and can't touch anyone else's mentioned number
-    since it only ever searches for this exact self-mention substring.
-
-    No-op (returns text unchanged) if own_whatsapp_number is empty - e.g. the
-    startup fetch (denidin.py's initialize_app) failed or hasn't run, matching this
-    codebase's fail-open convention for non-critical startup data (CONSTITUTION §VI).
-    """
-    if not own_whatsapp_number:
-        return text
-    return text.replace(f"@{own_whatsapp_number}", "@DeniDin")
-
 # MCP tool names that require explicit human approval before they actually
 # execute (Feature 022; renamed from DOCUMENT_CREATING_MCP_TOOLS by Feature
 # 026, which extended coverage to client-mutating tools, not just
@@ -212,17 +170,7 @@ def _normalize_self_mentions(text: str, own_whatsapp_number: str) -> str:
 # create_combo_document_as_reference (feature 023) creates a real Morning document
 # the same way - gated for the same reason. add_client/update_client
 # (feature 026) are real, persisted client-record writes - same category.
-APPROVAL_REQUIRED_MCP_TOOLS = (
-    "create_invoice",
-    "create_transaction_account",
-    "create_combo_document",
-    "create_credit_note",
-    "create_receipt",
-    "create_combo_document_as_reference",
-    "cancel_transaction_account",
-    "add_client",
-    "update_client",
-)
+APPROVAL_REQUIRED_MCP_TOOLS = MORNING_WRITE_MCP_TOOLS
 
 # The remaining Morning MCP tools (read-only client/invoice lookups) -
 # explicitly listed as "never" require approval. Confirmed empirically
@@ -232,11 +180,7 @@ APPROVAL_REQUIRED_MCP_TOOLS = (
 # APPROVAL_REQUIRED_MCP_TOOLS) still came back as a pending
 # mcp_approval_request. Being fully explicit about both sides of the filter
 # avoids relying on that unconfirmed default.
-NO_APPROVAL_MCP_TOOLS = (
-    "list_invoices", "get_invoice_details", "get_financial_summary",
-    "download_invoice_pdf", "list_clients", "get_client_details",
-    "resolve_client_name",
-)
+NO_APPROVAL_MCP_TOOLS = MORNING_READ_MCP_TOOLS
 
 
 def _build_pending_approval_fallback_text(tool_name: str, arguments_json: str) -> str:
@@ -326,7 +270,8 @@ _GROUP_B_REFERENCE_TOOLS = {
     "cancel_transaction_account",
 }
 
-def _find_referenced_document_details(original_internal_morning_id: Optional[str], mcp_calls: List[Dict[str, Any]]) -> Optional[str]:
+def _find_referenced_document_details(original_internal_morning_id: Optional[str],
+                                      mcp_calls: List[Dict[str, Any]]) -> Optional[str]:
     """bugfix-038: find a get_invoice_details call, already executed earlier
     in this SAME turn, whose internal_morning_id argument matches original_internal_morning_id -
     and return its raw output (the referenced document's own real data, as
@@ -552,492 +497,6 @@ def _build_pending_approval_details(
     return reference_block + "\n".join(lines) + f"\n\n{APPROVAL_QUESTION}"
 
 
-# Feature 022 affirmative-reply recognition - 2026-10-01: the shared
-# core.write_guards implementation (also the backbone's); the old names stay as aliases.
-_AFFIRMATIVE_REPLIES = AFFIRMATIVE_REPLIES
-_is_affirmative_reply = is_affirmative_reply
-
-# Ledger Event Recognition (runtime_constitution.md) - a local OpenAI function tool,
-# NOT a remote MCP server: nothing is executed anywhere when the model "calls" it. The
-# API just returns structured, schema-validated arguments as a `function_call` output
-# item alongside (never instead of) the normal reply - see `extract_function_call`.
-# Used by both the text path (AIHandler) and the image path (ImageExtractor).
-#
-# `components` array (2026-07-30, REQ-DATA-004 redesign): replaces relying on the
-# model choosing to invoke this tool N times for a multi-stage/conditional agreement -
-# proven unreliable even with a materially stronger model (real evidence: two separate
-# real documents, both correctly comprehended in full by the extraction step, both still
-# only produced ONE tool call each, with every component after the first dumped into
-# free-text `notes` instead of split out - see spec.md's Clarifications for the full
-# investigation). A single call with a `components` array is a fundamentally more
-# reliable capability (structured output) than depending on autonomous repeated tool
-# invocation, and was validated externally (real API calls, real images, this exact
-# schema) before being wired into the app - both real test documents correctly produced
-# 3 and 6 components respectively in ONE call each.
-LEDGER_EVENT_TOOL: Dict[str, Any] = {
-    "type": "function",
-    "name": "capture_ledger_event",
-    "description": (
-        "Capture a fee-agreement or bank-deposit event mentioned in the user's message "
-        "or image, for later review and merging into the bookkeeping ledger. Call this "
-        "in addition to your normal reply - never instead of it. Only call it when the "
-        "content genuinely states, changes, or cancels a fee arrangement, or shows a "
-        "bank-transfer/deposit confirmation. Do not call it for ordinary conversation, "
-        "questions, or content unrelated to money/engagement terms. If the agreement "
-        "states multiple distinct fee components (different tracks/stages/conditions), "
-        "list ALL of them in the components array in this ONE call - never omit any, "
-        "never merge them into one component, and never make a second separate call for "
-        "the same agreement. "
-        "Feature 025: this tool also serves a second, different job - source_type=חשבונית "
-        "transcribes a Morning accounting document's already-structured fields verbatim "
-        "(from the document data given directly in your instructions), never inferred "
-        "from conversation text - a distinct task from recognizing a fee-agreement/bank-"
-        "deposit signal in free text or an image."
-    ),
-    "strict": True,
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "source_type": {
-                "type": "string",
-                "enum": ["הסכם", "בנק", "חשבונית"],
-                "description": (
-                    "הסכם for a fee-agreement event, בנק for a bank deposit/transfer, "
-                    "חשבונית for a Morning-sourced accounting document (any document "
-                    "type - invoice, receipt, credit note, etc.) transcribed from "
-                    "structured document data given to you directly, never inferred "
-                    "from conversation."
-                ),
-            },
-            "event_subtype": {
-                "type": "string",
-                # עדכון/ביטול/אישור-מימוש disabled until further notice (2026-08-03) -
-                # the downstream tooling to reconcile a correction/cancellation/payment-
-                # confirmation against a specific prior record doesn't exist yet. A
-                # correction, cancellation, or payment confirmation for an existing
-                # agreement is captured as a fresh יצירה describing the current state
-                # instead - see runtime_constitution.md's Ledger Event Recognition
-                # section. Restore these enum values here when that capability is built.
-                "enum": ["יצירה", "הפקדה", "הפקה"],
-                "description": (
-                    "For source_type=הסכם: always יצירה (a correction/cancellation/"
-                    "payment-confirmation for an existing arrangement is still captured "
-                    "as יצירה, describing the current state - see the constitution). "
-                    "For source_type=בנק: always הפקדה. For source_type=חשבונית: pass "
-                    "הפקה as a placeholder - it is IGNORED and overwritten by code with "
-                    "the document's real Morning type (e.g. חשבונית מס, חשבונית זיכוי, "
-                    "קבלה), read from the accounting_document_json payload. Applies to "
-                    "the whole call - every component shares the same subtype."
-                ),
-            },
-            "client_name": {
-                "type": ["string", "null"],
-                "description": (
-                    "The client's name, verbatim. For source_type=בנק, this is the "
-                    "depositor/account-holder name shown on the bank-transfer confirmation "
-                    "or banking-app screenshot ('שם חשבון מחויב' or the 'העברה מ-X' line) - "
-                    "always put it here, never in payer_name, which does not apply to בנק "
-                    "events at all (see payer_name's own description)."
-                ),
-            },
-            "payer_name": {
-                "type": ["string", "null"],
-                "description": (
-                    "For source_type=הסכם ONLY: the paying entity, ONLY if different from "
-                    "client_name (e.g. an insurer/union routing payment). Watch specifically "
-                    "for 'דרך X' / 'באמצעות X' / 'via X' / 'through X' near a client's name "
-                    "(often its own line right after the client name) - a strong, common "
-                    "signal that X is the payer, not part of the agreement_id's label "
-                    "component or description. "
-                    "ALWAYS null for source_type=בנק - a bank deposit's account-holder name "
-                    "goes in client_name, never here; there is no payer/client distinction "
-                    "for a בנק event."
-                ),
-            },
-            "agreement_id": {
-                "type": ["string", "null"],
-                "description": (
-                    "The unique id for the matter/agreement as a whole - YOU build this "
-                    "string yourself, once, in the exact format "
-                    "'{MM}{YY}-{client_slug}-{label_slug}' (e.g. '0726-אתי_אסולין-ערעור_לארצי'): "
-                    "MM/YY are the current month/year (from today's date given to you in your "
-                    "instructions); client_slug is client_name with every run of whitespace/"
-                    "punctuation replaced by a single underscore (no leading/trailing "
-                    "underscore); label_slug is the same transform applied to a short "
-                    "human-readable Hebrew label for the matter as a whole (e.g. 'ערעור "
-                    "לארצי', 'תביעת נזיקין נגד מדינה' - a few words, not a full sentence) - "
-                    "that label exists only inside this string, never as a separate field "
-                    "anywhere. Required (non-null) for source_type=הסכם; always null for בנק. "
-                    "Build it ONCE, when this matter's first component(s) are created, then "
-                    "reuse this EXACT string verbatim for every later component/message "
-                    "referencing this SAME matter - never rebuild, reword, or vary it."
-                ),
-            },
-            "reference_hint": {
-                "type": ["string", "null"],
-                "description": (
-                    "Free-text explanation of how this event relates to a PRIOR one already "
-                    "captured earlier in this SAME conversation - covers replacing/correcting/"
-                    "cancelling a prior arrangement, an explicit ADDITION/supplement to one "
-                    "('תוספת', 'עוד X על מה ששולם', 'בנוסף ל-'), AND a looser, non-superseding "
-                    "relation to a related matter - all of these are a 'reference', uniformly "
-                    "(there is no separate 'replace' mechanism). Set this whenever the message "
-                    "itself uses this kind of language, even if you can't identify exactly "
-                    "which prior event it targets - describe what you DO know (amount "
-                    "mentioned, approximate timing, client) so a human/script can resolve it "
-                    "later; never skip it just because the exact match is unclear. "
-                    "Conversely: leave this null for a plain NEW mention with no correction/"
-                    "addition/cancellation language at all (e.g. a fresh hourly work-log entry, "
-                    "a brand-new fee agreement) - superficial similarity to another entry "
-                    "(same client, similar amount) is NOT by itself a reason to set this."
-                ),
-            },
-            "bank_number": {
-                "type": ["string", "null"],
-                "description": (
-                    "The bank's NUMBER (e.g. '31'), never its name - only for source_type=בנק, "
-                    "always null for הסכם. A deposit screenshot's extracted text gives you the "
-                    "number, not a name - never guess or invent a bank name to fill this in. "
-                    "Null if the screenshot doesn't state it clearly."
-                ),
-            },
-            "bank_branch": {
-                "type": ["string", "null"],
-                "description": "The bank branch number, only for source_type=בנק, always null for הסכם.",
-            },
-            "bank_account": {
-                "type": ["string", "null"],
-                "description": "The bank account number, only for source_type=בנק, always null for הסכם.",
-            },
-            "accounting_document_json": {
-                "type": ["string", "null"],
-                "description": (
-                    "Only for source_type=חשבונית: the document's ENTIRE JSON object, "
-                    "copied verbatim and unmodified from the tool output you were given "
-                    "(the whole {...} object for that one document, as a single string) - "
-                    "the background reconciliation sweep's document listing, OR the "
-                    "successful create_* result from the turn the operator had you issue "
-                    "the document. Do not summarise it, reorder it, translate it, drop "
-                    "fields, or fill anything in yourself - every value is read out of "
-                    "this JSON by code. ALWAYS null for הסכם/בנק."
-                ),
-            },
-            "component_count": {
-                "type": "integer",
-                "description": (
-                    "State this FIRST, before the components array below: the exact number "
-                    "of entries you are about to list in components. Every genuinely-"
-                    "qualifying event has at least one component - this must never be 0. "
-                    "components MUST end up containing EXACTLY this many entries - if you "
-                    "find yourself wanting to list a different number of components than "
-                    "you stated here, go back and make them match before responding."
-                ),
-            },
-            "components": {
-                "type": "array",
-                "description": (
-                    "One entry per genuinely distinct fee component/track/stage/condition "
-                    "stated in the document or message - even if there's only one. A base "
-                    "amount and its own VAT-inclusive total for the SAME component (e.g. "
-                    "'20,000 + VAT = 23,600') is ONE entry, not two - only split when the "
-                    "source genuinely describes separate stages/tracks/conditions, each with "
-                    "its own amount. MUST contain exactly component_count entries."
-                ),
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "component_label": {
-                            "type": ["string", "null"],
-                            "description": (
-                                "Short human-readable Hebrew label for just THIS component "
-                                "(e.g. 'בסיס', 'שעות עבודה', 'בונוס אם מגיעים לפיצויים') - a "
-                                "few words, not a full sentence, distinct from other "
-                                "components of the same agreement. Required (non-null) for "
-                                "source_type=הסכם; always null for בנק."
-                            ),
-                        },
-                        "description": {
-                            "type": ["string", "null"],
-                            "description": (
-                                "The matter/engagement for this component, verbatim or closely "
-                                "paraphrased - PLUS any ambiguity/uncertainty about THIS "
-                                "component worth flagging for the human reviewer (e.g. additive "
-                                "vs. alternative to another component), appended to the same "
-                                "field rather than a separate one. Reserve reference_hint "
-                                "specifically for reasoning about how this event relates to a "
-                                "PRIOR event - everything else about this component's own "
-                                "content goes here."
-                            ),
-                        },
-                        "amount": {
-                            "type": ["string", "null"],
-                            "description": (
-                                "The stated amount for THIS component, verbatim (no currency "
-                                "conversion, no math). MUST resolve to exactly one number - "
-                                "when both a pre-VAT base and a computed VAT-inclusive total "
-                                "are stated for this same component, use the total."
-                            ),
-                        },
-                        "percent": {"type": ["string", "null"], "description": "A stated percentage figure for this component, if any (e.g. success-fee percentage)."},
-                        "percent_base": {"type": ["string", "null"], "description": "What this component's percent applies to, if stated."},
-                        "hours": {"type": ["string", "null"], "description": "Stated hours, for an hourly work-log component."},
-                        "hourly_rate": {"type": ["string", "null"], "description": "Stated hourly rate for this component, if any."},
-                        "txn_date": {
-                            "type": ["string", "null"],
-                            "description": (
-                                "The actual calendar date this component's own content "
-                                "refers to, as ISO-8601 (YYYY-MM-DD), when that's distinct "
-                                "from the message's own timestamp. Two cases: (1) for an "
-                                "hourly work-log component (this component's 'hours' is "
-                                "non-null) - REQUIRED (non-null) - the actual date the hours "
-                                "were worked; resolve relative phrases like 'אתמול'/'היום' "
-                                "yourself using the current date given to you in your "
-                                "instructions. (2) for a source_type=בנק component - OPTIONAL "
-                                "- the transaction/value date the screenshot itself states, "
-                                "ONLY when the screenshot shows an explicit date distinct from "
-                                "other dates that might also appear on screen (e.g. when it "
-                                "was forwarded). Null in every other case. For a "
-                                "source_type=הסכם component this means: non-null ONLY in case "
-                                "(1), an hourly work-log - an agreement's own signing/"
-                                "execution date ('נחתם ביום ...') is NEVER txn_date. Never a "
-                                "substitute for the real message timestamp - that stays "
-                                "whatever it actually is, independent of this field."
-                            ),
-                        },
-                        "vat_status": {
-                            "type": "string",
-                            "enum": ["כולל", "לא כולל", "לא צוין"],
-                            "description": "VAT-inclusive, VAT-exclusive, or not stated for THIS component - never assumed.",
-                        },
-                        "trigger_condition": {
-                            "type": ["string", "null"],
-                            "description": (
-                                "The condition THIS component's amount/existence depends on, "
-                                "verbatim or closely paraphrased, when the source states one "
-                                "(e.g. 'אם הבקשה נקבעת לדיון', 'במידה ועושים גם ברע', 'בתנאי "
-                                "ש...') - only for source_type=הסכם, always null for בנק and "
-                                "for an unconditional component. Put the condition itself here, "
-                                "not in description - description is for the component's own "
-                                "matter/content, this is specifically for what has to happen "
-                                "for it to apply. A percentage success-fee (its fee is "
-                                "contingent on the outcome, e.g. 'מכל סכום שייפסק') and a "
-                                "per-occurrence fee ('עבור כל ישיבת הוכחות') ARE conditional - "
-                                "state the clause here. A plain fixed retainer is NOT: "
-                                "due-date / payment-timing wording ('לתשלום עם חתימת ההסכם', "
-                                "'ישולם תוך 30 יום') is never a trigger_condition, and never "
-                                "invent one the source did not state."
-                            ),
-                        },
-                    },
-                    "required": [
-                        "component_label", "description", "amount", "percent", "percent_base",
-                        "hours", "hourly_rate", "txn_date", "vat_status", "trigger_condition",
-                    ],
-                    "additionalProperties": False,
-                },
-            },
-        },
-        "required": [
-            "source_type", "event_subtype", "client_name", "payer_name", "agreement_id",
-            "reference_hint", "bank_number", "bank_branch", "bank_account",
-            "accounting_document_json",
-            "component_count", "components",
-        ],
-        "additionalProperties": False,
-    },
-}
-
-
-# Feature 069 (mechanism move): the post-turn recognition call reports its verdict
-# by calling this dedicated function tool. Its `event` sub-object reuses
-# LEDGER_EVENT_TOOL's parameter schema verbatim (the same prose->schema mapping the
-# old inline capture_ledger_event tool performed), wrapped with the tri-state
-# verdict envelope (data-model.md 2 / contracts/recognition-and-logging.md C2).
-# NOT `strict` - the envelope is genuinely a union (event is populated only for
-# `complete`, the declined-only fields only for `declined`).
-RECOGNITION_TOOL_NAME = "report_ledger_recognition"
-
-RECOGNITION_TOOL: Dict[str, Any] = {
-    "type": "function",
-    "name": RECOGNITION_TOOL_NAME,
-    "description": (
-        "Report whether THIS conversational round finished a complete, ledger-worthy "
-        "event (a fee agreement, a bank deposit, or a Morning accounting document "
-        "created this turn). Call this exactly once. "
-        "verdict='complete' ONLY when every mandatory field for the event's "
-        "source_type is already present in the conversation (client resolved to an "
-        "exact Morning client name included) - then fill `event` with the full "
-        "schema mapping and set `trigger_message_id` to the id of the message that "
-        "first stated the event. "
-        "verdict='declined' ONLY when the operator was offered the closed "
-        "store-anyway question and explicitly answered not to store - set "
-        "source_type + client_name_stated + reason. "
-        "verdict='none' for everything else: ordinary conversation, a still-missing "
-        "mandatory field, an unresolved/ambiguous client, a read-only Morning "
-        "question, or a mid-flow turn that has not yet completed the event. "
-        "A bare contact detail sent on its own - an email address, a phone number, "
-        "an ID/tax number, a mailing address - or a bare client name, a greeting, "
-        "or a status question, with NO fee arrangement, NO deposit/transfer and NO "
-        "Morning document created this turn, is NOT a ledger event: verdict='none'. "
-        "Providing a missing field for a client record (e.g. answering \"what's "
-        "their email?\") is client-record maintenance, never a ledger event. "
-        "verdict='none' should also set `none_reason` to a short phrase naming why "
-        "(e.g. 'client unresolved - no MCP evidence', 'ordinary conversation', "
-        "'missing amount') - this is logged for debugging a silently dropped event "
-        "later and is never surfaced to the operator."
-    ),
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "verdict": {
-                "type": "string",
-                "enum": ["complete", "none", "declined"],
-                "description": "The tri-state recognition verdict for this round.",
-            },
-            "event": {
-                "type": ["object", "null"],
-                "description": (
-                    "Populated ONLY for verdict='complete': the finished event mapped "
-                    "onto the ledger schema (same fields capture_ledger_event used). "
-                    "One event per call - a staggered sibling that completes on a "
-                    "later turn is reported by that later turn's call."
-                ),
-                "properties": copy.deepcopy(LEDGER_EVENT_TOOL["parameters"]["properties"]),
-            },
-            "trigger_message_id": {
-                "type": ["string", "null"],
-                "description": (
-                    "verdict='complete' only: the id of the conversation message that "
-                    "first stated this event - the ledgerer reads its timestamp for "
-                    "event_datetime. Null otherwise."
-                ),
-            },
-            "source_type": {
-                "type": ["string", "null"],
-                "description": "verdict='declined' only: הסכם or בנק. Null otherwise.",
-            },
-            "client_name_stated": {
-                "type": ["string", "null"],
-                "description": (
-                    "verdict='declined' only: the client name the operator used, "
-                    "verbatim free text (need not resolve to a Morning client). "
-                    "Null otherwise."
-                ),
-            },
-            "reason": {
-                "type": ["string", "null"],
-                "description": "verdict='declined' only: always 'declined_by_operator'. Null otherwise.",
-            },
-            "none_reason": {
-                "type": ["string", "null"],
-                "description": (
-                    "verdict='none' only: a short phrase naming why this round wasn't "
-                    "captured (e.g. 'client unresolved - no MCP evidence', 'ordinary "
-                    "conversation', 'missing amount'). Logged for debugging a silently "
-                    "dropped event later - never surfaced to the operator. Null otherwise."
-                ),
-            },
-        },
-        "required": ["verdict"],
-        "additionalProperties": False,
-    },
-}
-
-
-_STASH_MISSING = "לא זוהה"
-
-
-def _stash_val(value: Any) -> str:
-    """One stash field value, or the fixed 'not recognised' token."""
-    if value is None:
-        return _STASH_MISSING
-    text = str(value).strip()
-    return text or _STASH_MISSING
-
-
-def build_ledger_stash_text(
-    extracted_text: Optional[str],
-    analysis: Optional[Dict],
-    source_type: str,
-    source_medium: str = "image",
-) -> str:
-    """Feature 069 C3: render a media extractor's ledger-event analysis + the
-    VERBATIM text read off the file into one structured Hebrew "stash" block.
-
-    A synthetic conversational turn carries this stash as its `text_content`, so
-    the model does ordinary client resolution (`resolve_client_name` / `add_client`
-    / the approval gate) and the post-turn recognition call then sees the full
-    payload. `analysis` is one event's fields (the shape
-    `capture_ledger_events_from_text` returns per event) or None for a `.docx`
-    where only the parsed body text is available.
-
-    `source_type` ∈ {"בנק", "הסכם"}; `source_medium` ∈ {"image", "document"}.
-    """
-    a = analysis or {}
-    is_doc = source_medium == "document"
-    lines: List[str] = []
-
-    if source_type == "בנק":
-        # A בנק event always carries exactly one component (component_count: 1);
-        # amount and txn_date live on it, not at the top level.
-        comp = (a.get("components") or [{}])[0]
-        lines.append("📸 התקבלה תמונה של אסמכתת העברה/הפקדה בנקאית.")
-        lines.append(f"פעולה: {_stash_val(a.get('event_subtype') or 'הפקדה')}")
-        lines.append(f"סכום: {_stash_val(comp.get('amount'))}")
-        lines.append(f"תאריך הפקדה: {_stash_val(comp.get('txn_date'))}")
-        lines.append(f"מספר בנק: {_stash_val(a.get('bank_number'))}")
-        lines.append(f"מספר סניף: {_stash_val(a.get('bank_branch'))}")
-        lines.append(f"מספר חשבון: {_stash_val(a.get('bank_account'))}")
-        lines.append(f"לקוח משלם: {_stash_val(a.get('client_name'))}")
-    else:  # הסכם
-        lines.append(
-            "📄 התקבל קובץ מסמך (DOCX) של הסכם שכר טרחה."
-            if is_doc else
-            "📸 התקבלה תמונה של הסכם שכר טרחה."
-        )
-        lines.append(f"תת-סוג: {_stash_val(a.get('event_subtype') or 'יצירה')}")
-        lines.append(f"שם הלקוח בהסכם: {_stash_val(a.get('client_name'))}")
-        lines.append(f"תאריך ההסכם: {_stash_val(a.get('agreement_date') or a.get('txn_date'))}")
-        components = a.get("components") or []
-        for comp in components:
-            if comp.get("percent") is not None:
-                basis = comp.get("percent_base") or comp.get("description") or ""
-                lines.append(f"אחוז: {_stash_val(comp.get('percent'))} — {_stash_val(basis)}")
-            else:
-                cur = comp.get("currency") or "שקל"
-                desc = comp.get("description") or comp.get("component_label") or ""
-                lines.append(f"סכום קבוע: {_stash_val(comp.get('amount'))} {cur} — {_stash_val(desc)}")
-        lines.append(f'מע"מ: {_stash_val(a.get("vat_status"))}')
-        lines.append(f"שם המשלם: {_stash_val(a.get('payer_name'))}")
-
-    frame = (
-        "--- טקסט שחולץ מהמסמך (מילה במילה) ---"
-        if is_doc else
-        "--- טקסט שחולץ מהתמונה (מילה במילה) ---"
-    )
-    lines.append("")
-    lines.append(frame)
-    lines.append((extracted_text or "").strip() or _STASH_MISSING)
-    return "\n".join(lines)
-
-
-from src.tool_actions.morning_mcp import resolve_morning_mcp_connection
-from src.tool_actions.messaging_actions import (  # noqa: F401
-    build_react_to_message_payload, resolve_react_to_message_target, send_progress_update_message,
-)
-from src.tool_actions.reminder_actions import (  # noqa: F401
-    build_list_reminders_summary, execute_reminder_action, resolve_literal_sender,
-    format_reminder_schedule as _format_reminder_schedule,
-)
-from src.tool_actions.tool_schemas import (  # noqa: F401  (re-exported: callers/tests import these from ai_handler)
-    CREATE_REMINDER_TOOL, LIST_REMINDERS_TOOL, MODIFY_REMINDER_TOOL, DELETE_REMINDER_TOOL,
-    SEND_PROGRESS_UPDATE_TOOL, QUERY_LEDGER_EVENTS_TOOL, REACT_TO_MESSAGE_TOOL,
-)
-
-if TYPE_CHECKING:
-    from src.core.chat_log import ChatLog
-
-
 def _build_reminder_approval_details(
     tool_name: str, args: Dict[str, Any], due_at_iso: Optional[str] = None,
     rrule_str: Optional[str] = None, current_message_text: Optional[str] = None,
@@ -1084,114 +543,21 @@ def _build_reminder_approval_details(
     return f"יש פעולת תזכורת הממתינה לאישורך.\n\n{APPROVAL_QUESTION}"
 
 
-def extract_function_call(response, tool_name: str) -> Optional[Dict]:
-    """Find a `function_call` item named `tool_name` in a Responses API `response.output`
-    and return its parsed arguments, or None if absent.
-
-    Never raises - malformed `arguments` JSON is logged and treated as "not called",
-    the same as if the model hadn't called the tool at all. Shared by the text path
-    (AIHandler._finalize_response) and the image path (ImageExtractor._vision_extract) -
-    the extraction logic itself doesn't care which one is calling it.
+class AIHandler(AIManager):
     """
-    for item in (getattr(response, "output", None) or []):
-        if getattr(item, "type", None) != "function_call" or getattr(item, "name", None) != tool_name:
-            continue
-        try:
-            return cast(Dict, json.loads(item.arguments))
-        except json.JSONDecodeError as e:
-            logger.warning(f"Malformed {tool_name!r} function_call arguments discarded: {e}")
-            return None
-    return None
-
-
-def extract_function_call_id(response, tool_name: str) -> Optional[str]:
-    """Find a `function_call` item named `tool_name` in a Responses API `response.output`
-    and return its `call_id`, or None if absent.
-
-    Companion to `extract_function_call` - needed only when a real second round-trip
-    must report a result back for this specific call (see AIHandler._finalize_response's
-    ledger-event follow-up: reasoning models emit a `function_call` OR a final `message`
-    in one turn, never both, so `output_text` is empty until the call's result is
-    reported back via `previous_response_id` + `function_call_output`).
-    """
-    for item in (getattr(response, "output", None) or []):
-        if getattr(item, "type", None) != "function_call" or getattr(item, "name", None) != tool_name:
-            continue
-        return getattr(item, "call_id", None)
-    return None
-
-
-def extract_all_function_calls(response, tool_name: str) -> List[Dict]:
-    """Find EVERY `function_call` item named `tool_name` in a Responses API
-    `response.output`, returning each as {"arguments": dict, "call_id": str}.
-
-    A single turn can legitimately contain more than one call to the same tool -
-    e.g. runtime_constitution.md's Ledger Event Recognition explicitly wants one
-    capture per hourly work-log entry, never aggregated, so a message describing
-    several entries produces several `capture_ledger_event` calls in one turn.
-    OpenAI requires a `function_call_output` for EVERY pending function call
-    before it will continue a conversation (confirmed empirically, 2026-07-28: a
-    follow-up round-trip that only resolved the first of two calls was rejected
-    with "No tool output found for function call ..."), so any follow-up must
-    account for all of them, not just the first (unlike `extract_function_call`/
-    `extract_function_call_id`, which only ever return the first match).
-
-    Never raises - malformed `arguments` JSON on any individual item (most often a
-    truncated response - see `arguments=None` below) is logged and kept in the
-    results with `arguments=None`, NOT dropped: OpenAI still considers that
-    call_id pending regardless of whether we could parse it, so any follow-up
-    must still resolve it (bugfix-018 - a dropped call_id here left OpenAI
-    rejecting the whole follow-up with "No tool output found for function call
-    ...", which in turn left the user with a silently empty reply).
-    """
-    results = []
-    for item in (getattr(response, "output", None) or []):
-        if getattr(item, "type", None) != "function_call" or getattr(item, "name", None) != tool_name:
-            continue
-        call_id = getattr(item, "call_id", None)
-        try:
-            arguments = json.loads(item.arguments)
-        except json.JSONDecodeError as e:
-            logger.warning(f"Malformed {tool_name!r} function_call arguments discarded: {e}")
-            results.append({"arguments": None, "call_id": call_id})
-            continue
-        results.append({"arguments": arguments, "call_id": call_id})
-    return results
-
-
-# Maximum message length to prevent excessive API costs
-MAX_MESSAGE_LENGTH = 10000
-
-
-class AIHandler:
-    """
-    Handles AI operations including request creation and OpenAI API calls.
-    Implements retry logic with exponential backoff for transient failures.
+    The legacy AI implementation (flag off): one OpenAI Responses API call per turn
+    against the runtime constitution, with its own approval-gate state. Built by
+    initialize_app only when the backbone flag is off (REQ-063-08); DeniDin's data is
+    handed in, never built here.
     """
 
-    def __init__(self, ai_client: OpenAI, config: AppConfiguration, telemetry_manager: Optional[Any] = None):
+    def __init__(self, denidin: Any):
         """
-        Initialize AI handler with OpenAI client and configuration.
-
         Args:
-            ai_client: Configured AI client instance (OpenAI)
-            config: Application configuration with AI settings
-            telemetry_manager: Feature 080 - the RequestTelemetry SQLite store, constructed
-                by initialize_app() unconditionally (the feature flag that used to gate this
-                has been removed, 2026-09-12, explicit operator instruction). Still Optional
-                (None is accepted and every instrumented call site no-ops) for tests that
-                construct AIHandler directly without one.
+            denidin: the DeniDin object (see AIManager).
         """
-        self.client = ai_client
-        self.config = config
-        self.telemetry_manager = telemetry_manager
-
-        # Feature 084 (WhatsApp reactions): set as a post-construction attribute by
-        # denidin.py once the live Green API bot exists (same idiom as
-        # DeniDin.green_api_bot - AIHandler is constructed before that bot does).
-        # None in every test that never sets it - _handle_react_to_message treats
-        # that as "nothing to react through," never raises.
-        self.green_api_bot: Optional[Any] = None
+        super().__init__(denidin)
+        config = self.config
 
         # Feature 034 (REQ-VER-005): read once at construction, not per-call - a version
         # can't change mid-process (research.md Decision 4), unlike today's date below.
@@ -1201,163 +567,32 @@ class AIHandler:
         self._constitution_content: Optional[str] = None
         self._constitution_mtime: Optional[float] = None
 
-        # Feature 069: the dedicated post-turn ledger-recognition prompt, loaded
-        # from config/ledger_recognition_prompt.md (same base_dir as the
-        # constitution), mtime-cached exactly like it - NOT part of the
-        # constitution the conversational turn sees.
-        self._recognition_prompt_content: Optional[str] = None
-        self._recognition_prompt_mtime: Optional[float] = None
-
-        # Memory system and RBAC are always on (2026-07-14 decision: both
-        # graduated from feature flags to permanent behavior).
-        self.memory_enabled = True
-        self.memory_manager = None
-
-        self.rbac_enabled = True
-        self.user_manager = None
-
-        logger.info("RBAC enabled - initializing UserManager")
-        godfather_phone = getattr(config, 'godfather_phone', None)
-        user_roles = getattr(config, 'user_roles', {})
-        admin_phones = user_roles.get('admin_phones', [])
-        blocked_phones = user_roles.get('blocked_phones', [])
-        logger.debug(
-            "UserManager config: godfather_phone_set=%s, admin_phones=%d, blocked_phones=%d",
-            bool(godfather_phone),
-            len(admin_phones),
-            len(blocked_phones)
-        )
-
-        self.user_manager = UserManager(
-            godfather_phone=godfather_phone,
-            admin_phones=admin_phones,
-            blocked_phones=blocked_phones
-        )
-        logger.info(f"UserManager initialized with godfather: {godfather_phone}, admins: {len(admin_phones)}, blocked: {len(blocked_phones)}")
-
-        logger.info("Initializing SessionManager and MemoryManager")
-
-        # Initialize SessionManager
-        session_config = config.memory.get('session', {})
+        session_config = (config.memory or {}).get('session', {})
         # Feature 070: rolling verbatim window length (Israel-local calendar days)
         self.window_days = session_config.get('window_days', 14)
-
-        # Feature 070: sessions never expire; there is no cleanup thread.
-        self.session_manager = SessionManager(
-            storage_dir=session_config.get('storage_dir', 'data/sessions'),
-        )
-
-        # Feature 070: idempotency ledger for the nightly daily-summary roll.
-        # Deliberately NOT under {data_root}/memory/ - ChromaDB owns that dir.
-        roll_config = (config.memory or {}).get('roll', {}) or {}
-        self.roll_marker_store = RollMarkerStore(
-            str(Path(config.data_root) / "memory_rolls"),
-            stale_claim_minutes=int(roll_config.get('stale_claim_minutes', 120)),
-        )
-
-        # LedgerEventManager (Feature 033): sibling to MemoryManager, own permanent
-        # storage under {data_root}/events/ - composed from config.data_root at
-        # construction time (REQ-STORE-001), matching MediaFileManager's pattern,
-        # never the config.memory pre-baked-dict pattern SessionManager/MemoryManager
-        # use (events aren't session-scoped data).
-        self.ledger_event_manager = LedgerEventManager(
-            storage_dir=str(Path(config.data_root) / "events"),
-            session_manager=self.session_manager,  # Feature 069: the ledgerer reads
-        )                                          # trigger timestamps / writes back-links
-
-        # Store token limits for later use in conversation retrieval
+        # Token limits for conversation retrieval, per role
         self.max_tokens_by_role = session_config.get('max_tokens_by_role', {
             'client': 4000,
             'godfather': 100000
         })
-
-        # Initialize MemoryManager
-        longterm_config = config.memory.get('longterm', {})
-        if longterm_config.get('enabled', True):
-            self.memory_manager = MemoryManager(
-                storage_dir=longterm_config.get('storage_dir', 'data/memory'),
-                embedding_model=config.ai_embedding_model,
-                ai_client=self.client
-            )
-
-            # Store collection name and query params for later use
-            self.memory_collection_name = longterm_config.get('collection_name', 'godfather_memory')
-            self.memory_top_k = longterm_config.get('top_k_results', 5)
-            # Feature 070: the single per-turn recall must surface enough
-            # daily_summary records to cover the pre-window history - see
-            # contracts/ai-handler-recall.md.
-            self.daily_summary_top_k = longterm_config.get('daily_summary_top_k', 10)
-            self.memory_min_similarity = longterm_config.get('min_similarity', 0.7)
-
-            logger.info(f"MemoryManager initialized with collection: {self.memory_collection_name}")
-        else:
-            logger.info("Long-term memory disabled in config")
-
-        # Morning MCP integration (Feature 018): locate the current tunnel URL via
-        # the shared status file the morning-mcp-app publishes. No cross-app import.
-        self.morning_mcp_locator = MorningMcpLocator(getattr(config, 'mcp', {}) or {})
-
-        # bugfix-024: DeniDin's own WhatsApp phone number (bare digits, e.g.
-        # "972559723730"), fetched ONCE at startup via a real Green API call and set
-        # externally by denidin.py's initialize_app (never re-fetched per message -
-        # this constructor only establishes the "not yet known" default). Used by
-        # create_request to normalize a native @-mention of DeniDin's own number into
-        # the name-shaped form the model's existing addressee judgment recognizes.
-        self.own_whatsapp_number: str = ""
-        # 2026-09-30: the shared src/core/chat_log.ChatLog (set by initialize_app) - used
-        # here only to fill ledger event ids into an already-stored user message.
-        self.chat_log: Optional["ChatLog"] = None
+        longterm_config = (config.memory or {}).get('longterm', {})
+        self.memory_collection_name = longterm_config.get('collection_name', 'godfather_memory')
+        self.memory_top_k = longterm_config.get('top_k_results', 5)
+        # Feature 070: the single per-turn recall must surface enough daily_summary
+        # records to cover the pre-window history - see contracts/ai-handler-recall.md.
+        self.daily_summary_top_k = longterm_config.get('daily_summary_top_k', 10)
+        self.memory_min_similarity = longterm_config.get('min_similarity', 0.7)
 
         # Feature 022: tracks, per chat_id, an MCP document-creation call
         # currently held pending the user's explicit approval. In-memory only
         # (see PendingApprovalManager docstring for why).
         self.pending_approval_manager = PendingApprovalManager()
-
-        # Reminders (Feature 054): ReminderManager owns {data_root}/reminders/
-        # (REQ-STORE-001-style discipline, matching LedgerEventManager/
-        # MediaFileManager - composed here at construction time, never read from
-        # config internally). max_active_reminders is likewise caller-composed
-        # from config.reminders, not read by ReminderManager itself. No feature
-        # flag - RBAC (REMINDER_AUTHORIZED_ROLES) is the only gate.
-        reminders_config = getattr(config, 'reminders', {}) or {}
-        self.reminder_manager = ReminderManager(
-            storage_dir=str(Path(config.data_root) / "reminders"),
-            max_active_reminders=reminders_config.get('max_active_reminders', 20),
-        )
         # Local-tool approval gate (create_reminder/modify_reminder/delete_reminder)
         # - a separate, parallel manager to pending_approval_manager, never merged
         # into it (CONSTITUTION test-immutability protects Feature 047's existing
         # approval-gate tests; PendingApproval is structurally MCP-specific - see
         # contracts/local-tool-approval-gate.md).
         self.pending_local_tool_approval_manager = PendingLocalToolApprovalManager()
-
-        # Fee Agreement Document Generation (Feature 083) - config-driven paths
-        # (DI, no monkey-patching), same composed-at-construction-time pattern
-        # as reminder_manager above. Gating is RBAC only (GODFATHER/ADMIN, like
-        # reminders/ledger-query) - enforced by FeeAgreementToolHandler.build_tools,
-        # never by DocTemplateEngine itself. (2026-09-15: this feature previously
-        # carried an ADDITIONAL config.feature_flags['fee_agreement_docs'] gate,
-        # default False - never requested, never turned on in config.dev.json, so
-        # the feature was silently unreachable in dev despite shipping and passing
-        # every billed test against config.test.json. Removed per explicit human
-        # instruction: "THIS SHOULD BE ALWAYS TRUE" - RBAC alone is the gate, same
-        # as every sibling tool family.) All tool-facing logic for this feature
-        # lives in src/handlers/fee_agreement_tools.py, deliberately kept out of
-        # this already-oversized file.
-        fee_agreements_config = getattr(config, 'fee_agreements', {}) or {}
-        self.doc_template_engine = DocTemplateEngine(
-            templates_dir=Path(fee_agreements_config.get('templates_dir', 'config/fee_agreement_templates')),
-            tmp_dir=Path(config.data_root) / fee_agreements_config.get('tmp_dir', 'tmp/fee_agreements'),
-        )
-        self.fee_agreement_tools = FeeAgreementToolHandler(self.doc_template_engine)
-        # Injected post-construction by denidin.py's initialize_app (same DI
-        # pattern as own_whatsapp_number below) - needed only by
-        # send_fee_agreement_document, which is unreachable unless the RBAC
-        # gate above passes.
-        self.whatsapp_handler = None
-
-        # Most recent successful AIResponse, for observability/E2E test verification.
-        self.last_response: Optional[AIResponse] = None
 
         logger.debug(
             f"AIHandler initialized with models: text={config.ai_model}, "
@@ -1370,7 +605,7 @@ class AIHandler:
 
     def _timed_llm_call(self, call_fn: Callable[[], Any], *, context: str = "responses.create") -> Any:
         """Wraps one responses.create() call site with an explicit retry for the OpenAI SDK's
-        own retry gap (2026-09-30 - see model_calls.call_model_with_retry's docstring),
+        own retry gap (2026-09-30 - see AIManager.call_model_with_retry's docstring),
         plus timing + token accounting, recorded into the active turn's TelemetryBuilder
         (contextvars - see _active_telemetry_builder's module docstring), if any. Times success
         AND failure alike (a timed-out/errored call still consumed wall-clock time and must
@@ -1378,27 +613,21 @@ class AIHandler:
         the explicit retry above is exhausted) propagates unchanged; this never adds new failure
         modes. Telemetry recording is a complete no-op when no telemetry builder is active -
         the exact common case when the feature flag is off; the explicit retry always applies.
-        2026-10-01: delegates to the shared model_calls.timed_model_call, also used by the
-        backbone."""
-        from src.core.model_calls import timed_model_call
-
-        return timed_model_call(_active_telemetry_builder.get(), call_fn, context=context)
+        2026-10-01: delegates to AIManager.timed_model_call (shared with the backbone)."""
+        return self.timed_model_call(_active_telemetry_builder.get(), call_fn, context=context)
 
     def _timed_tool_call(self, tool_name: str, call_fn: Callable[[], Any], *, is_morning_tool: bool = False) -> Any:
         """Same contract as _timed_llm_call, for local function-tool dispatch and remote MCP
         tool-call handling - see contracts/telemetry-recorder.md's record_tool_call().
-        2026-10-01: delegates to the shared model_calls.timed_tool_call, also used by the
-        backbone."""
-        from src.core.model_calls import timed_tool_call
-
-        return timed_tool_call(_active_telemetry_builder.get(), tool_name, call_fn,
-                               is_morning_tool=is_morning_tool)
+        2026-10-01: delegates to AIManager.timed_tool_call (shared with the backbone)."""
+        return self.timed_tool_call(_active_telemetry_builder.get(), tool_name, call_fn,
+                                    is_morning_tool=is_morning_tool)
 
     def _load_constitution(self) -> str:
         """
         Load constitution file with mtime-based caching.
         Reads constitution file only when modified (checks mtime).
-        
+
         Returns:
             Constitution content if file exists and is configured,
             otherwise fallback to config.system_message
@@ -1406,17 +635,17 @@ class AIHandler:
         # Get constitution file from config (support both 'file' and legacy 'files' keys)
         constitution_config = self.config.constitution_config
         filename = constitution_config.get('file')
-        
+
         # Backward compatibility: if 'file' not found, try 'files' array and use first
         if not filename:
             files_array = constitution_config.get('files', [])
             if files_array:
                 filename = files_array[0]
-        
+
         # If no constitution file configured, fallback to system_message
         if not filename:
             return ""
-        
+
         # Build constitution file path. Defaults to config/ (same base as
         # CONFIG_PATH='config/config.json' in denidin.py), not data_root -
         # the constitution isn't per-environment data, it's shared config
@@ -1424,27 +653,28 @@ class AIHandler:
         # constitution_config.base_dir (e.g. tests pointing at a tmp_path).
         base_dir = constitution_config.get('base_dir', 'config')
         filepath = Path(base_dir) / filename
-        
+
         # Check if file exists
         if not filepath.exists():
             logger.warning(f"Constitution file not found: {filepath}, using system_message fallback")
             return ""
-        
+
         # Check file modification time
         try:
             current_mtime = filepath.stat().st_mtime
-            
+
             # Reload if file changed or not yet cached
             if self._constitution_mtime != current_mtime:
                 self._constitution_content = filepath.read_text(encoding='utf-8').strip()
                 self._constitution_mtime = current_mtime
-                logger.debug(f"Constitution loaded: {filename} ({len(self._constitution_content)} chars, mtime: {current_mtime})")
-            
+                logger.debug(f"Constitution loaded: {filename} "
+                             f"({len(self._constitution_content)} chars, mtime: {current_mtime})")
+
             # If constitution is empty after loading, fallback to system_message
             if not self._constitution_content:
                 logger.warning(f"Constitution file is empty: {filepath}, using system_message fallback")
                 return ""
-            
+
             return self._apply_feature_080_constitution_gate(self._constitution_content)
 
         except Exception as e:
@@ -1465,125 +695,21 @@ class AIHandler:
             return content  # markers absent - nothing to gate, return as-is
         return content.replace(start_marker, "").replace(end_marker, "")
 
-    def _load_recognition_prompt(self) -> str:
-        """Feature 069: load config/ledger_recognition_prompt.md with mtime-based
-        caching, exactly like `_load_constitution`. This is the dedicated prompt
-        the post-turn recognition call uses INSTEAD of the full constitution -
-        the constitution keeps only the conversational side of ledger events.
-
-        Resolved under the same `constitution_config.base_dir` (default 'config')
-        so a test pointing the constitution at a tmp dir picks this up from the
-        same place. Returns '' if the file is missing/empty (the caller then
-        falls back to a minimal inline directive rather than crashing).
-        """
-        constitution_config = self.config.constitution_config
-        base_dir = constitution_config.get('base_dir', 'config')
-        filepath = Path(base_dir) / 'ledger_recognition_prompt.md'
-
-        if not filepath.exists():
-            logger.warning(f"Recognition prompt file not found: {filepath}")
-            return ""
-
-        try:
-            current_mtime = filepath.stat().st_mtime
-            if self._recognition_prompt_mtime != current_mtime:
-                self._recognition_prompt_content = filepath.read_text(encoding='utf-8').strip()
-                self._recognition_prompt_mtime = current_mtime
-                logger.debug(
-                    f"Recognition prompt loaded: {filepath} "
-                    f"({len(self._recognition_prompt_content or '')} chars, mtime: {current_mtime})"
-                )
-            return self._recognition_prompt_content or ""
-        except Exception as e:
-            logger.error(f"Failed to load recognition prompt file {filepath}: {e}", exc_info=True)
-            return ""
-
-    def create_request(self, message: WhatsAppMessage, chat_id: Optional[str] = None,
-                       user_role: str = 'client', user_phone: Optional[str] = None) -> AIRequest:
-        """
-        Create an AIRequest from a WhatsApp message.
-        Validates and truncates message length if needed.
-
-        Args:
-            message: WhatsApp message to convert
-            chat_id: Optional chat ID for memory recall (uses message.chat_id if not provided)
-            user_role: User role for token limits ('client' or 'godfather') - DEPRECATED when RBAC enabled
-            user_phone: User's phone number for RBAC (uses message.sender_id if not provided)
-
-        Returns:
-            AIRequest ready for OpenAI API with optional memory context
-
-        Raises:
-            PermissionError: If user is blocked (when RBAC enabled)
-        """
-        # Use provided chat_id or fall back to message.chat_id
-        effective_chat_id = chat_id or message.chat_id
-
-        # RBAC: Check if user is blocked
-        if self.rbac_enabled and self.user_manager:
-            effective_user_phone = user_phone or message.sender_id
-            user = self.user_manager.get_user(effective_user_phone)
-
-            if user.is_blocked:
-                logger.warning(f"Blocked user attempted to create request: {effective_user_phone}")
-                raise PermissionError(f"User is blocked: {effective_user_phone}")
-
-        # bugfix-024: normalize a native @-mention of DeniDin's own number (e.g.
-        # "@972559723730") into the name-shaped "@DeniDin" form BEFORE the model ever
-        # sees it - a deterministic check, done here so both the OpenAI call and the
-        # persisted session history (which stores this same user_prompt) consistently
-        # reflect who was actually addressed. No-op for a message with no self-mention,
-        # or if own_whatsapp_number hasn't been resolved.
-        user_prompt = _normalize_self_mentions(message.text_content, self.own_whatsapp_number)
-
-        # Validate and truncate message length
-        if len(user_prompt) > MAX_MESSAGE_LENGTH:
-            logger.warning(
-                f"Message length {len(user_prompt)} exceeds maximum {MAX_MESSAGE_LENGTH} chars. "
-                f"Truncating from sender {message.sender_name}"
-            )
-            user_prompt = user_prompt[:MAX_MESSAGE_LENGTH]
-
-        # Build system message with constitution (if configured) + optional memory context
+    def _request_constitution(self, user_prompt: str, chat_id: Optional[str],
+                              user_phone: Optional[str]) -> str:
+        """The legacy request carries its instructions: the runtime constitution, plus
+        the recalled long-term memories for this message (shared recall -
+        AIManager.recall_memory_context)."""
         constitution = self._load_constitution()
-
-        # Add recalled memories if memory system enabled (shared with the Backbone -
-        # src/core/turn_context.recall_memory_context).
         if self.memory_enabled and self.memory_manager:
-            memory_context = recall_memory_context(
-                self.memory_manager, query=user_prompt, chat_id=effective_chat_id,
+            memory_context = self.recall_memory_context(
+                query=user_prompt, chat_id=chat_id,
                 top_k=self.daily_summary_top_k, min_similarity=self.memory_min_similarity,
-                user_manager=self.user_manager if self.rbac_enabled else None,
-                user_phone=(user_phone or message.sender_id) if self.rbac_enabled else None,
+                user_phone=user_phone if self.rbac_enabled else None,
             )
             if memory_context:
                 constitution += "\n\n" + memory_context
-
-        # Create AI request
-        request = AIRequest(
-            user_prompt=user_prompt,
-            constitution=constitution,
-            max_tokens=self.config.ai_reply_max_tokens,
-            model=self.config.ai_model,
-            chat_id=message.chat_id,
-            message_id=message.message_id,
-            # Feature 024: the real Green API notification timestamp - without this,
-            # AIRequest.__post_init__ silently falls back to datetime.now(), so a
-            # captured ledger event's message_timestamp (the constitution's "hard
-            # pointer") reflected processing time, not when the user actually sent
-            # the message. Same class of bug as the image path's (found and fixed
-            # 2026-07-28), just one level upstream - exposed by strengthening this
-            # feature's E2E persistence assertions to check the exact value, not
-            # just truthiness.
-            timestamp=message.timestamp,
-            # 2026-08-19: the whole original message, not just the fields this
-            # function happened to need at the time - see AIRequest.original_message's
-            # own docstring for why (ends a real created_by_phone bug for group turns).
-            original_message=message,
-        )
-
-        logger.debug(f"Created AIRequest {request.request_id} for message {message.message_id}")
-        return request
+        return constitution
 
     def _build_morning_mcp_tools(self, user_obj, correlation_id: str) -> Optional[List[Dict]]:
         """
@@ -1603,28 +729,23 @@ class AIHandler:
         if user_obj is None or user_obj.role not in MORNING_MCP_AUTHORIZED_ROLES:
             return None
 
-        connection = resolve_morning_mcp_connection(
-            self.morning_mcp_locator, self.config, correlation_id, user_obj.role,
-        )
+        connection = self.morning_mcp_connection(correlation_id, user_obj.role)
         if connection is None:
             return None
-        server_url, auth_token, mcp_config = connection
+        mcp_config = connection[2]
 
-        return [{
-            "type": "mcp",
-            "server_label": mcp_config.get('morning_server_label', 'morning-invoices'),
-            "server_url": server_url,
-            # Feature 022 (extended by Feature 026): any tool in
-            # APPROVAL_REQUIRED_MCP_TOOLS requires explicit human approval
-            # before it executes; everything in NO_APPROVAL_MCP_TOOLS proceeds
-            # immediately. Both sides of the filter are listed explicitly -
-            # see NO_APPROVAL_MCP_TOOLS's comment for why.
-            "require_approval": {
+        # Feature 022 (extended by Feature 026): any tool in APPROVAL_REQUIRED_MCP_TOOLS
+        # requires explicit human approval before it executes; everything in
+        # NO_APPROVAL_MCP_TOOLS proceeds immediately. Both sides of the filter are
+        # listed explicitly - see NO_APPROVAL_MCP_TOOLS's comment for why.
+        return [self.morning_mcp_entry(
+            connection,
+            server_label=mcp_config.get('morning_server_label', 'morning-invoices'),
+            require_approval={
                 "always": {"tool_names": list(APPROVAL_REQUIRED_MCP_TOOLS)},
                 "never": {"tool_names": list(NO_APPROVAL_MCP_TOOLS)},
             },
-            "headers": {"Authorization": f"Bearer {auth_token}"}
-        }]
+        )]
 
     def _build_reminder_tools(self, user_obj) -> List[Dict]:
         """Reminder tools (Feature 054), RBAC-gated the same way Morning MCP tools
@@ -1789,7 +910,7 @@ class AIHandler:
             logger.debug(f"Including {len(conversation_history)} messages from conversation history")
         input_items.append({"role": "user", "content": request.user_prompt})
 
-        kwargs = {
+        kwargs: Dict[str, Any] = {
             "model": request.model,
             "instructions": self._build_instructions(request.constitution, today_timestamp=request.timestamp),
             "input": input_items,
@@ -1798,61 +919,45 @@ class AIHandler:
         if tools:
             kwargs["tools"] = tools
 
-        # kwargs is built dynamically (tools conditionally added) so its inferred
-        # type (dict[str, object]) never lines up with any single overload of the
-        # SDK's heavily-overloaded create() - safe to ignore, the actual value
-        # types are correct for the Responses API.
         audit_wire("openai", "out", "_call_openai_api (initial call)", kwargs)
         debug_wire("openai", "out", "_call_openai_api (initial call)", kwargs)
-        response = self._timed_llm_call(lambda: self.client.responses.create(**kwargs))  # type: ignore[call-overload]
+        response = self._timed_llm_call(lambda: self.client.responses.create(**kwargs))
         audit_wire("openai", "in", "_call_openai_api (initial call)", response)
         debug_wire("openai", "in", "_call_openai_api (initial call)", response)
         return response
 
-    def get_response(self, request: AIRequest, chat_id: Optional[str] = None,
-                     user_role: str = 'client', sender: Optional[str] = None,
+    def single_turn(self, request: AIRequest, chat_id: Optional[str] = None, *,
+                     user_role: Optional[str] = None, sender: Optional[str] = None,
                      recipient: Optional[str] = None, user_phone: Optional[str] = None,
                      is_group: bool = False, chat_name: Optional[str] = None,
-                     sender_phone: Optional[str] = None,
-                     progress_callback: Optional[Callable[[str], None]] = None) -> AIResponse:
+                     sender_phone: Optional[str] = None) -> AIResponse:
         """Feature 080 (REQ-080-04): thin telemetry wrapper around _get_response_impl (the
         real logic, unchanged below). 2026-09-30 consolidation: the telemetry lifecycle
         itself (construct one TelemetryBuilder per turn, record the finished RequestTelemetry
         row on the way out - success OR exception alike, complete no-op when
         self.telemetry_manager is None) is now the ONE shared
-        model_calls.telemetry_span implementation, also used by
-        Backbone.turn_with_rounds - the two were byte-for-byte identical in shape
+        AIManager.telemetry_span implementation, also used by
+        Backbone.single_turn - the two were byte-for-byte identical in shape
         before this change, just stored the active builder differently (this class's
         module-level contextvar vs. the backbone's instance attribute), which
         telemetry_span is agnostic to.
 
-        progress_callback (REQ-080-02): the caller's real "send this text to the user right
-        now" function (denidin.py passes a wrapper around notification.answer, feature-flag
-        gated - see _process_conversational_message). Activated via _active_progress_callback
-        for the SAME duration as the telemetry builder, independent of whether telemetry_manager
-        is configured - send_progress_update's own tool attachment (_build_progress_update_tools)
-        is what actually gates whether the model can ever reach this path, not this parameter's
-        presence."""
-        from src.core.model_calls import telemetry_span
-
-        callback_token = _active_progress_callback.set(progress_callback)
+        A send_progress_update tool call sends through DeniDin
+        (DeniDin.send_progress_update), in the turn in progress in this chat."""
         effective_chat_id = chat_id or request.chat_id
-        try:
-            with telemetry_span(self.telemetry_manager, request.request_id, effective_chat_id) as builder:
-                telemetry_token = _active_telemetry_builder.set(builder)
-                try:
-                    return self._get_response_impl(
-                        request, chat_id=chat_id, user_role=user_role, sender=sender,
-                        recipient=recipient, user_phone=user_phone, is_group=is_group,
-                        chat_name=chat_name, sender_phone=sender_phone,
-                    )
-                finally:
-                    _active_telemetry_builder.reset(telemetry_token)
-        finally:
-            _active_progress_callback.reset(callback_token)
+        with self.telemetry_span(request.request_id, effective_chat_id) as builder:
+            telemetry_token = _active_telemetry_builder.set(builder)
+            try:
+                return self._get_response_impl(
+                    request, chat_id=chat_id, user_role=user_role or 'godfather', sender=sender,
+                    recipient=recipient, user_phone=user_phone, is_group=is_group,
+                    chat_name=chat_name, sender_phone=sender_phone,
+                )
+            finally:
+                _active_telemetry_builder.reset(telemetry_token)
 
     def _get_response_impl(self, request: AIRequest, chat_id: Optional[str] = None,
-                     user_role: str = 'client', sender: Optional[str] = None,
+                     user_role: str = 'godfather', sender: Optional[str] = None,
                      recipient: Optional[str] = None, user_phone: Optional[str] = None,
                      is_group: bool = False, chat_name: Optional[str] = None,
                      sender_phone: Optional[str] = None) -> AIResponse:
@@ -1918,7 +1023,7 @@ class AIHandler:
         # processed as a normal new request. Returns None only for the decline
         # case, meaning: fall through and process this message as a fresh turn.
         logger.info(
-            f"[022] get_response: effective_chat_id={effective_chat_id!r}, "
+            f"[022] single_turn: effective_chat_id={effective_chat_id!r}, "
             f"user_obj={'present' if user_obj else None}, "
             f"user_prompt={request.user_prompt!r}"
         )
@@ -1934,10 +1039,9 @@ class AIHandler:
                 user_phone=user_phone, is_group=is_group, chat_name=chat_name,
                 sender_phone=sender_phone
             )
-            logger.info(
-                f"[022] _resolve_pending_approval returned "
-                f"{'an AIResponse (approved)' if resolved is not None else 'None (declined - falling through to a normal turn)'}"
-            )
+            outcome = ("an AIResponse (approved)" if resolved is not None
+                       else "None (declined - falling through to a normal turn)")
+            logger.info(f"[022] _resolve_pending_approval returned {outcome}")
             if resolved is not None:
                 return resolved
         else:
@@ -1962,15 +1066,15 @@ class AIHandler:
                     return local_resolved
 
         # Retrieve conversation history if memory enabled (Feature 070 rolling window,
-        # shared with the Backbone - src/core/turn_context.load_rolling_window).
+        # shared with the Backbone - AIManager.load_rolling_window).
         conversation_history = None
         if self.memory_enabled and self.session_manager and effective_chat_id:
             if self.rbac_enabled and user_obj:
                 max_tokens = user_obj.token_limit
             else:
                 max_tokens = self.max_tokens_by_role.get(user_role, 4000)
-            conversation_history = load_rolling_window(
-                self.session_manager, effective_chat_id,
+            conversation_history = self.load_rolling_window(
+                effective_chat_id,
                 window_days=self.window_days, max_tokens=max_tokens,
                 exclude_message_ids=[request.message_id],
             ) or None
@@ -2023,7 +1127,7 @@ class AIHandler:
 
         except Exception as e:
             logger.error(
-                f"Unexpected error in get_response for request {request.request_id}: {e}",
+                f"Unexpected error in single_turn for request {request.request_id}: {e}",
                 exc_info=True
             )
             return self._fallback_response_for(
@@ -2031,66 +1135,6 @@ class AIHandler:
                 is_group, chat_name,
                 "Sorry, I encountered an unexpected error. Please try again."
             )
-
-    def _handle_accounting_reconciliation_capture(self, response) -> List[str]:
-        """Feature 025 (Morning-Sourced Ledger Events): thin adapter for the
-        accounting-document reconciliation sweep's headless OpenAI+MCP call
-        (services/accounting_reconciliation_service.py) - parses every
-        capture_ledger_event call in `response` and passes each straight
-        through to LedgerEventManager.add_ledger_events_from_call,
-        unconditionally.
-
-        Structurally separate from the conversational post-turn recognition
-        call (`recognize_ledger_event`, Feature 069):
-        - NO same-turn-mcp_call suppression - list_invoices/
-          get_invoice_details mcp_calls co-occurring with capture_ledger_event
-          in the same turn is the normal, expected shape here.
-        - NO one-call-per-turn limit - calling once per new document, several
-          times in the same sweep tick, is the normal case.
-        - NO dedup/anomaly decision of its own (round 3 of spec.md's
-          Clarifications: "it's clearly a ledger requirement regardless of
-          ai") - LedgerEventManager.add_ledger_event owns that entirely via
-          its own in-memory cache; this handler trusts it completely, same
-          as every other capture path.
-        - NO follow-up OpenAI round-trip, no confirmation reply - this is not
-          a conversational turn, nothing user-facing is ever produced here.
-
-        Returns the list of newly-persisted event_ids (empty if nothing was
-        captured, or everything was a true duplicate/malformed).
-        """
-        calls = extract_all_function_calls(response, LEDGER_EVENT_TOOL["name"])
-        event_ids: List[str] = []
-        for call in calls:
-            if call["arguments"] is None:
-                logger.error(
-                    "[025] Reconciliation sweep: capture_ledger_event call had "
-                    f"unparseable arguments (call_id={call['call_id']!r}) - rejected, "
-                    "not silently dropped"
-                )
-                continue
-            # message_timestamp=None: this sweep has no real source message, and
-            # LedgerEventManager.add_ledger_event already derives the correct
-            # event_datetime itself for source_type=חשבונית directly from the
-            # Morning document's own creation timestamp (carried inside
-            # accounting_document_json, expanded internally) - it only falls
-            # back to message_timestamp/now_local() when that's unavailable.
-            # A prior separate ai_handler-side timestamp derivation here
-            # (removed 2026-08-25) was redundant with that and, since it read
-            # the raw un-expanded call arguments, never actually fired.
-            try:
-                new_event_ids = self.ledger_event_manager.add_ledger_events_from_call(
-                    session_id="accounting-reconciliation",
-                    call_arguments=call["arguments"],
-                    message_id=None,
-                    message_timestamp=None,
-                )
-                event_ids.extend(new_event_ids)
-            except Exception as e:  # pylint: disable=broad-except
-                logger.error(
-                    f"[025] Failed to persist accounting-document ledger event(s): {e}",
-                    exc_info=True
-                )
-        return event_ids
 
     def _handle_reminder_creation_proposal(
         self, request: AIRequest, response, effective_chat_id: Optional[str],
@@ -2244,7 +1288,7 @@ class AIHandler:
             "call_id": call_id,
             "output": json.dumps({"reminders": reminders_summary}, ensure_ascii=False),
         }]
-        kwargs = {
+        kwargs: Dict[str, Any] = {
             "model": request.model,
             "instructions": self._build_instructions(request.constitution),
             "input": output_items,
@@ -2256,7 +1300,7 @@ class AIHandler:
         logger.info(f"[054] _call_openai_list_reminders_followup_api: call_id={call_id!r}")
         audit_wire("openai", "out", "_call_openai_list_reminders_followup_api", kwargs)
         debug_wire("openai", "out", "_call_openai_list_reminders_followup_api", kwargs)
-        response = self._timed_llm_call(lambda: self.client.responses.create(**kwargs))  # type: ignore[call-overload]
+        response = self._timed_llm_call(lambda: self.client.responses.create(**kwargs))
         audit_wire("openai", "in", "_call_openai_list_reminders_followup_api", response)
         debug_wire("openai", "in", "_call_openai_list_reminders_followup_api", response)
         return response
@@ -2316,7 +1360,7 @@ class AIHandler:
             "call_id": call_id,
             "output": json.dumps({"sent": sent}, ensure_ascii=False),
         }]
-        kwargs = {
+        kwargs: Dict[str, Any] = {
             "model": request.model,
             "instructions": self._build_instructions(request.constitution),
             "input": output_items,
@@ -2328,7 +1372,7 @@ class AIHandler:
         logger.info(f"[080] _call_openai_send_progress_update_followup_api: call_id={call_id!r}")
         audit_wire("openai", "out", "_call_openai_send_progress_update_followup_api", kwargs)
         debug_wire("openai", "out", "_call_openai_send_progress_update_followup_api", kwargs)
-        response = self._timed_llm_call(lambda: self.client.responses.create(**kwargs))  # type: ignore[call-overload]
+        response = self._timed_llm_call(lambda: self.client.responses.create(**kwargs))
         audit_wire("openai", "in", "_call_openai_send_progress_update_followup_api", response)
         debug_wire("openai", "in", "_call_openai_send_progress_update_followup_api", response)
         return response
@@ -2348,20 +1392,19 @@ class AIHandler:
         args = extract_function_call(response, SEND_PROGRESS_UPDATE_TOOL["name"]) or {}
         text = args.get("text")
         sent = send_progress_update_message(
-            _active_progress_callback.get(), _active_telemetry_builder.get(), request.chat_id, text,
+            self.denidin, _active_telemetry_builder.get(), request.chat_id, text,
         )
-        # The progress message is stored in the session by the send itself (denidin.py's
-        # progress callback), the moment it's sent - nothing to track here.
+        # The progress message is stored in the session by the send itself
+        # (DeniDin.send_progress_update), the moment it's sent - nothing to track here.
         return [{"call_id": call_id, "payload": {"sent": sent}}]
 
     def _handle_send_progress_update(self, request: AIRequest, response, tools: Optional[List[Dict]]):
         """Feature 080 (REQ-080-02): send_progress_update is read-only from the ledger's
         perspective (writes nothing persistent except telemetry), dispatched immediately
-        - same shape as _handle_list_reminders. The actual WhatsApp send happens here, via
-        whatever callback get_response() activated in _active_progress_callback (denidin.py's
-        notification.answer wrapper in production; None in any caller that didn't pass one,
-        e.g. today's test fixtures that don't yet exercise this - the update is then simply
-        not sent, and the turn still proceeds normally via the follow-up call below).
+        - same shape as _handle_list_reminders. The actual WhatsApp send happens here,
+        through DeniDin.send_progress_update (nothing is sent when no turn is in progress in
+        the chat, e.g. a test calling single_turn directly - the turn still proceeds
+        normally via the follow-up call below).
 
         Standalone single-tool-type entry point, kept for direct callers/tests
         exercising send_progress_update in isolation - the main dispatch loop instead
@@ -2403,7 +1446,7 @@ class AIHandler:
             "call_id": call_id,
             "output": json.dumps(payload, ensure_ascii=False),
         }]
-        kwargs = {
+        kwargs: Dict[str, Any] = {
             "model": request.model,
             "instructions": self._build_instructions(request.constitution),
             "input": output_items,
@@ -2415,7 +1458,7 @@ class AIHandler:
         logger.info(f"[083] _call_openai_fee_agreement_followup_api: call_id={call_id!r}, payload={payload!r}")
         audit_wire("openai", "out", "_call_openai_fee_agreement_followup_api", kwargs)
         debug_wire("openai", "out", "_call_openai_fee_agreement_followup_api", kwargs)
-        response = self._timed_llm_call(lambda: self.client.responses.create(**kwargs))  # type: ignore[call-overload]
+        response = self._timed_llm_call(lambda: self.client.responses.create(**kwargs))
         audit_wire("openai", "in", "_call_openai_fee_agreement_followup_api", response)
         debug_wire("openai", "in", "_call_openai_fee_agreement_followup_api", response)
         return response
@@ -2467,12 +1510,11 @@ class AIHandler:
         if call_id is None:
             return None
         args = extract_function_call(response, SEND_FEE_AGREEMENT_DOCUMENT_TOOL["name"]) or {}
-        if effective_chat_id is None or self.whatsapp_handler is None:
+        if effective_chat_id is None or self.fee_agreement_tools is None:
             result: Dict[str, Any] = {"error": "לא ניתן לשלוח מסמך בהקשר הנוכחי."}
         else:
             result = self.fee_agreement_tools.handle_send(
-                args.get("document_id"), self.whatsapp_handler, effective_chat_id,
-                args.get("caption", ""),
+                args.get("document_id"), effective_chat_id, args.get("caption", ""),
             )
         return [{"call_id": call_id, "payload": result}]
 
@@ -2525,7 +1567,7 @@ class AIHandler:
             }
             for item in outputs
         ]
-        kwargs = {
+        kwargs: Dict[str, Any] = {
             "model": request.model,
             "instructions": self._build_instructions(request.constitution, today_timestamp=request.timestamp),
             "input": output_items,
@@ -2539,7 +1581,7 @@ class AIHandler:
         logger.debug(f"[044][RAWLOG] query_events payload(s) sent back to model: {outputs!r}")
         audit_wire("openai", "out", "_call_openai_query_ledger_events_followup_api", kwargs)
         debug_wire("openai", "out", "_call_openai_query_ledger_events_followup_api", kwargs)
-        response = self._timed_llm_call(lambda: self.client.responses.create(**kwargs))  # type: ignore[call-overload]
+        response = self._timed_llm_call(lambda: self.client.responses.create(**kwargs))
         audit_wire("openai", "in", "_call_openai_query_ledger_events_followup_api", response)
         debug_wire("openai", "in", "_call_openai_query_ledger_events_followup_api", response)
         return response
@@ -2639,7 +1681,7 @@ class AIHandler:
             }
             for item in outputs
         ]
-        kwargs = {
+        kwargs: Dict[str, Any] = {
             "model": request.model,
             "instructions": self._build_instructions(request.constitution, today_timestamp=request.timestamp),
             "input": output_items,
@@ -2652,7 +1694,7 @@ class AIHandler:
         logger.info(f"[084] _call_openai_react_to_message_followup_api: call_ids={call_ids!r}")
         audit_wire("openai", "out", "_call_openai_react_to_message_followup_api", kwargs)
         debug_wire("openai", "out", "_call_openai_react_to_message_followup_api", kwargs)
-        response = self.client.responses.create(**kwargs)  # type: ignore[call-overload]
+        response = self.client.responses.create(**kwargs)
         audit_wire("openai", "in", "_call_openai_react_to_message_followup_api", response)
         debug_wire("openai", "in", "_call_openai_react_to_message_followup_api", response)
         return response
@@ -2688,8 +1730,7 @@ class AIHandler:
             outputs.append({
                 "call_id": call["call_id"],
                 "payload": build_react_to_message_payload(
-                    self.green_api_bot, self.session_manager, request, effective_chat_id,
-                    call["arguments"], call["call_id"],
+                    self.denidin, request, effective_chat_id, call["arguments"], call["call_id"],
                 ),
             })
         return outputs
@@ -2747,7 +1788,7 @@ class AIHandler:
             }
             for item in outputs
         ]
-        kwargs = {
+        kwargs: Dict[str, Any] = {
             "model": request.model,
             "instructions": self._build_instructions(request.constitution, today_timestamp=request.timestamp),
             "input": output_items,
@@ -2760,7 +1801,7 @@ class AIHandler:
         logger.info(f"[LOOP] _call_openai_combined_local_tools_followup_api: call_ids={call_ids!r}")
         audit_wire("openai", "out", "_call_openai_combined_local_tools_followup_api", kwargs)
         debug_wire("openai", "out", "_call_openai_combined_local_tools_followup_api", kwargs)
-        response = self._timed_llm_call(lambda: self.client.responses.create(**kwargs))  # type: ignore[call-overload]
+        response = self._timed_llm_call(lambda: self.client.responses.create(**kwargs))
         audit_wire("openai", "in", "_call_openai_combined_local_tools_followup_api", response)
         debug_wire("openai", "in", "_call_openai_combined_local_tools_followup_api", response)
         return response
@@ -2976,9 +2017,9 @@ class AIHandler:
         zero-execution failure-detail extraction below would silently lose
         the actual reason (falling through to a fully generic message)
         every time, since it only ever looked at `.output`.
-        2026-10-01: the shared core.write_guards.mcp_error_text (also the backbone's).
+        2026-10-01: the AIManager.mcp_error_text (also the backbone's).
         """
-        return mcp_error_text(call)
+        return AIManager.mcp_error_text(call)
 
     @staticmethod
     def _extract_mcp_call_items(response) -> List[Dict[str, Any]]:
@@ -3001,9 +2042,9 @@ class AIHandler:
         type HTTPError is not JSON serializable`. Nothing downstream of
         this extraction point should ever have to know `item.error` might
         not be a string - normalize once, here, at the boundary.
-        2026-10-01: delegates to the shared core.turn_result.extract_mcp_call_items,
+        2026-10-01: delegates to the AIManager.extract_mcp_call_items,
         also used by the backbone."""
-        return extract_mcp_call_items(response)
+        return AIManager.extract_mcp_call_items(response)
 
     def _run_local_tool_dispatch_loop(
         self, request: AIRequest, response, effective_chat_id: Optional[str],
@@ -3121,8 +2162,8 @@ class AIHandler:
         """Fills this turn's captured ledger event ids (Feature 033) into the user message,
         which was already stored the moment it arrived (2026-09-30 - the reply is stored
         when sent, with its mcp_calls). Never raises."""
-        if ledger_event_ids and self.chat_log is not None:
-            self.chat_log.update(chat_id, message_id, ledger_event_ids=list(ledger_event_ids))
+        if ledger_event_ids:
+            self.denidin.update_message(chat_id, message_id, ledger_event_ids=list(ledger_event_ids))
 
 
     def _finalize_response(self, request: AIRequest, response, effective_chat_id: Optional[str],
@@ -3131,7 +2172,7 @@ class AIHandler:
         Shared post-API-call logic: extract mcp_calls, detect a new pending
         approval (Feature 022), fill ledger_event_ids into the already-stored user
         message, build the final AIResponse. Used by both the normal turn path and the pending-approval
-        resolution path in `get_response`/`_resolve_pending_approval`.
+        resolution path in `single_turn`/`_resolve_pending_approval`.
         """
         # Extract response
         response_text = response.output_text
@@ -3267,13 +2308,12 @@ class AIHandler:
             # future Morning-side timing improvement (out of scope here - see plan.md's
             # "no changes to apps/morning-mcp-app" note) could attach real durations;
             # until then this correctly reports count/name, not a fabricated duration.
-            # 2026-10-01: the shared model_calls.record_mcp_tool_calls, also used by
+            # 2026-10-01: the shared AIManager.record_mcp_tool_calls, also used by
             # the backbone.
-            from src.core.model_calls import record_mcp_tool_calls
-            record_mcp_tool_calls(_active_telemetry_builder.get(), mcp_calls)
+            self.record_mcp_tool_calls(_active_telemetry_builder.get(), mcp_calls)
         # Invoicing tools offered, a confirmation-sounding reply, no mcp_call: log a
-        # possible fabricated success (shared core.turn_result helper, 2026-10-01).
-        log_possible_hallucinated_confirmation(request.request_id, response_text, bool(tools), mcp_calls)
+        # possible fabricated success (shared AIManager helper, 2026-10-01).
+        self.log_possible_hallucinated_confirmation(request.request_id, response_text, bool(tools), mcp_calls)
 
         # Feature 022: a document-creation tool call may come back as an
         # mcp_approval_request instead of an mcp_call - nothing executed on
@@ -3383,7 +2423,7 @@ class AIHandler:
         # (the ledger follow-up call when one happened, else the original
         # call) so finish_reason/model reflect whichever turn actually
         # produced response_text.
-        finish_reason = finish_reason_of(usage_response)
+        finish_reason = self.finish_reason_of(usage_response)
 
         ai_response = AIResponse(
             request_id=request.request_id,
@@ -3400,13 +2440,8 @@ class AIHandler:
             offer_approval_buttons=new_pending_approval_created or new_local_tool_pending_created
         )
 
-        # Cut to WhatsApp's limit when longer (shared core.turn_result helper).
-        ai_response = fit_for_whatsapp(ai_response)
-
-        # Retain the most recent response for observability (audit logging,
-        # E2E test verification of mcp_calls) - purely additive, read-only
-        # for callers; does not change get_response's behavior or return value.
-        self.last_response = ai_response
+        # Cut to WhatsApp's limit when longer (shared AIManager helper).
+        ai_response = self.fit_for_whatsapp(ai_response)
 
         return ai_response
 
@@ -3442,7 +2477,7 @@ class AIHandler:
             "call_id": pending.call_id,
             "output": json.dumps({"status": "success", **result}, ensure_ascii=False),
         }]
-        kwargs = {
+        kwargs: Dict[str, Any] = {
             "model": request.model,
             "instructions": self._build_instructions(request.constitution),
             "input": output_items,
@@ -3454,7 +2489,7 @@ class AIHandler:
         logger.info(f"[054] _call_openai_reminder_followup_api: call_id={pending.call_id!r}, result={result!r}")
         audit_wire("openai", "out", "_call_openai_reminder_followup_api", kwargs)
         debug_wire("openai", "out", "_call_openai_reminder_followup_api", kwargs)
-        response = self._timed_llm_call(lambda: self.client.responses.create(**kwargs))  # type: ignore[call-overload]
+        response = self._timed_llm_call(lambda: self.client.responses.create(**kwargs))
         audit_wire("openai", "in", "_call_openai_reminder_followup_api", response)
         debug_wire("openai", "in", "_call_openai_reminder_followup_api", response)
         logger.info(
@@ -3510,7 +2545,7 @@ class AIHandler:
             return []
 
         constitution = self._load_constitution()
-        kwargs = {
+        kwargs: Dict[str, Any] = {
             "model": self.config.ai_model,
             "instructions": self._build_instructions(constitution, today_timestamp=today_timestamp),
             "input": [{"role": "user", "content": text}],
@@ -3519,11 +2554,9 @@ class AIHandler:
         }
 
         logger.info("[024] capture_ledger_events_from_text: classifying extracted image text")
-        # See _call_openai_api's comment: dynamically-built kwargs never match a
-        # single create() overload.
         audit_wire("openai", "out", "capture_ledger_events_from_text", kwargs)
         debug_wire("openai", "out", "capture_ledger_events_from_text", kwargs)
-        response = self._timed_llm_call(lambda: self.client.responses.create(**kwargs))  # type: ignore[call-overload]
+        response = self._timed_llm_call(lambda: self.client.responses.create(**kwargs))
         audit_wire("openai", "in", "capture_ledger_events_from_text", response)
         debug_wire("openai", "in", "capture_ledger_events_from_text", response)
         ledger_calls = extract_all_function_calls(response, LEDGER_EVENT_TOOL["name"])
@@ -3540,7 +2573,7 @@ class AIHandler:
                 f"(empty components, or component_count/components length mismatch) - "
                 f"retrying once with corrective feedback: {ledger_events!r}"
             )
-            retry_kwargs = dict(kwargs)
+            retry_kwargs: Dict[str, Any] = dict(kwargs)
             retry_kwargs["input"] = cast(List[Dict], kwargs["input"]) + [{
                 "role": "user",
                 "content": (
@@ -3554,11 +2587,9 @@ class AIHandler:
                     "again with every component actually included."
                 ),
             }]
-            # See _call_openai_api's comment: dynamically-built kwargs never match a
-            # single create() overload.
             audit_wire("openai", "out", "capture_ledger_events_from_text (retry)", retry_kwargs)
             debug_wire("openai", "out", "capture_ledger_events_from_text (retry)", retry_kwargs)
-            response = self._timed_llm_call(lambda: self.client.responses.create(**retry_kwargs))  # type: ignore[call-overload]
+            response = self._timed_llm_call(lambda: self.client.responses.create(**retry_kwargs))
             audit_wire("openai", "in", "capture_ledger_events_from_text (retry)", response)
             debug_wire("openai", "in", "capture_ledger_events_from_text (retry)", response)
             ledger_calls = extract_all_function_calls(response, LEDGER_EVENT_TOOL["name"])
@@ -3570,281 +2601,6 @@ class AIHandler:
             )
 
         return ledger_events
-
-    @staticmethod
-    def _parse_message_timestamp(raw: Optional[str]) -> Optional[datetime]:
-        """Best-effort parse of a persisted Message.timestamp ISO string into an
-        aware local datetime. None when it can't be parsed (that message is then
-        kept in the window rather than dropped)."""
-        if not raw:
-            return None
-        try:
-            return to_local(datetime.fromisoformat(raw))
-        except (ValueError, TypeError):
-            return None
-
-    def _assemble_recognition_input(
-        self, session: Session, reply_text: str, turn_mcp_calls: List[Dict]
-    ) -> List[Dict]:
-        """Feature 069: build the `input` list for the post-turn recognition call.
-
-        Only the last `ledger_recognition_context_window_hours` of the chat -
-        measured back from the NEWEST message in the session, not wall-clock
-        `now` - is included (older messages excluded). Anchoring on the newest
-        message keeps the WhatsApp-export player working: its replayed messages
-        carry their real (possibly weeks-old) conversation timestamps, and a
-        `now - 1h` cutoff would drop the whole replayed chat. Live is
-        unaffected - the newest message's timestamp is ~now.
-
-        Each windowed line is `<message_id> [<role>] <content>`, with a
-        `[✓ captured as <ids>]` marker for a message that already produced a
-        ledger event, its attachment's extracted text, and the Morning MCP calls
-        persisted on that message's turn (arguments + real result). The reply
-        just sent and this turn's own MCP calls follow.
-        """
-        window_hours = float(
-            getattr(self.config, "ledger_recognition_context_window_hours", 1.0) or 1.0
-        )
-        loaded = [
-            (mid, self.session_manager.load_message(session, mid))
-            for mid in session.message_ids
-        ]
-        loaded = [(mid, msg) for mid, msg in loaded if msg is not None]
-        msg_times = [
-            ts for _mid, msg in loaded
-            if (ts := self._parse_message_timestamp(getattr(msg, "timestamp", None))) is not None
-        ]
-        if not msg_times:
-            return []
-        cutoff = max(msg_times) - timedelta(hours=window_hours)
-
-        lines = [
-            f"THE CONVERSATION WINDOW (the last {window_hours:g}h, oldest first) - "
-            "'<message_id> [<role>] <content>':"
-        ]
-        excluded = 0
-        for mid, msg in loaded:
-            ts = self._parse_message_timestamp(getattr(msg, "timestamp", None))
-            if ts is not None and ts < cutoff:
-                excluded += 1
-                continue
-            marker = (
-                f"  [✓ captured as {', '.join(msg.ledger_event_ids)}]"
-                if getattr(msg, "ledger_event_ids", None) else ""
-            )
-            lines.append(f"{mid} [{msg.role}] {msg.content}{marker}")
-            if msg.extracted_text:
-                lines.append(f"    (extracted from attachment) {msg.extracted_text}")
-            for call in (getattr(msg, "mcp_calls", None) or []):
-                lines.append(
-                    "    (morning MCP call on this message's turn) "
-                    + json.dumps(call, ensure_ascii=False, default=str)
-                )
-        if excluded:
-            lines.insert(1, f"({excluded} older message(s) are outside the window and omitted.)")
-
-        lines.append("")
-        lines.append("THE REPLY JUST SENT TO THE OPERATOR THIS ROUND:")
-        lines.append(reply_text or "")
-
-        lines.append("")
-        if turn_mcp_calls:
-            lines.append(
-                "MORNING MCP TOOL CALLS MADE THIS TURN (verbatim, each with its "
-                "arguments and its real result):"
-            )
-            lines.append(json.dumps(turn_mcp_calls, ensure_ascii=False, indent=2, default=str))
-        else:
-            lines.append("NO Morning MCP tools were called this turn.")
-
-        lines.append("")
-        lines.append(
-            "Follow the recognition prompt above: query the client's ledger history "
-            f"first when the round concerns a client, then call {RECOGNITION_TOOL_NAME} "
-            "exactly once with the verdict for THIS round."
-        )
-        return [{"role": "user", "content": "\n".join(lines)}]
-
-    # Feature 069: how many chained query_ledger_events round-trips the recognition
-    # call may take before it must report. The prompt tells it to query once up
-    # front (client history) and, at most, a couple more times to pin a link.
-    MAX_RECOGNITION_QUERY_ROUNDS = 3
-
-    def recognize_ledger_event(
-        self,
-        *,
-        session: Session,
-        reply_text: str,
-        turn_mcp_calls: List[Dict],
-        constitution_text: Optional[str] = None,  # noqa: ARG002 - kept for call-site compat
-    ) -> Dict:
-        """
-        Feature 069 (mechanism move): the ONE dedicated, text-only OpenAI call fired
-        AFTER a godfather/admin turn's reply has already been sent - "like a finally
-        block". Single question: did THIS round finish a complete, ledger-worthy
-        event, and if so, here is its data mapped to the ledger schema.
-
-        Uses the dedicated `config/ledger_recognition_prompt.md` (via
-        `_load_recognition_prompt`) - NOT the full constitution - plus today's date
-        and a small directive header. Context is the last
-        `ledger_recognition_context_window_hours` of the chat + the reply just sent
-        + this turn's Morning MCP calls with their results
-        (`_assemble_recognition_input`).
-
-        `query_ledger_events` (read-only, in-memory, no tunnel) is attached: the
-        model queries the client's ledger history first, then reports. Up to
-        `MAX_RECOGNITION_QUERY_ROUNDS` chained round-trips before it must call
-        `report_ledger_recognition`. This method normalizes that tool call into the
-        tri-state verdict (`data-model.md` 2 / `contracts/recognition-and-logging.md`
-        C2):
-
-          - {"verdict": "complete", "event": {...schema-mapped...}, "trigger_message_id": "..."}
-          - {"verdict": "none"}
-          - {"verdict": "declined", "source_type": ..., "client_name_stated": ...,
-             "reason": "declined_by_operator"}
-
-        One-shot retry on a parse failure of our tool's arguments, or on an
-        `is_incomplete_capture` `הסכם` verdict. Its output is NEVER appended to the
-        session and NEVER surfaced to the operator - the zero-AI ledgerer
-        (`LedgerEventManager.persist_recognized_event`) is its only consumer.
-        """
-        prompt = self._load_recognition_prompt()
-        today = now_local().strftime("%d/%m/%Y")
-        directive = (
-            "POST-TURN LEDGER RECOGNITION: the operator's reply for this round has "
-            "already been sent. Do not produce a reply. Your only task is to call "
-            f"{RECOGNITION_TOOL_NAME} exactly once with the verdict for this round, "
-            "after any ledger-history lookups the prompt calls for. When in doubt, "
-            "verdict='none'."
-        )
-        instructions = (
-            (prompt + "\n\n---\n" if prompt else "")
-            + f"Today's date (Israel local): {today}\n\n"
-            + directive
-        )
-        tools = [RECOGNITION_TOOL, QUERY_LEDGER_EVENTS_TOOL]
-        base_kwargs: Dict[str, Any] = {
-            "model": self.config.ai_model,
-            "instructions": instructions,
-            "tools": tools,
-            "max_output_tokens": self.config.ai_reply_max_tokens,
-        }
-
-        kwargs = dict(base_kwargs)
-        kwargs["input"] = self._assemble_recognition_input(session, reply_text, turn_mcp_calls)
-        audit_wire("openai", "out", "recognize_ledger_event", kwargs)
-        debug_wire("openai", "out", "recognize_ledger_event", kwargs)
-        response = self._timed_llm_call(lambda: self.client.responses.create(**kwargs))
-        audit_wire("openai", "in", "recognize_ledger_event", response)
-        debug_wire("openai", "in", "recognize_ledger_event", response)
-        # Bounded query_ledger_events loop: keep feeding the model its own lookup
-        # results until it reports, or the round budget is spent.
-        for _round in range(self.MAX_RECOGNITION_QUERY_ROUNDS):
-            if extract_all_function_calls(response, RECOGNITION_TOOL_NAME):
-                break
-            query_calls = extract_all_function_calls(response, QUERY_LEDGER_EVENTS_TOOL["name"])
-            if not query_calls:
-                break
-            output_items = []
-            for call in query_calls:
-                if call["arguments"] is None:
-                    payload: Dict[str, Any] = {
-                        "status": "error",
-                        "reason": "Arguments could not be parsed - do not resubmit this exact call.",
-                    }
-                else:
-                    try:
-                        payload = self.ledger_event_manager.query_events(**call["arguments"])
-                    except Exception as exc:  # noqa: BLE001 - isolate one bad call
-                        logger.warning(f"[069] recognition query_events failed: {exc}")
-                        payload = {"status": "error", "reason": str(exc)}
-                output_items.append({
-                    "type": "function_call_output",
-                    "call_id": call["call_id"],
-                    "output": json.dumps(payload, ensure_ascii=False, default=str),
-                })
-            follow_kwargs = dict(base_kwargs)
-            follow_kwargs["input"] = output_items
-            follow_kwargs["previous_response_id"] = response.id
-            audit_wire("openai", "out", "recognize_ledger_event (query round)", follow_kwargs)
-            debug_wire("openai", "out", "recognize_ledger_event (query round)", follow_kwargs)
-            response = self._timed_llm_call(lambda: self.client.responses.create(**follow_kwargs))
-            audit_wire("openai", "in", "recognize_ledger_event (query round)", response)
-            debug_wire("openai", "in", "recognize_ledger_event (query round)", response)
-        # If the model produced no report call at all (only text, or it spent its
-        # query budget without reporting), that is a plain `none` - not a retry case.
-        if not extract_all_function_calls(response, RECOGNITION_TOOL_NAME):
-            logger.info("[069] recognition verdict=none (no report_ledger_recognition call at all)")
-            return {"verdict": "none"}
-
-        args = self._extract_recognition_args(response)
-
-        if self._recognition_needs_retry(args):
-            retry_kwargs = dict(base_kwargs)
-            retry_kwargs["input"] = [{
-                "role": "user",
-                "content": (
-                    f"Your previous {RECOGNITION_TOOL_NAME} call could not be used - "
-                    "either its arguments were not valid JSON, or it reported "
-                    "verdict='complete' for a הסכם while listing zero components or a "
-                    "component_count that did not match the components array. Re-examine "
-                    "the round above and call the tool again, once, correctly."
-                ),
-            }]
-            retry_kwargs["previous_response_id"] = response.id
-            audit_wire("openai", "out", "recognize_ledger_event (retry)", retry_kwargs)
-            debug_wire("openai", "out", "recognize_ledger_event (retry)", retry_kwargs)
-            response = self._timed_llm_call(lambda: self.client.responses.create(**retry_kwargs))
-            audit_wire("openai", "in", "recognize_ledger_event (retry)", response)
-            debug_wire("openai", "in", "recognize_ledger_event (retry)", response)
-            args = self._extract_recognition_args(response)
-
-        return self._normalize_recognition_verdict(args)
-
-    @staticmethod
-    def _extract_recognition_args(response) -> Optional[Dict]:
-        """First `report_ledger_recognition` call's parsed args, or None when the
-        model called nothing / the args were unparseable (the two are told apart by
-        `_recognition_needs_retry`, which only retries the unparseable case)."""
-        calls = extract_all_function_calls(response, RECOGNITION_TOOL_NAME)
-        if not calls:
-            return None
-        return cast(Optional[Dict], calls[0]["arguments"])
-
-    @staticmethod
-    def _recognition_needs_retry(args: Optional[Dict]) -> bool:
-        if args is None:
-            # None here means "a call was present but its args did not parse" only
-            # when a call item existed at all; a genuinely-absent call is handled as
-            # a plain `none` verdict without a retry (see _extract_recognition_args's
-            # callers - this predicate is only consulted right after extraction).
-            return True
-        if args.get("verdict") != "complete":
-            return False
-        event = args.get("event") or {}
-        return event.get("source_type") == "הסכם" and is_incomplete_capture(event)
-
-    @staticmethod
-    def _normalize_recognition_verdict(args: Optional[Dict]) -> Dict:
-        if not args:
-            logger.info("[069] recognition verdict=none (unparseable/absent report call after retry)")
-            return {"verdict": "none"}
-        verdict = args.get("verdict")
-        if verdict == "complete":
-            return {
-                "verdict": "complete",
-                "event": args.get("event"),
-                "trigger_message_id": args.get("trigger_message_id"),
-            }
-        if verdict == "declined":
-            return {
-                "verdict": "declined",
-                "source_type": args.get("source_type"),
-                "client_name_stated": args.get("client_name_stated"),
-                "reason": args.get("reason") or "declined_by_operator",
-            }
-        logger.info(f"[069] recognition verdict=none reason={args.get('none_reason')!r}")
-        return {"verdict": "none"}
 
     def _call_openai_approval_api(self, request: AIRequest, pending: PendingApproval,
                                   approve: bool, tools: Optional[List[Dict]] = None):
@@ -3859,7 +2615,7 @@ class AIHandler:
             "approval_request_id": pending.approval_request_id,
             "approve": approve,
         }
-        kwargs = {
+        kwargs: Dict[str, Any] = {
             "model": request.model,
             "instructions": self._build_instructions(request.constitution, today_timestamp=request.timestamp),
             "input": [approval_item],
@@ -3870,8 +2626,6 @@ class AIHandler:
             kwargs["tools"] = tools
 
         logger.info(f"[022] _call_openai_approval_api: approve={approve}, kwargs={kwargs!r}")
-        # See _call_openai_api's comment: dynamically-built kwargs never match a
-        # single create() overload.
         # max_retries=0: this call resolves an approval that, if approve=True,
         # executes a real document-creating MCP tool server-side (Feature
         # 022) - a real, billed incident (2026-08-03) showed the SDK's
@@ -3883,7 +2637,7 @@ class AIHandler:
         # AppConfiguration.max_retries' own docstring) via .with_options(...)
         # right here, rather than relying on any outer/shared retry layer to
         # respect this. No retry of this call is ever safe, at any layer.
-        response = self._timed_llm_call(lambda: self.client.with_options(max_retries=0).responses.create(**kwargs))  # type: ignore[call-overload]
+        response = self._timed_llm_call(lambda: self.client.with_options(max_retries=0).responses.create(**kwargs))
         audit_wire("openai", "in", "_call_openai_approval_api", response)
         debug_wire("openai", "in", "_call_openai_approval_api", response)
         logger.info(
@@ -3911,7 +2665,7 @@ class AIHandler:
             server-side state for that response is closed out cleanly).
         """
         tools = self._assemble_tools(user_obj, request.request_id)
-        is_affirmative = _is_affirmative_reply(request.user_prompt)
+        is_affirmative = self.is_affirmative_reply(request.user_prompt)
         logger.info(
             f"[022] _resolve_pending_approval: chat={effective_chat_id!r}, "
             f"pending={pending!r}, user_prompt={request.user_prompt!r}, "
@@ -3950,9 +2704,9 @@ class AIHandler:
             # legitimate 2-step sequence as a false positive (2026-08-03).
             # The real risk is the approved tool itself running more than
             # once - that's what must never happen.
-            # 2026-10-01: counted by the shared core.write_guards.tally_write_executions
+            # 2026-10-01: counted by the AIManager.tally_write_executions
             # (also the backbone's approved-turn guard).
-            executions = tally_write_executions(executed_calls, [pending.tool_name])
+            executions = self.tally_write_executions(executed_calls, [pending.tool_name])
             if executions.duplicated:
                 # The approved action must never execute more than once.
                 # Real, billed incidents (2026-08-03, at least twice, WITH
@@ -4001,8 +2755,8 @@ class AIHandler:
                 return self._fallback_response_for(
                     request, effective_chat_id, user_obj, user_role, sender, user_phone,
                     sender_phone, is_group, chat_name,
-                    approved_write_not_run_message(
-                        executions.failure_detail, write_subject([pending.tool_name])),
+                    self.approved_write_not_run_message(
+                        executions.failure_detail, self.write_subject([pending.tool_name])),
                 )
 
             self.pending_approval_manager.clear(effective_chat_id)
@@ -4052,7 +2806,7 @@ class AIHandler:
             same contract as `_resolve_pending_approval`: the caller then
             processes this same message as a normal fresh turn.
         """
-        is_affirmative = _is_affirmative_reply(request.user_prompt)
+        is_affirmative = self.is_affirmative_reply(request.user_prompt)
         logger.info(
             f"[054] _resolve_pending_local_tool_approval: chat={effective_chat_id!r}, "
             f"pending={pending!r}, user_prompt={request.user_prompt!r}, "
@@ -4123,7 +2877,7 @@ class AIHandler:
         try:
             # Feature 084 fix (2026-09-12): _assemble_tools already includes
             # react_to_message unconditionally regardless of RBAC (see its own
-            # docstring) - same call as the main turn path (get_response) uses,
+            # docstring) - same call as the main turn path (single_turn) uses,
             # so this follow-up call is no longer sent with an empty tool list.
             followup_tools = self._assemble_tools(user_obj, request.request_id)
             followup = self._call_openai_reminder_followup_api(request, pending, result, tools=followup_tools)
@@ -4194,12 +2948,26 @@ class AIHandler:
             is_truncated=False,
             offer_approval_buttons=False,
         )
-        ai_response = fit_for_whatsapp(ai_response)
-        self.last_response = ai_response
+        ai_response = self.fit_for_whatsapp(ai_response)
         return ai_response
 
+    def record_sent_message_id(self, chat_id: str, message_id: str) -> None:
+        """Binds a just-sent approval-buttons message to whichever pending approval
+        this chat has (Feature 047/054): a pending approval is EITHER an MCP one or a
+        local-tool one (e.g. create/modify/delete reminder) - never both for the same
+        chat. attach_sent_message_id() is a documented no-op (logged, never raises) on
+        whichever manager has nothing pending, so calling both is safe."""
+        self.pending_approval_manager.attach_sent_message_id(chat_id, message_id)
+        self.pending_local_tool_approval_manager.attach_sent_message_id(chat_id, message_id)
+
+    def extraction_prompt_prefix(self) -> str:
+        """The media extractors prepend the runtime constitution to their own
+        extraction prompt on the legacy path."""
+        return self._load_constitution()
+
     def resolve_button_tap(
-        self, message: WhatsAppMessage, selected_id: str, stanza_id: str,
+        self, message: WhatsAppMessage, selected_id: str, stanza_id: str, *,
+        user_role: Optional[str] = None,
     ) -> Optional[AIResponse]:
         """
         Feature 047: resolves a WhatsApp interactive-button tap against
@@ -4209,10 +2977,10 @@ class AIHandler:
 
         Deliberately does NOT reimplement approve/decline resolution: once the
         stanza_id match below confirms this tap is live (not stale/superseded -
-        the one check `get_response`/`_resolve_pending_approval` has no concept of,
+        the one check `single_turn`/`_resolve_pending_approval` has no concept of,
         since neither knows about individual WhatsApp message ids), this
         synthesizes a plain "כן"/"לא" `AIRequest` and delegates to the existing
-        `get_response`/`_resolve_pending_approval` pipeline verbatim - same
+        `single_turn`/`_resolve_pending_approval` pipeline verbatim - same
         duplicate-execution guards, same decline behavior (falls through to a
         fresh turn, exactly like a genuine typed "לא" does today - a button
         decline is byte-for-byte the same experience as a typed one, per US2's
@@ -4222,12 +2990,12 @@ class AIHandler:
         scalar fields pulled out of it by the caller - `chat_id`/`message_id`/
         `sender_id`/`sender_display_name`/`is_group`/`chat_name` all come from
         it directly (including the `is_group`/`chat_name`/`sender_phone` fields
-        Feature 043's merge added to `get_response`'s own signature - derived
+        Feature 043's merge added to `single_turn`'s own signature - derived
         here from `message` rather than accepted as yet more threaded params),
         and AIRequest.original_message carries the same object further
         downstream (e.g. into a reminder's created_by_phone) without yet
         another parameter threaded through
-        get_response/_resolve_pending_local_tool_approval.
+        single_turn/_resolve_pending_local_tool_approval.
 
         Returns:
             None if there's no pending approval, or its sent_message_id doesn't
@@ -4235,6 +3003,8 @@ class AIHandler:
             the caller must send nothing observable at all in this case. A real
             AIResponse otherwise.
         """
+        # The legacy tap resolves the role itself.
+        del user_role
         chat_id = message.chat_id
         user_phone = message.sender_id
         sender = message.sender_display_name
@@ -4247,7 +3017,7 @@ class AIHandler:
                 return None
 
         # Reminders (Feature 054): checked MCP-first-then-local-tool, same
-        # deterministic order as get_response's dual-check dispatch - at most
+        # deterministic order as single_turn's dual-check dispatch - at most
         # one of the two managers is ever populated for a given chat_id in
         # practice.
         pending = self.pending_approval_manager.get(chat_id) if user_obj else None
@@ -4288,7 +3058,7 @@ class AIHandler:
             message_id=message.message_id,
             original_message=message,
         )
-        return self.get_response(
+        return self.single_turn(
             synthetic_request, chat_id=chat_id, user_role=user_obj.role,
             sender=sender, recipient=None, user_phone=user_phone,
             is_group=message.is_group, chat_name=message.chat_name,
@@ -4308,9 +3078,7 @@ class AIHandler:
         return self._create_fallback_response(request.request_id, message)
 
     def _create_fallback_response(self, request_id: str, message: str) -> AIResponse:
-        """2026-09-30 consolidation: delegates to model_calls.build_fallback_response,
+        """2026-09-30 consolidation: delegates to AIManager.build_fallback_response,
         the one shared implementation also used by Backbone._create_fallback_response
         - the two were byte-identical AIResponse shapes before this change."""
-        from src.core.model_calls import build_fallback_response
-        return build_fallback_response(request_id, message)
-
+        return AIManager.build_fallback_response(request_id, message)

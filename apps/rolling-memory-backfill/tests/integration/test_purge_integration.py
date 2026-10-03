@@ -12,7 +12,8 @@ from types import SimpleNamespace
 import pytest
 
 import purge_legacy_summaries as cli
-from _denidin_loader import MemoryManager, collection_name_for_chat
+from _denidin_loader import collection_name_for_chat
+from tests.backfill_test_support import make_memory_manager
 
 GROUP = "120363210094632983@g.us"
 SOLO = "972522968679@c.us"
@@ -30,7 +31,7 @@ def fake_ai():
 def seeded(tmp_path, fake_ai):
     dr = tmp_path / "data"
     (dr / "memory").mkdir(parents=True)
-    mm = MemoryManager(storage_dir=str(dr / "memory"),
+    mm = make_memory_manager(storage_dir=str(dr / "memory"),
                        embedding_model="text-embedding-3-large", ai_client=fake_ai)
     for i in range(7):
         mm.remember(f"legacy session summary {i}", collection_name_for_chat(GROUP),
@@ -49,7 +50,7 @@ def seeded(tmp_path, fake_ai):
 
 
 def _counts(dr, fake_ai, chat):
-    mm = MemoryManager(storage_dir=str(dr / "memory"),
+    mm = make_memory_manager(storage_dir=str(dr / "memory"),
                        embedding_model="text-embedding-3-large", ai_client=fake_ai)
     coll = mm.get_or_create_collection(collection_name_for_chat(chat))
     all_meta = coll.get().get("metadatas") or []
@@ -72,7 +73,7 @@ def test_purge_deletes_only_legacy_records(seeded):
 def test_daily_summaries_still_recallable_after_purge(seeded):
     dr, fake_ai = seeded
     cli.main(["--data-root", str(dr), "--chat", GROUP])
-    mm = MemoryManager(storage_dir=str(dr / "memory"),
+    mm = make_memory_manager(storage_dir=str(dr / "memory"),
                        embedding_model="text-embedding-3-large", ai_client=fake_ai)
     hits = mm.recall(query="daily summary", collection_names=[collection_name_for_chat(GROUP)], top_k=5)
     assert hits and all(h.get("metadata", {}).get("type", "daily_summary") == "daily_summary"

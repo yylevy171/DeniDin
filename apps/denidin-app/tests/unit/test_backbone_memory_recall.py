@@ -5,8 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.backbone.backbone import Backbone
-from tests.backbone_test_support import make_session_manager
+from tests.backbone_test_support import make_backbone, make_session_manager
 from src.models.config import AppConfiguration
 
 
@@ -23,7 +22,7 @@ def _backbone(prompts_root, **kwargs):
         green_api_instance_id="x", green_api_token="y", ai_api_key="z",
         backbone_config={"base_dir": str(prompts_root)},
     )
-    return Backbone(MagicMock(), config, session_manager=make_session_manager(), **kwargs)
+    return make_backbone(MagicMock(), config, session_manager=make_session_manager(), **kwargs)
 
 
 def test_recall_memory_returns_empty_string_without_memory_manager(prompts_root):

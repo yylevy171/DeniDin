@@ -11,14 +11,15 @@ from unittest.mock import MagicMock
 import pytest
 
 from src.backbone.backbone import Backbone
-from src.core.turn_result import (
-    extract_mcp_call_items, finish_reason_of, fit_for_whatsapp,
-    log_possible_hallucinated_confirmation,
-)
+from src.core.ai_manager import AIManager
+extract_mcp_call_items = AIManager.extract_mcp_call_items
+finish_reason_of = AIManager.finish_reason_of
+fit_for_whatsapp = AIManager.fit_for_whatsapp
+log_possible_hallucinated_confirmation = AIManager.log_possible_hallucinated_confirmation
 from src.models.config import AppConfiguration
 from src.models.message import AIRequest, AIResponse
 from src.models.user import Role
-from tests.backbone_test_support import make_session_manager
+from tests.backbone_test_support import make_backbone, make_session_manager
 
 
 def _mcp_item(name, error=None):
@@ -84,7 +85,7 @@ def _call(name, arguments, call_id):
 def _backbone(prompts_root, client):
     config = AppConfiguration(green_api_instance_id="x", green_api_token="y", ai_api_key="z",
                               backbone_config={"base_dir": str(prompts_root)})
-    return Backbone(client, config, session_manager=make_session_manager())
+    return make_backbone(client, config, session_manager=make_session_manager())
 
 
 def _request():
@@ -99,7 +100,7 @@ def test_backbone_reports_the_turns_real_tokens_model_and_mcp_errors_as_strings(
                    _call("record_planning_status", {"status": "x"}, "c1")], "r1", total=15, inp=10, out=5),
         _response([_call("send_to_user", {"text": "שלום"}, "c2")], "r2", total=30, inp=20, out=10),
     ]
-    response = _backbone(prompts_root, client).turn_with_rounds(_request(), chat_id="chat1")
+    response = _backbone(prompts_root, client).single_turn(_request(), chat_id="chat1")
 
     assert (response.tokens_used, response.prompt_tokens, response.completion_tokens) == (45, 30, 15)
     assert response.model == "gpt-real-model"
@@ -111,7 +112,7 @@ def test_backbone_cuts_a_long_reply_for_whatsapp(prompts_root):
     client = MagicMock()
     client.responses.create.return_value = _response(
         [_call("send_to_user", {"text": "א" * 5000}, "c1")], "r1", total=1, inp=1, out=0)
-    response = _backbone(prompts_root, client).turn_with_rounds(_request(), chat_id="chat1")
+    response = _backbone(prompts_root, client).single_turn(_request(), chat_id="chat1")
     assert response.is_truncated and len(response.response_text) == 4003
 
 

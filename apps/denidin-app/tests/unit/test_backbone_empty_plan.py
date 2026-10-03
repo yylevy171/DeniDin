@@ -8,8 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.backbone.backbone import Backbone
-from tests.backbone_test_support import make_session_manager
+from tests.backbone_test_support import make_backbone, make_session_manager
 from src.models.config import AppConfiguration
 from src.models.message import AIRequest
 
@@ -50,7 +49,7 @@ def test_small_talk_turn_never_loads_domain_capability_content(prompts_root):
     client.responses.create.return_value = _send_to_user_response(
         "This is ordinary small talk with no action needed.",
     )
-    backbone = Backbone(client, _config(prompts_root), session_manager=make_session_manager())
+    backbone = make_backbone(client, _config(prompts_root), session_manager=make_session_manager())
 
     call_log = []
     original_load = backbone.load_capability_prompt
@@ -61,7 +60,7 @@ def test_small_talk_turn_never_loads_domain_capability_content(prompts_root):
 
     backbone.load_capability_prompt = tracking_load
 
-    response = backbone.turn_with_rounds(_request(), user_role="client")
+    response = backbone.single_turn(_request(), user_role="client")
 
     assert response.response_text == "This is ordinary small talk with no action needed."
     # No load_capabilities tool call was made, so no domain

@@ -17,7 +17,7 @@ import logging
 import re
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, NamedTuple, Optional, Tuple
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
 from rapidfuzz import fuzz
 
@@ -592,7 +592,7 @@ def _expand_accounting_document_json(event: Dict) -> Optional[Dict]:
         # model passed as event_subtype is overridden here, same discipline as
         # every other derived value.
         "event_subtype": doc.get("type_name"),
-        "accounting_document_status": _STATUS_HE.get(doc.get("status"), doc.get("status")),
+        "accounting_document_status": _STATUS_HE.get(doc.get("status") or "", doc.get("status")),
         "accounting_document_status_code": doc.get("status_code"),
         "accounting_document_status_label": doc.get("status_label"),
         # Internal-only, consumed once below to derive event_datetime and never
@@ -638,8 +638,10 @@ def _first_line_item_description(doc: Dict) -> Optional[str]:
             f"{len(lines) - 1} are NOT recorded in this ledger event"
         )
     if lines and lines[0].get("description"):
-        return lines[0]["description"]
-    return doc.get("description")
+        first_description: str = lines[0]["description"]
+        return first_description
+    description: Optional[str] = doc.get("description")
+    return description
 
 
 # Morning document types that only ever exist for money that has ALREADY been
@@ -660,8 +662,9 @@ def _derive_vat_status(doc: Dict) -> str:
     component means the captured amount includes it; when VAT is zero (an exempt
     document) neither "כולל" nor "לא כולל" is true, so we assert neither rather
     than state something false."""
+    raw_type = doc.get("type")
     try:
-        doc_type = int(doc.get("type"))
+        doc_type = int(raw_type) if raw_type is not None else None
     except (TypeError, ValueError):
         doc_type = None
     if doc_type in _VAT_INCLUSIVE_DOC_TYPES:
@@ -694,24 +697,21 @@ def _format_linked_reference_hint(linked: Dict, resolved: bool) -> str:
 class LedgerEventManager:
     """Owns {data_root}/events/ - one flat JSON file per persisted ledger event."""
 
-    def __init__(self, storage_dir: str, session_manager=None):
+    def __init__(self, denidin: Any):
         """
         Initialize LedgerEventManager.
 
         Args:
-            storage_dir: Directory for ledger-event storage. Callers MUST compose
-                this from AppConfiguration.data_root at construction time
-                (Path(config.data_root) / "events"), matching MediaFileManager's
-                pattern exactly - never a hardcoded absolute path (REQ-STORE-001).
-            session_manager: (Feature 069) the SessionManager the ledgerer
-                (persist_recognized_event) uses to read the trigger message's
-                persisted timestamp and to back-link new event ids onto the
-                completing message. Optional so existing construction sites and
-                tests can wire it after the fact (`manager.session_manager = sm`).
+            denidin: the DeniDin object (REQ-063-08). Events live under its
+                config's {data_root}/events/ (REQ-STORE-001). Its session_manager
+                (Feature 069) is what the ledgerer (persist_recognized_event) reads
+                the trigger message's persisted timestamp from and back-links new
+                event ids onto - read from DeniDin at use time, and may be absent
+                (an external app's DeniDin without sessions).
         """
-        self.storage_dir = Path(storage_dir)
+        self.denidin = denidin
+        self.storage_dir = Path(denidin.config.data_root) / "events"
         self.storage_dir.mkdir(parents=True, exist_ok=True)
-        self.session_manager = session_manager
 
         # Feature 044 (T001b): in-memory index of every persisted ledger event,
         # loaded once here and kept current by add_ledger_event's own append
@@ -734,6 +734,11 @@ class LedgerEventManager:
             f"LedgerEventManager initialized: storage_dir={self.storage_dir}, "
             f"index_size={len(self._index)}"
         )
+
+    @property
+    def session_manager(self) -> Any:
+        """DeniDin's SessionManager, or None when this DeniDin has none."""
+        return getattr(self.denidin, "session_manager", None)
 
     def _load_index(self) -> List[Dict]:
         """Feature 044 (T001b): scan self.storage_dir for every *.json file and
@@ -1167,7 +1172,7 @@ class LedgerEventManager:
             entries = cache.get(linked_number) or []
             resolved_event_id = max(entries, key=lambda e: e.timestamp).event_id if entries else None
             reference = resolved_event_id or REFERENCE_PLACEHOLDER
-            reference_hint = _format_linked_reference_hint(
+            reference_hint: Optional[str] = _format_linked_reference_hint(
                 linked_document, resolved=resolved_event_id is not None
             )
             if resolved_event_id is None:
@@ -1619,7 +1624,7 @@ class LedgerEventManager:
             # the component explosion, not the content-fingerprint dedup, and not
             # _mandatory_field_gaps (which reads flat top-level fields this verdict
             # deliberately does not carry - they live inside the blob until expansion).
-            # This is the same delegation _handle_accounting_reconciliation_capture
+            # This is the same delegation AccountingReconciler.capture
             # does for the sweep; the only difference is the starting point. No
             # reference_override (a linked document is carried inside the blob and
             # resolved by _expand_accounting_document_json). message_timestamp is
@@ -1939,10 +1944,11 @@ class LedgerEventManager:
             hint_bonus_applied = True
         if trace_enabled:
             event_id = event.get("event_id", "<no event_id>")
+            trace_text = " | ".join(trace)
             logger.debug(
                 f"[044][SCORE] event={event_id!r} criterion=(text={query_text!r}, "
                 f"hint={hint!r}) query_number={query_number!r} "
-                f"fields_checked={fields!r} | " + " | ".join(trace) +
+                f"fields_checked={fields!r} | {trace_text}"
                 f" || best_field={best_field!r} best_score={best_score:.1f} "
                 f"hint_bonus_applied={hint_bonus_applied} "
                 f"clears_floor={best_score >= _CRITERION_MATCH_FLOOR}"

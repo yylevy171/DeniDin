@@ -7,8 +7,7 @@ byte-stable prefixes system-wide (contracts/prompt-assembly.md), and recalled
 memory varies per turn/query, so placing it earlier would silently break every
 call from ever sharing a cached prefix with another call using the same tag."""
 from src.backbone.capability_tags import CapabilityTag
-from src.backbone.backbone import Backbone
-from tests.backbone_test_support import make_session_manager
+from tests.backbone_test_support import make_backbone, make_session_manager
 from src.models.config import AppConfiguration
 
 
@@ -17,7 +16,7 @@ def _backbone(prompts_root):
         green_api_instance_id="x", green_api_token="y", ai_api_key="z",
         backbone_config={"base_dir": str(prompts_root)},
     )
-    return Backbone(object(), config, session_manager=make_session_manager())
+    return make_backbone(object(), config, session_manager=make_session_manager())
 
 
 def _prompts_root(tmp_path):

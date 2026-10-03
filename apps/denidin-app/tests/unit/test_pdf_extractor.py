@@ -14,13 +14,14 @@ import pytest
 from unittest.mock import Mock, MagicMock, patch
 from src.handlers.extractors.pdf_extractor import PDFExtractor
 from src.models.media import Media
+from tests.extractor_test_support import make_extractor_ai_manager
 
 
 @pytest.fixture
 def mock_denidin_context():
     """Create mock DeniDin context."""
     context = Mock()
-    context.ai_handler = Mock()
+    context.ai_manager = make_extractor_ai_manager()
     context.config = Mock()
     context.config.ai_vision_model = "gpt-4o"
     return context

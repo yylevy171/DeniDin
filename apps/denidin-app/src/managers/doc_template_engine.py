@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from docx import Document
+from docx.document import Document as DocxDocument
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 
@@ -44,9 +45,15 @@ class DocTemplateEngine:
     is raised as a ValueError so the caller (ai_handler.py's tool dispatch)
     can surface it back to the model as a tool-call error, per contract."""
 
-    def __init__(self, templates_dir: Path, tmp_dir: Path) -> None:
-        self.templates_dir = Path(templates_dir)
-        self.tmp_dir = Path(tmp_dir)
+    def __init__(self, denidin: Any) -> None:
+        """`denidin`: the DeniDin object (REQ-063-08). Templates come from its
+        config's fee_agreements.templates_dir; generated documents go under
+        {data_root}/<fee_agreements.tmp_dir>."""
+        self.denidin = denidin
+        config = denidin.config
+        fee_agreements_config = getattr(config, 'fee_agreements', {}) or {}
+        self.templates_dir = Path(fee_agreements_config.get('templates_dir', 'config/fee_agreement_templates'))
+        self.tmp_dir = Path(config.data_root) / fee_agreements_config.get('tmp_dir', 'tmp/fee_agreements')
         self._variants: Optional[Dict[str, FeeAgreementVariant]] = None
 
     def list_variants(self) -> List[FeeAgreementVariant]:
@@ -593,16 +600,14 @@ class DocTemplateEngine:
     # -- replacement ------------------------------------------------------
 
     @staticmethod
-    def _iter_all_paragraphs(doc: Document):
-        for p in doc.paragraphs:
-            yield p
+    def _iter_all_paragraphs(doc: DocxDocument):
+        yield from doc.paragraphs
         for table in doc.tables:
             for row in table.rows:
                 for cell in row.cells:
-                    for p in cell.paragraphs:
-                        yield p
+                    yield from cell.paragraphs
 
-    def _replace_scalar_placeholders(self, doc: Document, values: Dict[str, str]) -> None:
+    def _replace_scalar_placeholders(self, doc: DocxDocument, values: Dict[str, str]) -> None:
         for paragraph in self._iter_all_paragraphs(doc):
             for run in paragraph.runs:
                 for key, value in values.items():
@@ -610,7 +615,7 @@ class DocTemplateEngine:
                     if token in run.text:
                         run.text = run.text.replace(token, value)
 
-    def _clone_repeating_group(self, doc: Document, rg, components: List[Dict[str, str]]) -> None:
+    def _clone_repeating_group(self, doc: DocxDocument, rg, components: List[Dict[str, str]]) -> None:
         label_token = "{{" + rg.row_placeholders[0] + "}}"
         terms_token = "{{" + rg.row_placeholders[1] + "}}"
 
@@ -630,7 +635,7 @@ class DocTemplateEngine:
         )
 
     @staticmethod
-    def _find_template_table_row(doc: Document, label_token: str):
+    def _find_template_table_row(doc: DocxDocument, label_token: str):
         for table in doc.tables:
             for row in table.rows:
                 row_text = "".join(cell.text for cell in row.cells)
@@ -649,7 +654,7 @@ class DocTemplateEngine:
         template_tr.getparent().remove(template_tr)
 
     @staticmethod
-    def _find_template_paragraph_pair(doc: Document, label_token: str, terms_token: str):
+    def _find_template_paragraph_pair(doc: DocxDocument, label_token: str, terms_token: str):
         paragraphs = doc.paragraphs
         for i, p in enumerate(paragraphs):
             if label_token in p.text and i + 1 < len(paragraphs) and terms_token in paragraphs[i + 1].text:
@@ -673,14 +678,12 @@ class DocTemplateEngine:
     @staticmethod
     def _replace_in_xml_element(element, token: str, value: str) -> None:
         # Text runs live at w:r/w:t under the (possibly deepcopy'd) w:tr/w:p element.
-        from docx.oxml.ns import qn
-
         for t in element.iter(qn("w:t")):
             if t.text and token in t.text:
                 t.text = t.text.replace(token, value)
 
     @staticmethod
-    def _extract_full_text(doc: Document) -> str:
+    def _extract_full_text(doc: DocxDocument) -> str:
         parts = [p.text for p in doc.paragraphs]
         for table in doc.tables:
             for row in table.rows:

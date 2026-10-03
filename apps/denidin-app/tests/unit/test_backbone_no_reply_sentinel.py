@@ -7,8 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.backbone.backbone import Backbone
-from tests.backbone_test_support import make_session_manager
+from tests.backbone_test_support import make_backbone, make_session_manager
 from src.models.config import AppConfiguration
 from src.models.message import AIRequest, NO_REPLY_SENTINEL
 
@@ -26,7 +25,7 @@ def _backbone(prompts_root, client=None):
         green_api_instance_id="x", green_api_token="y", ai_api_key="z",
         backbone_config={"base_dir": str(prompts_root)},
     )
-    return Backbone(client or MagicMock(), config, session_manager=make_session_manager())
+    return make_backbone(client or MagicMock(), config, session_manager=make_session_manager())
 
 
 def _request():
@@ -49,7 +48,7 @@ def test_no_reply_sentinel_suppresses_reply(prompts_root):
     client.responses.create.return_value = _send_to_user_response(NO_REPLY_SENTINEL)
     backbone = _backbone(prompts_root, client)
 
-    response = backbone.turn_with_rounds(_request(), user_role="client")
+    response = backbone.single_turn(_request(), user_role="client")
 
     assert response.should_reply is False
     assert response.response_text == NO_REPLY_SENTINEL
@@ -60,7 +59,7 @@ def test_ordinary_reply_is_sent(prompts_root):
     client.responses.create.return_value = _send_to_user_response("בוקר טוב!")
     backbone = _backbone(prompts_root, client)
 
-    response = backbone.turn_with_rounds(_request(), user_role="client")
+    response = backbone.single_turn(_request(), user_role="client")
 
     assert response.should_reply is True
     assert response.response_text == "בוקר טוב!"

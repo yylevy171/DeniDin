@@ -131,7 +131,7 @@ class TestReminderLifecycleBilled:
         # ReminderManager.storage_dir MUST resolve under this test's isolated
         # data_root, never real production/dev data - a wiring mistake here
         # would create real, orphaned SQLite rows outside test isolation.
-        actual_reminders_dir = Path(denidin.denidin_app.ai_handler.reminder_manager.storage_dir).resolve()
+        actual_reminders_dir = Path(denidin.denidin_app.reminder_manager.storage_dir).resolve()
         expected_root = Path(config.data_root).resolve()
         assert actual_reminders_dir.is_relative_to(expected_root), (
             f"ReminderManager.storage_dir={actual_reminders_dir} is NOT under this "
@@ -269,7 +269,7 @@ class TestReminderLifecycleBilled:
 
     def test_godfather_creates_one_time_reminder_text_approval(self, denidin_app, config, monkeypatch):
         phone, chat_id = self._godfather(config)
-        reminder_manager = denidin_app.ai_handler.reminder_manager
+        reminder_manager = denidin_app.reminder_manager
         ids_before = self._active_ids(reminder_manager)
 
         n1 = self._send_text(
@@ -303,7 +303,7 @@ class TestReminderLifecycleBilled:
     @pytest.mark.sanity
     def test_godfather_creates_one_time_reminder_button_approval(self, denidin_app, config):
         phone, chat_id = self._godfather(config)
-        reminder_manager = denidin_app.ai_handler.reminder_manager
+        reminder_manager = denidin_app.reminder_manager
         ids_before = self._active_ids(reminder_manager)
         n1 = self._send_text(
             chat_id, phone, "Test Godfather",
@@ -332,7 +332,7 @@ class TestReminderLifecycleBilled:
     @pytest.mark.sanity
     def test_godfather_creates_recurring_reminder(self, denidin_app, config, monkeypatch):
         phone, chat_id = self._godfather(config)
-        reminder_manager = denidin_app.ai_handler.reminder_manager
+        reminder_manager = denidin_app.reminder_manager
         ids_before = self._active_ids(reminder_manager)
 
         n1 = self._send_text(
@@ -390,7 +390,7 @@ class TestReminderLifecycleBilled:
         fires - "yesterday" is unambiguous at any time of day, unlike a bare
         same-day clock time (see the recurring test below)."""
         phone, chat_id = self._godfather(config)
-        reminder_manager = denidin_app.ai_handler.reminder_manager
+        reminder_manager = denidin_app.reminder_manager
         ids_before = self._active_ids(reminder_manager)
 
         n1 = self._send_text(
@@ -415,7 +415,7 @@ class TestReminderLifecycleBilled:
         into yesterday and land on a time that's actually still upcoming
         today."""
         phone, chat_id = self._godfather(config)
-        reminder_manager = denidin_app.ai_handler.reminder_manager
+        reminder_manager = denidin_app.reminder_manager
         ids_before = self._active_ids(reminder_manager)
 
         now = now_local()
@@ -481,7 +481,7 @@ class TestReminderLifecycleBilled:
 
     def test_modify_one_time_reminder(self, denidin_app, config, monkeypatch):
         phone, chat_id = self._godfather(config)
-        reminder_manager = denidin_app.ai_handler.reminder_manager
+        reminder_manager = denidin_app.reminder_manager
         ids_before_create = self._active_ids(reminder_manager)
         self._create_approved_reminder(
             denidin_app, config, phone, chat_id,
@@ -511,7 +511,7 @@ class TestReminderLifecycleBilled:
     @pytest.mark.sanity
     def test_modify_single_occurrence_of_recurring_reminder(self, denidin_app, config, monkeypatch):
         phone, chat_id = self._godfather(config)
-        reminder_manager = denidin_app.ai_handler.reminder_manager
+        reminder_manager = denidin_app.reminder_manager
         ids_before = self._active_ids(reminder_manager)
         self._create_approved_reminder(
             denidin_app, config, phone, chat_id,
@@ -567,7 +567,7 @@ class TestReminderLifecycleBilled:
         """Explicitly asserts a pre-existing Detached/exception occurrence survives
         the whole-series edit - the single most important assertion for FR-012."""
         phone, chat_id = self._godfather(config)
-        reminder_manager = denidin_app.ai_handler.reminder_manager
+        reminder_manager = denidin_app.reminder_manager
         self._create_approved_reminder(
             denidin_app, config, phone, chat_id,
             "תזכיר לי כל יום שני בשעה 9:00 להתקשר ללקוח", "modify_whole_setup",
@@ -656,7 +656,7 @@ class TestReminderLifecycleBilled:
         the correct reminder_id - not just message_text.
         """
         phone, chat_id = self._godfather(config)
-        reminder_manager = denidin_app.ai_handler.reminder_manager
+        reminder_manager = denidin_app.reminder_manager
         ids_before = self._active_ids(reminder_manager)
         self._create_approved_reminder(
             denidin_app, config, phone, chat_id,
@@ -696,7 +696,7 @@ class TestReminderLifecycleBilled:
 
     def test_delete_one_time_reminder(self, denidin_app, config, monkeypatch):
         phone, chat_id = self._godfather(config)
-        reminder_manager = denidin_app.ai_handler.reminder_manager
+        reminder_manager = denidin_app.reminder_manager
         ids_before = self._active_ids(reminder_manager)
         self._create_approved_reminder(
             denidin_app, config, phone, chat_id,
@@ -720,7 +720,7 @@ class TestReminderLifecycleBilled:
 
     def test_delete_whole_series(self, denidin_app, config, monkeypatch):
         phone, chat_id = self._godfather(config)
-        reminder_manager = denidin_app.ai_handler.reminder_manager
+        reminder_manager = denidin_app.reminder_manager
         ids_before = self._active_ids(reminder_manager)
         self._create_approved_reminder(
             denidin_app, config, phone, chat_id,
@@ -764,7 +764,7 @@ class TestReminderLifecycleBilled:
 
     def test_cap_declined_at_21st_reminder(self, denidin_app, config):
         phone, chat_id = self._godfather(config)
-        reminder_manager = denidin_app.ai_handler.reminder_manager
+        reminder_manager = denidin_app.reminder_manager
         active_count = len(reminder_manager.list_active())
         # Fill directly to the cap (conversational creation for 20 real
         # reminders would be prohibitively slow/expensive for one test) -
