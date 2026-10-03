@@ -133,7 +133,7 @@ Every other comment-driven behavior is unchanged (see Clarifications).
   per-event mapping, split, or event-level undo machinery. Everything else reuses name
   resolution as-is.
 
-## User Acceptance Scenarios (draft — awaiting approval)
+## User Acceptance Scenarios (APPROVED 2026-10-03 — Playwright tier, `apps/webapp/e2e/`)
 
 1. **Close without faking numbers.** A client agreed ₪10,000 and paid ₪2,000 (red). The user
    clicks **לסגור**. The row moves to green and still shows Agreed ₪10,000, Paid ₪2,000.
