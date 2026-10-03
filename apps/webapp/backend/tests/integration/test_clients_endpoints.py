@@ -130,3 +130,73 @@ class TestSetLineStatusErrors:
     def test_requires_auth(self, api):
         api.headers.pop("Authorization")
         assert _status(api, DEBT, "close").status_code == 401
+
+
+@pytest.fixture
+def api_with_aliases(api, clients_dir, tmp_path):
+    """Adds an unresolved bank name and an explicit mapping on top of ``api``'s ledger."""
+    events_dir = tmp_path / "data" / "events"
+    for e in [payment("C9", "Yisrael I", 500), payment("C8", "שם לא מוכר", 50)]:
+        (events_dir / f"{e['event_id']}.json").write_text(json.dumps(e, ensure_ascii=False), encoding="utf-8")
+    write_json(clients_dir / "client_mapping.json", {"Yisrael I": DEBT})
+    write_json(clients_dir / "mapping_notes.json", {"Yisrael I": "הערה"})
+    api.get("/api/events?refresh=1")  # the ledger reload (clients ?refresh=1 doesn't re-read events)
+    return api
+
+
+def _unmatched_names(api, refresh=False):
+    body = api.get("/api/clients?refresh=1" if refresh else "/api/clients").json()
+    return {u["raw_name"]: u for u in body["unmatched"]}
+
+
+class TestUnlinkMapping:
+    """T019"""
+
+    def test_unlink_returns_name_to_resolve_list(self, api_with_aliases, clients_dir):
+        api = api_with_aliases
+        assert _row(api, DEBT)["mapped_aliases"] == ["Yisrael I"]
+        assert _row(api, DEBT)["display_paid"] == 2500
+
+        resp = api.post("/api/clients/mapping/unlink", json={"raw_name": "Yisrael I"})
+        assert resp.status_code == 200
+        assert resp.json() == {"raw_name": "Yisrael I", "unlinked_from": DEBT}
+        assert read_json(clients_dir / "client_mapping.json") == {}
+
+        assert _row(api, DEBT)["display_paid"] == 2000
+        assert _row(api, DEBT)["mapped_aliases"] == []
+        assert _unmatched_names(api)["Yisrael I"]["note"] == "הערה"
+
+    def test_unlink_unknown_name_is_404(self, api_with_aliases):
+        resp = api_with_aliases.post("/api/clients/mapping/unlink", json={"raw_name": "אין"})
+        assert resp.status_code == 404
+        assert resp.json()["error"] == "not_found"
+
+    def test_unlink_missing_raw_name_is_400(self, api_with_aliases):
+        assert api_with_aliases.post("/api/clients/mapping/unlink", json={}).status_code == 400
+
+    def test_unlink_requires_auth(self, api_with_aliases):
+        api_with_aliases.headers.pop("Authorization")
+        resp = api_with_aliases.post("/api/clients/mapping/unlink", json={"raw_name": "Yisrael I"})
+        assert resp.status_code == 401
+
+
+class TestHideUnmatched:
+    """T028"""
+
+    def test_hide_is_persisted_idempotent_and_survives_refresh(self, api_with_aliases, clients_dir):
+        api = api_with_aliases
+        assert "שם לא מוכר" in _unmatched_names(api)
+        for _ in range(2):
+            resp = api.post("/api/clients/unmatched/hide", json={"raw_name": "שם לא מוכר"})
+            assert resp.status_code == 200
+            assert resp.json() == {"raw_name": "שם לא מוכר", "hidden": True}
+        assert read_json(clients_dir / "hidden_unmatched.json") == ["שם לא מוכר"]
+        assert "שם לא מוכר" not in _unmatched_names(api, refresh=True)
+
+    def test_hide_missing_raw_name_is_400(self, api_with_aliases):
+        assert api_with_aliases.post("/api/clients/unmatched/hide", json={}).status_code == 400
+
+    def test_hide_requires_auth(self, api_with_aliases):
+        api_with_aliases.headers.pop("Authorization")
+        resp = api_with_aliases.post("/api/clients/unmatched/hide", json={"raw_name": "x"})
+        assert resp.status_code == 401

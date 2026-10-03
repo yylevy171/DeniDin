@@ -70,17 +70,17 @@ routing gave it.
   - bad or missing action → 400; unknown client → 404; `past` line → 409; no token → 401;
   - after each write, `GET /api/clients` reflects the new section without `refresh=1`.
   - Uses a fixture-injected `official_clients_fn`, the same as `test_caching.py`'s `_reader`. That's a constructor-injected callable, not a mock.
-- [ ] T009 [US1] Run T004–T008 via the T001 wrapper. Confirm all are RED for the right reason. **STOP: human approval of the tests.**
+- [x] T009 [US1] Run T004–T008 via the T001 wrapper. Confirm all are RED for the right reason. **STOP: human approval of the tests.**
 
 ### Task B — implementation (blocked on T009 approval)
 
-- [ ] T010 [US1] `clients_reader.py`:
+- [x] T010 [US1] `clients_reader.py`:
   - add `_apply_line_status(stats, client_status)`, which sets `is_check` / `is_active_client` / `is_manually_settled` from the file and WARNs on unknown values;
   - in `_apply_status_directives`, delete the `לקוח פעיל`, `לבדוק` and `לסגור` branches, including the whole `max(agreed, paid)` hack and the `*_inferred` markers;
   - keep the delete branch and the `removed_clients` return verbatim.
-- [ ] T011 [US3] `clients_reader.py` — add `_legacy_comment_status(comment, is_merged_away)`, a frozen port of research R-1's detection and precedence, used only by the migration. Add `ClientsReader._migrate_comment_status_once(stats, client_comments)`, called from `_compute_report()` after merge directives (so `is_merged_away` is known) and before `_apply_line_status`, under the existing `self._lock`. Marker in `migrations.json`, with `now_local()` (the same import style as `ledger_reader.py`). Log at INFO the count migrated per status.
-- [ ] T012 [US1] `clients_reader.py` — `_build_client_rows` adds `line_status`. New `ClientsReader.set_line_status(client_id, action)` implementing contract semantics (reopen per research R-3: recompute the row with the status cleared, using the same pure functions). Raises distinct exceptions for not-found and past. Invalidates `_report_cache`. Logs at INFO (client, action, result).
-- [ ] T013 [US1] `BE/src/webapp_backend/server.py` — route `POST /api/clients/{client_id}/status` (`run_in_threadpool`, `_error` mapping 400/404/409, Hebrew messages per contract). Register it next to the existing clients routes.
+- [x] T011 [US3] `clients_reader.py` — add `_legacy_comment_status(comment, is_merged_away)`, a frozen port of research R-1's detection and precedence, used only by the migration. Add `ClientsReader._migrate_comment_status_once(stats, client_comments)`, called from `_compute_report()` after merge directives (so `is_merged_away` is known) and before `_apply_line_status`, under the existing `self._lock`. Marker in `migrations.json`, with `now_local()` (the same import style as `ledger_reader.py`). Log at INFO the count migrated per status.
+- [x] T012 [US1] `clients_reader.py` — `_build_client_rows` adds `line_status`. New `ClientsReader.set_line_status(client_id, action)` implementing contract semantics (reopen per research R-3: recompute the row with the status cleared, using the same pure functions). Raises distinct exceptions for not-found and past. Invalidates `_report_cache`. Logs at INFO (client, action, result).
+- [x] T013 [US1] `BE/src/webapp_backend/server.py` — route `POST /api/clients/{client_id}/status` (`run_in_threadpool`, `_error` mapping 400/404/409, Hebrew messages per contract). Register it next to the existing clients routes.
 - [ ] T014 [P] [US2] `FE/api.ts` — `ClientRow.line_status`; `setClientLineStatus(clientId, action)`.
 - [ ] T015 [US2] `FE/ClientsView.tsx` + `FE/clientsTheme.ts` — button group in the `ClientRowCard` header row:
   - **לסגור** (green, from `CLIENT_STATUS_COLORS.settled`) on check/active/debt/missing_agreement;
@@ -91,7 +91,7 @@ routing gave it.
   - disable the group while saving, then re-fetch `fetchClients(false)` and replace state;
   - show an inline error on failure;
   - stable testIDs: `line-btn-close|reopen|check|active-<official_name>`.
-- [ ] T016 [US1] Run T004–T008 via the wrapper. All GREEN, and the full existing backend suite stays green (`test_caching.py` included).
+- [x] T016 [US1] Run T004–T008 via the wrapper. All GREEN, and the full existing backend suite stays green (`test_caching.py` included).
 
 ---
 
@@ -104,13 +104,13 @@ routing gave it.
 
 ### Task A — tests (RED, then human approval)
 
-- [ ] T017 [P] [US4] `BE/tests/unit/test_clients_resolution.py` — naming:
+- [x] T017 [P] [US4] `BE/tests/unit/test_clients_resolution.py` — naming:
   - events with no `client_name`/`payer_name`, or with literal `"Unknown"`, each become `unmatched` rows named `Unknown-<event_id>` with `event_count == 1`;
   - two such events never merge;
   - adding an older-dated no-name event leaves the existing names unchanged;
   - mapping `Unknown-<id>` → client X adds exactly that event's amount to X's totals and lists it in X's events;
   - a **named** alias mapped to `"Unknown"` keeps its own name (unchanged behavior).
-- [ ] T018 [P] [US5] Same file — `mapped_aliases`:
+- [x] T018 [P] [US5] Same file — `mapped_aliases`:
   - it contains only explicit `client_mapping.json` keys pointing at this client;
   - fuzzy-matched names and `לאחד` merge sources appear in `raw_names` but **not** in `mapped_aliases`.
 
@@ -119,17 +119,17 @@ routing gave it.
   - the raw name reappears in `unmatched` with its `mapping_notes.json` note intact;
   - the client's totals revert;
   - an unknown key raises not-found.
-- [ ] T019 [P] [US5] `BE/tests/integration/test_clients_endpoints.py` — `POST /api/clients/mapping/unlink`: 200 with `unlinked_from`; 404 unknown; 400 missing; 401 no token; the follow-up `GET /api/clients` shows the name back in `unmatched`.
-- [ ] T020 [US4] Run T017–T019 RED. **STOP: human approval.**
+- [x] T019 [P] [US5] `BE/tests/integration/test_clients_endpoints.py` — `POST /api/clients/mapping/unlink`: 200 with `unlinked_from`; 404 unknown; 400 missing; 401 no token; the follow-up `GET /api/clients` shows the name back in `unmatched`.
+- [x] T020 [US4] Run T017–T019 RED. **STOP: human approval.**
 
 ### Task B — implementation (blocked on T020)
 
-- [ ] T021 [US4] `clients_reader.py` `_aggregate_events` — the `Unknown-<event_id>` raw name (research R-5). With no `event_id`, keep plain `"Unknown"` and log a WARNING.
-- [ ] T022 [US5] `clients_reader.py` — `_build_client_rows` adds `mapped_aliases`, computed from `client_mapping.json`. Add `ClientsReader.unlink_mapping(raw_name)`: invalidate the cache and log at INFO.
-- [ ] T023 [US5] `server.py` — route `POST /api/clients/mapping/unlink`, registered **before** any route that could shadow it.
+- [x] T021 [US4] `clients_reader.py` `_aggregate_events` — the `Unknown-<event_id>` raw name (research R-5). With no `event_id`, keep plain `"Unknown"` and log a WARNING.
+- [x] T022 [US5] `clients_reader.py` — `_build_client_rows` adds `mapped_aliases`, computed from `client_mapping.json`. Add `ClientsReader.unlink_mapping(raw_name)`: invalidate the cache and log at INFO.
+- [x] T023 [US5] `server.py` — route `POST /api/clients/mapping/unlink`, registered **before** any route that could shadow it.
 - [ ] T024 [P] [US5] `FE/api.ts` — `ClientRow.mapped_aliases`; `unlinkClientMapping(rawName)`.
 - [ ] T025 [US5] `FE/ClientsView.tsx` — in the expanded `ClientRowCard`, list `mapped_aliases`, each with an unlink "×" (testID `unlink-<raw_name>`). On success, re-fetch.
-- [ ] T026 [US4] Run T017–T019 GREEN, and the full backend suite.
+- [x] T026 [US4] Run T017–T019 GREEN, and the full backend suite.
 
 ---
 
@@ -137,21 +137,21 @@ routing gave it.
 
 ### Task A — tests (RED, then human approval)
 
-- [ ] T027 [P] [US6] `BE/tests/unit/test_clients_resolution.py` — `hide_unmatched(raw_name)`:
+- [x] T027 [P] [US6] `BE/tests/unit/test_clients_resolution.py` — `hide_unmatched(raw_name)`:
   - it persists to a sorted, unique `hidden_unmatched.json`;
   - the name disappears from `unmatched`;
   - it's idempotent;
   - existing note-keyword hiding still works;
   - `למחוק` in a resolve-list note does **not** hide (no keyword was added).
-- [ ] T028 [P] [US6] `BE/tests/integration/test_clients_endpoints.py` — `POST /api/clients/unmatched/hide`: 200 `{hidden: true}`; idempotent; 400 missing; 401 no token; still hidden after `GET /api/clients?refresh=1`.
-- [ ] T029 [US6] Run RED. **STOP: human approval.**
+- [x] T028 [P] [US6] `BE/tests/integration/test_clients_endpoints.py` — `POST /api/clients/unmatched/hide`: 200 `{hidden: true}`; idempotent; 400 missing; 401 no token; still hidden after `GET /api/clients?refresh=1`.
+- [x] T029 [US6] Run RED. **STOP: human approval.**
 
 ### Task B — implementation (blocked on T029)
 
-- [ ] T030 [US6] `clients_reader.py` — `_split_unmatched` skips hidden names. Add `ClientsReader.hide_unmatched`. `server.py` route.
+- [x] T030 [US6] `clients_reader.py` — `_split_unmatched` skips hidden names. Add `ClientsReader.hide_unmatched`. `server.py` route.
 - [ ] T031 [P] [US6] `FE/api.ts` `hideUnmatched`. `FE/ClientsView.tsx` `UnmatchedRowCard`: **הסר מהרשימה** button (testID `hide-unmatched-<raw_name>`), which removes the row from local state on success.
 - [ ] T032 [P] [US7] `FE/ClientsView.tsx` `ClientPicker` — a `useEffect` bound to `open`: a `window` `keydown` listener; `Escape` → `setOpen(false)` and clear the query; cleanup on close and unmount (research R-8).
-- [ ] T033 [US6] Run T027–T028 GREEN, and the full backend suite.
+- [x] T033 [US6] Run T027–T028 GREEN, and the full backend suite.
 
 ---
 

@@ -23,11 +23,31 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from utils.time_utils import now_local  # apps/denidin-app/src on path (webapp_backend/__init__)
 from webapp_backend.ledger_reader import LedgerEventManager
 
 logger = logging.getLogger("webapp_backend")
 
 PAST_CUTOFF = datetime(2025, 9, 1)
+# Feature 092: explicit per-line status (client_status.json) replaces the לסגור/לבדוק/לקוח פעיל
+# comment keywords as the source of a line's check/active/closed routing.
+LINE_STATUSES = ("closed", "check", "active")
+LINE_ACTIONS = ("close", "reopen", "check", "active")
+MIGRATION_092_KEY = "092_comment_line_status"
+
+
+class ClientNotFoundError(LookupError):
+    """No visible client line with that official name."""
+
+
+class LineStatusNotAllowedError(RuntimeError):
+    """The line is in the gray (past) section - it takes no status buttons."""
+
+
+class MappingNotFoundError(LookupError):
+    """No explicit client_mapping.json entry for that raw name."""
+
+
 _PLUS_INVOICE_SUBTYPES = {"חשבונית מס קבלה", "חשבונית מס / קבלה", "קבלה", "320", "400", 320, 400}
 
 
@@ -38,6 +58,16 @@ def _load_json(path: Path) -> dict:
         except (OSError, json.JSONDecodeError):
             return {}
     return {}
+
+
+def _load_json_list(path: Path) -> List[Any]:
+    if path.exists():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return []
+        return data if isinstance(data, list) else []
+    return []
 
 
 def _save_json(path: Path, data: Any) -> None:
@@ -85,6 +115,20 @@ def _new_stat() -> Dict[str, Any]:
     }
 
 
+def _raw_client_name(data: Dict[str, Any]) -> str:
+    """Feature 092: an event with no client name gets its own stable raw name,
+    ``Unknown-<event_id>``, so each one is resolved independently (they belong to different
+    clients). event_id is immutable per ledger event, so the name never shifts."""
+    raw = data.get("client_name") or data.get("payer_name") or ""
+    if str(raw).strip() and str(raw).strip() != "Unknown":
+        return raw
+    event_id = data.get("event_id")
+    if event_id:
+        return f"Unknown-{event_id}"
+    logger.warning("ledger event with no client name and no event_id - grouped as 'Unknown'")
+    return "Unknown"
+
+
 def _aggregate_events(
     all_events: List[Dict[str, Any]], official_clients: List[str], manual_mapping: Dict[str, str]
 ) -> Tuple[Dict[str, Dict[str, Any]], Dict[str, Dict[str, Any]], Dict[float, set]]:
@@ -98,7 +142,7 @@ def _aggregate_events(
         event_datetime = data.get("event_datetime") or data.get("txn_date") or data.get("event_date") or ""
         event_date_obj = _parse_any_date(event_datetime)
 
-        raw_client = data.get("client_name") or data.get("payer_name") or "Unknown"
+        raw_client = _raw_client_name(data)
         matched_client, original_name = _fuzzy_match(raw_client, official_clients, manual_mapping)
 
         if event_date_obj and matched_client:
@@ -327,17 +371,17 @@ def _apply_merge_directives(
 def _apply_status_directives(
     stats: Dict[str, Dict[str, Any]], client_comments: Dict[str, str]
 ) -> List[Dict[str, Any]]:
-    """Check / active / close / delete directives — ported verbatim. Returns the
-    removed-clients list (also the side-effect payload for removed_clients.json)."""
+    """Delete directives — ported verbatim. Returns the removed-clients list (also the
+    side-effect payload for removed_clients.json).
+
+    Feature 092: the check / active / close comment keywords no longer route a line (the
+    persisted client_status.json does - see ``_apply_line_status``), and closing no longer
+    rewrites agreed/paid amounts (bugfix-068)."""
     removed_clients: List[Dict[str, Any]] = []
     for c, data in stats.items():
         comment_text = client_comments.get(c, "")
         if not comment_text:
             continue
-
-        if "לקוח פעיל" in comment_text or "לקוחה פעילה" in comment_text:
-            data["is_active_client"] = True
-
         if (
             "למחוק" in comment_text
             or comment_text.strip() == "להסיר"
@@ -348,41 +392,69 @@ def _apply_status_directives(
                 "client_name": c, "reason": comment_text,
                 "agreements": data["agreements"], "invoices_net": data["invoices_net"],
             })
-            continue
-
-        if "לבדוק" in comment_text:
-            data["is_check"] = True
-
-        is_explicit_close = (
-            ("לסגור" in comment_text or "אפשר לסגור" in comment_text)
-            and not data.get("is_check")
-        )
-        if is_explicit_close:
-            data["is_manually_settled"] = True
-            cur_agreed = data.get("manual_agreement_amount")
-            if cur_agreed is None:
-                cur_agreed = data["agreements"]
-            cur_paid = data.get("invoices_net", 0.0)
-            matched_val = max(cur_agreed, cur_paid)
-            if matched_val > 0:
-                data["manual_agreement_amount"] = matched_val
-                data["invoices_net"] = matched_val
-                if cur_agreed < matched_val:
-                    data["agreed_status"] = "YELLOW"
-                    data["agreed_inferred"] = True
-                if cur_paid < matched_val:
-                    data["paid_status"] = "YELLOW"
-                    data["paid_inferred"] = True
     return removed_clients
 
 
+def _legacy_comment_status(comment_text: str, is_merged_away: bool) -> Optional[str]:
+    """FROZEN pre-092 comment→routing detection, used ONLY by the one-time migration
+    (research R-4). Returns the single status that reproduces the section the comment
+    produced before 092: the highest of check > active > closed, or None."""
+    if not comment_text or is_merged_away:
+        return None
+    is_active = "לקוח פעיל" in comment_text or "לקוחה פעילה" in comment_text
+    is_delete = (
+        "למחוק" in comment_text
+        or comment_text.strip() == "להסיר"
+        or "להסיר מהרשימה" in comment_text
+    )
+    is_check = is_close = False
+    if not is_delete:
+        is_check = "לבדוק" in comment_text
+        is_close = ("לסגור" in comment_text or "אפשר לסגור" in comment_text) and not is_check
+    if is_check:
+        return "check"
+    if is_active:
+        return "active"
+    if is_close:
+        return "closed"
+    return None
+
+
+def _valid_statuses(client_status: Dict[str, Any]) -> Dict[str, str]:
+    valid: Dict[str, str] = {}
+    for c, value in client_status.items():
+        if value in LINE_STATUSES:
+            valid[c] = value
+        else:
+            logger.warning("client_status.json: ignoring unknown status %r for %r", value, c)
+    return valid
+
+
+def _apply_line_status(stats: Dict[str, Dict[str, Any]], client_status: Dict[str, str]) -> None:
+    """Feature 092: set the routing flags ``_row_status`` reads from the persisted status."""
+    for c, value in client_status.items():
+        data = stats.get(c)
+        if data is None:
+            continue
+        data["line_status"] = value
+        if value == "check":
+            data["is_check"] = True
+        elif value == "active":
+            data["is_active_client"] = True
+        elif value == "closed":
+            data["is_manually_settled"] = True
+
+
 def _split_unmatched(
-    unmatched: Dict[str, Dict[str, Any]], notes: Dict[str, str]
+    unmatched: Dict[str, Dict[str, Any]], notes: Dict[str, str], hidden: Optional[set] = None
 ) -> Tuple[Dict[str, Dict[str, Any]], List[Dict[str, Any]]]:
     final_unmatched: Dict[str, Dict[str, Any]] = {}
     new_morning_clients: List[Dict[str, Any]] = []
+    hidden = hidden or set()
     for u, udata in unmatched.items():
         udata["raw_text"] = list(udata["raw_text"])
+        if u in hidden:  # Feature 092: "הסר מהרשימה"
+            continue
         note = notes.get(u, "").lower()
         if any(term in note for term in
                ["להסיר", "לא לקוחה",
@@ -419,8 +491,10 @@ def _row_status(data: Dict[str, Any], display_agreed: float, display_paid: float
 
 
 def _build_client_rows(
-    official_clients: List[str], stats: Dict[str, Dict[str, Any]], client_comments: Dict[str, str]
+    official_clients: List[str], stats: Dict[str, Dict[str, Any]], client_comments: Dict[str, str],
+    manual_mapping: Optional[Dict[str, str]] = None,
 ) -> List[Dict[str, Any]]:
+    manual_mapping = manual_mapping or {}
     rows: List[Dict[str, Any]] = []
     for client in sorted(official_clients):
         data = stats[client]
@@ -470,6 +544,12 @@ def _build_client_rows(
             "latest_activity": latest_act,
             "comment": client_comments.get(client, ""),
             "events": data["events"],
+            "line_status": data.get("line_status"),
+            # Feature 092: only explicit client_mapping.json aliases of THIS client can be
+            # unlinked (fuzzy matches / merge sources also appear in raw_names).
+            "mapped_aliases": sorted(
+                r for r in data["raw_names"] if manual_mapping.get(r) == client
+            ),
         })
     return rows
 
@@ -567,12 +647,15 @@ class ClientsReader:
             if refresh:
                 self._official_cache = None
                 self._report_cache = None
-            generation = self._generation_fn()
-            if self._report_cache is not None and self._report_cache[0] == generation:
-                return self._report_cache[1]
-            report = self._compute_report()
-            self._report_cache = (generation, report)
-            return report
+            return self._report_locked()
+
+    def _report_locked(self) -> Dict[str, Any]:
+        generation = self._generation_fn()
+        if self._report_cache is not None and self._report_cache[0] == generation:
+            return self._report_cache[1]
+        report = self._compute_report()
+        self._report_cache = (generation, report)
+        return report
 
     def warm(self) -> None:
         try:
@@ -583,7 +666,7 @@ class ClientsReader:
     def warm_in_background(self) -> None:
         threading.Thread(target=self.warm, name="clients-warm", daemon=True).start()
 
-    def _compute_report(self) -> Dict[str, Any]:
+    def _compute_report(self, status_override: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
         if self._official_cache is None:
             self._official_cache = self._official_clients_fn()
         official_clients = self._official_cache
@@ -591,6 +674,7 @@ class ClientsReader:
         manual_mapping = _load_json(paths["mapping"])
         notes = _load_json(paths["notes"])
         client_comments = _load_json(paths["comments"])
+        hidden = set(_load_json_list(paths["hidden"]))
 
         if self._events_fn is not None:
             all_events = self._events_fn()
@@ -600,17 +684,109 @@ class ClientsReader:
         stats, unmatched, amount_to_clients = _aggregate_events(all_events, official_clients, manual_mapping)
         _apply_comment_rules(stats, client_comments)
         _apply_merge_directives(stats, official_clients, client_comments)
+        self._migrate_comment_status_once(stats, client_comments)
         removed_clients = _apply_status_directives(stats, client_comments)
-        final_unmatched, new_morning_clients = _split_unmatched(unmatched, notes)
+        if status_override is None:
+            client_status = _valid_statuses(_load_json(paths["status"]))
+        else:
+            client_status = dict(status_override)
+        _apply_line_status(stats, client_status)
+        final_unmatched, new_morning_clients = _split_unmatched(unmatched, notes, hidden)
 
         # Preserved side effect (Clarifications 2026-09-17): write on every (re)compute.
         _save_json(paths["removed"], removed_clients)
         _save_json(paths["new_morning"], new_morning_clients)
 
         return {
-            "clients": _build_client_rows(official_clients, stats, client_comments),
+            "clients": _build_client_rows(official_clients, stats, client_comments, manual_mapping),
             "unmatched": _build_unmatched_rows(final_unmatched, notes, amount_to_clients, official_clients, stats),
         }
+
+    def _migrate_comment_status_once(
+        self, stats: Dict[str, Dict[str, Any]], client_comments: Dict[str, str]
+    ) -> None:
+        """Feature 092 R10: one-time conversion of today's comment routing keywords into
+        persisted line statuses, so no line changes section on deploy. Never overwrites an
+        existing status; never touches client_comments.json; recorded in migrations.json so
+        it runs exactly once. Called under ``self._lock`` (via ``_compute_report``)."""
+        paths = self._paths()
+        migrations = _load_json(paths["migrations"])
+        if MIGRATION_092_KEY in migrations:
+            return
+        client_status = _load_json(paths["status"])
+        added: Dict[str, int] = collections.Counter()
+        for c, data in stats.items():
+            if c in client_status:
+                continue
+            value = _legacy_comment_status(client_comments.get(c, ""), bool(data.get("is_merged_away")))
+            if value:
+                client_status[c] = value
+                added[value] += 1
+        _save_json(paths["status"], client_status)
+        migrations[MIGRATION_092_KEY] = now_local().isoformat()
+        _save_json(paths["migrations"], migrations)
+        logger.info("Feature 092 migration: comment keywords -> line statuses %s", dict(added))
+
+    def set_line_status(self, client_id: str, action: str) -> Dict[str, Any]:
+        """Feature 092 R5-R8: the line-status buttons. ``reopen`` stores ``active`` when the
+        line's numbers alone would route it straight back to green (agreed == paid);
+        otherwise it clears the status so the numbers route it (research R-3)."""
+        if action not in LINE_ACTIONS:
+            raise ValueError(f"unknown action {action!r}")
+        with self._lock:
+            report = self._report_locked()
+            row = next((r for r in report["clients"] if r["official_name"] == client_id), None)
+            if row is None:
+                raise ClientNotFoundError(client_id)
+            if row["status"] == "past":
+                raise LineStatusNotAllowedError(client_id)
+
+            path = self._paths()["status"]
+            statuses = _load_json(path)
+            new_value: Optional[str]
+            if action == "reopen":
+                cleared = _valid_statuses({k: v for k, v in statuses.items() if k != client_id})
+                preview = self._compute_report(status_override=cleared)
+                preview_row = next(
+                    (r for r in preview["clients"] if r["official_name"] == client_id), None
+                )
+                new_value = "active" if preview_row and preview_row["status"] == "settled" else None
+            else:
+                new_value = {"close": "closed", "check": "check", "active": "active"}[action]
+
+            if new_value is None:
+                statuses.pop(client_id, None)
+            else:
+                statuses[client_id] = new_value
+            _save_json(path, statuses)
+            self._report_cache = None
+        logger.info("client line status: client=%r action=%s -> %s", client_id, action, new_value)
+        return {"client_id": client_id, "line_status": new_value}
+
+    def unlink_mapping(self, raw_name: str) -> Dict[str, str]:
+        """Feature 092 R3: undo an explicit name mapping. Notes are kept, so the raw name
+        returns to the resolve list exactly as it was."""
+        with self._lock:
+            path = self._paths()["mapping"]
+            mapping = _load_json(path)
+            if raw_name not in mapping:
+                raise MappingNotFoundError(raw_name)
+            official = mapping.pop(raw_name)
+            _save_json(path, mapping)
+            self._report_cache = None
+        logger.info("client mapping unlinked: raw=%r from=%r", raw_name, official)
+        return {"raw_name": raw_name, "unlinked_from": official}
+
+    def hide_unmatched(self, raw_name: str) -> Dict[str, Any]:
+        """Feature 092 R1: "הסר מהרשימה" - permanently drop a name from the resolve list."""
+        with self._lock:
+            path = self._paths()["hidden"]
+            hidden = set(_load_json_list(path))
+            hidden.add(raw_name)
+            _save_json(path, sorted(hidden))
+            self._report_cache = None
+        logger.info("unmatched name hidden: raw=%r", raw_name)
+        return {"raw_name": raw_name, "hidden": True}
 
     def save_comment(self, client_id: str, comment: str) -> Dict[str, str]:
         path = self._paths()["comments"]
