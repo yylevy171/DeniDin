@@ -5,6 +5,7 @@ managers + ``utils.time_utils``), mirroring morning-mcp-app's ``conftest.py`` sh
 file logging goes to ``logs/test_logs/{test_file}.log``.
 """
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -17,6 +18,53 @@ _DENIDIN_APP = PROJECT_ROOT.parents[1] / "denidin-app"
 for _p in (_DENIDIN_APP / "src", _DENIDIN_APP):
     if _p.is_dir() and str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
+
+
+def pytest_configure(config):
+    # Live per-test sound-off — ON BY DEFAULT, ported unchanged from apps/denidin-app's
+    # conftest.py (CLAUDE.md "INDIVIDUAL PER-TEST SOUND-OFF"): one `>>> TEST [k/N] STATUS:
+    # <nodeid>` line per test as it finishes. Controller process only under xdist.
+    # Opt OUT only with DENIDIN_TEST_SOUNDOFF=0; SANITY_PARALLEL_SOUNDOFF=1 forces it on.
+    global _SOUNDOFF_ON
+    _SOUNDOFF_ON = (
+        os.environ.get("DENIDIN_TEST_SOUNDOFF", "1") != "0"
+        or os.environ.get("SANITY_PARALLEL_SOUNDOFF") == "1"
+    ) and not hasattr(config, "workerinput")
+
+
+_SOUNDOFF_ON = False
+_soundoff = {"done": 0, "total": 0, "ids": set()}
+
+
+@pytest.hookimpl(optionalhook=True)  # pytest-xdist isn't a webapp dependency
+def pytest_xdist_node_collection_finished(node, ids):
+    """xdist: each worker reports its collected ids - union gives the real total."""
+    if _SOUNDOFF_ON:
+        _soundoff["ids"].update(ids)
+        _soundoff["total"] = len(_soundoff["ids"])
+
+
+def pytest_collection_finish(session):
+    """Non-xdist fallback."""
+    if _SOUNDOFF_ON and not _soundoff["total"]:
+        _soundoff["total"] = len(getattr(session, "items", []) or [])
+
+
+def pytest_runtest_logreport(report):
+    if not _SOUNDOFF_ON:
+        return
+    if report.when == "call":
+        status = report.outcome.upper()
+    elif report.when == "setup" and report.outcome in ("failed", "skipped"):
+        status = "ERROR" if report.outcome == "failed" else "SKIP"
+    else:
+        return
+    _soundoff["done"] += 1
+    n, total = _soundoff["done"], (_soundoff["total"] or "?")
+    worker = getattr(report, "worker_id", "") or getattr(report, "node", "") or ""
+    tag = f"  ({worker})" if worker else ""
+    print(f"\n>>> TEST [{n}/{total}] {status}: {report.nodeid}{tag}", flush=True)
+    print(f"TEST-PROGRESS done={n} total={total} status={status} node={report.nodeid}", flush=True)
 
 
 def pytest_runtest_setup(item):

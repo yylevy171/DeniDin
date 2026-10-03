@@ -8,7 +8,7 @@ a live ``SessionStore`` rather than one fixed config value. ``/health`` and
 import logging
 import mimetypes
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any, Awaitable, Callable, List, Optional
 
 from starlette.applications import Starlette
 from starlette.concurrency import run_in_threadpool
@@ -65,7 +65,11 @@ class SessionAuthMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-def build_app(config: AppConfig, log_path: Optional[Path] = None) -> Starlette:
+def build_app(
+    config: AppConfig,
+    log_path: Optional[Path] = None,
+    official_clients_fn: Optional[Callable[[], List[str]]] = None,
+) -> Starlette:
     verifier = PasswordVerifier(Path(config.password_hash_file))
     sessions = SessionStore(config.session_expiry_hours)
     reader = LedgerReader(config.denidin_data_root)
@@ -79,7 +83,9 @@ def build_app(config: AppConfig, log_path: Optional[Path] = None) -> Starlette:
     clients_reader = ClientsReader(
         config.denidin_data_root,
         config.clients_data_root,
-        morning_source.list_active_client_names,
+        # Injectable so integration tests can supply the official client list without a
+        # Morning round-trip (dependency injection, not a mock of internal code).
+        official_clients_fn or morning_source.list_active_client_names,
         events_fn=reader.events,
         generation_fn=lambda: reader.generation,
     )

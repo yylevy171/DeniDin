@@ -25,12 +25,12 @@
 
 ## Phase 1: Setup
 
-- [ ] T001 Symlink the shared wrapper: `BE/scripts/run_unit_integration_tests.sh -> ../../../denidin-app/scripts/run_unit_integration_tests.sh` (same pattern as `apps/morning-mcp-app/scripts/`). Verify it resolves `BE/venv/bin/python3` (it `cd`s to the symlink's parent, so dirname/..). Run it once on the existing suite as a green baseline.
-- [ ] T002 Add the per-test sound-off hook to `BE/conftest.py`: a `>>> TEST [k/N] STATUS: <nodeid>` line per test, on by default, opt-out `DENIDIN_TEST_SOUNDOFF=0`. Port it from `apps/denidin-app/conftest.py`'s hook, unchanged in behavior. Re-run the baseline and confirm the lines stream.
+- [x] T001 Symlink the shared wrapper: `BE/scripts/run_unit_integration_tests.sh -> ../../../denidin-app/scripts/run_unit_integration_tests.sh` (same pattern as `apps/morning-mcp-app/scripts/`). Verify it resolves `BE/venv/bin/python3` (it `cd`s to the symlink's parent, so dirname/..). Run it once on the existing suite as a green baseline.
+- [x] T002 Add the per-test sound-off hook to `BE/conftest.py`: a `>>> TEST [k/N] STATUS: <nodeid>` line per test, on by default, opt-out `DENIDIN_TEST_SOUNDOFF=0`. Port it from `apps/denidin-app/conftest.py`'s hook, unchanged in behavior. Re-run the baseline and confirm the lines stream.
 
 ## Phase 2: Foundational (blocks all stories)
 
-- [ ] T003 In `BE/src/webapp_backend/clients_reader.py`, extend `_paths()` with `status` (`client_status.json`), `hidden` (`hidden_unmatched.json`) and `migrations` (`migrations.json`). Pure plumbing, with no behavior change. The existing suite stays green.
+- [x] T003 In `BE/src/webapp_backend/clients_reader.py`, extend `_paths()` with `status` (`client_status.json`), `hidden` (`hidden_unmatched.json`) and `migrations` (`migrations.json`). Pure plumbing, with no behavior change. The existing suite stays green. Also give `BE/src/webapp_backend/server.py`'s `build_app` an optional `official_clients_fn` parameter, defaulting to the Morning source, so the integration tests (T008/T019/T028) can supply the client list without a Morning call. This is dependency injection, not a mock.
 
 ---
 
@@ -45,24 +45,24 @@ routing gave it.
 
 ### Task A — tests (RED, then human approval)
 
-- [ ] T004 [P] [US1] `BE/tests/unit/test_clients_line_status.py` — routing from `client_status.json`:
+- [x] T004 [P] [US1] `BE/tests/unit/test_clients_line_status.py` — routing from `client_status.json`:
   - `closed` → `settled`, `check` → `check`, `active` → `active`;
   - a missing key → computed `settled`/`debt`/`missing_agreement`;
   - priority check > active > closed > past;
   - an unknown stored value is ignored, with a WARNING;
   - a `closed` row outranks `past` (pre-existing behavior kept).
-- [ ] T005 [P] [US1] Same file — **bugfix-068 regression**: a client agreed 10,000 and paid 2,000 with status `closed` gives `display_agreed == 10000`, `display_paid == 2000`, `status == "settled"`, and no YELLOW `agreed_status`/`paid_status` caused by closing (`*_inferred` absent).
-- [ ] T006 [P] [US2] Same file — comments no longer route, and nothing else changes:
+- [x] T005 [P] [US1] Same file — **bugfix-068 regression**: a client agreed 10,000 and paid 2,000 with status `closed` gives `display_agreed == 10000`, `display_paid == 2000`, `status == "settled"`, and no YELLOW `agreed_status`/`paid_status` caused by closing (`*_inferred` absent).
+- [x] T006 [P] [US2] Same file — comments no longer route, and nothing else changes:
   - a comment containing `לסגור` / `אפשר לסגור` / `לבדוק` / `לקוח פעיל` / `לקוחה פעילה`, with **no** status entry (migration marker already set), routes by numbers only;
   - **unchanged:** `למחוק` still yields `past` + a `removed_clients.json` entry, `לאחד "X"` still merges, `הסכם 5,000` still sets `manual_agreement_amount`, `להוריד` still dedupes deposits, and `לבדוק`/`לא ברור`/`חסר` still set YELLOW amount colouring.
-- [ ] T007 [P] [US3] `BE/tests/unit/test_clients_migration.py` — migration:
+- [x] T007 [P] [US3] `BE/tests/unit/test_clients_migration.py` — migration:
   - **(a) parity matrix.** For each comment (a single keyword; `לבדוק … לסגור`; `לקוח פעיל … למחוק`; `לקוח פעיל … לסגור`; `אפשר לסגור`; `לקוחה פעילה`; plain text), the section after migration + new routing equals the section from a **frozen inline copy of the pre-092 routing** in the test file. That copy is the test's own oracle, not imported from src.
   - **(b)** The migration writes `migrations.json["092_comment_line_status"]` (an Israel-local ISO timestamp with offset).
   - **(c)** It runs once: deleting a status afterward and recomputing does **not** re-create it.
   - **(d)** It never overwrites a pre-existing `client_status.json` entry.
   - **(e)** `client_comments.json` is byte-identical before and after.
   - **(f)** Merged-away clients are skipped.
-- [ ] T008 [P] [US1] `BE/tests/integration/test_clients_endpoints.py` — `POST /api/clients/{id}/status`, per `contracts/clients-api.md`:
+- [x] T008 [P] [US1] `BE/tests/integration/test_clients_endpoints.py` — `POST /api/clients/{id}/status`, per `contracts/clients-api.md`:
   - `close`/`check`/`active` → 200 and persisted;
   - `reopen` on a closed debt line → `null` and routes to `debt`;
   - `reopen` on a closed line with agreed == paid → `active`;

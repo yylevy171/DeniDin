@@ -556,6 +556,10 @@ class ClientsReader:
             "comments": d / "client_comments.json",
             "removed": d / "removed_clients.json",
             "new_morning": d / "new_morning_clients.json",
+            # Feature 092
+            "status": d / "client_status.json",
+            "hidden": d / "hidden_unmatched.json",
+            "migrations": d / "migrations.json",
         }
 
     def get_report(self, refresh: bool = False) -> Dict[str, Any]:
