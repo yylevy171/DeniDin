@@ -2,7 +2,7 @@
 
 **Feature Branch**: `feature/058-morning-docs-calculation-nuances`
 **Created**: 2026-08-19
-**Status**: Placeholder — not yet clarified/specced. Captured from a 2026-08-19 request;
+**Status**: Obsolete
 run `speckit.specify` + `speckit.clarify` before starting implementation.
 
 ## Input

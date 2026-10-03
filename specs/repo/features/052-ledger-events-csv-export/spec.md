@@ -2,7 +2,7 @@
 
 **Feature Branch**: `feature/052-ledger-events-csv-export`
 **Created**: 2026-08-13
-**Status**: Placeholder — not yet clarified/specced. Captured from a 2026-08-13 backlog
+**Status**: Obsolete
 conversation; run `speckit.specify` + `speckit.clarify` before starting implementation.
 
 ## Input

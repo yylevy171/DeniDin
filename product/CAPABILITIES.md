@@ -22,7 +22,7 @@ Customer-facing functional features, conversational intelligence, and business c
 - **077**: `077-long-term-memory-assembly` — Status: Repo
 - **076**: `076-edited-reaction-deleted-message-support` — Status: Done (v0.7.0)
 - **074**: `074-morning-client-name-cache-alias` — Status: Obsolete
-- **072**: `072-morning-client-name-cache` — Status: In-progress
+- **072**: `072-morning-client-name-cache` — Status: Backlog
 - **071**: `071-pdf-single-call-extraction` — Status: Repo
 - **070**: `070-rolling-memory-window` — Status: Repo
 - **069**: `069-mandatory-client-resolution-before-ledger-event` — Status: Done (v0.7.0)
@@ -41,7 +41,7 @@ Customer-facing functional features, conversational intelligence, and business c
 - **052**: `052-ledger-events-csv-export` — Status: Low-priority
 - **051**: `051-hourly-reporting-payment-request` — Status: Backlog
 - **050**: `050-post-image-action-suggestions` — Status: Obsolete
-- **049**: `049-user-editable-context-memory` — Status: Low-priority
+- **049**: `049-user-editable-context-memory` — Status: Backlog
 - **048**: `048-whatsapp-typing-indicator` — Status: Done (v0.4.2)
 - **047**: `047-whatsapp-interactive-approval-buttons` — Status: Done (v0.4.3)
 - **046**: `046-hebrew-approval-synonyms` — Status: Done (v0.2.3)
@@ -76,8 +76,8 @@ Customer-facing functional features, conversational intelligence, and business c
 - **012**: `012-update-bot-terminology-to-app` — Status: Done (v0.0.1)
 - **011**: `011-rename-botconfiguration-to-appconfiguration` — Status: Done (v0.0.1)
 - **010**: `010-rename-openai-to-ai` — Status: Done (v0.0.1)
-- **009**: `009-agentic-workflow-builder` — Status: Low-priority
-- **008**: `008-scheduled-proactive-chats` — Status: Low-priority
+- **009**: `009-agentic-workflow-builder` — Status: Obsolete
+- **008**: `008-scheduled-proactive-chats` — Status: Backlog
 - **007**: `007-persistent-context-memory` — Status: Done (v0.0.1)
 - **006**: `006-rbac-user-roles` — Status: Done (v0.0.1)
 - **005**: `005-mcp-morning-green-receipt` — Status: Done (v0.0.1)

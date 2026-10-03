@@ -2,7 +2,7 @@
 
 **Feature Branch**: `feature/049-user-editable-context-memory`
 **Created**: 2026-08-13
-**Status**: Placeholder — not yet clarified/specced. Captured from a 2026-08-13 backlog
+**Status**: Backlog
 conversation; run `speckit.specify` + `speckit.clarify` before starting implementation.
 
 ## Input

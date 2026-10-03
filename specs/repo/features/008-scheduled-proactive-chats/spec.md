@@ -2,7 +2,7 @@
 
 **Feature ID**: 008-scheduled-proactive-chats  
 **Priority**: P2 (Medium)  
-**Status**: Planning  
+**Status**: Backlog
 **Created**: January 17, 2026
 
 ## Problem Statement
