@@ -5,7 +5,11 @@ Customer-facing functional features, conversational intelligence, and business c
 
 ## Features
 
-- **087**: `087-webapp-clients-mgmt` — Status: Backlog
+- **091**: `091-group-agreements` — Status: Backlog
+- **090**: `090-hourly-payer-not-client` — Status: Backlog
+- **089**: `089-ui-agreement-edits` — Status: Backlog
+- **088**: `088-docx-to-pdf` — Status: Backlog
+- **087**: `087-webapp-clients-mgmt` — Status: Done (v0.7.6)
 - **086**: `086-combo-doc-closing-multiple-300-accounts` — Status: Repo
 - **084**: `084-whatsapp-reactions` — Status: Done (v0.7.1)
 - **083**: `083-fee-agreement-docs` — Status: Done (v0.7.5)
@@ -83,14 +87,17 @@ Customer-facing functional features, conversational intelligence, and business c
 
 ## Bugfixes
 
-- **064**: `bugfix-064-webapp-stale-in-memory-ledger-index` — Status: Bugfixes
-- **061**: `bugfix-061-vat-prompt-conflict` — Status: In-progress
+- **067**: `bugfix-067-morning-anonymous-config-volume` — Status: Done (v0.7.8)
+- **066**: `bugfix-066-prod-deploy-config-shipping-and-prober` — Status: Done (v0.7.7)
+- **064**: `bugfix-064-webapp-stale-in-memory-ledger-index` — Status: Done (v0.7.6)
+- **061**: `bugfix-061-vat-prompt-conflict` — Status: Done (v0.7.8)
+- **061**: `bugfix-061-vat-test-categorization` — Status: Done (v0.7.8)
 - **060**: `bugfix-060-user-request-wins-over-system` — Status: Bugfixes
 - **059**: `bugfix-059-multiple-doc-request-failure` — Status: Bugfixes
-- **058**: `bugfix-058-persist-user-errors-in-session` — Status: In-progress
+- **058**: `bugfix-058-persist-user-errors-in-session` — Status: Done (v0.7.8)
 - **056**: `bugfix-056-webapp-ui-gaps-vs-approved-playwright-plan` — Status: Repo
 - **055**: `bugfix-055-bundled-app-stop-kills-sibling` — Status: Repo
-- **054**: `bugfix-054-startup-drops-queued-messages` — Status: In-progress
+- **054**: `bugfix-054-startup-drops-queued-messages` — Status: Done (v0.7.8)
 - **053**: `bugfix-053-memory-questions-misrouted-to-ledger-query` — Status: Repo
 - **052**: `bugfix-052-billed-tests-share-one-session-per-file` — Status: Bugfixes
 - **051**: `bugfix-051-list-reminders-cross-chat-disclosure` — Status: Repo
@@ -110,12 +117,12 @@ Customer-facing functional features, conversational intelligence, and business c
 - **037**: `bugfix-037-mixed-timestamp-representation` — Status: Done (v0.4.0)
 - **034**: `bugfix-034-ledger-bugs` — Status: Repo
 - **033**: `bugfix-033-credit-notes-silently-dropped-from-financial-answers` — Status: Repo
-- **032**: `bugfix-032-phone-number-not-normalised` — Status: In-progress
+- **032**: `bugfix-032-phone-number-not-normalised` — Status: Done (v0.7.8)
 - **031**: `bugfix-031-hebrew-status-value-returns-empty-instead-of-error` — Status: Repo
 - **030**: `bugfix-030-message-sequencing-ambiguity` — Status: Repo
 - **029**: `bugfix-029-conversation-quality-p1-cluster` — Status: Repo
 - **028**: `bugfix-028-invoicing-and-approval-gate-p0-cluster` — Status: Done (v0.4.1)
-- **027**: `bugfix-027-geresh-omitted-entirely-not-fuzzy-matched` — Status: In-progress
+- **027**: `bugfix-027-geresh-omitted-entirely-not-fuzzy-matched` — Status: Done (v0.7.8)
 - **026**: `bugfix-026-morning-documents-created-unsigned` — Status: Done (v0.3.0)
 - **025**: `bugfix-025-nickname-not-recognized-as-self-address` — Status: Repo
 - **024**: `bugfix-024-native-mention-by-phone-number` — Status: Done (v0.2.1)
