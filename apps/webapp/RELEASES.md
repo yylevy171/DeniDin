@@ -45,3 +45,7 @@ bugfix-066: config baked into the image is now used as shipped (compose files mo
 ## webapp v0.7.8 — 2026-09-28
 
 Fixes: client search now matches geresh-containing names when the geresh is typed omitted; Israeli phone numbers are normalised before validation; queued WhatsApp messages are processed on startup instead of dropped; user-facing error messages are persisted in session history; and the constitution's VAT-included default for deposit screenshots/bank transfers no longer triggers a redundant VAT prompt. Also includes a chore fix: dev deploy/ops scripts now refuse to run from a nested teammate clone and always target the canonical DeniDin root, closing a gap that caused a dev deployment crash on 2026-09-27.
+
+## webapp v0.7.9 — 2026-10-03
+
+Clients tab: line-status buttons replace comment keywords, closed lines show real amounts, name-resolution fixes
