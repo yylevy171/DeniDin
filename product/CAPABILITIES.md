@@ -5,6 +5,8 @@ Customer-facing functional features, conversational intelligence, and business c
 
 ## Features
 
+- **096**: `096-webapp-undo-client-resolutions` — Status: Backlog
+- **095**: `095-webapp-handle-lasgor-closing` — Status: Backlog
 - **093**: `093-hourly-payer-not-client` — Status: Backlog
 - **092**: `092-undo-client-resolution` — Status: Backlog
 - **091**: `091-group-agreements` — Status: Backlog
@@ -19,7 +21,7 @@ Customer-facing functional features, conversational intelligence, and business c
 - **081**: `081-net-hamishpat-scanning` — Status: Backlog
 - **080**: `080-higher-verbosity-speed` — Status: Done (v0.7.1)
 - **079**: `079-instinct-worker` — Status: Backlog
-- **077**: `077-long-term-memory-assembly` — Status: Backlog
+- **077**: `077-long-term-memory-assembly` — Status: Low-priority
 - **076**: `076-edited-reaction-deleted-message-support` — Status: Done (v0.7.0)
 - **074**: `074-morning-client-name-cache-alias` — Status: Obsolete
 - **072**: `072-morning-client-name-cache` — Status: Backlog
@@ -31,14 +33,14 @@ Customer-facing functional features, conversational intelligence, and business c
 - **066**: `066-support-bit-and-paybox` — Status: Backlog
 - **064**: `064-bank-deposit-full-cycle` — Status: Backlog
 - **061**: `061-prod-morning-ledger-backfill` — Status: Done (v0.5.3)
-- **060**: `060-duplicate-bank-image-detection` — Status: Backlog
+- **060**: `060-duplicate-bank-image-detection` — Status: Low-priority
 - **059**: `059-stabilize-tests-sanity-suite` — Status: Done (v0.5.4)
-- **058**: `058-morning-docs-calculation-nuances` — Status: Low-priority
+- **058**: `058-morning-docs-calculation-nuances` — Status: Obsolete
 - **056**: `056-receipts-without-invoice` — Status: Done (v0.5.1)
-- **055**: `055-multiple-clients-godfathers` — Status: Backlog
+- **055**: `055-multiple-clients-godfathers` — Status: Low-priority
 - **054**: `054-reminders-functionality-mgmt` — Status: Done (v0.5.0)
 - **053**: `053-morning-api-auth-migration` — Status: Done (v0.4.2)
-- **052**: `052-ledger-events-csv-export` — Status: Low-priority
+- **052**: `052-ledger-events-csv-export` — Status: Obsolete
 - **051**: `051-hourly-reporting-payment-request` — Status: Backlog
 - **050**: `050-post-image-action-suggestions` — Status: Obsolete
 - **049**: `049-user-editable-context-memory` — Status: Backlog
@@ -69,8 +71,8 @@ Customer-facing functional features, conversational intelligence, and business c
 - **021**: `021-flexible-document-creation` — Status: Done (v0.0.1)
 - **020**: `020-flexible-invoice-payment-methods` — Status: Done (v0.0.1)
 - **018**: `018-denidin-morning-mcp-integration` — Status: Done (v0.0.1)
-- **017**: `017-mcp-morning-receipt-parsing` — Status: Low-priority
-- **015**: `015-topic-based-access-control` — Status: Low-priority
+- **017**: `017-mcp-morning-receipt-parsing` — Status: Obsolete
+- **015**: `015-topic-based-access-control` — Status: Obsolete
 - **014**: `014-entity-extraction-group-messages` — Status: Obsolete
 - **013**: `013-proactive-whatsapp-messaging-core` — Status: Obsolete
 - **012**: `012-update-bot-terminology-to-app` — Status: Done (v0.0.1)
