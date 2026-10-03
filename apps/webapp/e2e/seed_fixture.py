@@ -26,6 +26,20 @@ HERE = Path(__file__).resolve().parent
 FIXTURE_ROOT = HERE / ".fixture"
 PASSWORD = "e2e-pass"
 PASSWORD_SALT = "denidin-pw"  # webapp_backend.auth.PASSWORD_SALT
+# bugfix-066 made Morning connectivity part of /health, and Playwright's webServer waits for
+# /health == 200 - so the fixture backends point at the real Morning SANDBOX (same credentials
+# source as seed_clients_fixture.py: this clone's gitignored backend config.dev.json). The
+# Events suite never calls Morning beyond that health ping.
+DEV_CONFIG = HERE.parent / "backend" / "config" / "config.dev.json"
+MORNING_KEYS = ("morning_api_key_id", "morning_api_key_secret", "morning_auth_url", "morning_api_url")
+
+
+def _morning_sandbox_settings() -> dict:
+    dev = json.loads(DEV_CONFIG.read_text(encoding="utf-8"))
+    for key in MORNING_KEYS:
+        if not dev.get(key) or "PASTE" in str(dev[key]):
+            raise SystemExit(f"{DEV_CONFIG}: {key} is not set - the fixture backends need the Morning sandbox")
+    return {key: dev[key] for key in MORNING_KEYS}
 
 # --- tiny real binary assets (1x1) --------------------------------------------------------
 _JPEG_1PX = base64.b64decode(
@@ -348,15 +362,22 @@ def main() -> None:
     )
 
     # backend config files (one per root)
+    morning = _morning_sandbox_settings()
     for name in ("full", "empty"):
         cfg = {
             "environment": "test",
             "denidin_data_root": str(FIXTURE_ROOT / name),
             "denidin_src_path": "",
             "password_hash_file": str(FIXTURE_ROOT / name / "auth" / "password.hash"),
+            # keep the Clients-tab state files inside the fixture (the default, relative
+            # "webapp_data", would land in backend/ when serve.sh runs from there)
+            "webapp_data_root": str(FIXTURE_ROOT / name / "webapp_data"),
             "session_expiry_hours": 168,
+            **morning,
+            # INFO, not WARNING: /health's logs_writing check needs fresh log lines (startup +
+            # heartbeat are INFO).
             "http": {"host": "127.0.0.1",
-                     "port": 8130 if name == "full" else 8131, "log_level": "WARNING"},
+                     "port": 8130 if name == "full" else 8131, "log_level": "INFO"},
         }
         (FIXTURE_ROOT / f"config.{name}.json").write_text(
             json.dumps(cfg, indent=2), encoding="utf-8"

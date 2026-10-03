@@ -28,8 +28,8 @@ for _p in (_BACKEND / "src", _BACKEND.parents[1] / "denidin-app" / "src"):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
-from webapp_backend.clients_reader import MIGRATION_092_KEY, ClientsReader  # noqa: E402
-from webapp_backend.ledger_reader import LedgerEventManager  # noqa: E402
+from webapp_backend.clients_reader import MIGRATION_092_KEY, ClientsReader  # noqa: E402  pylint: disable=wrong-import-position
+from webapp_backend.ledger_reader import LedgerEventManager  # noqa: E402  pylint: disable=wrong-import-position
 
 
 def _legacy_flags(comment: str) -> Dict[str, bool]:

@@ -71,6 +71,9 @@ class SessionAuthMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+MORNING_UNAVAILABLE_MSG = "לא ניתן לטעון את רשימת הלקוחות ממורנינג כעת. נסו שוב מאוחר יותר."
+
+
 def build_app(
     config: AppConfig,
     log_path: Optional[Path] = None,
@@ -198,7 +201,7 @@ def build_app(
             logger.warning("Morning client-list fetch failed: %s", exc)
             return _error(
                 "morning_unavailable",
-                "לא ניתן לטעון את רשימת הלקוחות ממורנינג כעת. נסו שוב מאוחר יותר.",
+                MORNING_UNAVAILABLE_MSG,
                 503,
             )
 
@@ -257,7 +260,7 @@ def build_app(
             return _error("not_allowed", "לא ניתן לשנות סטטוס ללקוח עבר.", 409)
         except MorningClientSourceError as exc:
             logger.warning("Morning client-list fetch failed: %s", exc)
-            return _error("morning_unavailable", "לא ניתן לטעון את רשימת הלקוחות ממורנינג כעת. נסו שוב מאוחר יותר.", 503)
+            return _error("morning_unavailable", MORNING_UNAVAILABLE_MSG, 503)
         return JSONResponse(result)
 
     async def client_mapping_unlink(request: Request) -> JSONResponse:
