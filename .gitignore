@@ -153,3 +153,8 @@ reports/mapping_tool/*.md
 # config/shared_state.local.json's own precedent — not shared across clones/hosts)
 scripts/backup_prod/config.json
 
+
+# Windows-prod data mount script run by the com.denidin.winprod-mount LaunchAgent. Lives at the
+# root clone's scripts/ (machine-local, not tied to any teammate clone), copied from
+# scripts/windows_prod/mount_data_foreground.sh - never committed.
+/scripts/mount_data_foreground.sh
