@@ -4,7 +4,7 @@
 
 The scope of this bugfix (stop `לסגור` from rewriting `manual_agreement_amount`/`invoices_net`;
 close a row without changing its real numbers) is now delivered by
-`specs/repo/features/092-undo-client-resolution/spec.md`, requirements R6, R7, R10 and R11, as an
+`specs/repo/features/092-undo-client-resolution/spec.md`, requirements R5, R6, R9 and R10, as an
 explicit, persisted per-line status driven by UI buttons instead of a `force_closed` flag parsed
 from the comment. This file stays as a pointer and closes out together with Feature 092.
 
