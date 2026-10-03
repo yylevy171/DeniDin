@@ -33,8 +33,16 @@ against a **copy** of prod's `webapp_data/clients/`:
 
 ```bash
 apps/webapp/backend/venv/bin/python apps/webapp/backend/scripts/preview_092_migration.py \
-    --clients-dir <copy-of-prod-webapp_data/clients>
+    --clients-dir <copy-of-prod-webapp_data/clients> \
+    --events-dir ~/denidin-winprod-data/events \
+    --config <copy of the box's apps/webapp/backend/config/config.prod.json>
 ```
+
+`--events-dir` is prod's ledger (the read-only mount). `--config` supplies the production Morning
+credentials for one read-only client-list call - the Mac's own `config.prod.json` deliberately
+holds placeholders, so use a temporary copy of the box's file and delete it afterwards.
+Done 2026-10-03: 0 section changes, 118 closed / 62 active / 16 check, 115 amount changes (all
+`לסגור` lines; 56 of them show agreed 0) - approved by the PM.
 
 It prints:
 - every client whose comment will produce a status (`check` / `active` / `closed`);
