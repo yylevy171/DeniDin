@@ -5,9 +5,9 @@ Customer-facing functional features, conversational intelligence, and business c
 
 ## Features
 
+- **093**: `093-hourly-payer-not-client` — Status: Backlog
 - **092**: `092-undo-client-resolution` — Status: Backlog
 - **091**: `091-group-agreements` — Status: Backlog
-- **090**: `090-hourly-payer-not-client` — Status: Backlog
 - **090**: `090-remove-turn-concept` — Status: Backlog
 - **089**: `089-ui-agreement-edits` — Status: Backlog
 - **088**: `088-docx-to-pdf` — Status: Backlog
