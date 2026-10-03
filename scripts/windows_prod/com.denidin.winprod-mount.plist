@@ -18,9 +18,11 @@
     restarts, so a persistently-unreachable host (Mac off Tailscale, box
     down) retries steadily instead of spin-looping.
 
-  Paths below are absolute and specific to the clone this was installed
-  from - re-point ProgramArguments/log paths if installing from a different
-  clone or for a different Mac user.
+  TEMPLATE - never copy this file by hand. install_persistent_mount.sh fills
+  in __MOUNT_SCRIPT__ (the root clone's gitignored scripts/mount_data_foreground.sh,
+  a copy of the one next to this file) and __LOG_FILE__. The agent must never
+  run anything out of a teammate/coder clone: a renamed clone silently broke
+  the mount from 2026-09-14 to 2026-10-03.
 -->
 <plist version="1.0">
 <dict>
@@ -28,7 +30,7 @@
     <string>com.denidin.winprod-mount</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/yaron/Projects/DeniDin/teammate1/scripts/windows_prod/mount_data_foreground.sh</string>
+        <string>__MOUNT_SCRIPT__</string>
         <string>denidin-winprod</string>
     </array>
     <key>RunAtLoad</key>
@@ -38,8 +40,8 @@
     <key>ThrottleInterval</key>
     <integer>15</integer>
     <key>StandardOutPath</key>
-    <string>/Users/yaron/Library/Logs/denidin-winprod-mount.log</string>
+    <string>__LOG_FILE__</string>
     <key>StandardErrorPath</key>
-    <string>/Users/yaron/Library/Logs/denidin-winprod-mount.log</string>
+    <string>__LOG_FILE__</string>
 </dict>
 </plist>

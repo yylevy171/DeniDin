@@ -397,9 +397,14 @@ a write attempt through the mount correctly fails.
    **For a mount that survives sleep/wake, lid closes, and reboots
    permanently (2026-08-20, explicit requirement — "if the Mac is on, the
    mount should be there, always")**, install the LaunchAgent instead,
-   once per Mac: `scripts/windows_prod/install_persistent_mount.sh`. This
-   copies `com.denidin.winprod-mount.plist` to
-   `~/Library/LaunchAgents/`, loads it (`RunAtLoad` mounts immediately and
+   once per Mac: `scripts/windows_prod/install_persistent_mount.sh` (from any
+   clone). It copies `mount_data_foreground.sh` to the **root clone's**
+   `scripts/` (gitignored there) and writes `~/Library/LaunchAgents/com.denidin.winprod-mount.plist`
+   from the template, pointing at that copy - never at a teammate/coder clone
+   (2026-10-03: an agent pointing at a since-renamed clone left the mount dead
+   from 2026-09-14 until noticed; the installer now refuses a teammate/coder
+   path and only reports success once the mount is actually readable). It then
+   loads it (`RunAtLoad` mounts immediately and
    on every future login/reboot; `KeepAlive` re-mounts within
    `ThrottleInterval` seconds — default 15 — whenever the underlying sshfs
    process exits for any reason: a crash, the SSH connection dropping past
