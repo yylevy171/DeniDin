@@ -3,6 +3,7 @@
 **Feature Branch**: `feature/064-bank-deposit-full-cycle`  
 **Created**: 2026-08-27  
 **Status**: Placeholder — not yet fleshed out, do not implement against this file yet  
+**Dependency**: Blocked by Feature 063 (Dynamic Capability Backbone)
 **Input**: User description: "When an incoming bank deposit image is received, offer to do the full cycle: add a new client if necessary, and create the invoice plus receipt combo that should follow the bank deposit."
 
 ---
