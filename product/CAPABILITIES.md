@@ -17,10 +17,10 @@ Customer-facing functional features, conversational intelligence, and business c
 - **086**: `086-combo-doc-closing-multiple-300-accounts` — Status: Backlog
 - **084**: `084-whatsapp-reactions` — Status: Done (v0.7.1)
 - **083**: `083-fee-agreement-docs` — Status: Done (v0.7.5)
-- **082**: `082-google-drive-integration` — Status: Backlog
-- **081**: `081-net-hamishpat-scanning` — Status: Backlog
+- **082**: `082-google-drive-integration` — Status: Low-priority
+- **081**: `081-net-hamishpat-scanning` — Status: Low-priority
 - **080**: `080-higher-verbosity-speed` — Status: Done (v0.7.1)
-- **079**: `079-instinct-worker` — Status: Backlog
+- **079**: `079-instinct-worker` — Status: Low-priority
 - **077**: `077-long-term-memory-assembly` — Status: Low-priority
 - **076**: `076-edited-reaction-deleted-message-support` — Status: Done (v0.7.0)
 - **074**: `074-morning-client-name-cache-alias` — Status: Obsolete
@@ -41,7 +41,7 @@ Customer-facing functional features, conversational intelligence, and business c
 - **054**: `054-reminders-functionality-mgmt` — Status: Done (v0.5.0)
 - **053**: `053-morning-api-auth-migration` — Status: Done (v0.4.2)
 - **052**: `052-ledger-events-csv-export` — Status: Obsolete
-- **051**: `051-hourly-reporting-payment-request` — Status: Backlog
+- **051**: `051-hourly-reporting-payment-request` — Status: Obsolete
 - **050**: `050-post-image-action-suggestions` — Status: Obsolete
 - **049**: `049-user-editable-context-memory` — Status: Backlog
 - **048**: `048-whatsapp-typing-indicator` — Status: Done (v0.4.2)
@@ -101,19 +101,19 @@ Customer-facing functional features, conversational intelligence, and business c
 - **059**: `bugfix-059-multiple-doc-request-failure` — Status: Bugfixes
 - **058**: `bugfix-058-persist-user-errors-in-session` — Status: Done (v0.7.8)
 - **056**: `bugfix-056-webapp-ui-gaps-vs-approved-playwright-plan` — Status: Bugfixes
-- **055**: `bugfix-055-bundled-app-stop-kills-sibling` — Status: Bugfixes
+- **055**: `bugfix-055-bundled-app-stop-kills-sibling` — Status: Obsolete
 - **054**: `bugfix-054-startup-drops-queued-messages` — Status: Done (v0.7.8)
-- **053**: `bugfix-053-memory-questions-misrouted-to-ledger-query` — Status: Bugfixes
+- **053**: `bugfix-053-memory-questions-misrouted-to-ledger-query` — Status: Obsolete
 - **052**: `bugfix-052-billed-tests-share-one-session-per-file` — Status: Bugfixes
-- **051**: `bugfix-051-list-reminders-cross-chat-disclosure` — Status: Bugfixes
-- **050**: `bugfix-050-morning-create-confirmations-omit-document-link` — Status: Bugfixes
-- **049**: `bugfix-049-financial-status-answers-from-conversation-not-ledger` — Status: Bugfixes
+- **051**: `bugfix-051-list-reminders-cross-chat-disclosure` — Status: Obsolete
+- **050**: `bugfix-050-morning-create-confirmations-omit-document-link` — Status: Obsolete
+- **049**: `bugfix-049-financial-status-answers-from-conversation-not-ledger` — Status: Obsolete
 - **048**: `bugfix-048-reconciliation-dedup-across-restart` — Status: Done (v0.5.4)
 - **047**: `bugfix-047-reconciliation-sweep-openai-timeout` — Status: Done (v0.5.4)
 - **046**: `bugfix-046-list-invoices-status-filter-contradicts-unfiltered-result` — Status: Bugfixes
 - **045**: `bugfix-045-refuses-to-create-new-client-despite-clear-request` — Status: Done (v0.5.3)
 - **044**: `bugfix-044-chat-context-lost-after-app-restart` — Status: Repo
-- **042**: `bugfix-042-reminders-invading-unrelated-turns` — Status: Bugfixes
+- **042**: `bugfix-042-reminders-invading-unrelated-turns` — Status: Obsolete
 - **041**: `bugfix-041-no-reply-silently-skips-ledger-relevant-content` — Status: Repo
 - **040**: `bugfix-040-english-weekday-codes-in-reminder-approval` — Status: Done (v0.5.1)
 - **039**: `bugfix-039-artifacts` — Status: Done (v0.4.1)
@@ -121,7 +121,7 @@ Customer-facing functional features, conversational intelligence, and business c
 - **038**: `bugfix-038-group-b-approval-missing-reference-data` — Status: Done (v0.4.1)
 - **037**: `bugfix-037-mixed-timestamp-representation` — Status: Done (v0.4.0)
 - **034**: `bugfix-034-ledger-bugs` — Status: Repo
-- **033**: `bugfix-033-credit-notes-silently-dropped-from-financial-answers` — Status: Bugfixes
+- **033**: `bugfix-033-credit-notes-silently-dropped-from-financial-answers` — Status: Obsolete
 - **032**: `bugfix-032-phone-number-not-normalised` — Status: Done (v0.7.8)
 - **031**: `bugfix-031-hebrew-status-value-returns-empty-instead-of-error` — Status: Repo
 - **030**: `bugfix-030-message-sequencing-ambiguity` — Status: Repo
