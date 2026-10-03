@@ -1,0 +1,1 @@
+../../repo/bugfixes/bugfix-068-manual-close-comment.md
