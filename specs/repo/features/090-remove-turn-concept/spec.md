@@ -3,7 +3,7 @@
 **Feature ID**: 090
 **Feature Branch**: `feature/090-remove-turn-concept`
 **Created**: 2026-09-30
-**Status**: Backlog - not yet clarified/planned
+**Status**: Obsolete (Folded into 067)
 **Category**: Architecture
 **Domain**: Backbone (Feature 063)
 
