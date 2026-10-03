@@ -328,7 +328,6 @@ class DeniDin:  # pylint: disable=too-many-instance-attributes,too-many-public-m
             return None
 
     def store_outbound(self, reply_to: Any, content: str, *,
-                       whatsapp_id_message: Optional[str] = None,
                        mcp_calls: Optional[List[Dict]] = None) -> Optional[str]:
         """Stores a message DeniDin just sent (or an internal note it never sends - the
         Backbone's [[INTERNAL_PLANNING_NOTE]]) in the conversation of `reply_to`, the
@@ -352,7 +351,6 @@ class DeniDin:  # pylint: disable=too-many-instance-attributes,too-many-public-m
                 recipient_name=(reply_to.chat_name or reply_to.chat_id) if reply_to.is_group
                 else reply_to.sender_display_name,
                 mcp_calls=mcp_calls, timestamp=timestamp,
-                whatsapp_id_message=whatsapp_id_message,
             ))
         except Exception as e:  # pylint: disable=broad-except
             logger.error(f"Failed to store outbound message for {getattr(reply_to, 'chat_id', None)}: {e}",
@@ -405,8 +403,7 @@ class DeniDin:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         """Sends a canned/notice reply in `notification`'s chat, and stores it once sent
         (an exception propagates to the caller unchanged, and nothing is stored)."""
         sent = self.whatsapp_handler.send_text(notification, text, wire_context=wire_context)
-        self.store_outbound(self.whatsapp_handler.process_notification(notification), sent.text,
-                            whatsapp_id_message=sent.whatsapp_id_message)
+        self.store_outbound(self.whatsapp_handler.process_notification(notification), sent.text)
         return sent
 
     def send_response(self, notification: Notification, response: Any) -> Optional[str]:
@@ -418,7 +415,6 @@ class DeniDin:  # pylint: disable=too-many-instance-attributes,too-many-public-m
             return None
         self.store_outbound(
             self.whatsapp_handler.process_notification(notification), sent.text,
-            whatsapp_id_message=sent.whatsapp_id_message,
             mcp_calls=None if sent.is_notice else response.mcp_calls,
         )
         return sent.whatsapp_id_message if sent.as_buttons else None
@@ -443,7 +439,7 @@ class DeniDin:  # pylint: disable=too-many-instance-attributes,too-many-public-m
             return False
         notification, message, is_blocked = turn
         sent = self.whatsapp_handler.send_progress_update(notification, text)
-        self.store_outbound(message, sent.text, whatsapp_id_message=sent.whatsapp_id_message)
+        self.store_outbound(message, sent.text)
         if self.green_api_bot is not None:
             send_typing_indicator(self.green_api_bot, message.chat_id, is_blocked)
         return True

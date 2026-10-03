@@ -152,7 +152,9 @@ class TestDeniDinStoresAtTheBoundary:
 
         [stored] = _stored(session_manager)
         assert stored["content"] == "הודעת שגיאה"
-        assert stored["whatsapp_id_message"] == "WA-OUT"
+        # Like before Feature 063: DeniDin's own sent messages are stored without
+        # their WhatsApp id (only inbound messages carry one, for redelivery dedup).
+        assert stored["whatsapp_id_message"] is None
 
     def test_a_failed_send_stores_nothing(self, app, session_manager):
         notification = _notification()
@@ -209,7 +211,7 @@ class TestDeniDinStoresAtTheBoundary:
         assert app.send_progress_update(CHAT_ID, "רגע, בודק") is True
         notification.answer.assert_called_once_with("רגע, בודק")
         [stored] = _stored(session_manager)
-        assert (stored["content"], stored["whatsapp_id_message"]) == ("רגע, בודק", "WA-OUT")
+        assert (stored["content"], stored["whatsapp_id_message"]) == ("רגע, בודק", None)
 
     def test_no_progress_update_outside_a_turn(self, app, session_manager):
         app.begin_turn(_notification(), _message(), is_blocked=False)

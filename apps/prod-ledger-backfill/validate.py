@@ -64,7 +64,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--ledger-dir", required=True,
-        help="The same --output-dir used for this window's transform.py run.",
+        help="The events/ folder inside this window's transform.py --output-dir.",
     )
     parser.add_argument(
         "--report-out", required=True, help="Path for this window's validation report.",

@@ -32,9 +32,9 @@ def test_ledger_event_manager_imports_cleanly():
 
     LedgerEventManager = get_ledger_event_manager_class()
 
-    # Real constructor, no filesystem access beyond a plain string path — just prove the shape
-    # matches research.md R5 (storage_dir-only, fully decoupled from AppConfiguration).
-    assert LedgerEventManager.__init__.__code__.co_varnames[:2] == ("self", "storage_dir")
+    # Real constructor - just prove the shape: the DeniDin object is its only argument
+    # (Feature 063 REQ-063-08); this tool passes its own stand-in (ledger_denidin.LedgerDeniDin).
+    assert LedgerEventManager.__init__.__code__.co_varnames[:2] == ("self", "denidin")
 
 
 def test_ledger_event_manager_does_not_drag_in_heavy_siblings():
