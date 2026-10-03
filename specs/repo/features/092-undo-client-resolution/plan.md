@@ -48,7 +48,7 @@ no line moves on deploy.
 | §I No env vars / config via `AppConfig` | ✅ | No new config keys needed. |
 | §II Israel local time | ✅ | The migration marker uses `now_local()`. |
 | §III Git workflow | ✅ | Feature branch, single PR. |
-| §VI Feature flags | ⚠️ **Deviation proposed** | See Complexity Tracking / research R-9. **Needs user approval.** |
+| §VI Feature flags | ✅ **Deviation approved 2026-10-03** | No flag. See Complexity Tracking / research R-9. |
 | §VIII Test immutability | ✅ | Existing `10-clients.spec.ts` and `test_caching.py` are untouched. New tests are added in new files. |
 | §IX Logging | ✅ | INFO for each status change, unlink and hide (client, action, result). WARNING for an unknown stored status or an event with no `event_id`. |
 | §X Error format | ✅ | Existing `_error()` shape, with Hebrew user-facing messages. |
@@ -151,4 +151,4 @@ apps/webapp/e2e/
 
 | Deviation | Why needed | Simpler alternative rejected because |
 |---|---|---|
-| **No feature flag (§VI)** — pending user approval | Part of this is a data-corruption bug fix, and the migration writes a new source of truth. | A flag-off path keeps the hack live by default. Toggling would let `client_status.json` and comment routing diverge and silently move lines. The versioned release rollback already restores the old behavior exactly (quickstart §4). Same call as Feature 087's plan. Research R-9. |
+| **No feature flag (§VI)** — **approved by user 2026-10-03** | Part of this is a data-corruption bug fix, and the migration writes a new source of truth. | A flag-off path keeps the hack live by default. Toggling would let `client_status.json` and comment routing diverge and silently move lines. The versioned release rollback already restores the old behavior exactly (quickstart §4). Same call as Feature 087's plan. Research R-9. |

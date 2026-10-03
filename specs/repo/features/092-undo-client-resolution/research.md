@@ -120,7 +120,7 @@ keywords. The delete/merge/agreement/`להוריד` parsing is untouched (spec C
   after tabbing away from the input.
 - The listener is removed on close and on unmount.
 
-## R-9 Feature flag (CONSTITUTION §VI) — DECISION NEEDED FROM USER
+## R-9 Feature flag (CONSTITUTION §VI) — no flag (APPROVED by user 2026-10-03)
 
 - §VI says new behavior ships behind a default-off flag, with the flag-off path byte-identical.
 - **Recommendation: no flag for 092.**
@@ -135,7 +135,7 @@ keywords. The delete/merge/agreement/`להוריד` parsing is untouched (spec C
      The only new files (`client_status.json`, `hidden_unmatched.json`, `migrations.json`) are
      ignored by the old version.
 - Precedent: Feature 087's plan also took §VI as N/A for the Clients tab.
-- **Recorded in `plan.md` Complexity Tracking; needs explicit approval.**
+- **Recorded in `plan.md` Complexity Tracking. Approved by the user 2026-10-03.**
 
 ## R-10 Morning sandbox capacity for the e2e fixture
 
