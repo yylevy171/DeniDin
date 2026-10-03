@@ -5,8 +5,10 @@ Customer-facing functional features, conversational intelligence, and business c
 
 ## Features
 
+- **092**: `092-undo-client-resolution` — Status: Backlog
 - **091**: `091-group-agreements` — Status: Backlog
 - **090**: `090-hourly-payer-not-client` — Status: Backlog
+- **090**: `090-remove-turn-concept` — Status: Backlog
 - **089**: `089-ui-agreement-edits` — Status: Backlog
 - **088**: `088-docx-to-pdf` — Status: Backlog
 - **087**: `087-webapp-clients-mgmt` — Status: Done (v0.7.6)
@@ -87,6 +89,7 @@ Customer-facing functional features, conversational intelligence, and business c
 
 ## Bugfixes
 
+- **068**: `bugfix-068-manual-close-comment` — Status: Bugfixes
 - **067**: `bugfix-067-morning-anonymous-config-volume` — Status: Done (v0.7.8)
 - **066**: `bugfix-066-prod-deploy-config-shipping-and-prober` — Status: Done (v0.7.7)
 - **064**: `bugfix-064-webapp-stale-in-memory-ledger-index` — Status: Done (v0.7.6)
