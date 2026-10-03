@@ -1,7 +1,7 @@
 # Feature 015: Clarifications Needed - Topic-Based Access Control
 
 **Created**: January 22, 2026  
-**Status**: PENDING - Awaiting Human Input
+**Status**: Obsolete
 
 ---
 

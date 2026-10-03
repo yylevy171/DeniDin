@@ -2,7 +2,7 @@
 
 **Feature ID**: 015-topic-based-access-control  
 **Priority**: P2 (Medium)  
-**Status**: Draft - Needs Clarification  
+**Status**: Obsolete
 **Created**: January 22, 2026
 
 ---
@@ -392,7 +392,7 @@ Before proceeding to plan.md, the following questions MUST be answered:
 
 ---
 
-**Status**: 📋 **DRAFT - AWAITING CLARIFICATIONS**
+**Status**: Obsolete
 
 **Created**: January 22, 2026  
 **Author**: AI Agent (speckit.specify)  
