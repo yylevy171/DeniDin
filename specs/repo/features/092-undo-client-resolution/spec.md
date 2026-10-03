@@ -42,26 +42,19 @@ persisted (e.g. `hidden_unmatched.json`), and there is no in-UI restore. No keyw
 `למחוק` in a note is **not** parsed. The existing note-keyword hiding in `_split_unmatched`
 (`להסיר`, `לא לקוחה`, `אוחד`, …) is left as-is for existing data.
 
-**R2 — Number each `Unknown` event as its own name.** When aggregation finds an event with no
+**R2 — Name each `Unknown` event after its event_id.** When aggregation finds an event with no
 client name (no `client_name` or `payer_name`, so today's raw client falls back to `"Unknown"`),
-that event gets its own name: `Unknown1`, `Unknown2`, … Each one is then an ordinary raw name,
-one event per name.
+that event gets its own raw name: `Unknown-<event_id>` (e.g. `Unknown-A02022604480`). Each one is
+then an ordinary raw name, one event per name.
 - The **existing** name-mapping, note, **הסר מהרשימה** (R1) and unlink (R3) features apply to
   it unchanged. No per-event mapping and no special UI is needed.
-- **Numbers must be stable — persisted, never recomputed.** The `UnknownN` name is the key in
-  `client_mapping.json` / `mapping_notes.json`. If numbers were assigned by position each time the
-  report is computed, a newly arriving or backfilled Unknown event (the Feature 025 reconciliation
-  sweep inserts older-dated events) would shift every later number. Saved mappings would then
-  silently move to the wrong event.
-  - So assignment is a persisted registry (e.g. `unknown_names.json`: `{event_id: "UnknownN"}`).
-    The first time an event_id is seen it gets the next unused N. Numbers are never reused or
-    reassigned.
-  - Initial assignment order: event date, then `event_id`.
+- The name comes straight from the event's own `event_id`, so it's deterministic and stable: no
+  numbering, no registry file, no shifting when older events are backfilled. A saved mapping can
+  never move to a different event.
 - Events whose **named** alias is mapped to `"Unknown"` in `client_mapping.json` keep today's
-  behavior: they stay under their own raw name and are not renumbered.
-- Pre-existing data: if `client_mapping.json` / `mapping_notes.json` already has a key literally
-  named `"Unknown"`, it stops matching anything once the events are renumbered. Check prod data at
-  plan time and decide whether to carry it over.
+  behavior: they stay under their own raw name and are not renamed.
+- Confirmed 2026-10-03: there are no existing `"Unknown"` keys in the mapping/notes data, so
+  nothing needs carrying over.
 
 **R3 — Undo name mappings (original 092 scope).** Each resolved alias listed on a client row
 (`raw_names`) has an **unlink** control. This covers `UnknownN` names too. Unlinking:
@@ -136,7 +129,7 @@ Every other comment-driven behavior is unchanged (see Clarifications).
   go with it.
 - **Resolve-list removal is a button, not a keyword.** No `למחוק` fallback (R1).
 - **Gray rows: no buttons.** They'll be marked inactive in a later feature.
-- **Unknowns become `Unknown1`, `Unknown2`, … persisted per event_id** (R2). This replaces any
+- **Each Unknown becomes `Unknown-<event_id>`** (R2). This replaces any
   per-event mapping, split, or event-level undo machinery. Everything else reuses name
   resolution as-is.
 
@@ -154,11 +147,11 @@ Every other comment-driven behavior is unchanged (see Clarifications).
 5. **Migration preserves state.** After deploy, every row that was in `check` / `active` /
    closed-green because of its comment is in the same section, and its comment text is
    unchanged.
-6. **Unknowns numbered and resolved.** Three no-name events (₪500, ₪1,200, ₪3,000) appear as
-   `Unknown1`, `Unknown2` and `Unknown3`. The user maps the first two to different clients, and
-   each client's totals grow by exactly that event's amount. A fourth no-name event then arrives
-   with an *older* date. It becomes `Unknown4`, and `Unknown1`–`Unknown3` keep their names and
-   mappings. Unlinking `Unknown1` from its client returns it to the list.
+6. **Unknowns named and resolved.** Three no-name events (₪500, ₪1,200, ₪3,000) appear as three
+   separate rows, each named `Unknown-<its event_id>`. The user maps the first two to different
+   clients, and each client's totals grow by exactly that event's amount. A fourth no-name event
+   then arrives with an *older* date. It appears as its own new row, and the first three keep their
+   names and mappings. Unlinking the first one from its client returns it to the list.
 7. **Undo a name mapping.** The user maps "Yisrael I" to "Israel Israeli", then unlinks it from
    Israel Israeli's row. The alias disappears from the row, the totals revert, and "Yisrael I" is
    back in "Names to resolve" with its note.
