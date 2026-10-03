@@ -1,6 +1,6 @@
 # Bugfix 068: Prevent "לסגור" Comment from Corrupting Agreement Totals
 
-**Status**: Backlog
+**Status**: In Progress
 
 ## Issue
 Currently, when a user types "לסגור" (close) in the free-text comments of the Clients tab, the system applies a hack: it artificially modifies the underlying fee agreement totals so that `agreed_amount == paid_amount`. This forces the UI row to turn green (settled), but it fundamentally corrupts the firm's financial data by faking the agreement values.

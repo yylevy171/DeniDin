@@ -1,6 +1,6 @@
 # Feature 092: Undo Client Name Resolution
 
-**Status**: Backlog  
+**Status**: In Progress  
 **Category**: Capability  
 
 ## Issue
