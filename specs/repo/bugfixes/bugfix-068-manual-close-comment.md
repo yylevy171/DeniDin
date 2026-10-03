@@ -1,6 +1,6 @@
 # Bugfix 068: Prevent "לסגור" Comment from Corrupting Agreement Totals
 
-**Status**: Done — **absorbed into Feature 092** (2026-10-03), fixed there — PR #TBD
+**Status**: Done — **absorbed into Feature 092** (2026-10-03), fixed there — PR #672
 
 The scope of this bugfix (stop `לסגור` from rewriting `manual_agreement_amount`/`invoices_net`;
 close a row without changing its real numbers) is now delivered by

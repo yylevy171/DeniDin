@@ -1,6 +1,6 @@
 # Feature 092: Clients Tab — Resolution Corrections & Explicit Line Status
 
-**Status**: Done (2026-10-03) — PR #TBD  
+**Status**: Done (2026-10-03) — PR #672  
 **Category**: Capability  
 **App**: `apps/webapp` (backend `clients_reader.py`/`server.py`, frontend `ClientsView.tsx`)  
 **Absorbs**: bugfix-068 ("לסגור" comment corrupting agreement totals) — that bugfix's file is now a
