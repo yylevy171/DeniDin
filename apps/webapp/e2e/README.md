@@ -105,6 +105,8 @@ seeds eight more real sandbox clients (`names[1:9]`; Feature 087's `names[0]` is
   `migrations.json`, so UAT 5 observes a real first-run migration;
 - three no-name ledger events (→ `Unknown-<event_id>`), a `Yisrael I` bank name with a note, and a
   name for the "הסר מהרשימה" test.
+- two yellow ("חסר הסכם") clients for manual testing only, one paid with no agreement and one
+  overpaid (`names[9:11]`; the sandbox needs at least 11 clients).
 
 The fixture backend runs at log level `INFO`, not `WARNING`: bugfix-066's `/health`
 `logs_writing` check needs fresh log lines, and at `WARNING` `/health` stays 503 so the webServer

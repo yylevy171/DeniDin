@@ -46,6 +46,8 @@ F092_ROLES = [
     "mig_check",        # UAT 5: comment "לבדוק"  -> migrated to check
     "mig_active",       # UAT 5: comment "לקוח פעיל" -> migrated to active
     "mig_closed",       # UAT 5: comment "לסגור" -> migrated to closed, real amounts kept
+    "yellow_no_agreement",  # manual testing only: paid 1,500, no agreement (yellow)
+    "yellow_overpaid",      # manual testing only: agreed 2,000 / paid 2,600 (yellow)
 ]
 YISRAEL_RAW_NAME = "Yisrael I"
 YISRAEL_NOTE = "שילם במזומן"
@@ -141,6 +143,9 @@ def main() -> None:
         ("A01e2e09109", "mig_active", agreement, 4000, 6),
         ("A01e2e09110", "mig_closed", agreement, 5000, 6),
         ("C01e2e09111", "mig_closed", paid, 1000, 5),
+        ("C01e2e09114", "yellow_no_agreement", paid, 1500, 5),
+        ("A01e2e09115", "yellow_overpaid", agreement, 2000, 6),
+        ("C01e2e09116", "yellow_overpaid", paid, 2600, 5),
     ]
     for eid, role, (src, sub), amount, days in f092_events:
         _event(events, eid, now - timedelta(days=days), source_type=src, event_subtype=sub,

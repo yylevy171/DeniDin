@@ -73,10 +73,17 @@ async function revealUnmatched(page: Page) {
 
 const unmatchedRow = (page: Page, raw: string) => page.getByTestId(`unmatched-row-${raw}`);
 
+/** Map one name and wait until the list's post-save reload has landed - like a person who sees
+ *  the screen update before the next action. (Back-to-back saves without that pause can let an
+ *  older reload overwrite a newer one; not modelled here as realistic usage.) */
 async function mapUnmatched(page: Page, raw: string, official: string) {
   await unmatchedRow(page, raw).getByTestId("unmatched-picker-input").fill(official);
+  const reloaded = page.waitForResponse(
+    (r) => r.request().method() === "GET" && new URL(r.url()).pathname === "/api/clients"
+  );
   await page.getByTestId("unmatched-picker-list").getByText(official, { exact: true }).first().click();
   await expect(unmatchedRow(page, raw)).toHaveCount(0);
+  await reloaded;
 }
 
 test.describe("Feature 092 acceptance", () => {

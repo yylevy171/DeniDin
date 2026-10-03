@@ -183,7 +183,7 @@ routing gave it.
   Plus a unit test in `BE/tests/unit/test_preview_092_migration.py` on a `tmp_path` fixture. Its A/B gate is folded into this task: show the RED run before implementing.
 - [x] T038 [P] Update `CLAUDE.md`'s `apps/webapp/` section (Clients tab: the line-status buttons replace the `לסגור`/`לבדוק`/`לקוח פעיל` keywords; `Unknown-<event_id>`; the new JSON files) and `E2E/README.md` (the `11-` spec).
 - [x] T039 Lint and type-check the touched files; `npm run build` in `apps/webapp/frontend` (tsc + vite) must pass.
-- [ ] T040 Hand back for the **human-run** prod migration preview (quickstart §3) and the haleluya/release decisions. No cut, deploy or haleluya without explicit instruction.
+- [ ] T040 (open, pre-prod-deploy) Hand back for the **human-run** prod migration preview (quickstart §3) and the release decision. Haleluya done 2026-10-03. No cut, deploy or haleluya without explicit instruction.
 
 ---
 
