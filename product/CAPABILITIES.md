@@ -49,7 +49,7 @@ Customer-facing functional features, conversational intelligence, and business c
 - **044**: `044-ledger-event-querying` — Status: Done (v0.5.2)
 - **042**: `042-lift-dev-prod-concurrency-ban` — Status: Done (v0.2.1)
 - **041**: `041-mcp-2.0-migration-dependency-pinning` — Status: Low-priority
-- **040**: `040-agreement-cancellation-modification` — Status: Backlog
+- **040**: `040-agreement-cancellation-modification` — Status: Obsolete
 - **039**: `039-group-conversation-support` — Status: Done (v0.2.0)
 - **038**: `038-morning-long-list-support` — Status: Done (v0.2.1)
 - **037**: `037-morning-document-detail-enhancement` — Status: Obsolete
