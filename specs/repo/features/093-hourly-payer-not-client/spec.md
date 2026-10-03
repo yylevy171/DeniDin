@@ -1,4 +1,6 @@
-# Feature 090: Hourly Agreements with Payer != Client
+# Feature 093: Hourly Agreements with Payer != Client
+
+*(Note: This feature officially absorbs and obsoletes Feature 051 (Hourly Reporting & Payment Request Creation).)*
 
 **Status**: Backlog
 

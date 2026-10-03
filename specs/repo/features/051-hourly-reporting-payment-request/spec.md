@@ -2,7 +2,7 @@
 
 **Feature Branch**: `feature/051-hourly-reporting-payment-request`
 **Created**: 2026-08-13
-**Status**: DRAFT (Backlog)
+**Status**: Obsolete (Folded into 093)
 **Input**: CEO requirement to support B2B professional services billing, specifically tracking hourly work against union/payer agreements, generating monthly reporting DOCX files, and issuing Morning API Transaction Account documents (Type 300).
 
 ---
