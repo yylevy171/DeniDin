@@ -81,8 +81,8 @@ routing gave it.
 - [x] T011 [US3] `clients_reader.py` — add `_legacy_comment_status(comment, is_merged_away)`, a frozen port of research R-1's detection and precedence, used only by the migration. Add `ClientsReader._migrate_comment_status_once(stats, client_comments)`, called from `_compute_report()` after merge directives (so `is_merged_away` is known) and before `_apply_line_status`, under the existing `self._lock`. Marker in `migrations.json`, with `now_local()` (the same import style as `ledger_reader.py`). Log at INFO the count migrated per status.
 - [x] T012 [US1] `clients_reader.py` — `_build_client_rows` adds `line_status`. New `ClientsReader.set_line_status(client_id, action)` implementing contract semantics (reopen per research R-3: recompute the row with the status cleared, using the same pure functions). Raises distinct exceptions for not-found and past. Invalidates `_report_cache`. Logs at INFO (client, action, result).
 - [x] T013 [US1] `BE/src/webapp_backend/server.py` — route `POST /api/clients/{client_id}/status` (`run_in_threadpool`, `_error` mapping 400/404/409, Hebrew messages per contract). Register it next to the existing clients routes.
-- [ ] T014 [P] [US2] `FE/api.ts` — `ClientRow.line_status`; `setClientLineStatus(clientId, action)`.
-- [ ] T015 [US2] `FE/ClientsView.tsx` + `FE/clientsTheme.ts` — button group in the `ClientRowCard` header row:
+- [x] T014 [P] [US2] `FE/api.ts` — `ClientRow.line_status`; `setClientLineStatus(clientId, action)`.
+- [x] T015 [US2] `FE/ClientsView.tsx` + `FE/clientsTheme.ts` — button group in the `ClientRowCard` header row:
   - **לסגור** (green, from `CLIENT_STATUS_COLORS.settled`) on check/active/debt/missing_agreement;
   - **לפתוח** (gray, `past` colour) on `settled`;
   - **לבדוק** (blue, `check`) and **לקוח פעיל** (light blue, `active`), each hidden when it targets the current section;
@@ -127,8 +127,8 @@ routing gave it.
 - [x] T021 [US4] `clients_reader.py` `_aggregate_events` — the `Unknown-<event_id>` raw name (research R-5). With no `event_id`, keep plain `"Unknown"` and log a WARNING.
 - [x] T022 [US5] `clients_reader.py` — `_build_client_rows` adds `mapped_aliases`, computed from `client_mapping.json`. Add `ClientsReader.unlink_mapping(raw_name)`: invalidate the cache and log at INFO.
 - [x] T023 [US5] `server.py` — route `POST /api/clients/mapping/unlink`, registered **before** any route that could shadow it.
-- [ ] T024 [P] [US5] `FE/api.ts` — `ClientRow.mapped_aliases`; `unlinkClientMapping(rawName)`.
-- [ ] T025 [US5] `FE/ClientsView.tsx` — in the expanded `ClientRowCard`, list `mapped_aliases`, each with an unlink "×" (testID `unlink-<raw_name>`). On success, re-fetch.
+- [x] T024 [P] [US5] `FE/api.ts` — `ClientRow.mapped_aliases`; `unlinkClientMapping(rawName)`.
+- [x] T025 [US5] `FE/ClientsView.tsx` — in the expanded `ClientRowCard`, list `mapped_aliases`, each with an unlink "×" (testID `unlink-<raw_name>`). On success, re-fetch.
 - [x] T026 [US4] Run T017–T019 GREEN, and the full backend suite.
 
 ---
@@ -149,15 +149,15 @@ routing gave it.
 ### Task B — implementation (blocked on T029)
 
 - [x] T030 [US6] `clients_reader.py` — `_split_unmatched` skips hidden names. Add `ClientsReader.hide_unmatched`. `server.py` route.
-- [ ] T031 [P] [US6] `FE/api.ts` `hideUnmatched`. `FE/ClientsView.tsx` `UnmatchedRowCard`: **הסר מהרשימה** button (testID `hide-unmatched-<raw_name>`), which removes the row from local state on success.
-- [ ] T032 [P] [US7] `FE/ClientsView.tsx` `ClientPicker` — a `useEffect` bound to `open`: a `window` `keydown` listener; `Escape` → `setOpen(false)` and clear the query; cleanup on close and unmount (research R-8).
+- [x] T031 [P] [US6] `FE/api.ts` `hideUnmatched`. `FE/ClientsView.tsx` `UnmatchedRowCard`: **הסר מהרשימה** button (testID `hide-unmatched-<raw_name>`), which removes the row from local state on success.
+- [x] T032 [P] [US7] `FE/ClientsView.tsx` `ClientPicker` — a `useEffect` bound to `open`: a `window` `keydown` listener; `Escape` → `setOpen(false)` and clear the query; cleanup on close and unmount (research R-8).
 - [x] T033 [US6] Run T027–T028 GREEN, and the full backend suite.
 
 ---
 
 ## Phase 6: Acceptance (approved UAT 1–9) — written and run together, once, after Phases 3–5 are GREEN
 
-- [ ] T034 Extend `E2E/seed_clients_fixture.py`, **additively**: every existing manifest key and event stays, so `10-clients.spec.ts` is unaffected. Pick the extra **real sandbox clients** with read-only search; nothing is created in Morning.
+- [x] T034 Extend `E2E/seed_clients_fixture.py`, **additively**: every existing manifest key and event stays, so `10-clients.spec.ts` is unaffected. Pick the extra **real sandbox clients** with read-only search; nothing is created in Morning.
   - debt client: agreement 10,000 + invoice 2,000 (UAT 1);
   - fully paid client: agreement 3,000 = invoice 3,000 (UAT 2);
   - past client: activity before 2025-09-01 (UAT 4);
@@ -168,21 +168,21 @@ routing gave it.
   - pre-seeded `client_comments.json` with `לבדוק`, `לקוח פעיל` and `לסגור` on three distinct clients, with **no** `migrations.json`, so UAT 5 observes a real first-run migration.
 
   Write all names, ids and amounts to `manifest.json`. For UAT 6's "older event arrives later", the spec writes the 4th event file mid-test and reloads the ledger through the app's existing refresh path (`?refresh=1`).
-- [ ] T035 `E2E/tests-clients/11-line-status-and-resolution.spec.ts` — one `test()` per approved UAT 1–9, wording mirroring `spec.md`, serial, reusing `10-clients.spec.ts`'s login/navigation helpers. Assertions are on what the user sees: section membership, the displayed ₪ amounts, button presence and absence, resolve-list rows, dropdown visibility.
-- [ ] T036 Run `./node_modules/.bin/playwright test -c playwright.clients.config.ts` (both `10-` and `11-` files), relaying each result as it lands. **Stop on first failure and report.**
+- [x] T035 `E2E/tests-clients/11-line-status-and-resolution.spec.ts` — one `test()` per approved UAT 1–9, wording mirroring `spec.md`, serial, reusing `10-clients.spec.ts`'s login/navigation helpers. Assertions are on what the user sees: section membership, the displayed ₪ amounts, button presence and absence, resolve-list rows, dropdown visibility.
+- [x] T036 Run `./node_modules/.bin/playwright test -c playwright.clients.config.ts` (both `10-` and `11-` files), relaying each result as it lands. **Stop on first failure and report.**
 
 ---
 
 ## Phase 7: Polish & release prep
 
-- [ ] T037 [P] `BE/scripts/preview_092_migration.py` — read-only CLI per `quickstart.md` §3 (`--clients-dir`, plus `--events-dir` for amounts). It imports the real `clients_reader` functions, writes nothing, and prints:
+- [x] T037 [P] `BE/scripts/preview_092_migration.py` — read-only CLI per `quickstart.md` §3 (`--clients-dir`, plus `--events-dir` for amounts). It imports the real `clients_reader` functions, writes nothing, and prints:
   - the statuses the migration would write;
   - section diffs (expected: none);
   - amount diffs (expected: the `לסגור` lines plus the R-4 edge).
 
   Plus a unit test in `BE/tests/unit/test_preview_092_migration.py` on a `tmp_path` fixture. Its A/B gate is folded into this task: show the RED run before implementing.
-- [ ] T038 [P] Update `CLAUDE.md`'s `apps/webapp/` section (Clients tab: the line-status buttons replace the `לסגור`/`לבדוק`/`לקוח פעיל` keywords; `Unknown-<event_id>`; the new JSON files) and `E2E/README.md` (the `11-` spec).
-- [ ] T039 Lint and type-check the touched files; `npm run build` in `apps/webapp/frontend` (tsc + vite) must pass.
+- [x] T038 [P] Update `CLAUDE.md`'s `apps/webapp/` section (Clients tab: the line-status buttons replace the `לסגור`/`לבדוק`/`לקוח פעיל` keywords; `Unknown-<event_id>`; the new JSON files) and `E2E/README.md` (the `11-` spec).
+- [x] T039 Lint and type-check the touched files; `npm run build` in `apps/webapp/frontend` (tsc + vite) must pass.
 - [ ] T040 Hand back for the **human-run** prod migration preview (quickstart §3) and the haleluya/release decisions. No cut, deploy or haleluya without explicit instruction.
 
 ---

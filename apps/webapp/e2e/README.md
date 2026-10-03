@@ -93,3 +93,27 @@ first real client in the Morning **sandbox**; read-only search only) and starts 
 Vite serves the frontend on :4174. Needs this clone's gitignored `backend/config/config.dev.json` with
 sandbox credentials. Tests run serially (UAT-2/3 write comments/mappings) and cover UAT-1/2/3 plus
 "tab switches never refetch; only the refresh button does". Independent of the Feature 068 suite above.
+
+### Feature 092 — line status & resolution corrections (`tests-clients/11-line-status-and-resolution.spec.ts`)
+
+Same config/command as above; runs after `10-clients.spec.ts`. One test per approved UAT 1–9
+(`specs/repo/features/092-undo-client-resolution/spec.md`). `seed_clients_fixture.py` additively
+seeds eight more real sandbox clients (`names[1:9]`; Feature 087's `names[0]` is untouched):
+- a debt line, a fully paid line and a past line;
+- two mapping targets;
+- three lines whose comments carry the legacy `לבדוק` / `לקוח פעיל` / `לסגור` keywords, with no
+  `migrations.json`, so UAT 5 observes a real first-run migration;
+- three no-name ledger events (→ `Unknown-<event_id>`), a `Yisrael I` bank name with a note, and a
+  name for the "הסר מהרשימה" test.
+
+The fixture backend runs at log level `INFO`, not `WARNING`: bugfix-066's `/health`
+`logs_writing` check needs fresh log lines, and at `WARNING` `/health` stays 503 so the webServer
+wait never succeeds.
+
+**Manual testing against the same fixture** (no dev/prod environment involved):
+
+```bash
+bash clients_serve.sh                                   # re-seeds + backend :8132
+npm --prefix ../frontend run dev -- --port 4174 --strictPort
+# open http://localhost:4174/?api=http%3A%2F%2F127.0.0.1%3A8132   password: e2e-pass
+```
