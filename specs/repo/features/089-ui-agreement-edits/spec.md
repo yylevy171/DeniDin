@@ -11,6 +11,8 @@
 
 ## Executive Summary
 
+*(Note: This feature officially absorbs and obsoletes Feature 040 (Agreement Cancellation & Modification via Reply Reference), handling those requirements under the new Component Architecture lifecycle.)*
+
 Currently, fee agreements are immutable records stored only in the financial Ledger. Since agreements are "alive" and constantly change (wording, fees, status), the system is shifting to a dual-source architecture. 
 
 This feature introduces a new "Agreements Database" that handles the living lifecycle and revisions of agreements. Structurally, an Agreement is now treated as a **Container of Components**, allowing granular control over individual fee triggers (e.g., a retainer vs. a success fee) rather than treating the entire engagement as a single monolithic block. 

@@ -8,6 +8,8 @@ implementation.
 
 ## Input
 
+*(Note: This feature officially absorbs and obsoletes Feature 090 (Removing the Concept of a "Turn"). Re-architecting away from strict "1 message = 1 turn" boundaries is a core requirement for handling realistic, coalesced message bursts.)*
+
 User description: handle **more than one message at a time** realistically — a user often sends
 several WhatsApp messages in quick succession (a name, then the matter, then an amount, then a
 screenshot) that belong to one logical request, and DeniDin should handle the burst coherently

@@ -2,8 +2,7 @@
 
 **Feature Branch**: `feature/040-agreement-cancellation-modification`
 **Created**: 2026-08-04 (split out of Feature 032, see "Split History" below)
-**Status**: DRAFT — pre-`speckit.clarify`. Do NOT proceed to `plan.md`/`tasks.md` until the
-Open Questions below are resolved with the user.
+**Status**: Obsolete (Folded into 089)
 **Input**: Split from Feature 032 (`specs/backlog/032-whatsapp-reply-reference-resolution/`)
 on 2026-08-04, per explicit user instruction: 032's original draft bundled (1) general
 WhatsApp reply/reference resolution infrastructure and (2) agreement-specific
