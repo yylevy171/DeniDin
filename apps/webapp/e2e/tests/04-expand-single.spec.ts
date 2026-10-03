@@ -14,6 +14,10 @@ async function collapse(page: Page, id: string) {
   await page.getByTestId(`expand-toggle-${id}`).click();
   await expect(page.getByTestId(`detail-panel-${id}`)).toHaveCount(0);
 }
+/** vertical distance from row `id`'s top to row `below`'s top (scroll-independent) */
+async function gapBelow(page: Page, id: string, below: string) {
+  return (await row(page, below).boundingBox())!.y - (await row(page, id).boundingBox())!.y;
+}
 /** wait until the right panel has finished loading (fields OR unsupported OR unavailable) */
 async function detailReady(page: Page, id: string) {
   await expect(page.getByTestId(`detail-panel-${id}`)).toBeVisible();
@@ -74,10 +78,12 @@ test.describe("4.1 Pressing '+' opens both panels correctly (8)", () => {
     await login(page);
     const order = await rowIds(page);
     const below = order[order.indexOf("E1") + 1] || order[1];
-    const before = (await row(page, below).boundingBox())!.y;
+    // Offsets are measured from E1's own top, not the viewport: the list scrolls inside its own
+    // container (Feature 087 two-tab layout), and clicking a toggle near the fold scrolls it.
+    const before = await gapBelow(page, "E1", below);
     await expand(page, "E1");
     await detailReady(page, "E1");
-    const after = (await row(page, below).boundingBox())!.y;
+    const after = await gapBelow(page, "E1", below);
     expect(after).toBeGreaterThan(before + 40);
   });
 
@@ -141,11 +147,11 @@ test.describe("4.2 Collapsing back (5)", () => {
     await login(page);
     const order = await rowIds(page);
     const below = order[order.indexOf("E1") + 1] || order[1];
-    const before = (await row(page, below).boundingBox())!.y;
+    const before = await gapBelow(page, "E1", below); // relative to E1 - see 4.1.4
     await expand(page, "E1");
     await detailReady(page, "E1");
     await collapse(page, "E1");
-    const after = (await row(page, below).boundingBox())!.y;
+    const after = await gapBelow(page, "E1", below);
     expect(Math.abs(after - before)).toBeLessThan(8);
   });
 

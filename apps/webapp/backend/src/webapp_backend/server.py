@@ -8,7 +8,7 @@ a live ``SessionStore`` rather than one fixed config value. ``/health`` and
 import logging
 import mimetypes
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any, Awaitable, Callable, List, Optional
 
 from starlette.applications import Starlette
 from starlette.concurrency import run_in_threadpool
@@ -19,7 +19,13 @@ from starlette.responses import FileResponse, JSONResponse, Response
 from starlette.routing import Route
 
 from webapp_backend.auth import PasswordVerifier, SessionStore
-from webapp_backend.clients_reader import ClientsReader
+from webapp_backend.clients_reader import (
+    LINE_ACTIONS,
+    ClientNotFoundError,
+    ClientsReader,
+    LineStatusNotAllowedError,
+    MappingNotFoundError,
+)
 from webapp_backend.config import AppConfig
 from webapp_backend.context_reader import ContextReader
 from webapp_backend.health_checks import INFORMATIONAL_CHECKS, build_health_check_fns, start_heartbeat_thread
@@ -65,7 +71,14 @@ class SessionAuthMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-def build_app(config: AppConfig, log_path: Optional[Path] = None) -> Starlette:
+MORNING_UNAVAILABLE_MSG = "לא ניתן לטעון את רשימת הלקוחות ממורנינג כעת. נסו שוב מאוחר יותר."
+
+
+def build_app(
+    config: AppConfig,
+    log_path: Optional[Path] = None,
+    official_clients_fn: Optional[Callable[[], List[str]]] = None,
+) -> Starlette:
     verifier = PasswordVerifier(Path(config.password_hash_file))
     sessions = SessionStore(config.session_expiry_hours)
     reader = LedgerReader(config.denidin_data_root)
@@ -79,7 +92,9 @@ def build_app(config: AppConfig, log_path: Optional[Path] = None) -> Starlette:
     clients_reader = ClientsReader(
         config.denidin_data_root,
         config.clients_data_root,
-        morning_source.list_active_client_names,
+        # Injectable so integration tests can supply the official client list without a
+        # Morning round-trip (dependency injection, not a mock of internal code).
+        official_clients_fn or morning_source.list_active_client_names,
         events_fn=reader.events,
         generation_fn=lambda: reader.generation,
     )
@@ -186,7 +201,7 @@ def build_app(config: AppConfig, log_path: Optional[Path] = None) -> Starlette:
             logger.warning("Morning client-list fetch failed: %s", exc)
             return _error(
                 "morning_unavailable",
-                "לא ניתן לטעון את רשימת הלקוחות ממורנינג כעת. נסו שוב מאוחר יותר.",
+                MORNING_UNAVAILABLE_MSG,
                 503,
             )
 
@@ -224,6 +239,48 @@ def build_app(config: AppConfig, log_path: Optional[Path] = None) -> Starlette:
         )
         return JSONResponse(result)
 
+    async def _json_body(request: Request) -> dict:
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001 - malformed body is just a bad request
+            return {}
+        return body if isinstance(body, dict) else {}
+
+    async def client_line_status(request: Request) -> JSONResponse:
+        """Feature 092: the לסגור / לפתוח / לבדוק / לקוח פעיל line buttons."""
+        action = (await _json_body(request)).get("action")
+        if action not in LINE_ACTIONS:
+            return _error("bad_request", "action must be one of: " + ", ".join(LINE_ACTIONS) + ".", 400)
+        client_id = request.path_params["client_id"]
+        try:
+            result = await run_in_threadpool(clients_reader.set_line_status, client_id, action)
+        except ClientNotFoundError:
+            return _error("not_found", "הלקוח לא נמצא ברשימה.", 404)
+        except LineStatusNotAllowedError:
+            return _error("not_allowed", "לא ניתן לשנות סטטוס ללקוח עבר.", 409)
+        except MorningClientSourceError as exc:
+            logger.warning("Morning client-list fetch failed: %s", exc)
+            return _error("morning_unavailable", MORNING_UNAVAILABLE_MSG, 503)
+        return JSONResponse(result)
+
+    async def client_mapping_unlink(request: Request) -> JSONResponse:
+        """Feature 092: undo an explicit name mapping."""
+        raw_name = (await _json_body(request)).get("raw_name")
+        if not isinstance(raw_name, str) or not raw_name:
+            return _error("bad_request", "raw_name is required.", 400)
+        try:
+            result = await run_in_threadpool(clients_reader.unlink_mapping, raw_name)
+        except MappingNotFoundError:
+            return _error("not_found", "השיוך לא נמצא.", 404)
+        return JSONResponse(result)
+
+    async def unmatched_hide(request: Request) -> JSONResponse:
+        """Feature 092: "הסר מהרשימה" on a name in the resolve list."""
+        raw_name = (await _json_body(request)).get("raw_name")
+        if not isinstance(raw_name, str) or not raw_name:
+            return _error("bad_request", "raw_name is required.", 400)
+        return JSONResponse(await run_in_threadpool(clients_reader.hide_unmatched, raw_name))
+
     def media(request: Request) -> Response:
         path = context_reader.resolve_media(request.path_params["token"])
         if path is None:
@@ -243,6 +300,9 @@ def build_app(config: AppConfig, log_path: Optional[Path] = None) -> Starlette:
             Route("/api/clients", clients, methods=["GET"]),
             Route("/api/clients/{client_id}/comments", client_comment, methods=["POST"]),
             Route("/api/clients/mapping", client_mapping, methods=["POST"]),
+            Route("/api/clients/mapping/unlink", client_mapping_unlink, methods=["POST"]),
+            Route("/api/clients/unmatched/hide", unmatched_hide, methods=["POST"]),
+            Route("/api/clients/{client_id}/status", client_line_status, methods=["POST"]),
             Route("/api/media/{token}", media, methods=["GET"]),
         ]
     )

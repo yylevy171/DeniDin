@@ -154,7 +154,12 @@ export interface ClientRow {
   latest_activity: string | null;
   comment: string;
   events: ClientEvent[];
+  // Feature 092: the persisted line status (null = routed by the numbers), and the subset of
+  // raw_names that are explicit mappings of this client (the only ones that can be unlinked).
+  line_status: "closed" | "check" | "active" | null;
+  mapped_aliases: string[];
 }
+export type LineAction = "close" | "reopen" | "check" | "active";
 export interface SuggestedMatch {
   name: string;
   reasons: string[];
@@ -197,6 +202,29 @@ export async function saveClientMapping(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+}
+
+async function postJson(path: string, body: Record<string, unknown>): Promise<any> {
+  const resp = await request(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error(data.message || `request_failed_${resp.status}`);
+  return data;
+}
+// Feature 092: the לסגור / לפתוח / לבדוק / לקוח פעיל line buttons.
+export async function setClientLineStatus(clientId: string, action: LineAction): Promise<void> {
+  await postJson(`/api/clients/${encodeURIComponent(clientId)}/status`, { action });
+}
+// Feature 092: undo an explicit name mapping; the name returns to the resolve list.
+export async function unlinkClientMapping(rawName: string): Promise<void> {
+  await postJson("/api/clients/mapping/unlink", { raw_name: rawName });
+}
+// Feature 092: "הסר מהרשימה" - permanently drop a name from the resolve list.
+export async function hideUnmatched(rawName: string): Promise<void> {
+  await postJson("/api/clients/unmatched/hide", { raw_name: rawName });
 }
 
 // <img> can't carry an Authorization header, so fetch the bytes with auth and hand back an

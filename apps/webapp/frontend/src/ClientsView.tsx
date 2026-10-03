@@ -1,15 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { Theme } from "./theme";
-import { AMOUNT_STATUS_TEXT_COLOR, CLIENT_STATUS_COLORS, CLIENT_STATUS_LABELS } from "./clientsTheme";
+import { AMOUNT_STATUS_TEXT_COLOR, CLIENT_STATUS_COLORS, CLIENT_STATUS_LABELS, LINE_BUTTONS } from "./clientsTheme";
 import {
   AuthError,
   ClientRow,
+  LineAction,
   SuggestedMatch,
   UnmatchedEntry,
   fetchClients,
+  hideUnmatched,
   saveClientComment,
   saveClientMapping,
+  setClientLineStatus,
+  unlinkClientMapping,
 } from "./api";
 import { Field, IconButton } from "./ui";
 
@@ -36,16 +40,88 @@ function AmountText({ value, status, theme }: { value: number; status: "WHITE" |
   return <Text style={{ color, fontWeight: "700", fontSize: 13 }}>{fmt(value)}</Text>;
 }
 
+/** Feature 092: the line-status buttons (לסגור / לפתוח / לבדוק / לקוח פעיל), shaded with the
+ * colour of the section each one moves the line to. Gray (past) lines get none. */
+function LineStatusButtons({
+  row,
+  onAction,
+}: {
+  row: ClientRow;
+  onAction: (clientId: string, action: LineAction) => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const buttons = LINE_BUTTONS[row.status] || [];
+  if (!buttons.length) return null;
+  const press = async (action: LineAction) => {
+    setBusy(true);
+    try {
+      await onAction(row.official_name, action);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
+      {buttons.map((b) => (
+        <Pressable
+          key={b.action}
+          testID={`line-btn-${b.action}-${row.official_name}`}
+          onPress={busy ? undefined : () => press(b.action)}
+          disabled={busy}
+          style={{
+            paddingVertical: 4,
+            paddingHorizontal: 10,
+            borderRadius: 999,
+            borderWidth: 1,
+            borderColor: b.color,
+            backgroundColor: `${b.color}26`,
+            opacity: busy ? 0.5 : 1,
+          }}
+        >
+          <Text style={{ color: b.color, fontSize: 12, fontWeight: "700" }}>{b.label}</Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
 function ClientRowCard({
   row,
   theme,
   onSaveComment,
+  onLineAction,
+  onUnlink,
 }: {
   row: ClientRow;
   theme: Theme;
   onSaveComment: (clientId: string, comment: string) => Promise<void>;
+  onLineAction: (clientId: string, action: LineAction) => Promise<void>;
+  onUnlink: (rawName: string) => Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [unlinking, setUnlinking] = useState<string | null>(null);
+
+  const lineAction = async (clientId: string, action: LineAction) => {
+    setActionError(null);
+    try {
+      await onLineAction(clientId, action);
+    } catch (e: any) {
+      setActionError(e?.message || "עדכון הסטטוס נכשל. נסו שוב.");
+    }
+  };
+
+  const unlink = async (rawName: string) => {
+    setActionError(null);
+    setUnlinking(rawName);
+    try {
+      await onUnlink(rawName);
+    } catch (e: any) {
+      setActionError(e?.message || "ביטול השיוך נכשל. נסו שוב.");
+    } finally {
+      setUnlinking(null);
+    }
+  };
   const [comment, setComment] = useState(row.comment);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -94,12 +170,46 @@ function ClientRowCard({
             <Text style={{ color: theme.textDim, fontSize: 11 }}>שולם</Text>
             <AmountText value={row.display_paid} status={row.paid_status} theme={theme} />
           </View>
+          <LineStatusButtons row={row} onAction={lineAction} />
           <View style={{ flex: 1 }} />
         </View>
+        {actionError ? <Text style={{ color: theme.danger, fontSize: 12 }}>{actionError}</Text> : null}
       </Pressable>
 
       {expanded ? (
         <View style={{ borderTopWidth: 1, borderColor: theme.border, padding: 10, gap: 10 }}>
+          {row.mapped_aliases.length ? (
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+              <Text style={{ color: theme.textDim, fontSize: 12 }}>שמות ששויכו ידנית:</Text>
+              {row.mapped_aliases.map((alias) => (
+                <View
+                  key={alias}
+                  testID={`alias-${alias}`}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 6,
+                    paddingVertical: 3,
+                    paddingHorizontal: 8,
+                    borderRadius: 999,
+                    borderWidth: 1,
+                    borderColor: theme.border,
+                  }}
+                >
+                  <Text style={{ color: theme.text, fontSize: 12 }}>{alias}</Text>
+                  <Pressable
+                    testID={`unlink-${alias}`}
+                    onPress={unlinking ? undefined : () => unlink(alias)}
+                    {...({ title: "בטל שיוך" } as any)}
+                  >
+                    <Text style={{ color: theme.danger, fontSize: 13, fontWeight: "800" }}>
+                      {unlinking === alias ? "…" : "×"}
+                    </Text>
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+          ) : null}
           {row.events.length ? (
             <View style={{ gap: 4 }}>
               {row.events.map((ev, i) => (
@@ -176,6 +286,22 @@ function ClientPicker({
       return next;
     });
   };
+
+  // Feature 092: Escape closes the open dropdown without choosing anything.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setQuery("");
+        setOpen(false);
+      }
+    };
+    // capture phase: react-native-web's TextInput stops keydown propagation, so a bubbling
+    // listener never sees Escape while the search field has focus.
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const suggestedNames = useMemo(() => new Set(suggestions.map((s) => s.name)), [suggestions]);
   const rest = useMemo(
@@ -300,14 +426,25 @@ function UnmatchedRowCard({
   officialNames,
   onSaveMapping,
   onSaveNote,
+  onHide,
 }: {
   row: UnmatchedEntry;
   theme: Theme;
   officialNames: string[];
   onSaveMapping: (rawName: string, officialName: string) => Promise<void>;
   onSaveNote: (rawName: string, note: string) => Promise<void>;
+  onHide: (rawName: string) => Promise<void>;
 }) {
   const [saving, setSaving] = useState(false);
+  const [hiding, setHiding] = useState(false);
+  const hide = async () => {
+    setHiding(true);
+    try {
+      await onHide(row.raw_name);
+    } finally {
+      setHiding(false);
+    }
+  };
   const [note, setNote] = useState(row.note);
   const [noteSaving, setNoteSaving] = useState(false);
   const [noteSaved, setNoteSaved] = useState(false);
@@ -402,6 +539,21 @@ function UnmatchedRowCard({
           onPress={submitNote}
           disabled={noteSaving}
         />
+        <Pressable
+          testID={`hide-unmatched-${row.raw_name}`}
+          onPress={hiding ? undefined : hide}
+          disabled={hiding}
+          style={{
+            paddingVertical: 6,
+            paddingHorizontal: 10,
+            borderRadius: 8,
+            borderWidth: 1,
+            borderColor: theme.danger,
+            opacity: hiding ? 0.5 : 1,
+          }}
+        >
+          <Text style={{ color: theme.danger, fontSize: 12, fontWeight: "700" }}>{hiding ? "…" : "הסר מהרשימה"}</Text>
+        </Pressable>
       </View>
     </View>
   );
@@ -412,18 +564,23 @@ function Section({
   rows,
   theme,
   onSaveComment,
+  onLineAction,
+  onUnlink,
 }: {
   status: ClientRow["status"];
   rows: ClientRow[];
   theme: Theme;
   onSaveComment: (clientId: string, comment: string) => Promise<void>;
+  onLineAction: (clientId: string, action: LineAction) => Promise<void>;
+  onUnlink: (rawName: string) => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
   if (!rows.length) return null;
   const total = rows.reduce((s, r) => s + r.display_agreed, 0);
   return (
-    <View style={{ gap: 6 }}>
+    <View testID={`section-${status}`} style={{ gap: 6 }}>
       <Pressable
+        testID={`section-header-${status}`}
         onPress={() => setOpen((o) => !o)}
         style={{
           flexDirection: "row",
@@ -461,7 +618,14 @@ function Section({
             </Text>
           </View>
           {rows.map((r) => (
-            <ClientRowCard key={r.official_name} row={r} theme={theme} onSaveComment={onSaveComment} />
+            <ClientRowCard
+              key={r.official_name}
+              row={r}
+              theme={theme}
+              onSaveComment={onSaveComment}
+              onLineAction={onLineAction}
+              onUnlink={onUnlink}
+            />
           ))}
         </View>
       ) : null}
@@ -475,12 +639,14 @@ function UnmatchedSection({
   officialNames,
   onSaveMapping,
   onSaveNote,
+  onHide,
 }: {
   unmatched: UnmatchedEntry[];
   theme: Theme;
   officialNames: string[];
   onSaveMapping: (rawName: string, officialName: string) => Promise<void>;
   onSaveNote: (rawName: string, note: string) => Promise<void>;
+  onHide: (rawName: string) => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
   if (!unmatched.length) return null;
@@ -537,6 +703,7 @@ function UnmatchedSection({
               officialNames={officialNames}
               onSaveMapping={onSaveMapping}
               onSaveNote={onSaveNote}
+              onHide={onHide}
             />
           ))}
         </View>
@@ -619,6 +786,23 @@ export default function ClientsView({ theme, onAuthErr }: { theme: Theme; onAuth
     await load("refresh");
   };
 
+  // Feature 092: a line-status button / unlink changes routing and totals server-side, so
+  // re-read the (cached, no-Morning-call) report afterwards.
+  const lineAction = async (clientId: string, action: LineAction) => {
+    await setClientLineStatus(clientId, action);
+    await load("refresh");
+  };
+
+  const unlink = async (rawName: string) => {
+    await unlinkClientMapping(rawName);
+    await load("refresh");
+  };
+
+  const hide = async (rawName: string) => {
+    await hideUnmatched(rawName);
+    setUnmatched((cur) => cur.filter((u) => u.raw_name !== rawName));
+  };
+
   const saveNote = async (rawName: string, note: string) => {
     await saveClientMapping(rawName, undefined, note);
     setUnmatched((cur) => cur.map((u) => (u.raw_name === rawName ? { ...u, note } : u)));
@@ -673,7 +857,15 @@ export default function ClientsView({ theme, onAuthErr }: { theme: Theme; onAuth
         {!loading && !error ? (
           <>
             {SECTION_ORDER.map((s) => (
-              <Section key={s} status={s} rows={bySection[s] || []} theme={theme} onSaveComment={saveComment} />
+              <Section
+                key={s}
+                status={s}
+                rows={bySection[s] || []}
+                theme={theme}
+                onSaveComment={saveComment}
+                onLineAction={lineAction}
+                onUnlink={unlink}
+              />
             ))}
 
             <UnmatchedSection
@@ -682,6 +874,7 @@ export default function ClientsView({ theme, onAuthErr }: { theme: Theme; onAuth
               officialNames={officialNames}
               onSaveMapping={saveMapping}
               onSaveNote={saveNote}
+              onHide={hide}
             />
 
             {!filtered.length && !unmatched.length ? (

@@ -179,8 +179,12 @@ export function ClientNameInput({
   const [status, setStatus] = useState<SearchStatus>("idle");
   const [cursor, setCursor] = useState(0);
   const suppressNext = useRef(false);
+  // Escape before the debounced search returns: the late response must not re-open the menu.
+  // Cleared by the next keystroke (a new value starts a new search).
+  const dismissed = useRef(false);
 
   useEffect(() => {
+    dismissed.current = false;
     if (suppressNext.current) {
       suppressNext.current = false;
       return;
@@ -202,13 +206,13 @@ export function ClientNameInput({
           setSuggests(list);
           setCursor(0);
           setStatus(list.length ? "results" : "empty");
-          onOpenMenu();
+          if (!dismissed.current) onOpenMenu();
         })
         .catch((e) => {
           if (dead) return;
           setSuggests([]);
           setStatus("error");
-          onOpenMenu();
+          if (!dismissed.current) onOpenMenu();
           onError?.(e);
         });
     }, 250);
@@ -239,6 +243,7 @@ export function ClientNameInput({
       e.preventDefault();
       choose(suggests[cursor]);
     } else if (e.key === "Escape") {
+      dismissed.current = true;
       onCloseMenu();
     }
   };

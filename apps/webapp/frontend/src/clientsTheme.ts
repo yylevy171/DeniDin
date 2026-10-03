@@ -26,3 +26,21 @@ export const AMOUNT_STATUS_TEXT_COLOR: Record<string, string | undefined> = {
   GRAY: "#888888", // overridden by an explicit close/settle directive
   WHITE: undefined, // no override — inherit the surrounding theme text color
 };
+
+// Feature 092: line-status buttons. Each is shaded with the colour of the section it moves the
+// line to (לפתוח uses the neutral gray). Which buttons a line shows depends on its section;
+// gray (past) lines get none.
+export type LineButton = { action: "close" | "reopen" | "check" | "active"; label: string; color: string };
+const BTN_CLOSE: LineButton = { action: "close", label: "לסגור", color: CLIENT_STATUS_COLORS.settled };
+const BTN_REOPEN: LineButton = { action: "reopen", label: "לפתוח", color: CLIENT_STATUS_COLORS.past };
+const BTN_CHECK: LineButton = { action: "check", label: "לבדוק", color: CLIENT_STATUS_COLORS.check };
+const BTN_ACTIVE: LineButton = { action: "active", label: "לקוח פעיל", color: CLIENT_STATUS_COLORS.active };
+
+export const LINE_BUTTONS: Record<string, LineButton[]> = {
+  check: [BTN_CLOSE, BTN_ACTIVE],
+  active: [BTN_CLOSE, BTN_CHECK],
+  debt: [BTN_CLOSE, BTN_CHECK, BTN_ACTIVE],
+  missing_agreement: [BTN_CLOSE, BTN_CHECK, BTN_ACTIVE],
+  settled: [BTN_REOPEN, BTN_CHECK, BTN_ACTIVE],
+  past: [],
+};

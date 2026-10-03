@@ -448,6 +448,13 @@ cd apps/webapp
                                   # nginx; dev :8100/:5100, prod :8101/:5101, bound 0.0.0.0
 ./stop_webapp.sh dev|prod        # stop it
 ```
+Lint/type-check (2026-10-03): `backend/scripts/lint.sh` (pylint `--fail-under=7.0` + mypy with
+denidin-app's `.pylintrc`/`mypy.ini`; needs `pip install -r backend/requirements-dev.txt` in the
+backend venv once) and `npm run typecheck` in `frontend/` (`src/react-native.d.ts` declares the
+react-native-web symbols the app uses, instead of the ~180-package `@types/react-native-web`).
+Both Playwright suites' fixture backends point at the Morning **sandbox** (credentials from the
+gitignored `backend/config/config.dev.json`) and log at INFO, because `/health` (bugfix-066)
+requires Morning connectivity and fresh log lines before Playwright's webServer wait succeeds.
 The backend (`backend/`, own `requirements.txt`/`pytest.ini`/`conftest.py`/`Dockerfile`) is a
 BFF that imports `apps/denidin-app/src` directly at runtime (`PYTHONPATH`, not an HTTP call) to
 reuse `LedgerEventManager`/`SessionManager`/`MediaFileManager` read-only against denidin-app's
@@ -577,6 +584,30 @@ check resolves) layers. `frontend/` is a Vite + TypeScript SPA, served by nginx
 (`nginx.conf.template`) in `dev`/`prod` mode. Own `config/` (mirrors the other apps'
 `config.example.json`/`config.dev.json`/`config.prod.json`/`config.test.json` shape). Full spec
 + the case-by-case-approved Playwright test plan: `specs/done/v0.7.0/068-ledger-ui-and-reports/`.
+
+**Clients tab line status & resolution (Feature 092, absorbs bugfix-068)**:
+- **Section routing.** A Clients-tab line's check/active/closed section comes from a persisted
+  per-line status (`client_status.json` in `clients_data_root`), set by the line buttons:
+  - **לסגור** (green) on open lines;
+  - **לפתוח** (gray) on green lines. It routes to active if agreed == paid, otherwise back to the
+    numbers;
+  - **לבדוק** (blue) and **לקוח פעיל** (light blue);
+  - no buttons on gray (past) lines.
+
+  The `לסגור`/`לבדוק`/`לקוח פעיל` comment keywords no longer route anything. Every other
+  comment keyword (delete, merge, `הסכם <amount>`, `להוריד`, unclear-amount colouring) is
+  unchanged.
+- **bugfix-068.** Closing never rewrites agreed/paid: the old `max(agreed, paid)` hack is gone.
+- **Migration.** A one-time, idempotent migration (marker in `migrations.json`) converted
+  existing comment keywords into statuses, so no line moved on deploy.
+  `backend/scripts/preview_092_migration.py` previews it read-only against a copy of a clients
+  data dir.
+- **Names to resolve.**
+  - Ledger events with no client name each get their own `Unknown-<event_id>` raw name.
+  - Explicit name mappings (`mapped_aliases`) can be unlinked from the client line.
+  - **הסר מהרשימה** permanently hides a name (`hidden_unmatched.json`).
+  - Esc closes the client dropdown.
+- **No feature flag**, approved 2026-10-03. Rollback is the previous release.
 
 ## Spec-Driven Workflow
 

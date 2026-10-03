@@ -1,19 +1,16 @@
 # Bugfix 068: Prevent "לסגור" Comment from Corrupting Agreement Totals
 
-**Status**: Backlog
+**Status**: Done — **absorbed into Feature 092** (2026-10-03), fixed there — PR #672
 
-## Issue
-Currently, when a user types "לסגור" (close) in the free-text comments of the Clients tab, the system applies a hack: it artificially modifies the underlying fee agreement totals so that `agreed_amount == paid_amount`. This forces the UI row to turn green (settled), but it fundamentally corrupts the firm's financial data by faking the agreement values.
+The scope of this bugfix (stop `לסגור` from rewriting `manual_agreement_amount`/`invoices_net`;
+close a row without changing its real numbers) is now delivered by
+`specs/repo/features/092-undo-client-resolution/spec.md`, requirements R5, R6, R9 and R10, as an
+explicit, persisted per-line status driven by UI buttons instead of a `force_closed` flag parsed
+from the comment. This file stays as a pointer and closes out together with Feature 092.
 
-## Business Reality
-Often, a client pays *some* amount (> 0), but the case ends prematurely. The remaining balance will never be paid, and no invoices will be issued. The user wants to visually mark this client as "done" (green) without pretending the client paid the full original agreement, or without artificially lowering the original agreement to match the paid amount.
+## Original issue (for the record)
 
-## Solution (Pre-Feature 089)
-1. **Remove the Hack:** The backend logic that parses "לסגור" MUST stop modifying any `agreed_amount` or `paid_amount` values.
-2. **Introduce `force_closed` flag:** The aggregation logic should simply parse the comment for "לסגור". If found, it flags that specific client/agreement as `force_closed = True`.
-3. **UI Rendering:** The Webapp UI MUST render any row with `force_closed = True` in the "Green" (Completed) state, completely ignoring the math of `agreed_amount - paid_amount`. 
-4. **Financial Integrity:** The actual `agreed_amount` and `paid_amount` shown in the UI and used in reports MUST remain true to reality, even if they don't match.
-
-## User Acceptance Tests (UAT)
-1. **UAT 1**: User types "לסגור" in the comments of a client who agreed to 10k but only paid 2k. 
-   - **Expectation**: The UI row turns green. The UI still displays Agreed: 10k, Paid: 2k. The firm's total revenue pipeline is NOT artificially inflated or deflated.
+Typing "לסגור" in a Clients-tab comment makes `clients_reader._apply_status_directives` set
+`manual_agreement_amount = invoices_net = max(agreed, paid)` so the row renders green. This
+fakes the firm's financial data: a client who agreed to ₪10k and paid ₪2k shows as ₪10k/₪10k.
+The required outcome: the row goes green while still showing the real ₪10k agreed / ₪2k paid.
