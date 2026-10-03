@@ -16,6 +16,8 @@ Production hosting, containerization, deployments, backups, data migrations, and
 
 ## Bugfixes
 
+- **065**: `bugfix-065-e2e-approval-helpers-not-unified` — Status: Bugfixes
+- **065**: `bugfix-065-synthetic-media-turn-attributed-to-human-sender` — Status: Bugfixes
 - **062**: `bugfix-062-naked-deposit-image-bypass` — Status: Done (v0.7.5)
 - **057**: `bugfix-057-slow-health-bind-and-weak-deploy-verify` — Status: Done (v0.7.0)
 - **043**: `bugfix-043-health-monitoring-and-auto-restart` — Status: Done (v0.6.0)

@@ -2,7 +2,7 @@
 
 **Feature ID**: 009-agentic-workflow-builder  
 **Priority**: P2 (Medium)  
-**Status**: Planning  
+**Status**: Obsolete
 **Created**: January 17, 2026
 
 ## Problem Statement

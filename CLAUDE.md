@@ -331,7 +331,7 @@ since there's only one real tester).
 **`prod` for both apps runs on a dedicated, always-on Windows laptop (Feature 035)**, reachable from the Mac over Tailscale/SSH — never a local host process and never the machine this session is running on. Day-to-day operation (start/stop, read logs, browse the read-only `data` mount) is done entirely from the Mac; see `specs/done/v0.2.0/035-windows-always-on-prod/quickstart.md` for the full runbook and `scripts/windows_prod/*.sh` for the read-only/disruptive-check operational scripts (`verify_windows_prod.sh` for read-only connectivity/health checks, `verify_reboot_recovery.sh` for the one deliberately disruptive reboot-recovery check). **Deploying** to this box (or to `dev`, locally) is `scripts/cut_release.sh` + `scripts/deploy_release.sh` (Feature 034) — see "Versioning & Release Management" below; `scripts/windows_prod/build_and_package.sh`/`deploy_and_verify.sh` were retired 2026-08-03, fully superseded by that pair (they rebuilt from source on every deploy, which conflicts with the "build once, deploy anywhere" principle `cut_release.sh`/`deploy_release.sh` now implement). Every start/stop/deploy against this box is still subject to the same per-action approval rule as any other environment start (see "NEVER START AN ENVIRONMENT... WITHOUT EXPLICIT APPROVAL" above).
 
 **Quick reference for reading prod data/logs (read-only, no approval needed — this is not a start/stop/deploy action):** prod `data`/`logs` are **not** in either app's own `logs/prod`/`data` directory on the Mac — those local paths only exist for a hypothetical *local* prod run and are unused now that prod lives on the Windows box (see above).
-- **Data** (`sessions/`, `events/`, `memory/`, `media/`, `reminders/`): kept permanently mounted read-only via sshfs/macFUSE at `~/denidin-winprod-data` by a LaunchAgent (2026-08-20 — `scripts/windows_prod/com.denidin.winprod-mount.plist` + `mount_data_foreground.sh`, installed once via `scripts/windows_prod/install_persistent_mount.sh`, §9a of the quickstart) — survives sleep/wake, lid closes, and reboots with no manual step ("if the Mac is on, the mount should be there, always"); self-heals within ~15s if the underlying sshfs process ever dies. If somehow not mounted, run the installer (or `scripts/windows_prod/mount_data.sh denidin-winprod` for a one-off, non-persistent mount) — do **not** open an ad-hoc `ssh`/manual mount instead, use the existing sanctioned mount/script.
+- **Data** (`sessions/`, `events/`, `memory/`, `media/`, `reminders/`): kept permanently mounted read-only via sshfs/macFUSE at `~/denidin-winprod-data` by a LaunchAgent (2026-08-20 — `scripts/windows_prod/com.denidin.winprod-mount.plist` + `mount_data_foreground.sh`, installed once via `scripts/windows_prod/install_persistent_mount.sh`, §9a of the quickstart; since 2026-10-03 the agent runs a gitignored copy at the **root clone's** `scripts/mount_data_foreground.sh`, never a teammate clone's path — a renamed clone silently killed the mount 2026-09-14 → 2026-10-03; re-run the installer from any clone to repair/refresh it) — survives sleep/wake, lid closes, and reboots with no manual step ("if the Mac is on, the mount should be there, always"); self-heals within ~15s if the underlying sshfs process ever dies. If somehow not mounted, run the installer (or `scripts/windows_prod/mount_data.sh denidin-winprod` for a one-off, non-persistent mount) — do **not** open an ad-hoc `ssh`/manual mount instead, use the existing sanctioned mount/script.
 - **Logs**: no standing local mirror — use `scripts/windows_prod/tail_logs.sh denidin-winprod <service>` (service: `denidin-app-prod` or `morning-mcp-app-prod`; follows live, Ctrl-C to stop watching). It auto-creates a `denidin-winprod` Docker context (`ssh://denidin-winprod`) the first time; for a one-shot snapshot instead of following, run the same underlying command without `-f`: `docker --context denidin-winprod compose -f docker/docker-compose.prod.yml logs --no-color --tail <N> <service>`.
 - Both rely on the `denidin-winprod` SSH host alias already being set up in `~/.ssh/config` (Feature 035 quickstart §2) and the Windows box being reachable over Tailscale (`tailscale status` should list it as `active`) — if the user is away from home, this may not be reachable; check connectivity before assuming access.
 
@@ -448,6 +448,13 @@ cd apps/webapp
                                   # nginx; dev :8100/:5100, prod :8101/:5101, bound 0.0.0.0
 ./stop_webapp.sh dev|prod        # stop it
 ```
+Lint/type-check (2026-10-03): `backend/scripts/lint.sh` (pylint `--fail-under=7.0` + mypy with
+denidin-app's `.pylintrc`/`mypy.ini`; needs `pip install -r backend/requirements-dev.txt` in the
+backend venv once) and `npm run typecheck` in `frontend/` (`src/react-native.d.ts` declares the
+react-native-web symbols the app uses, instead of the ~180-package `@types/react-native-web`).
+Both Playwright suites' fixture backends point at the Morning **sandbox** (credentials from the
+gitignored `backend/config/config.dev.json`) and log at INFO, because `/health` (bugfix-066)
+requires Morning connectivity and fresh log lines before Playwright's webServer wait succeeds.
 The backend (`backend/`, own `requirements.txt`/`pytest.ini`/`conftest.py`/`Dockerfile`) is a
 BFF that imports `apps/denidin-app/src` directly at runtime (`PYTHONPATH`, not an HTTP call) to
 reuse `LedgerEventManager`/`SessionManager`/`MediaFileManager` read-only against denidin-app's
@@ -579,6 +586,30 @@ check resolves) layers. `frontend/` is a Vite + TypeScript SPA, served by nginx
 (`nginx.conf.template`) in `dev`/`prod` mode. Own `config/` (mirrors the other apps'
 `config.example.json`/`config.dev.json`/`config.prod.json`/`config.test.json` shape). Full spec
 + the case-by-case-approved Playwright test plan: `specs/done/v0.7.0/068-ledger-ui-and-reports/`.
+
+**Clients tab line status & resolution (Feature 092, absorbs bugfix-068)**:
+- **Section routing.** A Clients-tab line's check/active/closed section comes from a persisted
+  per-line status (`client_status.json` in `clients_data_root`), set by the line buttons:
+  - **לסגור** (green) on open lines;
+  - **לפתוח** (gray) on green lines. It routes to active if agreed == paid, otherwise back to the
+    numbers;
+  - **לבדוק** (blue) and **לקוח פעיל** (light blue);
+  - no buttons on gray (past) lines.
+
+  The `לסגור`/`לבדוק`/`לקוח פעיל` comment keywords no longer route anything. Every other
+  comment keyword (delete, merge, `הסכם <amount>`, `להוריד`, unclear-amount colouring) is
+  unchanged.
+- **bugfix-068.** Closing never rewrites agreed/paid: the old `max(agreed, paid)` hack is gone.
+- **Migration.** A one-time, idempotent migration (marker in `migrations.json`) converted
+  existing comment keywords into statuses, so no line moved on deploy.
+  `backend/scripts/preview_092_migration.py` previews it read-only against a copy of a clients
+  data dir.
+- **Names to resolve.**
+  - Ledger events with no client name each get their own `Unknown-<event_id>` raw name.
+  - Explicit name mappings (`mapped_aliases`) can be unlinked from the client line.
+  - **הסר מהרשימה** permanently hides a name (`hidden_unmatched.json`).
+  - Esc closes the client dropdown.
+- **No feature flag**, approved 2026-10-03. Rollback is the previous release.
 
 ## Spec-Driven Workflow
 
