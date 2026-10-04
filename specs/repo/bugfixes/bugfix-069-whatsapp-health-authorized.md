@@ -1,6 +1,6 @@
 # Bugfix 069: /health reports WhatsApp "success" while the Green API instance is logged out
 
-**Status**: Done (2026-10-04) — PR #TBD
+**Status**: Done (2026-10-04) — PR #681
 **Priority**: P0 (production incident)
 **Branch**: `bugfix/069-whatsapp-health-authorized`
 **Created**: 2026-10-04
