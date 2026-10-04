@@ -16,11 +16,13 @@ import requests
 from src.services.health_server import (
     HEARTBEAT_INTERVAL_SECONDS,
     build_health_check_fns,
+    build_health_info_fns,
     check_ai_connectivity,
     check_chromadb_connectivity,
     check_log_freshness,
     check_morning_connectivity_via_tunnel,
     check_whatsapp_connectivity,
+    check_whatsapp_authorized,
     resolve_log_path,
     start_health_server,
     write_heartbeat_log,
@@ -99,6 +101,70 @@ def test_check_whatsapp_connectivity_false_when_call_raises():
 
     assert check_whatsapp_connectivity(_RaisingGreenApi()) is False
 
+
+
+# ---------------------------------------------------------------------------
+# check_whatsapp_authorized (bugfix-069) - HTTP 200 alone is NOT "linked"
+# ---------------------------------------------------------------------------
+
+class _StateResponse:
+    def __init__(self, code: int, state):
+        self.code = code
+        self.data = {"stateInstance": state} if state is not None else None
+        self.error = None if code == 200 else "boom"
+
+
+class _StateGreenApi:
+    """Green API answers HTTP 200 for every instance state (confirmed live on prod,
+    2026-10-04: 200 + {"stateInstance": "notAuthorized"} during the outage)."""
+
+    def __init__(self, code: int, state):
+        response = _StateResponse(code, state)
+
+        class _Account:
+            def getStateInstance(self):
+                return response
+
+        self.account = _Account()
+
+
+def test_check_whatsapp_authorized_true_only_when_authorized():
+    assert check_whatsapp_authorized(_StateGreenApi(200, "authorized")) is True
+
+
+def test_check_whatsapp_authorized_false_when_not_authorized_despite_200():
+    """The exact 2026-10-01..04 prod incident: logged out, yet HTTP 200."""
+    assert check_whatsapp_authorized(_StateGreenApi(200, "notAuthorized")) is False
+
+
+@pytest.mark.parametrize("state", ["yellowCard", "blocked", "starting", "sleepMode"])
+def test_check_whatsapp_authorized_false_for_other_states(state):
+    assert check_whatsapp_authorized(_StateGreenApi(200, state)) is False
+
+
+def test_check_whatsapp_authorized_false_on_non_200():
+    assert check_whatsapp_authorized(_StateGreenApi(500, None)) is False
+
+
+def test_check_whatsapp_authorized_false_when_call_raises():
+    class _RaisingAccount:
+        def getStateInstance(self):
+            raise ConnectionError("simulated")
+
+    class _RaisingGreenApi:
+        account = _RaisingAccount()
+
+    assert check_whatsapp_authorized(_RaisingGreenApi()) is False
+
+
+def test_build_health_info_fns_empty_without_green_api():
+    assert build_health_info_fns() == {}
+
+
+def test_build_health_info_fns_includes_whatsapp_authorized():
+    fns = build_health_info_fns(green_api=_StateGreenApi(200, "notAuthorized"))
+    assert set(fns.keys()) == {"whatsapp_authorized"}
+    assert fns["whatsapp_authorized"]() is False
 
 # ---------------------------------------------------------------------------
 # check_morning_connectivity_via_tunnel - real HTTP fixture server
@@ -310,5 +376,63 @@ def test_health_server_returns_404_for_unknown_path():
         response = requests.get(f"http://127.0.0.1:{port}/nope", timeout=5)
 
         assert response.status_code == 404
+    finally:
+        server.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# start_health_server - report-only fields (bugfix-069): visible, never fail status
+# (the prober restarts prod on status != ok, and a restart cannot re-link a phone)
+# ---------------------------------------------------------------------------
+
+def _get_health(server):
+    port = server.server_address[1]
+    return requests.get(f"http://127.0.0.1:{port}/health", timeout=5)
+
+
+def test_failing_report_only_field_shows_fail_but_status_stays_ok():
+    server = start_health_server(0, {"ai_connectivity": lambda: True}, {"whatsapp_authorized": lambda: False})
+    try:
+        response = _get_health(server)
+        assert response.status_code == 200
+        body = response.json()
+        assert body["whatsapp_authorized"] == "fail"
+        assert body["status"] == "ok"
+    finally:
+        server.shutdown()
+
+
+def test_passing_report_only_field_shows_success():
+    server = start_health_server(0, {}, {"whatsapp_authorized": lambda: True})
+    try:
+        body = _get_health(server).json()
+        assert body["whatsapp_authorized"] == "success"
+        assert body["status"] == "ok"
+    finally:
+        server.shutdown()
+
+
+def test_raising_report_only_field_is_fail_not_500():
+    def _raising():
+        raise RuntimeError("simulated")
+
+    server = start_health_server(0, {}, {"whatsapp_authorized": _raising})
+    try:
+        response = _get_health(server)
+        assert response.status_code == 200
+        assert response.json()["whatsapp_authorized"] == "fail"
+        assert response.json()["status"] == "ok"
+    finally:
+        server.shutdown()
+
+
+def test_failing_real_check_still_fails_status_alongside_report_only_fields():
+    server = start_health_server(0, {"ai_connectivity": lambda: False}, {"whatsapp_authorized": lambda: True})
+    try:
+        response = _get_health(server)
+        assert response.status_code == 503
+        body = response.json()
+        assert body["status"] == "fail"
+        assert body["whatsapp_authorized"] == "success"
     finally:
         server.shutdown()
