@@ -64,6 +64,26 @@ def check_whatsapp_connectivity(green_api) -> bool:
         return False
 
 
+def check_whatsapp_authorized(green_api) -> bool:
+    """bugfix-069: is our WhatsApp number actually linked and receiving? Green API answers
+    HTTP 200 for every instance state - including "notAuthorized" (a logged-out number, the
+    2026-10-01..04 prod outage, during which check_whatsapp_connectivity kept reporting
+    success) - so the state itself must be "authorized". Report-only: wired through
+    build_health_info_fns, never through build_health_check_fns (see that function)."""
+    try:
+        response = green_api.account.getStateInstance()
+        if response.code != 200:
+            return False
+        state = (response.data or {}).get("stateInstance")
+        if state != "authorized":
+            logger.warning("check_whatsapp_authorized: Green API instance state is %r", state)
+            return False
+        return True
+    except Exception:  # noqa: BLE001
+        logger.warning("check_whatsapp_authorized: failed", exc_info=True)
+        return False
+
+
 def check_morning_connectivity_via_tunnel(mcp_config: dict) -> bool:
     """Discovers the current Morning MCP tunnel URL the same way AIHandler
     does (MorningMcpLocator, the shared status file - never a direct import
@@ -163,7 +183,30 @@ def build_health_check_fns(
     return checks
 
 
-def _make_handler_class(check_fns: Dict[str, Callable[[], bool]]) -> type:
+def build_health_info_fns(green_api=None) -> Dict[str, Callable[[], bool]]:
+    """bugfix-069: report-only fields - shown in the /health body as "success"/"fail" but
+    never counted toward `status`/the HTTP code. The prober (scripts/health_monitoring)
+    restarts the environment whenever `status` is not "ok", and a restart cannot fix
+    these (re-linking WhatsApp needs a human to scan a QR code), so counting them would
+    only cause an endless restart loop. Alerting a human on them is Feature 028 FR8."""
+    info: Dict[str, Callable[[], bool]] = {}
+    if green_api is not None:
+        info["whatsapp_authorized"] = lambda: check_whatsapp_authorized(green_api)
+    return info
+
+
+def _run_check(name: str, check_fn: Callable[[], bool]) -> bool:
+    try:
+        return bool(check_fn())
+    except Exception:  # noqa: BLE001 - a check that raises is a failed check, not a 500
+        logger.warning("health check %r raised", name, exc_info=True)
+        return False
+
+
+def _make_handler_class(
+    check_fns: Dict[str, Callable[[], bool]],
+    info_fns: Optional[Dict[str, Callable[[], bool]]] = None,
+) -> type:
     """Builds a BaseHTTPRequestHandler subclass closing over check_fns -
     ThreadingHTTPServer instantiates a fresh handler per request, so the
     checks have to be reachable via a class attribute, not a constructor arg."""
@@ -178,13 +221,12 @@ def _make_handler_class(check_fns: Dict[str, Callable[[], bool]]) -> type:
             body = {"app_up": "success"}
             all_ok = True
             for name, check_fn in check_fns.items():
-                try:
-                    ok = check_fn()
-                except Exception:  # noqa: BLE001 - a check that raises is a failed check, not a 500
-                    logger.warning("health check %r raised", name, exc_info=True)
-                    ok = False
+                ok = _run_check(name, check_fn)
                 body[name] = "success" if ok else "fail"
                 all_ok = all_ok and ok
+            # bugfix-069: report-only fields - visible, never part of status/the HTTP code.
+            for name, info_fn in (info_fns or {}).items():
+                body[name] = "success" if _run_check(name, info_fn) else "fail"
             body["status"] = "ok" if all_ok else "fail"
 
             payload = json.dumps(body).encode("utf-8")
@@ -200,7 +242,11 @@ def _make_handler_class(check_fns: Dict[str, Callable[[], bool]]) -> type:
     return _HealthHandler
 
 
-def start_health_server(port: int, check_fns: Dict[str, Callable[[], bool]]) -> ThreadingHTTPServer:
+def start_health_server(
+    port: int,
+    check_fns: Dict[str, Callable[[], bool]],
+    info_fns: Optional[Dict[str, Callable[[], bool]]] = None,
+) -> ThreadingHTTPServer:
     """Starts the /health server in a daemon background thread, and returns
     the server object (tests/callers that need to shut it down explicitly
     can call .shutdown()).
@@ -219,7 +265,7 @@ def start_health_server(port: int, check_fns: Dict[str, Callable[[], bool]]) -> 
     secrets, no internal state - so widening it to 0.0.0.0 carries no
     meaningful new exposure, and matches morning-mcp-app's own /health
     (already 0.0.0.0-bound and host-published)."""
-    handler_cls = _make_handler_class(check_fns)
+    handler_cls = _make_handler_class(check_fns, info_fns)
     server = ThreadingHTTPServer(("0.0.0.0", port), handler_cls)
     thread = threading.Thread(target=server.serve_forever, name="health-server", daemon=True)
     thread.start()

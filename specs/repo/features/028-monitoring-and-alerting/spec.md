@@ -4,7 +4,7 @@
 **Priority**: P1
 **Status**: Clarified - Ready for Planning
 **Created**: July 30, 2026
-**Updated**: July 30, 2026
+**Updated**: October 4, 2026
 
 ---
 
@@ -37,10 +37,11 @@ Both are now fixed in `apps/morning-mcp-app/watchdog.py` (2026-07-30): the URL i
 - **FR5**: No feature flag — this is new tooling/scripts behavior, not a change to either app's production request-handling code path; nothing here is gated.
 - **FR6** (added 2026-07-30, second incident same day): The startup sanity check must also verify DNS resolution to `morning-mcp-app`'s real external dependency host (the Morning/Green Invoice API host from `config.<env>.json`'s `api_url`, e.g. `sandbox.d.greeninvoice.co.il`) succeeds *from inside the running container* — not just that the container is up and its own `/health`/tunnel respond. A container can be "Up" and pass its own internal `/health` while still being unable to reach Morning at all (confirmed live, 2026-07-30: `NameResolutionError` for `sandbox.d.greeninvoice.co.il` immediately after a fresh container recreate, matching a previously-observed transient post-restart DNS pattern in this codebase). Concretely: exec a DNS lookup (or a lightweight real request) against that host inside the `morning-mcp-app-<env>` container as part of the same one-shot sanity check, and fail loud (same as any other check) if it doesn't resolve within a bounded retry window (absorbing the same kind of transient post-restart delay `--wait-seconds` already absorbs for the tunnel).
 - **FR7** (added 2026-07-30): This spec covers a **single, unified watchdog** monitoring both `denidin-app-<env>` and `morning-mcp-app-<env>` together as one bundle (matching CLAUDE.md's "ONE ENVIRONMENT SET AT A TIME" — they are never meant to run independently), replacing today's two separate per-container `watchdog.py` processes (one baked into each app's own Docker image as PID 1). Design not yet finalized — open questions include: whether it replaces or supplements the per-container watchdogs, whether it runs continuously in the background (started by `run_all.sh`, stopped by `stop_all.sh`/`killall_containers.sh`) or only as a one-shot startup gate, and how an external, host-level process should be authorized to tear down containers on a real mismatch (today's per-container watchdogs only kill their own local subprocess). Needs its own design/clarification pass before implementation - not to be conflated with FR1-FR4's simpler "shared check code" ask.
+- **FR8** (added 2026-10-04, after bugfix-069's prod WhatsApp outage - logged out ~2.5 days, noticed only by the PM): **Real-time alerting to a human is now IN scope** (reverses the 2026-07-30 out-of-scope decision below). When any monitored check fails - including report-only fields such as denidin-app's `whatsapp_authorized`, which never fail `status` and so never trigger the prober's restarts - a human must be notified within minutes through a channel that does not depend on what failed (WhatsApp cannot be the channel). Channel, credentials, de-duplication and repeat cadence need a clarification pass before planning.
 
 ## Explicitly Out of Scope
 
-- Real-time alerting/paging to a human or external channel (Slack, email, SMS, PushNotification-style) — no such channel exists in this codebase today; adding one is a separate, future decision.
+- ~~Real-time alerting/paging to a human or external channel~~ — moved IN scope 2026-10-04, see FR8.
 - Adding an HTTP server/liveness endpoint to `denidin-app` — it has none today and this spec doesn't add one; its check remains the environment-consistency check only.
 - Any change to `watchdog.py`'s teardown behavior/policy (still: log and stop the app subprocess, no auto-restart, human must run `killall_containers.sh`) — this spec only changes *where the check logic lives* and *who else can call it*, not what happens on a real mismatch.
 - Continuous/periodic monitoring beyond what `watchdog.py` already does every 30s while a container is up — this spec's new CLI mode is a one-shot, run-once-at-startup check, not a new long-running monitor.
