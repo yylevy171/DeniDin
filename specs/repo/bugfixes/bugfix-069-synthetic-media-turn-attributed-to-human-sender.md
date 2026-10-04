@@ -1,4 +1,4 @@
-# Bugfix 065: Synthetic Media "Stash" Turn Is Persisted As If the Human Sender Wrote It
+# Bugfix 069: Synthetic Media "Stash" Turn Is Persisted As If the Human Sender Wrote It
 
 **Status**: Open — placeholder (root cause identified, awaiting human approval to proceed per METHODOLOGY.md §VII). No fix, no test written yet.
 **Severity**: High (data integrity / misattribution in the persisted conversation record)

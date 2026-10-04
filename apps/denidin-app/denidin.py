@@ -50,7 +50,8 @@ from src.services.accounting_reconciliation_service import (
     run_startup_accounting_reconciliation_sweep, start_accounting_reconciliation_scheduler,
 )
 from src.services.health_server import (
-    build_health_check_fns, resolve_log_path, start_health_server, start_heartbeat_thread,
+    build_health_check_fns, build_health_info_fns, resolve_log_path, start_health_server,
+    start_heartbeat_thread,
 )
 from src.services.daily_summary_roll_service import (
     run_startup_daily_roll_sweep, start_daily_roll_scheduler,
@@ -1776,7 +1777,9 @@ def main() -> None:
             memory_manager=denidin.memory_manager,
             log_path=resolve_log_path(),
         )
-        start_health_server(denidin.config.health_check_port, check_fns)
+        # bugfix-069: report-only fields (e.g. whatsapp_authorized) - never fail status.
+        info_fns = build_health_info_fns(green_api=live_bot.api)
+        start_health_server(denidin.config.health_check_port, check_fns, info_fns)
         start_heartbeat_thread()
 
     # Feature 054: reminder delivery scheduler - deliberately started HERE, not
