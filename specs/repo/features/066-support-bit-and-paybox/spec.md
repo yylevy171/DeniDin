@@ -3,6 +3,7 @@
 **Feature Branch**: `feature/066-support-bit-and-paybox`
 **Created**: 2026-08-30
 **Status**: DRAFT (Backlog)
+**Dependency**: Blocked by Feature 063 (Dynamic Capability Backbone)
 **Input**: CEO requirement to support 4 new deposit flows (Bit, PayBox, Checks, Cash) by fundamentally refactoring the ledger data model to unify all deposits under a single `deposit` event type.
 
 ---
