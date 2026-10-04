@@ -1,6 +1,6 @@
 # Bugfix 069: /health reports WhatsApp "success" while the Green API instance is logged out
 
-**Status**: In Progress
+**Status**: Done (2026-10-04) — PR #TBD
 **Priority**: P0 (production incident)
 **Branch**: `bugfix/069-whatsapp-health-authorized`
 **Created**: 2026-10-04
@@ -69,6 +69,21 @@ API's servers are reachable, never that our WhatsApp number is linked and receiv
 - **Server:** `start_health_server(port, check_fns, info_fns=None)` adds report-only fields to the
   body without touching `status` / the HTTP code.
 - **Wiring:** `denidin.py` passes `build_health_info_fns(green_api=live_bot.api)`.
+
+## Verification (2026-10-04)
+
+- **Unit tests:** `tests/unit/test_health_server.py` 37/37, including 11 new ones. Full denidin-app
+  unit + integration suite: 1,678 passed, 0 failed.
+- **Green API docs** (`GetStateInstance`): `notAuthorized` is a documented `stateInstance` value,
+  returned in a normal 200 response. The other values are `authorized`, `blocked`, `sleepMode`,
+  `starting`, `yellowCard` and `suspended`; only `authorized` passes.
+- **Live, real prod instance, logged out (~10:15):** HTTP 200 +
+  `{"stateInstance":"notAuthorized"}`, the case the new check rejects.
+- **Live, real prod instance, after re-linking (~10:45):** the new `check_whatsapp_authorized`, run
+  through the real `whatsapp_api_client_python` client, returned True for
+  `{'stateInstance': 'authorized'}`.
+- **Service restored:** prod WhatsApp was re-linked by QR scan around 10:30, and messages flowed
+  again from 10:30:33.
 
 ## Out of scope / follow-ups
 
