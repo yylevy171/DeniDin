@@ -46,8 +46,7 @@ amount may be `None`).
 **Decision**: reuse `morning-mcp-app`'s existing `default_vat_rate` config field
 (`config.py:36`, currently unused in code). Its value is **0.17** in the code default,
 `config.example.json`, `config.dev.json` and `config.prod.json`; Israel's VAT is 18% since
-2025-01-01. It must become **0.18**. ⚠️ Editing config files needs explicit human approval
-(CLAUDE.md "Config is code") - **pending**.
+2025-01-01. It becomes **0.18**. Config edits **approved by PM 2026-10-05** (D-2).
 
 **Alternatives**: hard-code 18% (rejected: VAT has changed before); a new field
 (rejected: an unused field with the right name already exists).
@@ -62,27 +61,40 @@ gets a branch for it (like `ClientNotFoundError`) that returns its Hebrew messag
 **Rationale**: the established "succeed or raise" contract (`server.py:196-214`). A plain
 `ValueError` would be swallowed into the generic "❌ הבקשה אינה תקינה".
 
-## R5 - Threshold delivery to DeniDin (PM decision Q3)
+## R5 - Threshold delivery to DeniDin (PM decisions Q3 + D-4, 2026-10-05)
+
+**Constraint (PM)**: DeniDin never calls morning-mcp-app directly and never imports it.
+Its only path to Morning-MCP is through OpenAI, exactly as on every invoicing turn.
 
 **Decision**: a new read-only MCP tool on Morning-MCP, `get_invoicing_rules()` →
-`{"allocation_threshold_nis": 5000}`. DeniDin calls it **directly** at startup (not
-through OpenAI), using the `mcp` Python client library over streamable-HTTP, with the
-same tunnel URL (`MorningMcpLocator`) and bearer token (`mcp.morning_auth_token`) it
-already uses. The same tool is attached to the model like any other Morning tool, which
-is also what UAT 4.2 exercises.
+`{"allocation_threshold_nis": 5000}`. At startup DeniDin makes one **standalone OpenAI
+Responses call** (no session, no chat, no user) with the Morning MCP server attached as
+the usual remote MCP tool, restricted to `allowed_tools: ["get_invoicing_rules"]`,
+`require_approval: "never"`, and an instruction to call it. DeniDin reads the value from
+the response's **`mcp_call` output item** (the tool's own JSON), never from the model's
+prose, and validates it (positive number) before using it.
 
-**New dependency**: `mcp>=1.0.0,<2.0.0` in `apps/denidin-app/requirements.txt` (the same
-pin `morning-mcp-app` uses).
+Precedent: `services/accounting_reconciliation_service.py` (Feature 025) already makes a
+standalone Responses call with the Morning MCP tools attached, outside any conversation,
+and reads the tool output deterministically (Phase 9a JSON format).
 
-**Retry (CONSTITUTION §XVIII)**: a background thread started by `initialize_app` polls
-every 2s for up to 60s; if still unavailable, it keeps retrying every 5 minutes until it
-succeeds. It never blocks startup and never gives up permanently.
+**Cost**: one `billed`-size text call per successful startup (plus failed attempts).
 
-**Alternatives**: a plain authenticated HTTP route (e.g. `GET /invoicing_rules`) called
-with `requests` - simpler, no new dependency, precedent in `health_server.py`'s
-`/is_alive` call. Rejected for now because PM described an MCP route and UAT 4.2 (approved)
-asks Morning-MCP for the threshold over MCP; a route plus a tool would be two contracts
-for one value. **Revisit if the `mcp` client dependency in denidin-app is unwanted.**
+**LIVE-VERIFY**: whether `tool_choice` can force a specific MCP tool on the Responses API;
+if not, the instruction plus `allowed_tools` restricted to one tool is relied on, and a
+response with no `get_invoicing_rules` `mcp_call` counts as a failed attempt (retried).
+
+**Retry (CONSTITUTION §XVIII)**: a background thread started by `initialize_app` retries
+every 10s for up to 2 minutes (each attempt is a real OpenAI call, so not every 2s); if
+still unavailable, every 10 minutes until it succeeds. Never blocks startup, never gives
+up permanently.
+
+**Alternative**: DeniDin keeps its own copy (`config.<env>.json`, e.g.
+`invoicing.allocation_threshold_nis`). Simpler, no OpenAI call, but two places to change
+together and nothing detects drift. Rejected in favor of one source of truth; kept as the
+fallback if the OpenAI route proves unreliable.
+
+Rejected outright (PM): a direct MCP client or HTTP call from DeniDin to Morning-MCP.
 
 ## R6 - Injecting the threshold into DeniDin's prompt
 
@@ -96,8 +108,19 @@ handling, `ai_handler.py:2057`), from an injected `InvoicingRules` holder:
 The value is fixed after it arrives, so the constitution stays a stable prefix and
 prompt caching is preserved (one prefix change, the moment the value first arrives).
 
-**Backbone (Feature 063)**: same placeholder, substituted wherever 063 loads flow /
-capability prompts. See plan.md "Feature 063 dependency".
+**Getting the number into the prompt is not just a text replace.** Three things have to
+hold:
+1. **Timing** - the value can arrive after the first turns, so substitution happens at
+   prompt-assembly time on every turn (inside `_load_constitution`, after the mtime cache),
+   never baked into the cached file content.
+2. **Every prompt that mentions it** - today only `runtime_constitution.md`. Prompts
+   loaded elsewhere (the ledger recognition prompt, the reconciliation prompt) don't
+   need it. A unit test asserts no `{{ALLOCATION_THRESHOLD_NIS}}` survives into any
+   final `instructions` string.
+3. **Backbone (Feature 063)** - 063 loads `backbone.md` plus per-flow/per-capability prompt
+   files dynamically as they are loaded. The substitution must move to 063's single
+   prompt-assembly point so it covers every file, whichever is loaded. Hand-off item for
+   063 (plan.md "Feature 063 dependency").
 
 ## R7 - Asking before the approval prompt (REQ-098-04)
 
@@ -126,7 +149,5 @@ than just reporting the update. The prompt rule states it explicitly; UAT 2.1 is
 
 ## R9 - Feature flag
 
-CONSTITUTION §VI requires new behavior behind a default-off flag, and integration tests
-must never set flags. With a default-off flag, the backstop's integration tests could
-not exercise it. Precedent: Feature 092 shipped with no flag by PM approval (2026-10-03).
-**Pending PM decision** (plan.md D-1).
+**Decision (PM, 2026-10-05)**: **no feature flag.** The feature is mandatory and there is
+no going back. Documented exception to CONSTITUTION §VI, same as Feature 092.

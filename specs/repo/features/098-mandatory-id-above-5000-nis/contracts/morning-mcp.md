@@ -33,14 +33,21 @@ When the allocation check (data-model.md) refuses:
 `GET {base_url}/clients/{client_id}` → the client record (dict). Same `_request`/
 `raise_for_status` pattern as `get_invoice`. **LIVE-VERIFY** (research R1).
 
-## C4 - DeniDin startup fetch (DeniDin, internal)
+## C4 - DeniDin startup fetch, via OpenAI (DeniDin, internal)
 
-- Discover URL via `MorningMcpLocator(config.mcp).current_server_url()`, auth via
-  `config.mcp['morning_auth_token']`.
-- MCP `call_tool("get_invoicing_rules", {})` with the `mcp` Python client.
-- Poll every 2s for up to 60s, then every 5 minutes until success (CONSTITUTION §XVIII).
-- On success: set `InvoicingRules.allocation_threshold_nis`, log INFO once. Each failed
-  attempt: DEBUG; the transition to the 5-minute phase: WARNING.
+- One standalone `responses.create` call: model `config.ai_model`; tools = the usual
+  Morning remote-MCP tool entry (URL from `MorningMcpLocator`, bearer from
+  `config.mcp['morning_auth_token']`) with `allowed_tools: ["get_invoicing_rules"]` and
+  `require_approval: "never"`; short instruction: call `get_invoicing_rules` and nothing
+  else; low `max_output_tokens`.
+- Read the value from the first `mcp_call` item named `get_invoicing_rules` in
+  `response.output` → `json.loads(item.output)["allocation_threshold_nis"]`; must be a
+  positive number. No such item, an `error`, or a bad value → failed attempt.
+- Never sends anything to WhatsApp; never touches sessions, memory or the ledger.
+- Schedule: every 10s for up to 2 minutes, then every 10 minutes until success
+  (CONSTITUTION §XVIII). On success: set the `InvoicingRules` holder, log INFO once, stop.
+  Failed attempt: WARNING with the reason. Morning-MCP unavailable (no tunnel URL) counts
+  as a failed attempt without making the OpenAI call.
 
 ## C5 - Prompt placeholder (DeniDin)
 
