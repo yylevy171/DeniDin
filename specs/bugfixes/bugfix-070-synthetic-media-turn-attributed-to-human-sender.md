@@ -1,0 +1,1 @@
+../repo/bugfixes/bugfix-070-synthetic-media-turn-attributed-to-human-sender.md
