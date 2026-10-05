@@ -44,6 +44,14 @@ As a law firm partner, I want to edit top-level agreement data (payer, partner) 
    * **User Action**: The user clicks "+ Add Component" under an agreement.
    * **Expected Result**: A dialog opens requiring the user to explicitly define the component-level fields listed in UAT 2.2. Saving adds it to the DB and generates a new ledger event.
 
+4. **UAT 2.4 - Create New Agreement** *(added 2026-10-05, clarify)*:
+   * **User Action**: In the client's "הסכמים" section, the user clicks "+ New Agreement", fills in the top-level fields (UAT 2.1) and at least one component (UAT 2.2), and saves.
+   * **Expected Result**: The new agreement appears in the client's list with its components. Each component gets its default status (UAT 3.1), and each produces a `הסכם`/`יצירה` ledger event.
+
+5. **UAT 2.5 - Delete Component** *(added 2026-10-05, clarify)*:
+   * **User Action**: The user clicks "Delete" on a component (for example, a duplicate) and confirms.
+   * **Expected Result**: The component disappears from the agreement. The ledger gets a `הסכם` event with subtype `ביטול` whose reference is the event_id of that component's original ledger event. Sibling components are untouched.
+
 ---
 
 ### User Story 3 - Manage Component Lifecycle (Pending / Active / Completed / Cancelled) (Priority: P2)
@@ -103,6 +111,8 @@ As a user interacting with both the UI and the WhatsApp bot, I want a single sou
 ---
 
 ## WhatsApp Interaction Flows
+
+*(Clarified 2026-10-05: these flows behave exactly as they do today. The only change is the write path: the bot writes to the Agreements DB, and that write produces the ledger event. The bot never writes `הסכם` ledger events directly. Reads come from the Agreements DB.)*
 
 ### Flow 1: Querying Agreements & Handling Ambiguities
 *   **User Action:** User asks, "What is our agreement with Israel?"
