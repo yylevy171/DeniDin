@@ -13,7 +13,7 @@
 
 ## Requirement Completeness
 
-- [ ] No open PM questions remain - 3 open (user-stories.md: approvals, foreign currency, threshold source)
+- [ ] No open PM questions remain - Q3 (threshold source) pending confirmation
 - [x] Requirements are testable and unambiguous
 - [x] Success criteria are measurable
 - [x] Success criteria are technology-agnostic

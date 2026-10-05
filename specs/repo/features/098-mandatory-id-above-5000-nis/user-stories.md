@@ -1,133 +1,182 @@
 # User Stories: 098 - Mandatory Client ID Above the Allocation Threshold
 
-Actor throughout: a **godfather/admin** user talking to DeniDin over WhatsApp, in
-Hebrew. "Morning" is the dev Morning **sandbox**. Threshold = 5,000 ₪ before VAT, VAT 18%.
+Threshold = 5,000 ₪ before VAT; VAT 18%. Shekel documents only (non-shekel is not
+supported anywhere in the system).
 
-All acceptance scenarios below are **`billed`** (real text-only conversations through
-DeniDin against the real sandbox). None is `expensive`.
+**Actors**
+- **User** - a godfather/admin user, on WhatsApp, in Hebrew.
+- **DeniDin** - `denidin-app`, the WhatsApp bot.
+- **Morning-MCP** - `morning-mcp-app`, the MCP server that talks to Morning.
+- **Morning** - the dev Morning **sandbox** (the real external system).
+
+**Test tiers**: every acceptance scenario below is **`billed`** (real, text-only OpenAI
+calls against the real sandbox). None is `expensive`. Stories 1-3 run through DeniDin
+(`apps/denidin-app/tests/billed/`); Story 4 runs against Morning-MCP alone
+(`apps/morning-mcp-app/tests/billed/`).
+
+**Fixtures common to all stories**: a fresh sandbox client created per test
+("Test098 <timestamp>"), with or without an ID as the scenario says.
 
 ---
 
-### User Story 1 - Ask for the ID before issuing a qualifying document (Priority: P1)
-
-When I ask for a tax invoice or tax invoice/receipt above 5,000 ₪ (before VAT) for a
-client with no ID on file, DeniDin tells me it needs the client's ID for the allocation
-number and asks me for it, before asking me to approve anything.
+### User Story 1 - DeniDin asks for the ID before issuing a qualifying document (Priority: P1)
 
 **Why this priority**: the regulatory core - without it, non-compliant documents go out.
 
-**Independent Test**: request a qualifying document for an ID-less sandbox client and
-check that DeniDin asks for the ID and that no document was created.
-
 **Acceptance Scenarios**:
 
-1. **UAT 1.1 - 320 above threshold, no ID**
-   - **Given** a sandbox client with no ID on file,
-   - **When** I write "תוציא חשבונית מס קבלה ל<client> על 12,000 ש"ח כולל מע"מ, שולם
-     בהעברה בנקאית היום",
-   - **Then** DeniDin replies asking for the client's ת.ז / ח.פ and mentions it is needed
-     for the allocation number (מספר הקצאה); it shows **no** approval buttons, and no new
-     document exists in Morning for that client.
-2. **UAT 1.2 - 305 above threshold, no ID**
-   - Same as 1.1, but "חשבונית מס ... על 8,000 ש"ח לפני מע"מ" → same outcome.
-3. **UAT 1.3 - closing a transaction account with a 320 above threshold, no ID**
-   - **Given** an ID-less client with an open transaction account (חשבון עסקה) of 10,000 ₪,
-   - **When** I say the client paid it in full,
-   - **Then** DeniDin asks for the ID before proposing the closing document; the
-     transaction account stays open and no 320 is created.
+1. **UAT 1.1 - 320 above threshold, client has no ID**
+   - **Given** a sandbox client with no ID on file.
+   - **Step 1 - User sends** (one WhatsApp text):
+     "תוציא חשבונית מס קבלה ל<client> על 12,000 ש"ח כולל מע"מ, שולם בהעברה בנקאית היום".
+   - **Step 2 - DeniDin, internally** (not visible to the User): reads the client from
+     Morning-MCP, sees no ID, and does **not** call any document-creation tool.
+   - **Step 3 - DeniDin sends** exactly one reply, as plain text (**no** approval buttons),
+     that:
+     - names the client and the amount,
+     - says the client's ID (ת.ז / ח.פ) is needed for the allocation number (מספר הקצאה)
+       because the amount is above 5,000 ₪ before VAT,
+     - asks the User to send it.
+   - **Then, in Morning**: no new document exists for the client, and the client record is
+     unchanged.
+
+2. **UAT 1.2 - 305 above threshold, client has no ID**
+   - Same as 1.1, with **Step 1 - User sends**:
+     "תוציא חשבונית מס ל<client> על 8,000 ש"ח לפני מע"מ".
+   - Steps 2-3 and the Morning check are identical.
+
+3. **UAT 1.3 - closing a transaction account with a 320 above threshold, client has no ID**
+   - **Given** an ID-less sandbox client with an open transaction account (חשבון עסקה, 300)
+     of 10,000 ₪, created directly in the sandbox by the test.
+   - **Step 1 - User sends**: "<client> שילם את החשבון עסקה במלואו, בהעברה בנקאית היום".
+   - **Step 2 - DeniDin, internally**: finds the open transaction account, sees the client
+     has no ID, does **not** call the closing tool.
+   - **Step 3 - DeniDin sends** one plain-text reply (no buttons), with the same content
+     as 1.1's Step 3.
+   - **Then, in Morning**: the transaction account is still open, and no 320 exists for
+     the client.
 
 ---
 
-### User Story 2 - Give the ID and get the document (Priority: P1)
+### User Story 2 - User gives the ID and gets the document (Priority: P1)
 
-After DeniDin asks, I reply with the ID; DeniDin saves it to the client in Morning and
-carries on with the same document, without me repeating the request.
+Two separate approvals, exactly as the approval gates work today (PM decision Q1 = B):
+first the client update, then the document.
 
 **Why this priority**: without it, the block in Story 1 is a dead end.
 
-**Independent Test**: continue the UAT 1.1 conversation with a valid ID and check the
-client record and the issued document in Morning.
-
 **Acceptance Scenarios**:
 
-1. **UAT 2.1 - valid ID, then issue**
-   - **Given** DeniDin has just asked for the ID in the UAT 1.1 conversation,
-   - **When** I reply with a valid 9-digit ID (e.g. "308253681") and approve what DeniDin
-     asks me to approve (see Open Question 1 for whether that is one approval or two),
-   - **Then** the client's record in Morning now holds that ID, a 320 for 12,000 ₪ exists
-     for that client, and DeniDin reports both.
+1. **UAT 2.1 - valid ID → save → issue**
+   - **Given** the conversation of UAT 1.1, right after DeniDin's Step 3 question.
+   - **Step 4 - User sends**: "308253681".
+   - **Step 5 - DeniDin sends** an approval prompt **with yes/no buttons**, asking to save
+     ID 308253681 on <client>.
+   - **Step 6 - User taps** "כן".
+   - **Step 7 - DeniDin, internally**: updates the client in Morning with the ID.
+   - **Step 8 - DeniDin sends** an approval prompt **with yes/no buttons** for the original
+     320 (client, 12,000 ₪ including VAT, bank transfer, today) - the User does not restate
+     the request.
+   - **Step 9 - User taps** "כן".
+   - **Step 10 - DeniDin, internally**: creates the 320.
+   - **Step 11 - DeniDin sends** a confirmation of the issued document.
+   - **Then, in Morning**: the client record holds ID 308253681, and one 320 for 12,000 ₪
+     exists for the client.
+
 2. **UAT 2.2 - wrong format**
-   - **Given** DeniDin has just asked for the ID,
-   - **When** I reply "12345678" (8 digits),
-   - **Then** DeniDin says an ID must be 9 digits and asks again; the client record is
-     unchanged and no document is created.
-3. **UAT 2.3 - Morning rejects the ID**
-   - **Given** DeniDin has just asked for the ID,
-   - **When** I reply with 9 digits whose check digit is wrong (e.g. "308253682"),
-   - **Then** DeniDin tells me the number is not a valid ID and asks again; the client
-     record is unchanged and no document is created.
-4. **UAT 2.4 - I decline**
-   - **Given** DeniDin has just asked for the ID,
-   - **When** I reply "עזוב, לא עכשיו",
-   - **Then** DeniDin confirms nothing was issued; no document and no client change.
+   - **Given** the conversation of UAT 1.1, right after DeniDin's Step 3 question.
+   - **Step 4 - User sends**: "12345678" (8 digits).
+   - **Step 5 - DeniDin sends** one plain-text reply (no buttons) saying an ID must be 9
+     digits and asking again.
+   - **Then, in Morning**: client unchanged; no document.
+
+3. **UAT 2.3 - User declines**
+   - **Given** the conversation of UAT 1.1, right after DeniDin's Step 3 question.
+   - **Step 4 - User sends**: "עזוב, לא עכשיו".
+   - **Step 5 - DeniDin sends** one plain-text reply confirming nothing was issued.
+   - **Then, in Morning**: client unchanged; no document.
 
 ---
 
 ### User Story 3 - Nothing changes when the rule doesn't apply (Priority: P1)
 
-Below the threshold, for other document types, or for a client who already has an ID,
-DeniDin behaves exactly as it does today.
+In every scenario below: **User sends** the request → **DeniDin sends** the usual document
+approval prompt with buttons, with **no** ID question → **User taps** "כן" → **DeniDin
+sends** the usual confirmation → **in Morning** the document exists.
 
 **Why this priority**: an extra question on everyday documents would be a regression.
 
 **Acceptance Scenarios**:
 
-1. **UAT 3.1 - below threshold**: ID-less client, "חשבונית מס קבלה על 4,500 ש"ח" → the
-   usual approval prompt, no ID question; after approval the 320 is created.
-2. **UAT 3.2 - threshold is before VAT**: ID-less client, 320 for **5,900 ₪ כולל מע"מ**
-   (exactly 5,000 ₪ before VAT - not *above* it) → no ID question; document created.
-3. **UAT 3.3 - just above, before VAT**: ID-less client, 305 for **5,001 ₪ לפני מע"מ** →
-   DeniDin asks for the ID (as in 1.1).
-4. **UAT 3.4 - client already has an ID**: client with a valid ID on file, 320 for
-   12,000 ₪ → the usual approval prompt, no ID question; document created.
-5. **UAT 3.5 - transaction account is out of scope**: ID-less client, "חשבון עסקה על
-   12,000 ש"ח" → the usual approval prompt, no ID question; transaction account created.
+1. **UAT 3.1 - below threshold**: ID-less client; "חשבונית מס קבלה ל<client> על 4,500 ש"ח
+   כולל מע"מ, שולם בהעברה היום".
+2. **UAT 3.2 - threshold is before VAT**: ID-less client; 320 for **5,900 ₪ כולל מע"מ**
+   (exactly 5,000 ₪ before VAT - not *above* it).
+3. **UAT 3.3 - client already has an ID**: client created with ID 308253681; 320 for
+   12,000 ₪ כולל מע"מ.
+4. **UAT 3.4 - transaction account is out of scope**: ID-less client; "חשבון עסקה ל<client>
+   על 12,000 ש"ח".
+
+And the boundary in the other direction:
+
+5. **UAT 3.5 - just above, before VAT**: ID-less client; "חשבונית מס ל<client> על 5,001
+   ש"ח לפני מע"מ" → DeniDin behaves as in UAT 1.1 (asks for the ID, no buttons, no document).
 
 ---
 
-### Below the acceptance tier (unit/integration, listed for completeness - not UATs)
+### User Story 4 - Morning-MCP refuses on its own (Priority: P1)
 
-- **Hard backstop (REQ-098-07)**: calling the 305/320 creation tools directly against the
-  sandbox for an ID-less client above the threshold returns a refusal and creates nothing;
-  at/below the threshold or with an ID, they work as today. Integration (real sandbox).
-- **Configurable threshold (REQ-098-03)**: with the threshold configured to 10,000, a
-  7,000 ₪ document for an ID-less client is not refused. Unit/integration with test config.
-- **Pre-VAT derivation and 9-digit check**: unit.
+Morning-MCP is the hard backstop: whatever the caller does, it never creates a qualifying
+document for a client with no ID. Its "user" is an AI calling it over MCP, so these
+scenarios drive it with a **real OpenAI call** through the real MCP tunnel - no DeniDin
+involved.
+
+**Acceptance Scenarios**:
+
+1. **UAT 4.1 - refusal over MCP**
+   - **Given** an ID-less sandbox client.
+   - **Step 1 - the test sends OpenAI** a prompt instructing it to create a 320 for
+     12,000 ₪ for <client> using the Morning-MCP tools.
+   - **Step 2 - OpenAI calls** Morning-MCP's 320 creation tool.
+   - **Step 3 - Morning-MCP returns** a refusal (not a created document) that says the
+     client's ID is required for documents above 5,000 ₪ before VAT.
+   - **Then, in Morning**: no document for the client.
+2. **UAT 4.2 - threshold over MCP**
+   - **Step 1 - the test sends OpenAI** a prompt asking for the current allocation threshold
+     via Morning-MCP.
+   - **Step 2 - Morning-MCP returns** 5,000 (the configured value). *(Only if Q3's
+     proposal below is accepted.)*
+
+---
+
+### Below the acceptance tier (unit/integration - not UATs)
+
+**Morning-MCP integration tests** (real sandbox, direct tool calls, no OpenAI) - the full
+matrix, cheaper than billed:
+- 305 and 320 (fresh), and 320 closing a 300: ID-less client above threshold → refused,
+  nothing created; the 300 stays open.
+- Same three at/below threshold, or with an ID on file → created as today.
+- A client ID stored in Morning that is not 9 digits → treated as missing → refused.
+- 300, 400, 330 above threshold, ID-less client → created as today (out of scope).
+- Threshold configured to 10,000 → a 7,000 ₪ document for an ID-less client is created.
+
+**Unit** (both apps): pre-VAT derivation, the 9-digit check, threshold comparison
+(strictly greater), prompt injection of the threshold value.
 
 ### Edge Cases
 
-- A client ID stored in Morning that is not 9 digits (e.g. leading zero dropped) counts as
-  missing → DeniDin asks.
-- Foreign-currency documents → see Open Question 2.
-- The user gives the ID in the original request ("... ח.פ 514xxxxxx") → DeniDin saves it
-  and proceeds without asking.
+- The User gives the ID in the original request ("... ח.פ 308253681") → DeniDin goes
+  straight to Story 2's Step 5 (approve saving the ID).
+- The User approves saving the ID but declines the document → ID saved, no document.
 - Feature 086 (one 320 closing several transaction accounts), if it lands, is in scope:
   the combined 320 amount is what's compared.
 
 ---
 
-## Open Questions for PM
+## PM Decisions
 
-**Q1 - Approvals after the ID is given.** Updating a client and issuing a document each
-need approval today. After I give the ID, should DeniDin:
-- **A** - ask once, a single approval covering "save ID + issue document"; or
-- **B** - two separate approvals (save ID, then issue document), as the gates work today.
-
-**Q2 - Foreign-currency documents** (e.g. a 320 in USD). The threshold is in ₪.
-- **A** - convert at the document's exchange rate and apply the rule;
-- **B** - out of scope: only ₪ documents are checked.
-
-**Q3 - Where DeniDin's prompts get the threshold number.**
-- **A** - DeniDin's own config carries the same value (two places to change together);
-- **B** - DeniDin reads it from morning-mcp-app (e.g. exposed on `/health` or a tool), one
-  place to change.
+- **Q1 (2026-10-05)**: two separate approvals - save the ID, then issue the document.
+- **Q2 (2026-10-05)**: non-shekel documents are out of scope - not supported anywhere.
+- **Q3 (2026-10-05, pending confirmation)**: the threshold lives only in Morning-MCP's
+  config. DeniDin fetches it from Morning-MCP over MCP once at startup and injects it into
+  its prompts at runtime; DeniDin never reads Morning-MCP's config files.

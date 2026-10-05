@@ -73,18 +73,21 @@ then issues the document.
   greater than the allocation threshold. When the amount is given VAT-inclusive, the
   pre-VAT amount is derived using the configured VAT rate.
 - **REQ-098-03 (Configurable threshold)**: The threshold is configuration in
-  `morning-mcp-app` (source of truth), and is also available to `denidin-app` so its
-  prompts can state the number. Changing it requires no code change.
+  `morning-mcp-app` only. `denidin-app` fetches it from `morning-mcp-app` over MCP once at
+  startup and injects it into its prompts at runtime; it never reads `morning-mcp-app`'s
+  config. The startup fetch retries with bounded backoff (CONSTITUTION §XVIII). Changing
+  the threshold requires no code change.
 - **REQ-098-04 (Ask before approval)**: For a qualifying document whose client has no
   valid client ID, DeniDin asks the user for the client's ID, explaining it is needed for
   the allocation number, **before** presenting any document-approval prompt. No document
   is created.
-- **REQ-098-05 (Save and continue)**: When the user supplies a 9-digit ID, DeniDin saves
-  it to the client's Morning record and then continues the same document request without
-  the user restating it.
-- **REQ-098-06 (Invalid ID)**: A reply that is not exactly 9 digits, or that Morning
-  rejects, is not saved; DeniDin says what is wrong and asks again. No document is
-  created.
+- **REQ-098-05 (Save and continue)**: When the user supplies a 9-digit ID, DeniDin asks
+  approval to save it to the client, saves it, then asks approval for the original
+  document - two separate approvals, as today's gates work - without the user restating
+  the request.
+- **REQ-098-06 (Invalid ID)**: A reply that is not exactly 9 digits is not saved;
+  DeniDin says an ID must be 9 digits and asks again. No document is created. (Morning's
+  own check-digit rejection is existing `update_client` behavior, not tested here.)
 - **REQ-098-07 (Hard backstop)**: Independently of the conversation, the Morning
   document-creation tools themselves refuse to create a qualifying document for a client
   with no valid ID, and return a clear refusal the model can act on (ask for the ID).
@@ -131,9 +134,10 @@ then issues the document.
   ⚠️ `morning-mcp-app`'s existing `default_vat_rate` config is **0.17** in example/dev/prod
   and unused in code; Israel's VAT is 18% since 1 Jan 2025. Fixing that value is a
   config change requiring explicit human approval (to be raised at plan time).
-- **Out of scope**: the allocation-number request itself (Morning does it), validating
+- **Out of scope**: non-shekel documents (not supported anywhere in the system), the
+  allocation-number request itself (Morning does it), validating
   that the allocation number was actually received, credit notes, receipts.
 
-## 7. Open Questions
+## 7. PM Decisions
 
-See `user-stories.md` → "Open Questions for PM" (max 3).
+See `user-stories.md` → "PM Decisions".
