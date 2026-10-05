@@ -1,5 +1,6 @@
 {
   "accounting_ledger_update_freq": 60,
+  "allocation_threshold_nis": 5000,
   "ai_api_key": "YOUR_OPENAI_API_KEY",
   "ai_embedding_model": "text-embedding-3-large",
   "ai_model": "gpt-5.6-luna",

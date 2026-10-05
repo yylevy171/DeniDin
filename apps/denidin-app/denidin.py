@@ -1376,6 +1376,9 @@ if __name__ == "__main__":
         'accounting_ledger_update_freq': config.accounting_ledger_update_freq,
         # Feature 069: context-window size for the post-turn ledger recognition call.
         'ledger_recognition_context_window_hours': config.ledger_recognition_context_window_hours,
+        # Feature 098: fills the constitution's {{ALLOCATION_THRESHOLD_NIS}} -
+        # same "must also be listed here or it silently has no effect" rule.
+        'allocation_threshold_nis': config.allocation_threshold_nis,
         # bugfix-043: same "hand-maintained subset dict, easy to forget"
         # pattern warned about immediately above - added here explicitly so
         # a config.dev.json/config.prod.json value doesn't silently do

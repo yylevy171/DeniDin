@@ -73,6 +73,11 @@ approval), then propose the document (second approval).
   2. Move the placeholder substitution to 063's single prompt-assembly point, so it covers
      every dynamically loaded flow/capability file (research R6).
   3. Run DeniDin billed UATs 1.1-3.5 on the backbone.
+  4. `denidin.py`'s `__main__` `config_dict` must keep its `allocation_threshold_nis` entry
+     (added by 098), or the configured value is silently ignored.
+  5. Cross-references: every other tool-bearing prompt file in the backbone keeps a 9-digit
+     reply to the pending ID question out of its scope (098 added these to the Reminder,
+     Ledger Event Recognition, Ledger Event Querying and Fee Agreement sections).
 - Morning-MCP (Phase 1) is untouched by 063.
 
 ## Phases
@@ -114,6 +119,8 @@ approval), then propose the document (second approval).
 ### Phase 4 - 063 hand-off
 - Add the adoption checklist (above) to 063's spec on its branch, or hand it to whoever
   owns 063.
+- **Status (2026-10-05)**: checklist above is final. Reported to PM; 063's branch was not
+  edited from this clone.
 
 ## Project Structure
 

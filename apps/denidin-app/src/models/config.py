@@ -74,6 +74,14 @@ class AppConfiguration:
     # messages are excluded from the recognition input. Default 1.0.
     ledger_recognition_context_window_hours: float = 1.0
 
+    # Feature 098: a tax invoice (305) or tax invoice/receipt (320) whose amount
+    # before VAT EXCEEDS this needs an allocation number (מספר הקצאה), so the
+    # client must have an ID. Used ONLY to fill the runtime constitution's
+    # {{ALLOCATION_THRESHOLD_NIS}} placeholder. morning-mcp-app enforces the rule
+    # from its OWN copy of this value (its config's allocation_threshold_nis) -
+    # DeniDin never calls or imports it. Change both together.
+    allocation_threshold_nis: float = 5000
+
     # Health monitoring (bugfix-043) - localhost-only /health HTTP endpoint for
     # the prod-only external health-check prober. 0 = disabled (no server
     # started at all) - matches accounting_ledger_update_freq's "0 = inactive"
@@ -154,6 +162,7 @@ class AppConfiguration:
             'reminders': {},
             'accounting_ledger_update_freq': 0,
             'ledger_recognition_context_window_hours': 1.0,
+            'allocation_threshold_nis': 5000,
             'logging': {}
         }
 
@@ -307,6 +316,14 @@ class AppConfiguration:
             raise ValueError(
                 "ledger_recognition_context_window_hours must be a positive number, "
                 f"got {self.ledger_recognition_context_window_hours!r}"
+            )
+
+        # Validate allocation_threshold_nis is a positive number (Feature 098)
+        if (not isinstance(self.allocation_threshold_nis, (int, float))
+                or isinstance(self.allocation_threshold_nis, bool)
+                or self.allocation_threshold_nis <= 0):
+            raise ValueError(
+                f"allocation_threshold_nis must be a positive number, got {self.allocation_threshold_nis!r}"
             )
 
         # Validate reminders.max_active_reminders is a positive integer, if configured

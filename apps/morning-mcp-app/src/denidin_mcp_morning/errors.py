@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import requests
 
-from .tools import ClientNameNotResolvedError, ClientNotFoundError
+from .tools import ClientNameNotResolvedError, ClientNotFoundError, ClientTaxIdRequiredError
 from .utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -88,6 +88,14 @@ def friendly_error_message(exc: Exception, correlation_id: str) -> str:
         # This message is already user-facing Hebrew (format_client_not_found()
         # + the searched name), unlike the generic ValueError case below.
         logger.warning("[corr_id=%s] Client not found: %s", correlation_id, exc)
+        return str(exc)
+
+    if isinstance(exc, ClientTaxIdRequiredError):
+        # Feature 098: a 305/320 above the allocation threshold for a client
+        # with no ID. Also a ValueError, so it must be caught before the
+        # generic branch below - its message is already user-facing Hebrew
+        # telling the caller to ask for the ID, which is the whole point.
+        logger.warning("[corr_id=%s] Client tax id required: %s", correlation_id, exc)
         return str(exc)
 
     if isinstance(exc, ValueError):

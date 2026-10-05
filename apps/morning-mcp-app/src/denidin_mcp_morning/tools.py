@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, NoReturn, Optional, Set, Tuple
 
@@ -50,6 +51,107 @@ _PRIMARY_INVOICE_DOCUMENT_TYPES = {
     _INVOICE_RECEIPT_COMBO_DOCUMENT_TYPE,
 }
 _CREDIT_INVOICE_DOCUMENT_TYPE = 330  # "חשבונית זיכוי" — confirmed live via GET /documents/types
+
+# Feature 098: Israel's "חשבוניות ישראל" model requires an allocation number
+# (מספר הקצאה) on every tax invoice (305) and tax invoice/receipt (320) whose
+# amount EXCEEDS the threshold before VAT (5,000 since 2026-06-01). Morning
+# requests the number itself, but only if the client's record holds an ID -
+# so these two types are never sent to Morning above the threshold for a
+# client without one. Receipts, transaction accounts and credit notes are
+# out of scope (they never get an allocation number).
+_ALLOCATION_DOCUMENT_TYPES = {_TAX_INVOICE_DOCUMENT_TYPE, _INVOICE_RECEIPT_COMBO_DOCUMENT_TYPE}
+_VALID_TAX_ID_RE = re.compile(r"^\d{9}$")
+
+
+@dataclass(frozen=True)
+class InvoicingRules:
+    """Feature 098: the config-driven numbers the allocation check needs."""
+
+    allocation_threshold_nis: float
+    vat_rate: float
+
+
+# Python-level default matching MorningMCPConfig's defaults (config.py) - the
+# same pattern as _LIST_INVOICES_TOKEN_BUDGET below: server.py always passes
+# the real config values explicitly; this only matters for direct calls
+# (tests, ad hoc scripts) that don't thread a config object through.
+DEFAULT_INVOICING_RULES = InvoicingRules(allocation_threshold_nis=5000.0, vat_rate=0.18)
+
+
+class ClientTaxIdRequiredError(ValueError):
+    """A 305/320 above the allocation threshold was requested for a client
+    with no 9-digit ID (Feature 098). Nothing was sent to Morning. Its message
+    is user-facing Hebrew and is surfaced verbatim by errors.py, like
+    ClientNotFoundError's - the model acts on it by asking for the ID."""
+
+
+def _has_valid_tax_id(tax_id: Optional[str]) -> bool:
+    """Feature 098: exactly 9 digits (PM decision - the check digit is left to
+    Morning, which already rejects a bad one with errorCode 1111)."""
+    if tax_id is None:
+        return False
+    return bool(_VALID_TAX_ID_RE.match(str(tax_id).strip()))
+
+
+def _pre_vat_amount(payload: Dict[str, Any], vat_rate: float) -> float:
+    """The document's amount before VAT, computed from the payload that is
+    about to be sent - so it reflects exactly what Morning would receive
+    (including the closing flow's `amount=None`, which defaults to the
+    original's total). `vatType == 1` means the prices include VAT."""
+    gross = sum(
+        float(line.get("price") or 0) * float(line.get("quantity") or 1)
+        for line in payload.get("income") or []
+    )
+    if payload.get("vatType") == 1:
+        gross = gross / (1 + vat_rate)
+    return round(gross, 2)
+
+
+def _format_nis(value: float) -> str:
+    """5000.0 -> '5,000'; 5000.5 -> '5,000.5' (no trailing zeros)."""
+    if float(value).is_integer():
+        return f"{int(value):,}"
+    return f"{value:,.2f}".rstrip("0").rstrip(".")
+
+
+def _exceeds_allocation_threshold(payload: Dict[str, Any], rules: InvoicingRules) -> bool:
+    """True iff `payload` is a 305/320 whose pre-VAT amount is strictly
+    greater than the threshold ("עולה על" - exactly the threshold is fine)."""
+    if payload.get("type") not in _ALLOCATION_DOCUMENT_TYPES:
+        return False
+    return _pre_vat_amount(payload, rules.vat_rate) > rules.allocation_threshold_nis
+
+
+def _enforce_allocation_tax_id(
+    tool_name: str,
+    payload: Dict[str, Any],
+    client_tax_id: Optional[str],
+    client_name: Optional[str],
+    rules: InvoicingRules,
+) -> None:
+    """Feature 098 hard backstop: raise ClientTaxIdRequiredError (after
+    logging the refusal) when `payload` is a 305/320 whose pre-VAT amount is
+    strictly greater than the threshold ("עולה על") and the client has no
+    valid ID. Every other case returns without doing anything."""
+    if not _exceeds_allocation_threshold(payload, rules) or _has_valid_tax_id(client_tax_id):
+        return
+    pre_vat = _pre_vat_amount(payload, rules.vat_rate)
+    log_refusal(
+        tool_name,
+        "client_tax_id_required",
+        client_name=client_name,
+        document_type=payload.get("type"),
+        pre_vat_amount=pre_vat,
+        threshold=rules.allocation_threshold_nis,
+    )
+    threshold_text = _format_nis(rules.allocation_threshold_nis)
+    raise ClientTaxIdRequiredError(
+        f"❌ לא ניתן להפיק את המסמך: ללקוח {client_name or ''} אין ת.ז / ח.פ במערכת. "
+        f"מסמך מסוג חשבונית מס או חשבונית מס/קבלה מעל {threshold_text} ₪ לפני מע\"מ "
+        f"דורש מספר הקצאה, ולשם כך חייב להיות מספר מזהה של הלקוח. "
+        f"יש לבקש את ת.ז / ח.פ (9 ספרות), לעדכן את הלקוח, ולנסות שוב."
+    )
+
 
 # Feature 038: max raw items list_invoices will fetch pages for (mirrors
 # _LIST_CLIENTS_MAX_ITEMS's role for list_clients, below) — beyond this,
@@ -634,6 +736,7 @@ def create_combo_document(
     bank_account: Optional[str] = None,
     transaction_reference: Optional[str] = None,
     name_resolved: bool = False,
+    rules: InvoicingRules = DEFAULT_INVOICING_RULES,
 ) -> str:
     """Create an already-paid combo invoice+receipt ("חשבונית מס/קבלה",
     type 320) in Morning and return a Hebrew confirmation message.
@@ -684,6 +787,9 @@ def create_combo_document(
             match a real client exactly.
         ValueError: if payment_date is missing, unparseable, or in the future,
             or payment_method is unknown.
+        ClientTaxIdRequiredError: Feature 098 - a pre-VAT amount above
+            `rules.allocation_threshold_nis` for a client with no 9-digit ID;
+            nothing is sent to Morning.
     """
     resolved_client = _require_resolved_client(client, client_name, name_resolved, "create_combo_document")
 
@@ -698,6 +804,9 @@ def create_combo_document(
         bank_branch=bank_branch,
         bank_account=bank_account,
         transaction_reference=transaction_reference,
+    )
+    _enforce_allocation_tax_id(
+        "create_combo_document", payload, resolved_client.tax_id, resolved_client.name, rules
     )
     response = client.create_invoice(payload)
     log_mutation(
@@ -727,6 +836,7 @@ def create_invoice(
     due_date: Optional[str] = None,
     vat_included: bool = True,
     name_resolved: bool = False,
+    rules: InvoicingRules = DEFAULT_INVOICING_RULES,
 ) -> str:
     """Create an invoice in Morning and return a Hebrew confirmation message.
 
@@ -767,10 +877,14 @@ def create_invoice(
     Raises:
         ClientNotFoundError: if name_resolved is True but the name doesn't
             match a real client exactly.
+        ClientTaxIdRequiredError: Feature 098 - a pre-VAT amount above
+            `rules.allocation_threshold_nis` for a client with no 9-digit ID;
+            nothing is sent to Morning.
     """
     resolved_client = _require_resolved_client(client, client_name, name_resolved, "create_invoice")
 
     payload = _build_create_invoice_payload(resolved_client.id, amount, description, due_date, vat_included)
+    _enforce_allocation_tax_id("create_invoice", payload, resolved_client.tax_id, resolved_client.name, rules)
     response = client.create_invoice(payload)
     log_mutation(
         "create_invoice",
@@ -1361,6 +1475,7 @@ def create_combo_document_as_reference(
     bank_branch: Optional[str] = None,
     bank_account: Optional[str] = None,
     transaction_reference: Optional[str] = None,
+    rules: InvoicingRules = DEFAULT_INVOICING_RULES,
 ) -> str:
     """Create a standalone combo document ("חשבונית מס/קבלה", type 320) that
     closes an existing transaction account ("חשבון עסקה", type 300), linked
@@ -1429,6 +1544,9 @@ def create_combo_document_as_reference(
             about to be created (not the idempotent no-op path).
         Any exception raised by `client.get_invoice` if `original_internal_morning_id`
         does not resolve to a real document (propagated, not swallowed).
+        ClientTaxIdRequiredError: Feature 098 - a pre-VAT amount above
+            `rules.allocation_threshold_nis` for a client with no 9-digit ID;
+            nothing is sent to Morning.
     """
     original = client.get_invoice(original_internal_morning_id)
     original_type = original.get("type")
@@ -1464,6 +1582,18 @@ def create_combo_document_as_reference(
         description=description,
         vat_included=vat_included,
     )
+    if _exceeds_allocation_threshold(payload, rules):
+        # Feature 098: the original's client snapshot can predate the ID being
+        # added (UAT 2.1), so read the client's CURRENT record - only when the
+        # check can actually refuse, so below-threshold closes cost no extra call.
+        current_client = client.get_client(_extract_linked_client_id(original))
+        _enforce_allocation_tax_id(
+            "create_combo_document_as_reference",
+            payload,
+            current_client.get("taxId"),
+            current_client.get("name") or (original.get("client") or {}).get("name"),
+            rules,
+        )
     combo_response = client.create_invoice(payload)
     log_mutation(
         "create_combo_document_as_reference",

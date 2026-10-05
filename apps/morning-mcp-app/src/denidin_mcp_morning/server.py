@@ -279,6 +279,12 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         auth_url=config.auth_url,
         refresh_before_seconds=config.refresh_before_seconds,
     )
+    # Feature 098: the allocation check's numbers, from config - passed
+    # explicitly to the three 305/320-creating tools below.
+    invoicing_rules = tools.InvoicingRules(
+        allocation_threshold_nis=config.allocation_threshold_nis,
+        vat_rate=config.default_vat_rate,
+    )
 
     # FastMCP auto-enables Host-header DNS-rebinding protection restricted to
     # 127.0.0.1/localhost whenever `host` is loopback and no transport_security
@@ -313,13 +319,19 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         transfer confirmation, a payment screenshot): use create_combo_document for
         a new payment, or create_receipt against the invoice the payment settles.
 
+        ALLOCATION NUMBER (Feature 098): if the amount BEFORE VAT exceeds the
+        allocation threshold, the client must have a 9-digit ID (ת.ז / ח.פ) on
+        file, or this refuses and creates nothing. Check get_client_details
+        first; if the ID is missing, ask the user for it and update_client
+        before calling this.
+
         REQUIRES name_resolved=True: call resolve_client_name first with this
         client_name, then pass the EXACT name it returns here, together with
         name_resolved=True. Without it, this refuses immediately.
         """
         return _call_with_error_boundary(
             tools.create_invoice, morning_client, client_name, amount, description,
-            due_date, vat_included, name_resolved
+            due_date, vat_included, name_resolved, invoicing_rules
         )
 
     @mcp.tool(structured_output=False)
@@ -385,6 +397,12 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         `bank_number` is the bank's NUMBER (e.g. "31"), not its name - never
         invent a bank's name when only its number is known.
 
+        ALLOCATION NUMBER (Feature 098): if the amount BEFORE VAT exceeds the
+        allocation threshold, the client must have a 9-digit ID (ת.ז / ח.פ) on
+        file, or this refuses and creates nothing. Check get_client_details
+        first; if the ID is missing, ask the user for it and update_client
+        before calling this.
+
         REQUIRES name_resolved=True: call resolve_client_name first with this
         client_name, then pass the EXACT name it returns here, together with
         name_resolved=True. Without it, this refuses immediately.
@@ -392,7 +410,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         return _call_with_error_boundary(
             tools.create_combo_document, morning_client, client_name, amount, description,
             vat_included, payment_date, payment_method, bank_number, bank_branch,
-            bank_account, transaction_reference, name_resolved
+            bank_account, transaction_reference, name_resolved, invoicing_rules
         )
 
     @mcp.tool(structured_output=False)
@@ -490,6 +508,12 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         the referenced document's type is resolved to 300 (there is no
         separate status-update tool).
 
+        ALLOCATION NUMBER (Feature 098): if the amount BEFORE VAT exceeds the
+        allocation threshold, the client must have a 9-digit ID (ת.ז / ח.פ) on
+        file, or this refuses and creates nothing. Check get_client_details
+        first; if the ID is missing, ask the user for it and update_client
+        before calling this.
+
         REQUIRES payment_date: the real date the money moved, ISO YYYY-MM-DD.
         "Today" is a genuinely fine answer for a verbal "mark as paid" request,
         but only once asked and confirmed - never silently assumed. Ask the
@@ -505,7 +529,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         return _call_with_error_boundary(
             tools.create_combo_document_as_reference, morning_client, original_internal_morning_id, payment_date,
             amount, description, vat_included, payment_method, bank_number, bank_branch,
-            bank_account, transaction_reference
+            bank_account, transaction_reference, invoicing_rules
         )
 
     @mcp.tool(structured_output=False)

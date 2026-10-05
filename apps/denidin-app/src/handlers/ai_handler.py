@@ -160,6 +160,16 @@ LEDGER_QUERY_AUTHORIZED_ROLES = (Role.GODFATHER, Role.ADMIN)
 # NO_REPLY_SENTINEL` keeps working.
 NO_REPLY_SENTINEL = _NO_REPLY_SENTINEL
 
+# Feature 098: filled from config.allocation_threshold_nis in _load_constitution.
+ALLOCATION_THRESHOLD_PLACEHOLDER = "{{ALLOCATION_THRESHOLD_NIS}}"
+
+
+def format_nis_amount(value: float) -> str:
+    """5000 -> '5,000'; 12500 -> '12,500'; 5000.5 -> '5,000.5'."""
+    if float(value).is_integer():
+        return f"{int(value):,}"
+    return f"{value:,.2f}".rstrip("0").rstrip(".")
+
 # Feature 080 (REQ-080-04, research.md R3 as revised during implementation): the active
 # turn's TelemetryBuilder, if any. Set once at the top of get_response() (try/finally around
 # the whole turn), read by every instrumented responses.create()/tool-dispatch call site via
@@ -2048,11 +2058,24 @@ class AIHandler:
                 logger.warning(f"Constitution file is empty: {filepath}, using system_message fallback")
                 return ""
             
-            return self._apply_feature_080_constitution_gate(self._constitution_content)
+            return self._fill_allocation_threshold(
+                self._apply_feature_080_constitution_gate(self._constitution_content)
+            )
 
         except Exception as e:
             logger.error(f"Failed to load constitution file {filepath}: {e}", exc_info=True)
             return ""
+
+    def _fill_allocation_threshold(self, content: str) -> str:
+        """Feature 098: replace {{ALLOCATION_THRESHOLD_NIS}} with this app's own
+        configured threshold (e.g. "5,000"). Applied on every load, never stored
+        in the mtime cache, so a config change needs only a restart. The value is
+        the same on every call, so the constitution stays a byte-identical prefix
+        and OpenAI's prompt caching is unaffected."""
+        return content.replace(
+            ALLOCATION_THRESHOLD_PLACEHOLDER,
+            format_nis_amount(self.config.allocation_threshold_nis),
+        )
 
     def _apply_feature_080_constitution_gate(self, content: str) -> str:
         """Feature 080: the "Proactive Progress Updates" section is wrapped in

@@ -23,6 +23,14 @@ unverified third-party assumptions").
 (b) a client updated with `taxId` a moment ago is returned with it on the next search
 (the existing `wait_until` helper in the update-client tests suggests short indexing lag).
 
+**VERIFIED live, 2026-10-05** (`M/tests/integration/test_morning_sandbox_allocation_tax_id.py`,
+both PASSED): (a) `GET /clients/{id}` returns the client with `taxId`; (b) after
+`PUT /clients/{id}` with a taxId, both `GET /clients/{id}` and `POST /clients/search`
+return it. A client with no ID comes back with `taxId: ""`, which counts as missing.
+Also probed: Morning refuses to store an ID that isn't a valid 9-digit number
+(`"12345678"`, `"1234567890"` → 400, errorCode 1111). So a stored malformed ID can't occur
+in Morning, and the 9-digit check is a guard rather than a reachable path.
+
 **Alternatives**: search by the original's `client.name` (rejected: names aren't unique;
 the id is exact). Trust the document's client snapshot (rejected: stale after Story 2).
 

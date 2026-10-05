@@ -262,3 +262,37 @@ def test_load_config_reads_openai_api_key_when_present(tmp_path):
     config = load_config(config_with_key)
 
     assert config.openai_api_key == "sk-test-key-value"
+
+
+def test_allocation_threshold_defaults_to_5000(tmp_path):
+    """Feature 098: config without the field still gets the current legal
+    threshold (5,000 before VAT, since 2026-06-01)."""
+    config = load_config(TEST_CONFIG_PATH)
+    assert config.allocation_threshold_nis == 5000
+
+
+def test_allocation_threshold_is_read_from_config(tmp_path):
+    raw = json.loads(TEST_CONFIG_PATH.read_text(encoding="utf-8"))
+    raw["allocation_threshold_nis"] = 10000
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    assert load_config(path).allocation_threshold_nis == 10000
+
+
+@pytest.mark.parametrize("bad_value", [0, -1, "5000"])
+def test_allocation_threshold_must_be_a_positive_number(tmp_path, bad_value):
+    raw = json.loads(TEST_CONFIG_PATH.read_text(encoding="utf-8"))
+    raw["allocation_threshold_nis"] = bad_value
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    with pytest.raises(ConfigError):
+        load_config(path)
+
+
+def test_example_config_carries_the_allocation_threshold_and_current_vat_rate():
+    """Feature 098: the committed template states both values explicitly."""
+    config = load_config(EXAMPLE_CONFIG_PATH)
+    assert config.allocation_threshold_nis == 5000
+    assert config.default_vat_rate == 0.18

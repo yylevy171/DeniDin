@@ -150,10 +150,21 @@ class MorningClient:
 
     def search_clients(self, payload: dict) -> dict:
         """Search/list clients (POST /clients/search). Response items are already
-        full records - no separate GET-by-id call is needed anywhere."""
+        full records - name-based lookups need no separate GET-by-id call (the
+        one id-based lookup is `get_client`, below)."""
         url = f"{self.base_url}/clients/search"
         headers = self._auth_headers()
         resp = self._request("POST", url, headers, timeout=15, json_payload=payload)
+        resp.raise_for_status()
+        return resp.json()
+
+    def get_client(self, client_id: str) -> dict:
+        """Fetch one client's current record (GET /clients/{id}). Feature 098:
+        the type-300 -> 320 closing flow needs the client's CURRENT taxId - the
+        original document only carries a snapshot taken when it was created."""
+        url = f"{self.base_url}/clients/{client_id}"
+        headers = self._auth_headers()
+        resp = self._request("GET", url, headers, timeout=15)
         resp.raise_for_status()
         return resp.json()
 
