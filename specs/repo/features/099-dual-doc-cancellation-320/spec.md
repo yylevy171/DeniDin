@@ -18,7 +18,7 @@ To fully and correctly cancel a 320, we must issue TWO documents: a `330` (Credi
 - **REQ-099-02 (Dual Generation)**: If cancelling a 320, the system must automatically execute two Morning API calls in sequence:
   1. Generate a `330` (Credit Note) matching the original `320` line items.
   2. Generate a `400` (Receipt) with a negative amount matching the original payment method/amount of the `320`.
-- **REQ-099-03 (Atomicity/Linking)**: Both documents should ideally reference the original 320 in their comments/descriptions (e.g., "ביטול לחשבונית מס קבלה X").
+- **REQ-099-03 (Atomicity/Linking)**: Both generated documents MUST explicitly reference the original cancelled document's ID in the Morning API payload (`reference_docs_ids` or equivalent field). Additionally, their descriptions and comments SHOULD mention the original document number for human readability (e.g., "ביטול לחשבונית מס קבלה X").
 - **REQ-099-04 (User Feedback)**: The AI must inform the user that *both* a credit note and a negative receipt were generated to properly balance the books.
 
 ## 3. User Acceptance Tests (UAT)
