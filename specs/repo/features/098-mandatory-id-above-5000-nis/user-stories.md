@@ -180,7 +180,7 @@ matrix, cheaper than billed:
 - **Q1 (2026-10-05)**: two separate approvals - save the ID, then issue the document.
 - **Q2 (2026-10-05)**: non-shekel documents are out of scope - not supported anywhere.
 - **Q3 (2026-10-05)**: the threshold lives only in Morning-MCP's
-  config. DeniDin fetches it from Morning-MCP over MCP once at startup and injects it into
+  config. DeniDin obtains it once at startup through OpenAI (never a direct call) and injects it into
   its prompts at runtime; DeniDin never reads Morning-MCP's config files. The startup
   fetch retries with bounded backoff; if it never succeeds, the prompts state the rule
   without the number and Morning-MCP's refusal still enforces it (proposed, approved with
