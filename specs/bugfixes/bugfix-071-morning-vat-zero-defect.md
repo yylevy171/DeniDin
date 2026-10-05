@@ -1,0 +1,1 @@
+../repo/bugfixes/bugfix-071-morning-vat-zero-defect.md
