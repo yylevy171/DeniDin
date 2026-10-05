@@ -13,7 +13,7 @@
 
 ## Requirement Completeness
 
-- [ ] No open PM questions remain - Q3 (threshold source) pending confirmation
+- [x] No open PM questions remain
 - [x] Requirements are testable and unambiguous
 - [x] Success criteria are measurable
 - [x] Success criteria are technology-agnostic
@@ -27,8 +27,8 @@
 - [x] All functional requirements have clear acceptance criteria
 - [x] User scenarios cover primary flows
 - [x] Feature meets measurable outcomes defined in Success Criteria
-- [ ] Acceptance scenarios approved by PM - BLOCKING for speckit.plan
+- [x] Acceptance scenarios approved by PM (2026-10-05)
 
 ## Notes
 
-- Not ready for `/speckit.plan` until the 3 open questions are answered and the UATs approved.
+- Ready for `/speckit.plan`.

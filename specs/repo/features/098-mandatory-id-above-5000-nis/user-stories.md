@@ -9,6 +9,8 @@ supported anywhere in the system).
 - **Morning-MCP** - `morning-mcp-app`, the MCP server that talks to Morning.
 - **Morning** - the dev Morning **sandbox** (the real external system).
 
+**Acceptance scenarios APPROVED by PM, 2026-10-05** (UAT 1.1-4.2 below, as written).
+
 **Test tiers**: every acceptance scenario below is **`billed`** (real, text-only OpenAI
 calls against the real sandbox). None is `expensive`. Stories 1-3 run through DeniDin
 (`apps/denidin-app/tests/billed/`); Story 4 runs against Morning-MCP alone
@@ -177,6 +179,9 @@ matrix, cheaper than billed:
 
 - **Q1 (2026-10-05)**: two separate approvals - save the ID, then issue the document.
 - **Q2 (2026-10-05)**: non-shekel documents are out of scope - not supported anywhere.
-- **Q3 (2026-10-05, pending confirmation)**: the threshold lives only in Morning-MCP's
+- **Q3 (2026-10-05)**: the threshold lives only in Morning-MCP's
   config. DeniDin fetches it from Morning-MCP over MCP once at startup and injects it into
-  its prompts at runtime; DeniDin never reads Morning-MCP's config files.
+  its prompts at runtime; DeniDin never reads Morning-MCP's config files. The startup
+  fetch retries with bounded backoff; if it never succeeds, the prompts state the rule
+  without the number and Morning-MCP's refusal still enforces it (proposed, approved with
+  the scenarios).
