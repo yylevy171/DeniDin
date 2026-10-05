@@ -35,7 +35,7 @@ approval), then propose the document (second approval).
 | No unverified third-party assumptions | ⚠️ R1 (`GET /clients/{id}`, `taxId` freshness) must be live-verified first - Phase 0 task |
 | §XVIII startup handshakes retry | ✅ n/a - no startup handshake added |
 | Succeed-or-raise tool contract | ✅ `ClientTaxIdRequiredError` → `isError=True` (R4) |
-| Tool boundaries in runtime constitution, both directions | ✅ Phase 3 |
+| Tool boundaries in runtime constitution, both directions | ✅ Phase 2 |
 | Feature flags (§VI) | ✅ documented exception - **no flag** (PM D-1: mandatory, no going back) |
 | "Config is code" - config edits need approval | ✅ approved (PM D-2, D-4): morning VAT 0.17 → 0.18 + threshold field; DeniDin threshold field |
 | No bare pytest | ✅ wrappers only |
@@ -73,7 +73,7 @@ approval), then propose the document (second approval).
   2. Move the placeholder substitution to 063's single prompt-assembly point, so it covers
      every dynamically loaded flow/capability file (research R6).
   3. Run DeniDin billed UATs 1.1-3.5 on the backbone.
-- Morning-MCP (Phases 1-2) is untouched by 063.
+- Morning-MCP (Phase 1) is untouched by 063.
 
 ## Phases
 

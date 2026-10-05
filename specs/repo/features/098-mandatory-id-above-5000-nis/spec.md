@@ -77,8 +77,7 @@ then issues the document.
   single source of truth): `morning-mcp-app`'s config drives the hard refusal,
   `denidin-app`'s config fills the number into its prompts. They must be changed together;
   nothing detects drift. DeniDin never reads `morning-mcp-app`'s config and never calls it
-  directly. Changing
-  the threshold requires no code change.
+  directly. Changing the threshold requires no code change.
 - **REQ-098-04 (Ask before approval)**: For a qualifying document whose client has no
   valid client ID, DeniDin asks the user for the client's ID, explaining it is needed for
   the allocation number, **before** presenting any document-approval prompt. No document
