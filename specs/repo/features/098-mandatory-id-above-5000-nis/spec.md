@@ -1,7 +1,7 @@
 # Feature 098: Mandatory Client ID for Transactions > 5000 NIS
 
 **Feature Branch**: `feature/098-mandatory-id-above-5000-nis`
-**Status**: Backlog
+**Status**: In Progress
 
 ## 1. Business & Architectural Goals
 
