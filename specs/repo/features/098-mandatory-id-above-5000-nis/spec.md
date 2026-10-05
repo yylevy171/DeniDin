@@ -73,9 +73,11 @@ then issues the document.
   greater than the allocation threshold. When the amount is given VAT-inclusive, the
   pre-VAT amount is derived using the configured VAT rate.
 - **REQ-098-03 (Configurable threshold)**: The threshold is configuration in
-  `morning-mcp-app` only. `denidin-app` obtains it once at startup **through OpenAI** (a
-  standalone call with the Morning MCP tool attached) and injects it into its prompts at
-  runtime; it never reads `morning-mcp-app`'s config and never calls it directly. The startup fetch retries with bounded backoff (CONSTITUTION §XVIII). Changing
+  **both** apps, as two copies of the same value (PM decision, 2026-10-05: speed over a
+  single source of truth): `morning-mcp-app`'s config drives the hard refusal,
+  `denidin-app`'s config fills the number into its prompts. They must be changed together;
+  nothing detects drift. DeniDin never reads `morning-mcp-app`'s config and never calls it
+  directly. Changing
   the threshold requires no code change.
 - **REQ-098-04 (Ask before approval)**: For a qualifying document whose client has no
   valid client ID, DeniDin asks the user for the client's ID, explaining it is needed for

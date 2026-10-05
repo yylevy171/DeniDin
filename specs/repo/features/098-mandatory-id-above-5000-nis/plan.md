@@ -3,16 +3,14 @@
 **Branch**: `feature/098-mandatory-id-above-5000-nis` | **Date**: 2026-10-05 |
 **Spec**: [spec.md](spec.md) | **User stories / approved UATs**: [user-stories.md](user-stories.md)
 
-Gate check: acceptance scenarios UAT 1.1-4.2 approved by PM 2026-10-05 ✅
+Gate check: acceptance scenarios UAT 1.1-4.1 approved by PM 2026-10-05 ✅ (4.2 dropped with D-4)
 
 ## Summary
 
 Morning-MCP gets a hard, config-driven refusal: a 305/320 whose pre-VAT amount exceeds
 `allocation_threshold_nis` (5,000) is never sent to Morning for a client without a
-9-digit ID. It also exposes the threshold through a new read-only MCP tool. DeniDin
-obtains that value at startup **through OpenAI** (a standalone Responses call with the
-Morning MCP tool attached - never a direct call to morning-mcp-app), with bounded retry
-then background retry, injects it into its prompt, and a new constitution rule makes the model check the client's ID before
+9-digit ID. DeniDin keeps its own copy of the threshold in its config (PM decision -
+speed over a single source of truth), fills it into its prompt, and a new constitution rule makes the model check the client's ID before
 proposing such a document, ask for it if missing, save it via `update_client` (its own
 approval), then propose the document (second approval).
 
@@ -32,14 +30,14 @@ approval), then propose the document (second approval).
 
 | Rule | Status |
 |------|--------|
-| No env vars - all config via config files | ✅ threshold + VAT rate in morning config; DeniDin gets the threshold via OpenAI → MCP |
-| No cross-app imports / no direct calls | ✅ DeniDin reaches Morning-MCP only through OpenAI's remote-MCP tool (PM, D-4) |
+| No env vars - all config via config files | ✅ threshold + VAT rate in morning config; threshold copy in DeniDin config |
+| No cross-app imports / no direct calls | ✅ DeniDin never reads morning's config or calls it (PM, D-4) |
 | No unverified third-party assumptions | ⚠️ R1 (`GET /clients/{id}`, `taxId` freshness) must be live-verified first - Phase 0 task |
-| §XVIII startup handshakes retry | ✅ every 10s for 2 min, then every 10 min until success (C4) |
+| §XVIII startup handshakes retry | ✅ n/a - no startup handshake added |
 | Succeed-or-raise tool contract | ✅ `ClientTaxIdRequiredError` → `isError=True` (R4) |
 | Tool boundaries in runtime constitution, both directions | ✅ Phase 3 |
 | Feature flags (§VI) | ✅ documented exception - **no flag** (PM D-1: mandatory, no going back) |
-| "Config is code" - config edits need approval | ✅ approved (PM D-2): VAT 0.17 → 0.18, new threshold field |
+| "Config is code" - config edits need approval | ✅ approved (PM D-2, D-4): morning VAT 0.17 → 0.18 + threshold field; DeniDin threshold field |
 | No bare pytest | ✅ wrappers only |
 
 ## PM Decisions (2026-10-05)
@@ -49,21 +47,21 @@ approval), then propose the document (second approval).
   get `"allocation_threshold_nis": 5000` and `"default_vat_rate": 0.18` (was 0.17).
 - **D-3 Feature 063 order**: 098 goes first; 063 adopts it. See below.
 - **D-4 Threshold to DeniDin**: DeniDin never calls morning-mcp-app directly, let alone
-  imports it. It gets the value through OpenAI (research R5); the fallback, if that proves
-  unreliable, is DeniDin's own config copy.
+  imports it. **It keeps its own copy** in `apps/denidin-app/config/config.{example,dev,prod,test}.json`
+  (`allocation_threshold_nis: 5000`) - easy to implement, speed is of the essence. The two
+  copies must be changed together; nothing detects drift (research R5).
 
 ## Feature 063 Dependency (D-3)
 
 063 (`origin/feature/063-refactor-oversized-handlers`, not merged) replaces
 `runtime_constitution.md` with `config/prompts/` (backbone + flows + capabilities).
 
-- **098 merges first and is complete on its own**: Morning-MCP backstop, threshold tool,
-  DeniDin startup fetch, placeholder substitution, the `runtime_constitution.md` section,
+- **098 merges first and is complete on its own**: Morning-MCP backstop, DeniDin config
+  copy, placeholder substitution, the `runtime_constitution.md` section,
   and every unit / integration / billed test written.
 - **Test running is split**:
-  - **Run now**: all unit and integration tests (both apps); Morning-MCP billed UAT 4.1 /
-    4.2 (no DeniDin prompts involved); DeniDin's startup-fetch billed test (no prompt
-    content involved).
+  - **Run now**: all unit and integration tests (both apps); Morning-MCP billed UAT 4.1
+    (no DeniDin prompts involved).
   - **Deferred until 063 merges**: DeniDin billed UATs 1.1-3.5. They test prompt behavior,
     and running them against `runtime_constitution.md` would be thrown away once the
     backbone replaces it. They are run once, on the backbone, after the port.
@@ -94,33 +92,26 @@ approval), then propose the document (second approval).
 - Tests: unit (pure helpers, boundary 5,000.00 vs 5,001), integration on the real sandbox
   (the full matrix in user-stories.md "Below the acceptance tier").
 
-### Phase 2 - Morning-MCP `get_invoicing_rules` (REQ-098-03, UAT 4.2)
-- New MCP tool (contract C1). Integration test through a real local MCP client (inside
-  morning-mcp-app's own tests - this is Morning-MCP testing itself, not DeniDin calling it).
-
-### Phase 3 - DeniDin (US1-3, REQ-098-03/04/05/06/09/10)
-- New `InvoicingRules` holder + startup fetcher service (C4): a standalone OpenAI
-  Responses call with the Morning MCP tool restricted to `get_invoicing_rules`, value read
-  from the `mcp_call` output. Started from `initialize_app`, stopped on shutdown. Same shape
-  as `accounting_reconciliation_service.py`.
-- `AIHandler._load_constitution`: placeholder substitution (C5).
+### Phase 2 - DeniDin (US1-3, REQ-098-03/04/05/06/09/10)
+- Config: `allocation_threshold_nis` in `AppConfiguration` (+ defaults, validation:
+  number > 0) and in `config.{example,dev,prod,test}.json` (D-4).
+- `AIHandler._load_constitution`: placeholder substitution from config (C5).
 - `runtime_constitution.md`: new "Allocation Number (מספר הקצאה)" section - when it
   applies (305/320, pre-VAT > threshold), when it doesn't (300/400/330, at/below
   threshold, client already has a 9-digit ID), the ask → `update_client` approval →
   document approval sequence, 9-digit check, decline handling; cross-references added to
   the Invoice Management, Client Management, Reminder and Ledger sections (METHODOLOGY
   §XXI).
-- Tests: unit (substitution incl. "unknown" wording, holder, retry schedule with an
-  injected clock, parsing an `mcp_call` output item, rejecting a missing/bad value);
-  billed (the real startup fetch: real OpenAI → real dev Morning-MCP tunnel → value set).
+- Tests: unit (config field + validation, substitution, no placeholder left in any final
+  `instructions`). No integration/billed test for the config copy itself.
 
-### Phase 4 - Acceptance (billed)
+### Phase 3 - Acceptance (billed)
 - **4a, now**: rebuild/restart dev Morning-MCP with the new image (needs approval), then
-  morning-mcp-app UAT 4.1 and 4.2, and DeniDin's startup-fetch billed test.
+  morning-mcp-app UAT 4.1.
 - **4b, written now, run after 063 merges**: DeniDin UAT 1.1-1.3, 2.1-2.3, 3.1-3.5, run on
   the backbone.
 
-### Phase 5 - 063 hand-off
+### Phase 4 - 063 hand-off
 - Add the adoption checklist (above) to 063's spec on its branch, or hand it to whoever
   owns 063.
 
@@ -134,8 +125,8 @@ apps/morning-mcp-app/
 
 apps/denidin-app/
 ├── config/runtime_constitution.md                     # new section + placeholder
-├── denidin.py                                         # start/stop fetcher
-├── src/services/invoicing_rules_service.py            # new: holder + fetcher
+├── config/config.{example,dev,prod,test}.json         # + allocation_threshold_nis
+├── src/models/config.py                               # + allocation_threshold_nis
 ├── src/handlers/ai_handler.py                         # placeholder substitution
 └── tests/{unit,integration,billed}/test_*allocation*.py
 
@@ -149,5 +140,4 @@ specs/repo/features/098-mandatory-id-above-5000-nis/
 
 | Item | Why | Simpler alternative rejected because |
 |------|-----|--------------------------------------|
-| Startup OpenAI call just to read one number | PM: one source of truth, and DeniDin never calls morning-mcp-app directly (D-4) | DeniDin's own config copy = two places to change, silent drift; kept as fallback |
-| Background retry after the 2-minute window | §XVIII: never leave a false "unavailable" | One-shot fetch is exactly the 2026-08-25 incident shape |
+| Threshold duplicated in two configs | PM D-4: speed; DeniDin never calls morning-mcp-app | Startup fetch via OpenAI: billed call per start + retry machinery |

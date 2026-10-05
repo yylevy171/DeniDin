@@ -8,15 +8,19 @@ own existing client record.
 | Field | Type | Default | Notes |
 |-------|------|---------|-------|
 | `allocation_threshold_nis` | number > 0 | `5000` | New. Pre-VAT, ₪. Added to `config.schema.json` and `MorningMCPConfig`. |
-| `default_vat_rate` | number 0-1 | `0.18` (was `0.17`) | Existing, previously unused. Value fix needs human approval (research R3). |
+| `default_vat_rate` | number 0-1 | `0.18` (was `0.17`) | Existing, previously unused. Value fix approved by PM 2026-10-05 (D-2). |
 
-## `InvoicingRules` (both apps, in-memory)
+## DeniDin configuration (`apps/denidin-app/config/config.*.json`)
 
-- Morning-MCP: built once in `create_server` from config:
-  `allocation_threshold_nis: float`, `vat_rate: float`. Passed into the three
-  document-creating tools by dependency injection (no module globals).
-- DeniDin: a small thread-safe holder, `allocation_threshold_nis: Optional[float]`
-  (`None` until the startup fetch succeeds), injected into `AIHandler`.
+| Field | Type | Default | Notes |
+|-------|------|---------|-------|
+| `allocation_threshold_nis` | number > 0 | `5000` | New, top-level. A copy of Morning-MCP's value; change both together. Used only to fill the prompt placeholder. |
+
+## `InvoicingRules` (Morning-MCP, in-memory)
+
+Built once in `create_server` from config: `allocation_threshold_nis: float`,
+`vat_rate: float`. Passed into the three document-creating tools by dependency injection
+(no module globals).
 
 ## Morning client record (existing, unchanged)
 

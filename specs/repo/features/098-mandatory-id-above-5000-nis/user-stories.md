@@ -9,7 +9,7 @@ supported anywhere in the system).
 - **Morning-MCP** - `morning-mcp-app`, the MCP server that talks to Morning.
 - **Morning** - the dev Morning **sandbox** (the real external system).
 
-**Acceptance scenarios APPROVED by PM, 2026-10-05** (UAT 1.1-4.2 below, as written).
+**Acceptance scenarios APPROVED by PM, 2026-10-05** (UAT 1.1-4.1 below, as written; 4.2 later removed with Q3's change).
 
 **Test tiers**: every acceptance scenario below is **`billed`** (real, text-only OpenAI
 calls against the real sandbox). None is `expensive`. Stories 1-3 run through DeniDin
@@ -143,11 +143,8 @@ involved.
    - **Step 3 - Morning-MCP returns** a refusal (not a created document) that says the
      client's ID is required for documents above 5,000 ₪ before VAT.
    - **Then, in Morning**: no document for the client.
-2. **UAT 4.2 - threshold over MCP**
-   - **Step 1 - the test sends OpenAI** a prompt asking for the current allocation threshold
-     via Morning-MCP.
-   - **Step 2 - Morning-MCP returns** 5,000 (the configured value). *(Only if Q3's
-     proposal below is accepted.)*
+*(UAT 4.2 - threshold over MCP - removed 2026-10-05: DeniDin keeps its own copy of the
+   threshold, so Morning-MCP no longer exposes it.)*
 
 ---
 
@@ -179,9 +176,7 @@ matrix, cheaper than billed:
 
 - **Q1 (2026-10-05)**: two separate approvals - save the ID, then issue the document.
 - **Q2 (2026-10-05)**: non-shekel documents are out of scope - not supported anywhere.
-- **Q3 (2026-10-05)**: the threshold lives only in Morning-MCP's
-  config. DeniDin obtains it once at startup through OpenAI (never a direct call) and injects it into
-  its prompts at runtime; DeniDin never reads Morning-MCP's config files. The startup
-  fetch retries with bounded backoff; if it never succeeds, the prompts state the rule
-  without the number and Morning-MCP's refusal still enforces it (proposed, approved with
-  the scenarios).
+- **Q3 (2026-10-05, revised same day)**: the threshold is a config item in **both** apps -
+  Morning-MCP's (drives the hard refusal) and DeniDin's own copy (fills the number into
+  its prompts). Chosen for speed; the two must be changed together. DeniDin never reads
+  Morning-MCP's config and never calls it directly.
