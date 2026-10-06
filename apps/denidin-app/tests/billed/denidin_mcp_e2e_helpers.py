@@ -1074,6 +1074,7 @@ def _seed_client(
     text: Optional[str] = None,
     email: Optional[str] = None,
     phone: str = _SEED_PHONE,
+    tax_id: Optional[str] = None,
     create: bool = True,
     ensure_exists: bool = False,
     max_attempts: int = 5,
@@ -1114,6 +1115,9 @@ def _seed_client(
       done nothing; otherwise seeds it. For expensive tests that reuse one
       FIXED payer name across runs and must not pile up duplicates (which
       would make the name ambiguous and fail the test for the wrong reason).
+
+    ``tax_id`` (Feature 098), if given, is stated with the other fields, so the
+    client is created carrying that ID (ת.ז / ח.פ).
 
     Existence is decided ONLY by ``_resolve_client_name(...).exists`` (a
     genuine EXACT `resolve_client_name` match) - zero / single-non-exact /
@@ -1163,9 +1167,8 @@ def _seed_client(
                 return candidate, None, None
 
         seed_email = email or _random_seed_email()
-        first_text = text or (
-            f"תוסיף לקוח חדש בשם {candidate}, מייל {seed_email}, טלפון {phone}"
-        )
+        fields = f"מייל {seed_email}, טלפון {phone}" + (f", ח.פ {tax_id}" if tax_id else "")
+        first_text = text or f"תוסיף לקוח חדש בשם {candidate}, {fields}"
         response, ai_response = _send_turn(
             chat_id=chat_id, text=first_text, id_prefix=f"{id_prefix}_SEED_A{attempt}"
         )
@@ -1211,7 +1214,7 @@ def _seed_client(
         pending = approval_buttons_on_screen(chat_id)
         if not already_succeeded and pending is None:
             force_new_text = (
-                f"לא, תוסיף לקוח חדש בשם {candidate}, מייל {seed_email}, טלפון {phone}"
+                f"לא, תוסיף לקוח חדש בשם {candidate}, {fields}"
             )
             response, ai_response = _send_turn(
                 chat_id=chat_id, text=force_new_text,
@@ -1242,10 +1245,7 @@ def _seed_client(
             else:
                 # Still being asked to choose - restate the create-new intent
                 # by name rather than sending a bare "כן" that answers nothing.
-                approve_text = (
-                    f"לא, תוסיף לקוח חדש בשם {candidate}, מייל {seed_email}, "
-                    f"טלפון {phone}"
-                )
+                approve_text = f"לא, תוסיף לקוח חדש בשם {candidate}, {fields}"
             response, ai_response = _send_turn(
                 chat_id=chat_id, text=approve_text,
                 id_prefix=f"{id_prefix}_APPROVE_A{attempt}"
@@ -1300,17 +1300,3 @@ def _send_turn_and_decline(
 # Feature 098: a 9-digit ID Morning accepts (valid check digit). A 305/320 above
 # the allocation threshold needs the client to carry one.
 VALID_TAX_ID = "308253681"
-
-
-def seed_client_with_tax_id(chat_id: str, id_prefix: str, *, tax_id: str = VALID_TAX_ID,
-                            name: Optional[str] = None) -> str:
-    """Seed a fresh client whose Morning record carries `tax_id` (ת.ז / ח.פ),
-    through the same conversational add_client flow as `_seed_client`.
-    Returns the client's name."""
-    name = name or _unique_client_name()
-    email = _random_seed_email()
-    _seed_client(
-        chat_id, id_prefix, name=name, email=email,
-        text=f"תוסיף לקוח חדש בשם {name}, מייל {email}, טלפון {_SEED_PHONE}, ח.פ {tax_id}",
-    )
-    return name

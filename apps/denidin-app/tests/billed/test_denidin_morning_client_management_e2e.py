@@ -182,8 +182,9 @@ def test_godfather_updates_client_via_whatsapp(denidin_app):
     """update_client is approval-gated (T020), same as add_client. Verifies:
     1. ASK turn: update_client must NOT execute yet.
     2. APPROVE turn: mcp_calls shows an update_client call with no error.
-    3. A follow-up get_client_details turn confirms only the intended field
-       (phone) changed and round-tripped normalized - name/email untouched
+    3. A follow-up get_client_details turn confirms only the intended fields
+       (phone, and the ID - Feature 098) changed, the phone round-tripped
+       normalized - name/email untouched
        (research.md Decision 3's partial-payload guarantee, exercised here
        through the full real WhatsApp conversation, not just the sandbox
        tool call)."""
@@ -194,7 +195,7 @@ def test_godfather_updates_client_via_whatsapp(denidin_app):
 
     (ask_response, ask_ai_response), (response, ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
-        text=f"תעדכן את הטלפון של {client_name} ל-0541234567",
+        text=f"תעדכן את הטלפון של {client_name} ל-0541234567 ואת הח.פ ל-{VALID_TAX_ID}",
         id_prefix="E2E_UPDATE_CLIENT",
     )
 
@@ -231,57 +232,15 @@ def test_godfather_updates_client_via_whatsapp(denidin_app):
         f"Expected the updated, normalized phone in the follow-up details "
         f"reply, got: {details_response!r}"
     )
-    assert seed_email.lower() in details_response.lower(), (
-        f"Updating phone must not clobber the untouched email field "
-        f"(research.md Decision 3): {details_response!r}"
-    )
-
-
-@pytest.mark.billed
-def test_godfather_saves_a_client_id_via_whatsapp(denidin_app):
-    """Feature 098 variant of test_godfather_updates_client_via_whatsapp: saving
-    the client's ID (ת.ז / ח.פ) on its own, outside any document flow. Approval-
-    gated like any update; a follow-up get_client_details reads the ID back, and
-    the untouched email survives."""
-    client_name, _, seed_ai_response = _seed_client(GODFATHER_CHAT_ID, "E2E_SAVE_ID_SEED")
-    seed_email = _seeded_email_from(seed_ai_response)
-
-    (ask_response, ask_ai_response), (response, ai_response) = _send_turn_and_approve(
-        chat_id=GODFATHER_CHAT_ID,
-        text=f"תעדכן את הח.פ של {client_name} ל-{VALID_TAX_ID}",
-        id_prefix="E2E_SAVE_ID",
-    )
-
-    assert not _calls_for(ask_ai_response, "update_client"), (
-        f"update_client executed on the ASK turn before approval was given: "
-        f"{ask_ai_response.mcp_calls if ask_ai_response else None!r}"
-    )
-    assert VALID_TAX_ID in (ask_response or ""), f"the approval does not show the ID: {ask_response!r}"
-    update_calls = _calls_for(ai_response, "update_client")
-    assert response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
-    assert update_calls and update_calls[0]["error"] is None, (
-        f"update_client did not succeed on the APPROVE turn: "
-        f"{ai_response.mcp_calls if ai_response else None!r}"
-    )
-
-    time.sleep(3)  # search-index lag (research.md Decision 8)
-
-    details_response, details_ai_response = _send_turn(
-        chat_id=GODFATHER_CHAT_ID,
-        text=f"פרטים על הלקוח {client_name}",
-        id_prefix="E2E_SAVE_ID_VERIFY",
-    )
-    detail_calls = _calls_for(details_ai_response, "get_client_details")
-    assert detail_calls, (
-        f"Model never invoked get_client_details when verifying the update: "
-        f"{details_ai_response.mcp_calls if details_ai_response else None!r}"
-    )
     assert any(VALID_TAX_ID in (c["output"] or "") for c in detail_calls), (
         f"Morning does not hold the saved ID: {detail_calls!r}"
     )
-    assert VALID_TAX_ID in details_response, f"the reply does not show the saved ID: {details_response!r}"
+    assert VALID_TAX_ID in details_response, (
+        f"Expected the saved ID in the follow-up details reply, got: {details_response!r}"
+    )
     assert seed_email.lower() in details_response.lower(), (
-        f"Saving the ID must not clobber the untouched email field: {details_response!r}"
+        f"Updating phone must not clobber the untouched email field "
+        f"(research.md Decision 3): {details_response!r}"
     )
 
 

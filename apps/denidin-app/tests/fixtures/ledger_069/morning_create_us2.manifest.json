@@ -1,6 +1,6 @@
 {
   "source_kind": "morning_create",
-  "story": "US2 — in-conversation Morning create (type-320 combo): the חשבונית ledger event is captured synchronously that turn, against the exact resolved (seeded) client, carrying the real Morning document number. No VAT question.",
+  "story": "US2 — in-conversation Morning create (type-320 combo) above the allocation threshold (Feature 098): 11,800 ₪ including VAT for a client with no ID on file. DeniDin asks for the ID, saves it (its own approval), then issues the document (its own approval); the חשבונית ledger event is captured after the create, against the exact resolved (seeded) client, carrying the real Morning document number. No VAT question.",
   "seed_clients": [
     {
       "id_prefix": "F069_US2",
@@ -11,7 +11,8 @@
   ],
   "resolution": {
     "mode": "none",
-    "name": "$unique"
+    "name": "$unique",
+    "tax_id": "308253681"
   },
   "files": "single",
   "shared_fields": {
@@ -37,7 +38,7 @@
       "free_text": true
     },
     "amount": {
-      "tested": "1200"
+      "tested": "11800"
     },
     "txn_date": {
       "generated": "date"

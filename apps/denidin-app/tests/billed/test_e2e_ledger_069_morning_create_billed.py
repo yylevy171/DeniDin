@@ -3,15 +3,17 @@
 Real text-only OpenAI + real Morning sandbox. NO MOCKING.
 
 US2: when the operator has DeniDin create a Morning document in-conversation, the
-resulting `חשבונית` ledger event is captured **synchronously** that turn (spec
-US2/US3), against the exact resolved (seeded) client, carrying the real Morning
-document number — and NO VAT clarifying question is asked (a type-320 combo
-document carries VAT by definition).
+resulting `חשבונית` ledger event is captured after the create (spec US2/US3),
+against the exact resolved (seeded) client, carrying the real Morning document
+number — and NO VAT clarifying question is asked (a type-320 combo document
+carries VAT by definition). The amount is above the allocation threshold and the
+client has no ID (Feature 098): the ID is asked for and saved first, each write
+with its own approval.
 
 Same three steps as every Feature 069 acceptance test — seed / drive / assert —
 against the static `morning_create_us2` manifest (`resolution.mode: none`: no
-client-resolution detour, only the mutation-approval gate the shared driver
-answers itself).
+client-resolution detour; the driver answers the ID question and the
+mutation-approval gates).
 
 Run:
     scripts/run_single_test.sh "tests/billed/test_e2e_ledger_069_morning_create_billed.py::<node>"
@@ -42,16 +44,17 @@ class TestLedgerPostTurnCaptureMorningCreate:
 
     def test_us2_morning_create_is_captured_synchronously(self, denidin_app):
         """A type-320 `create_combo_document` in-conversation → exactly one
-        `חשבונית` ledger event that turn, against the exact resolved client, with
-        the document's own Morning number — no VAT question anywhere."""
+        `חשבונית` ledger event, against the exact resolved client, with the
+        document's own Morning number — no VAT question anywhere. 11,800 ₪ is
+        above the allocation threshold: the client's ID is saved first."""
         manifest = seed_scenario(denidin_app, "morning_create_us2")
         name = manifest["resolution"]["name"]
         trigger_epoch = int(time.time())
-        events, transcript, _ = drive_capture(
+        events, transcript, event_epoch = drive_capture(
             denidin_app, "morning_create_us2", id_prefix="F069_US2",
-            base_ts=trigger_epoch, max_turns=6,
+            base_ts=trigger_epoch, max_turns=8,
             first_text=(
-                f"תפיק ל{name} חשבונית מס-קבלה על סך 1,200 ש\"ח עבור ייעוץ משפטי. "
+                f"תפיק ל{name} חשבונית מס-קבלה על סך 11,800 ש\"ח עבור ייעוץ משפטי. "
                 f"שולם היום בהעברה בנקאית."
             ),
         )
@@ -77,45 +80,5 @@ class TestLedgerPostTurnCaptureMorningCreate:
             f"exactly one חשבונית ledger event expected, got {len(invoice_events)}: {events!r}"
         )
         assert_ledger_event_matches_manifest(
-            denidin_app, invoice_events, "morning_create_us2", trigger_epoch,
-        )
-
-    def test_us2_above_threshold_with_client_id_is_captured_synchronously(self, denidin_app):
-        """Feature 098 variant of the test above: 11,800 ₪ including VAT (10,000
-        before VAT, above the allocation threshold) for a client whose ID is on
-        file. The 320 is created without asking for the ID, and its ledger event
-        is still captured that turn."""
-        manifest = seed_scenario(denidin_app, "morning_create_us2_above_threshold")
-        name = manifest["resolution"]["name"]
-        trigger_epoch = int(time.time())
-        _, transcript, _ = drive_capture(
-            denidin_app, "morning_create_us2_above_threshold", id_prefix="F069_US2_098",
-            base_ts=trigger_epoch, max_turns=6,
-            first_text=(
-                f"תפיק ל{name} חשבונית מס-קבלה על סך 11,800 ש\"ח עבור ייעוץ משפטי. "
-                f"שולם היום בהעברה בנקאית."
-            ),
-        )
-
-        last_ai = denidin_app.last_response
-        create_calls = [
-            c for c in (last_ai.mcp_calls if last_ai else [])
-            if c["name"] in _CREATE_TOOLS and c.get("error") is None
-        ]
-        assert create_calls, (
-            f"no successful Morning create call. "
-            f"last_calls={last_ai.mcp_calls if last_ai else None!r}"
-        )
-        joined = " ".join(t.get("reply") or "" for t in transcript)
-        assert "הקצאה" not in joined and "ח.פ" not in joined, (
-            f"DeniDin asked about the ID although the client has one: {joined!r}"
-        )
-
-        events = persisted_ledger_events_for_chat(denidin_app, GODFATHER_CHAT_ID)
-        invoice_events = [e for e in events if e["source_type"] == "חשבונית"]
-        assert len(invoice_events) == 1, (
-            f"exactly one חשבונית ledger event expected, got {len(invoice_events)}: {events!r}"
-        )
-        assert_ledger_event_matches_manifest(
-            denidin_app, invoice_events, "morning_create_us2_above_threshold", trigger_epoch,
+            denidin_app, invoice_events, "morning_create_us2", event_epoch,
         )

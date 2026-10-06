@@ -35,19 +35,15 @@ from .denidin_mcp_e2e_helpers import (
     _is_real_approval_prompt,
     VALID_TAX_ID,
     approval_buttons_on_screen,
-    seed_client_with_tax_id,
-    _random_seed_email,
     _seed_client,
     _send_button_tap,
     _send_turn,
     _send_turn_and_approve,
-    _unique_client_name,
 )
 
 logger = logging.getLogger(__name__)
 
 CHAT = GODFATHER_CHAT_ID
-VALID_ID = VALID_TAX_ID
 QUALIFYING_TOOLS = ("create_invoice", "create_combo_document", "create_combo_document_as_reference")
 
 
@@ -93,15 +89,6 @@ def _assert_asks_for_the_id(response, ai_response, client_name: str, amount: str
     )
     assert "הקצאה" in response, f"does not mention the allocation number: {response!r}"
     assert "5000" in _digits(response), f"does not mention the 5,000 threshold: {response!r}"
-
-
-def _seed_id_less_client(id_prefix: str) -> str:
-    name, _, _ = _seed_client(CHAT, id_prefix)
-    return name
-
-
-def _seed_client_with_id(id_prefix: str) -> str:
-    return seed_client_with_tax_id(CHAT, id_prefix, tax_id=VALID_ID)
 
 
 def _morning_tax_id(client_name: str, id_prefix: str) -> Optional[str]:
@@ -162,7 +149,7 @@ def _combo_request(client_name: str, amount: str = "12,000") -> str:
 
 def _ask_combo_for_id_less_client(id_prefix: str):
     """UAT 1.1 Steps 1-3 - the shared opening of UATs 1.1 and 2.1-2.3."""
-    client_name = _seed_id_less_client(id_prefix)
+    client_name = _seed_client(CHAT, id_prefix)[0]
     response, ai_response = _send_turn(CHAT, _combo_request(client_name), id_prefix=f"{id_prefix}_ASK")
     _assert_asks_for_the_id(response, ai_response, client_name, "12000")
     return client_name
@@ -195,7 +182,7 @@ def test_uat_1_1_combo_above_threshold_asks_for_id(denidin_app):
 
 @pytest.mark.billed
 def test_uat_1_2_tax_invoice_above_threshold_asks_for_id(denidin_app):
-    client_name = _seed_id_less_client("E2E_098_UAT12")
+    client_name = _seed_client(CHAT, "E2E_098_UAT12")[0]
 
     response, ai_response = _send_turn(
         CHAT, f'תוציא חשבונית מס ל{client_name} על 8,000 ש"ח לפני מע"מ', id_prefix="E2E_098_UAT12_ASK"
@@ -208,7 +195,7 @@ def test_uat_1_2_tax_invoice_above_threshold_asks_for_id(denidin_app):
 
 @pytest.mark.billed
 def test_uat_1_3_closing_transaction_account_above_threshold_asks_for_id(denidin_app):
-    client_name = _seed_id_less_client("E2E_098_UAT13")
+    client_name = _seed_client(CHAT, "E2E_098_UAT13")[0]
     # Given: an open 10,000 ₪ transaction account (created through DeniDin - app-wall).
     _, (_, ta_ai) = _send_turn_and_approve(
         CHAT, f'תפתח חשבון עסקה ל{client_name} על 10,000 ש"ח לפני מע"מ', id_prefix="E2E_098_UAT13_TA"
@@ -243,10 +230,10 @@ def test_uat_2_1_valid_id_saved_then_document_issued(denidin_app):
     client_name = _ask_combo_for_id_less_client("E2E_098_UAT21")
 
     # Step 4-5: the ID -> an approval, with buttons, to save it.
-    response, ai_response = _send_turn(CHAT, VALID_ID, id_prefix="E2E_098_UAT21_ID")
+    response, ai_response = _send_turn(CHAT, VALID_TAX_ID, id_prefix="E2E_098_UAT21_ID")
     _assert_nothing_issued(ai_response)
     _assert_buttons_for("update_client")
-    assert VALID_ID in (response or ""), f"approval does not show the ID: {response!r}"
+    assert VALID_TAX_ID in (response or ""), f"approval does not show the ID: {response!r}"
 
     # Step 6-8: tap -> client updated -> an approval, with buttons, for the 320.
     response, ai_response = _send_button_tap(CHAT, BUTTON_ID_APPROVE, id_prefix="E2E_098_UAT21_TAP_ID")
@@ -260,7 +247,7 @@ def test_uat_2_1_valid_id_saved_then_document_issued(denidin_app):
     document = _assert_document_issued_on_tap("create_combo_document", "E2E_098_UAT21_DOC")
     assert document.get("amount") == 12000, f"wrong amount: {document!r}"
 
-    assert _morning_tax_id(client_name, "E2E_098_UAT21") == VALID_ID
+    assert _morning_tax_id(client_name, "E2E_098_UAT21") == VALID_TAX_ID
     combos = _of_type(_morning_documents(client_name, "E2E_098_UAT21"), 320)
     assert len(combos) == 1 and combos[0].get("amount") == 12000, f"expected one 12,000 ₪ 320: {combos!r}"
 
@@ -303,7 +290,7 @@ def _assert_issued_without_id_question(text: str, tool_name: str, id_prefix: str
 
 @pytest.mark.billed
 def test_uat_3_1_below_threshold(denidin_app):
-    client_name = _seed_id_less_client("E2E_098_UAT31")
+    client_name = _seed_client(CHAT, "E2E_098_UAT31")[0]
     document = _assert_issued_without_id_question(
         f'חשבונית מס קבלה ל{client_name} על 4,500 ש"ח כולל מע"מ, שולם בהעברה היום',
         "create_combo_document", "E2E_098_UAT31",
@@ -314,7 +301,7 @@ def test_uat_3_1_below_threshold(denidin_app):
 @pytest.mark.billed
 def test_uat_3_2_exactly_the_threshold_before_vat(denidin_app):
     """5,900 including 18% VAT is exactly 5,000 before VAT - not above it."""
-    client_name = _seed_id_less_client("E2E_098_UAT32")
+    client_name = _seed_client(CHAT, "E2E_098_UAT32")[0]
     document = _assert_issued_without_id_question(
         _combo_request(client_name, "5,900"), "create_combo_document", "E2E_098_UAT32"
     )
@@ -323,7 +310,7 @@ def test_uat_3_2_exactly_the_threshold_before_vat(denidin_app):
 
 @pytest.mark.billed
 def test_uat_3_3_client_already_has_an_id(denidin_app):
-    client_name = _seed_client_with_id("E2E_098_UAT33")
+    client_name = _seed_client(CHAT, "E2E_098_UAT33", tax_id=VALID_TAX_ID)[0]
     document = _assert_issued_without_id_question(
         _combo_request(client_name), "create_combo_document", "E2E_098_UAT33"
     )
@@ -332,7 +319,7 @@ def test_uat_3_3_client_already_has_an_id(denidin_app):
 
 @pytest.mark.billed
 def test_uat_3_4_transaction_account_is_out_of_scope(denidin_app):
-    client_name = _seed_id_less_client("E2E_098_UAT34")
+    client_name = _seed_client(CHAT, "E2E_098_UAT34")[0]
     _assert_issued_without_id_question(
         f'חשבון עסקה ל{client_name} על 12,000 ש"ח', "create_transaction_account", "E2E_098_UAT34"
     )
@@ -340,7 +327,7 @@ def test_uat_3_4_transaction_account_is_out_of_scope(denidin_app):
 
 @pytest.mark.billed
 def test_uat_3_5_just_above_the_threshold_asks_for_id(denidin_app):
-    client_name = _seed_id_less_client("E2E_098_UAT35")
+    client_name = _seed_client(CHAT, "E2E_098_UAT35")[0]
 
     response, ai_response = _send_turn(
         CHAT, f'חשבונית מס ל{client_name} על 5,001 ש"ח לפני מע"מ', id_prefix="E2E_098_UAT35_ASK"
@@ -358,15 +345,15 @@ def test_uat_3_5_just_above_the_threshold_asks_for_id(denidin_app):
 @pytest.mark.billed
 def test_edge_id_given_in_the_original_request(denidin_app):
     """The ID comes with the request -> straight to approving the ID save."""
-    client_name = _seed_id_less_client("E2E_098_EDGE_ID")
+    client_name = _seed_client(CHAT, "E2E_098_EDGE_ID")[0]
 
     response, ai_response = _send_turn(
-        CHAT, _combo_request(client_name) + f", ח.פ {VALID_ID}", id_prefix="E2E_098_EDGE_ID_ASK"
+        CHAT, _combo_request(client_name) + f", ח.פ {VALID_TAX_ID}", id_prefix="E2E_098_EDGE_ID_ASK"
     )
 
     _assert_nothing_issued(ai_response)
     _assert_buttons_for("update_client")
-    assert VALID_ID in (response or ""), response
+    assert VALID_TAX_ID in (response or ""), response
 
 
 @pytest.mark.billed
@@ -375,7 +362,7 @@ def test_edge_id_saved_but_document_declined(denidin_app):
     from src.managers.pending_approval_manager import BUTTON_ID_DECLINE
 
     client_name = _ask_combo_for_id_less_client("E2E_098_EDGE_DECLINE")
-    _send_turn(CHAT, VALID_ID, id_prefix="E2E_098_EDGE_DECLINE_ID")
+    _send_turn(CHAT, VALID_TAX_ID, id_prefix="E2E_098_EDGE_DECLINE_ID")
     _assert_buttons_for("update_client")
     _, ai_response = _send_button_tap(CHAT, BUTTON_ID_APPROVE, id_prefix="E2E_098_EDGE_DECLINE_TAP_ID")
     assert _calls_for(ai_response, "update_client"), "the ID-save tap did not run update_client"
@@ -384,5 +371,5 @@ def test_edge_id_saved_but_document_declined(denidin_app):
     _, ai_response = _send_button_tap(CHAT, BUTTON_ID_DECLINE, id_prefix="E2E_098_EDGE_DECLINE_TAP_DOC")
 
     assert not _calls_for(ai_response, "create_combo_document")
-    assert _morning_tax_id(client_name, "E2E_098_EDGE_DECLINE") == VALID_ID
+    assert _morning_tax_id(client_name, "E2E_098_EDGE_DECLINE") == VALID_TAX_ID
     assert _of_type(_morning_documents(client_name, "E2E_098_EDGE_DECLINE"), 320) == []

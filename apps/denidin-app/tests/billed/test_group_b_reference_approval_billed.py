@@ -46,7 +46,8 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from tests.billed.denidin_mcp_e2e_helpers import (  # noqa: F401
-    seed_client_with_tax_id,
+    VALID_TAX_ID,
+    _seed_client,
     GODFATHER_CHAT_ID,
     _calls_for,
     _is_real_approval_prompt,
@@ -253,42 +254,20 @@ class TestGroupBReferenceApprovalBilled:
     def test_combo_document_against_existing_transaction_account_shows_reference_data(self, denidin_app):
         """create_combo_document_as_reference (320) closing an existing type-300 חשבון
         עסקה. Uses today's tool name - will be updated to
-        create_combo_document_as_reference by this bugfix's rename task."""
-        amount = _random_amount()
-        client_name, doc_number = _seed_transaction_account_300(amount, _random_description())
+        create_combo_document_as_reference by this bugfix's rename task.
 
-        approval_text, approve_ai_response = _send_turn_and_approve_capturing_approval(
-            GODFATHER_CHAT_ID,
-            f"סמן את חשבון העסקה של {client_name} כשולם, כולל מע״מ, התשלום התקבל היום",
-            id_prefix="B038_BILLED_COMBOREF",
-            tool_name="create_combo_document_as_reference",
-        )
-
-        _assert_reference_data_present(
-            approval_text, client_name=client_name, doc_number=doc_number, amount=amount
-        )
-        close_calls = _calls_for(approve_ai_response, "create_combo_document_as_reference")
-        assert close_calls and close_calls[0]["error"] is None, (
-            f"create_combo_document_as_reference did not fire/succeed after approval: "
-            f"{approve_ai_response.mcp_calls if approve_ai_response else None!r}"
-        )
-        _assert_internal_id_never_leaked(approval_text, approve_ai_response)
-
-    def test_closing_a_transaction_account_above_the_threshold_for_a_client_with_an_id(self, denidin_app):
-        """Feature 098 variant of the test above: the transaction account is 11,800 ₪
-        including VAT (10,000 before VAT, above the allocation threshold), for a
-        client whose ID is on file. Closing it creates the 320 - Morning-MCP reads
-        the client's current record and lets it through - and the approval still
-        shows the reference data."""
-        amount = 11800
-        client_name = seed_client_with_tax_id(GODFATHER_CHAT_ID, "B038_BILLED_098_SEED")
+        Feature 098: the account is above the allocation threshold (11,8xx ₪
+        including VAT) and its client has an ID on file, so closing it asks
+        nothing about the ID."""
+        amount = 11800 + _random_amount()
+        client_name = _seed_client(GODFATHER_CHAT_ID, "B038_BILLED_COMBOREF_SEED", tax_id=VALID_TAX_ID)[0]
         client_name, doc_number = _seed_transaction_account_300(
             amount, _random_description(), client_name=client_name)
 
         approval_text, approve_ai_response = _send_turn_and_approve_capturing_approval(
             GODFATHER_CHAT_ID,
             f"סמן את חשבון העסקה של {client_name} כשולם, כולל מע״מ, התשלום התקבל היום",
-            id_prefix="B038_BILLED_098_COMBOREF",
+            id_prefix="B038_BILLED_COMBOREF",
             tool_name="create_combo_document_as_reference",
         )
 
