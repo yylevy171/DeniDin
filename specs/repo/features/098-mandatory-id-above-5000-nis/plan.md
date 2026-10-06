@@ -122,6 +122,76 @@ approval), then propose the document (second approval).
 - **Status (2026-10-05)**: checklist above is final. Reported to PM; 063's branch was not
   edited from this clone.
 
+### Phase 5 - adopt the backbone (063 merged to master first, 2026-10-06)
+
+D-3 assumed 098 would merge first and 063 would adopt it. 063 merged first instead
+(PR #699), and the backbone flag (`enable_capability_backbone`) is ON from now on, so 098
+adopts the backbone itself. Master was merged into this branch (504c3a5).
+
+**Impact assessment**
+
+| Area | Impact |
+|---|---|
+| morning-mcp-app (Phase 1) | None. 063 changed only `create_receipt` (payment method / bank details); 098's three tools, `get_client`, config and refusal are intact. Unit: 422 pass. |
+| DeniDin prompt rule | **Not in effect.** The backbone builds its prompt from `config/prompts/` (backbone + capabilities + flows) and never reads `runtime_constitution.md`, so 098's "Allocation Number" section and its `{{ALLOCATION_THRESHOLD_NIS}}` fill reach only the legacy (flag-off) path. |
+| Approvals | The backbone has no pending-approval state: `approval_with_yes_no_buttons` ends the turn with buttons, the model reads the next turn's yes/no, and runs the write itself (`require_approval: never`). The two-approval chain becomes: yes-turn runs `update_client`, then the same turn raises the document's approval. `_apply_write_guards` counts the `update_client` run, so no "not performed" note. |
+| DeniDin config | Unaffected. `allocation_threshold_nis` kept in `AppConfiguration` and in `startup_config`'s `config_dict` (conflict resolved). |
+| 098 unit tests | `test_constitution_allocation_threshold.py` (5): fail - `AIHandler` is now built from the `DeniDin` instance. `test_config_allocation_threshold.py`: pass. |
+| 098 integration test | `test_allocation_tax_id_approval_routing.py` (3): error - `DeniDin` has no `ai_handler`, and it tests the legacy pending-approval chain the backbone doesn't use. |
+| 098 billed tests | Use `ai_handler.pending_approval_manager` and `ai_handler.last_response`; 063's helpers moved to `approval_buttons_on_screen(chat)` and `denidin_app.last_response`, and added `assert_no_errors_sent_to_user`. |
+| Rest of DeniDin suite | 1922 run: only 098's 8 above, plus `test_player_replay_offline.py::test_player_replays_through_the_real_pipeline`, which also fails on master's own code (`_finalize_response`: `response.usage` is None). |
+| morning-mcp-app suite | `test_logger_retention.py::test_concurrent_emit_across_rotations_loses_nothing` fails about 1 run in 3 (also before the merge). |
+
+**Plan**
+
+1. Prompts (`config/prompts/`):
+   - `cap_invoicing_write.md`: a new "Allocation number" section - the rule (305/320,
+     pre-VAT above `{{ALLOCATION_THRESHOLD_NIS}}` ₪, divide by 1.18; a 300 is closed for its
+     total including VAT), check the ID with `get_client_details`, never issue without it,
+     what to do if Morning still refuses.
+   - The three issuing flows (`flow_issue_invoice_for_payment_due`,
+     `flow_issue_invoice_receipt_combo`, `flow_issue_payment_received_with_reference_doc`):
+     a step after the client is resolved and the amount known - no 9-digit ID: ask in plain
+     text (`cap_send_to_user`); a valid reply: save it with its own approval, then go straight
+     on to the document's approval; wrong format: ask again; a decline: confirm nothing was
+     issued. An ID given in the request goes straight to the save approval. (Mechanism: see
+     question 1.)
+   - `cap_client_write.md`: the `tax_id` field (9 digits) and that saving it is its own
+     approval.
+2. Placeholder fill in the backbone: substitute `{{ALLOCATION_THRESHOLD_NIS}}` once, on the
+   assembled `build_instructions` output, so every capability/flow file is covered. The
+   value is constant, so the cached prefix is unchanged. Legacy `_load_constitution` keeps
+   its own fill.
+3. Tests (unit/integration, free to change):
+   - `test_constitution_allocation_threshold.py`: adapt to the new `AIHandler` construction
+     (legacy) and add backbone cases (placeholder filled in `build_instructions`; no
+     placeholder left in any `config/prompts/` file after assembly).
+   - Replace `test_allocation_tax_id_approval_routing.py` with a backbone integration test,
+     in the style of `test_backbone_capability_resolution.py`: the yes-turn that runs
+     `update_client` and raises the document approval is sent with buttons and gets no
+     write-guard note; a typed yes and a tap both work; declining the document creates
+     nothing.
+4. Billed tests: adapt the 13 DeniDin tests to 063's helpers (`approval_buttons_on_screen`,
+   `denidin_app.last_response`, `assert_no_errors_sent_to_user`, the backbone chat cleanup).
+   Assertions unchanged. Run T1, then T3, with the backbone on (question 3).
+5. Docs: CLAUDE.md's Feature 098 paragraph names the backbone prompt files; acceptance-tests.md
+   records the backbone as the target.
+
+**Open questions (PM)**
+
+1. ID-save mechanism on the backbone: (a) the issuing flow loads `flow_modify_client` for the
+   save, then continues - reuses the existing flow and approval wording; or (b) a new small
+   `flow_save_client_tax_id` used by the three issuing flows - narrower, but a new flow
+   tag. Recommendation: (a).
+2. Legacy path: keep 098's `runtime_constitution.md` section, its fill, and legacy test
+   coverage (as a fallback if the flag is ever turned off), or remove them?
+   Recommendation: keep; adapt the unit tests; drop the legacy integration test.
+3. "Flag ON from now on": flip `feature_flags.enable_capability_backbone` to `true` in
+   `config.example.json` and the local dev/prod/test configs (config is code - needs
+   approval), or only run tests with `--enable_capability_backbone=true`?
+4. The two failures 098 didn't cause (`test_player_replay_offline`, the flaky logger
+   rotation test): fix on this branch, or as a separate bugfix?
+
 ## Project Structure
 
 ```text
