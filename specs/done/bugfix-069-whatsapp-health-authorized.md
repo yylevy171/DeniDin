@@ -1,1 +1,0 @@
-../repo/bugfixes/bugfix-069-whatsapp-health-authorized.md
