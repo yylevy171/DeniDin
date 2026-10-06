@@ -112,7 +112,9 @@ def test_anything_but_nine_digits_is_not_a_valid_tax_id(tax_id):
 
 
 def _payload(doc_type, price, vat_type, quantity=1, extra_lines=()):
+    """Same shape as the real builders: `vat_type` on the document and on each line."""
     income = [{"price": price, "quantity": quantity}] + list(extra_lines)
+    income = [{"vatType": vat_type, **line} for line in income]
     return {"type": doc_type, "vatType": vat_type, "income": income}
 
 
@@ -123,6 +125,15 @@ def test_pre_vat_amount_strips_vat_when_prices_include_it():
 
 def test_pre_vat_amount_is_the_price_when_vat_is_not_included():
     assert _pre_vat_amount(_payload(305, 5001, 0), 0.18) == 5001.00
+
+
+def test_pre_vat_amount_reads_the_line_not_the_document_vat_type():
+    """bugfix-071's corrected shape: document `vatType: 0` (regular), line
+    `vatType: 1` (price includes VAT). 5,900 including VAT is 5,000 before it."""
+    payload = {"type": 320, "vatType": 0,
+               "income": [{"description": "x", "quantity": 1, "price": 5900, "vatType": 1}]}
+    assert _pre_vat_amount(payload, 0.18) == 5000.00
+    assert not _exceeds_allocation_threshold(payload, DEFAULT_INVOICING_RULES)
 
 
 def test_pre_vat_amount_sums_price_times_quantity_over_all_lines():

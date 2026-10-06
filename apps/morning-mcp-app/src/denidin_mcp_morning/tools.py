@@ -97,14 +97,14 @@ def _pre_vat_amount(payload: Dict[str, Any], vat_rate: float) -> float:
     """The document's amount before VAT, computed from the payload that is
     about to be sent - so it reflects exactly what Morning would receive
     (including the closing flow's `amount=None`, which defaults to the
-    original's total). `vatType == 1` means the prices include VAT."""
-    gross = sum(
-        float(line.get("price") or 0) * float(line.get("quantity") or 1)
-        for line in payload.get("income") or []
-    )
-    if payload.get("vatType") == 1:
-        gross = gross / (1 + vat_rate)
-    return round(gross, 2)
+    original's total). Read per income line: a line's `vatType == 1` means its
+    price includes VAT. Never the document-level `vatType`, whose meaning differs
+    (bugfix-071: 0 regular / 1 exempt) and changes when that bug is fixed."""
+    total = 0.0
+    for line in payload.get("income") or []:
+        gross = float(line.get("price") or 0) * float(line.get("quantity") or 1)
+        total += gross / (1 + vat_rate) if line.get("vatType") == 1 else gross
+    return round(total, 2)
 
 
 def _format_nis(value: float) -> str:
