@@ -4,6 +4,19 @@
 # Any per-env / local config (config.dev/prod/test.json, config.player_prod.json, ...).
 config/config.*.json
 !config/config.example.json
+# The plain, gitignored local config/config.json too - `config.*.json` doesn't match it, so a
+# clone's own copy (real OpenAI/Green API/MCP secrets) was baked into every release image
+# (found 2026-10-06 in denidin-app 0.7.9 and 0.8.0).
+config/config.json
+
+# Other gitignored local files that `COPY . .` would otherwise bake in: real prod client
+# media, generated test outputs, root-level generated .docx files (anchored at the context
+# root - config/fee_agreement_templates/ is unaffected), type-check cache.
+media_from_prod/
+test_results/
+tests/test_results/
+*.docx
+.mypy_cache/
 **/.DS_Store
 **/*.log
 **/*.log.*
