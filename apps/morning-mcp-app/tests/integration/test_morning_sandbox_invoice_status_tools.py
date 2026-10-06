@@ -51,6 +51,7 @@ def seeded_internal_morning_id(morning_client):
         client_id=client_id,
         amount=90.0,
         description=f"Status tools test {unique_marker}",
+        vat_included=True,
     )
     response = morning_client.create_invoice(payload)
     internal_morning_id = str(response.get("id") or response.get("documentId") or "")

@@ -49,6 +49,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Callable, Dict, List, Optional, Tuple
 
+import pytest
 from whatsapp_chatbot_python import Notification
 
 logger = logging.getLogger(__name__)
@@ -59,6 +60,11 @@ DENIDIN_APP_DIR = Path(__file__).resolve().parents[2]
 # so tests/billed/conftest.py and the MCP e2e modules can import it from their
 # usual helper module.
 from tests.e2e_helpers import (  # noqa: E402,F401
+    VAT_FROM_ORIGINAL,
+    VAT_INCLUDED,
+    VAT_NOT_INCLUDED,
+    approval_vat_label,
+    assert_document_approval_states_vat,
     sanity_worker_data_root,
     create_real_notification,
     get_response,
@@ -506,6 +512,7 @@ def _send_turn_with_notification(
                 f"arguments={call['arguments']!r} output={call['output']!r}"
             )
     logger.info(f"Bot response: {response}")
+    assert_document_approval_states_vat(response)  # bugfix-071: every document approval states VAT
 
     return response, ai_response, notification
 
@@ -963,6 +970,7 @@ def _send_button_tap(
                 f"arguments={call['arguments']!r} output={call['output']!r}"
             )
     logger.info(f"Bot response (button tap): {response}")
+    assert_document_approval_states_vat(response)  # bugfix-071: every document approval states VAT
 
     return response, ai_response
 
@@ -1296,3 +1304,51 @@ def _send_turn_and_decline(
 # approval turn before they execute. Tests exercising any of these tools use
 # `_send_turn_and_approve`/`_send_turn_and_decline` instead of a bare
 # `_send_turn`, and are genuinely two-turn.
+
+
+# ============================================================================
+# bugfix-071: VAT as Morning stored it (the approval-VAT check lives in
+# tests/e2e_helpers.py, shared with the non-MCP conversation drivers)
+# ============================================================================
+VAT_RATE = 0.18
+
+
+def stored_document(call: dict) -> dict:
+    """The document as Morning stored it. Every create tool re-reads its new
+    document from Morning (GET /documents/{id}) before answering, so its JSON
+    output carries Morning's own amount / amount_excl_vat / vat_amount - not an
+    echo of what was asked for."""
+    assert call.get("error") is None, f"the document was not created: {call!r}"
+    doc = json.loads(call.get("output") or "{}")
+    assert isinstance(doc, dict) and doc.get("display_number"), f"not a created document: {call!r}"
+    return doc
+
+
+def expected_vat_split(gross: float) -> Tuple[float, float]:
+    """(vat, net) for a VAT-inclusive `gross` at 18%."""
+    net = round(gross / (1 + VAT_RATE), 2)
+    return round(gross - net, 2), net
+
+
+def assert_stored_vat(call: dict, gross: float) -> dict:
+    """Morning stored a taxable document of total `gross` with VAT inside it -
+    the 2026-10 defect stored these as VAT-exempt (VAT 0, total unchanged),
+    which every amount-only check passed. Absolute values: a credit note's
+    figures may be stored negative. Allows 0.02 for Morning's rounding."""
+    doc = stored_document(call)
+    vat, net = expected_vat_split(gross)
+    figures = {k: doc.get(k) for k in ("amount", "amount_excl_vat", "vat_amount")}
+    assert abs(doc.get("amount") or 0) == pytest.approx(gross, abs=0.02), f"stored total != {gross}: {figures}"
+    assert abs(doc.get("vat_amount") or 0) == pytest.approx(vat, abs=0.02), (
+        f"bugfix-071: stored VAT != {vat} (VAT 0 means it was stored exempt): {figures}"
+    )
+    assert abs(doc.get("amount_excl_vat") or 0) == pytest.approx(net, abs=0.02), f"stored net != {net}: {figures}"
+    return doc
+
+
+def assert_stored_receipt(call: dict, amount: float) -> dict:
+    """A receipt (400) records `amount` paid and carries no VAT of its own."""
+    doc = stored_document(call)
+    assert doc.get("amount") == pytest.approx(amount, abs=0.02), f"stored receipt total != {amount}: {doc!r}"
+    assert not doc.get("vat_amount"), f"a receipt must not carry VAT: {doc!r}"
+    return doc

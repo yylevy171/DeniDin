@@ -48,6 +48,7 @@ def paid_invoice(morning_client):
         client_id=client_id,
         amount=77.0,
         description=f"Linked documents test {unique_marker}",
+        vat_included=True,
     )
     response = morning_client.create_invoice(payload)
     internal_morning_id = str(response.get("id") or response.get("documentId") or "")

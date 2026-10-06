@@ -51,7 +51,7 @@ def test_create_invoice_exact_match_attaches_to_the_real_client(morning_client):
     client_id, client_name = seed_real_client(morning_client, marker)
 
     confirmation = json.loads(create_invoice(
-        morning_client, client_name=client_name, amount=10.0, description=marker, name_resolved=True
+        morning_client, client_name=client_name, amount=10.0, description=marker, name_resolved=True, vat_included=True
     ))
     internal_morning_id = confirmation["internal_morning_id"]
 
@@ -69,7 +69,7 @@ def test_create_invoice_not_resolved_refuses_without_any_lookup(morning_client):
     _, client_name = seed_real_client(morning_client, marker)
 
     with pytest.raises(ClientNameNotResolvedError) as exc_info:
-        create_invoice(morning_client, client_name=client_name, amount=10.0, description=marker)
+        create_invoice(morning_client, client_name=client_name, amount=10.0, description=marker, vat_included=True)
 
     assert "resolve_client_name" in str(exc_info.value)
 
@@ -85,7 +85,7 @@ def test_create_invoice_zero_matches_raises_and_creates_nothing(morning_client):
 
     with pytest.raises(ClientNotFoundError) as exc_info:
         create_invoice(
-            morning_client, client_name=nonexistent_name, amount=12.0, description=marker, name_resolved=True
+            morning_client, client_name=nonexistent_name, amount=12.0, description=marker, name_resolved=True, vat_included=True
         )
 
     assert "לא נמצא" in str(exc_info.value)
@@ -108,6 +108,7 @@ def test_create_invoice_non_exact_match_with_name_resolved_raises_not_found(morn
         create_invoice(
             morning_client, client_name=f"Test Client {marker}", amount=11.0, description=marker,
             name_resolved=True,
+            vat_included=True,
         )
 
 
@@ -124,4 +125,5 @@ def test_create_invoice_ambiguous_match_with_name_resolved_raises_not_found(morn
         create_invoice(
             morning_client, client_name=f"Test Client {marker}", amount=13.0, description=marker,
             name_resolved=True,
+            vat_included=True,
         )

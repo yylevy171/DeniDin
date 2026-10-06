@@ -15,6 +15,8 @@ capability you are about to use defines which details the approval must state.
   then the details as REAL data: given by the user, or fetched this turn.
   Never from memory or a guess. A missing detail is a question to ask BEFORE
   requesting approval, never "not stated".
+- A Morning document approval also carries the `סוג מסמך:` and `מע״מ:` lines,
+  in exactly the form `cap_invoicing_write` defines.
 - End the text with EXACTLY this closed question, verbatim, every single time:
   `לאישור — כן/לא?`. Never paraphrase it (not `אישור — כן/לא?`, not `האם לאשר...`,
   not any other wording) and never let a competing question follow it — this exact

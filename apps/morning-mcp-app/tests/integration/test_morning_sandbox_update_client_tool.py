@@ -5,6 +5,7 @@ No mocks: drives denidin_mcp_morning.tools.update_client (and, for the
 gatekeeper test below, the lower-level MorningClient.update_client directly)
 against the live sandbox, per CONSTITUTION §V and this app's testing policy.
 """
+import json
 import time
 import uuid
 from pathlib import Path
@@ -324,6 +325,12 @@ def test_update_client_tool_non_exact_match_with_name_resolved_raises_not_found_
 
 
 def test_update_client_tool_exact_match_uses_standard_phrasing(morning_client):
+    """bugfix-039: an exact match is reported as a plain update of that very
+    client - never as "found and updated a different client". Pre-069 that was
+    the prose "עודכנו פרטי הלקוח: <name>" vs "מצאתי ועדכנתי את הלקוח הבא: ...";
+    since feature 069 the tool returns JSON, so the same guarantee is asserted
+    on the JSON: status "updated", the client named is exactly the one asked
+    for, and nothing else (no found/matched-a-different-client disclosure)."""
     from denidin_mcp_morning.tools import add_client, get_client_details, update_client
 
     unique_marker = f"DENIDIN_UPDATE_EXACT_TEST_{int(now_local().timestamp())}"
@@ -334,5 +341,8 @@ def test_update_client_tool_exact_match_uses_standard_phrasing(morning_client):
 
     result = update_client(morning_client, name=name, tax_id="308253681", name_resolved=True)
 
-    assert result.startswith("עודכנו פרטי הלקוח:")
+    doc = json.loads(result)
+    assert doc["status"] == "updated"
+    assert doc["client"]["name"] == name
+    assert set(doc) == {"status", "client"}, f"unexpected extra keys in {doc!r}"
     assert "מצאתי ועדכנתי" not in result

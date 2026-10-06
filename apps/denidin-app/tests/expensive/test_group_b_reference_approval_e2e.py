@@ -280,6 +280,19 @@ class TestGroupBReferenceApprovalE2E:
             )
             assert receipt_calls[0]["error"] is None, f"creation failed: {receipt_calls[0]!r}"
 
+            # bugfix-071: the receipt's approval takes its VAT from the 305 it
+            # closes, and the receipt itself carries no VAT. (Its amount relative
+            # to the 305 is out of bugfix-071's scope.)
+            from tests.e2e_helpers import VAT_FROM_ORIGINAL, approval_vat_label
+            from tests.billed.denidin_mcp_e2e_helpers import stored_document
+            labels = [approval_vat_label(t) for t in seen_texts if approval_vat_label(t) is not None]
+            assert labels and labels[-1] == VAT_FROM_ORIGINAL, (
+                f"expected the receipt approval to state {VAT_FROM_ORIGINAL!r}, got {labels!r}"
+            )
+            assert not stored_document(receipt_calls[0]).get("vat_amount"), (
+                f"a receipt must not carry VAT: {receipt_calls[0]['output']!r}"
+            )
+
             # bugfix-038: the reference invoice's DISPLAY number must be visible to
             # the operator somewhere in the exchange (the approval prompt names it
             # as "מספר מסמך: <n>") - never only the internal original_invoice_id.

@@ -14,6 +14,7 @@ import logging
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Optional
 from whatsapp_chatbot_python import Notification
 
 from src.utils.time_utils import local_from_timestamp
@@ -191,6 +192,104 @@ def create_real_notification(event_dict):
     notification.answer = track_answer
     notification.answer_with_interactive_buttons = track_answer_with_interactive_buttons
     return notification
+
+
+# ============================================================================
+# bugfix-071: every document approval states VAT
+# ============================================================================
+# With the capability backbone on (the default since Feature 063 merged,
+# 2026-10-06) the MODEL writes the approval text (cap_approval_with_buttons.md),
+# and cap_invoicing_write.md requires every document approval to carry a
+# "סוג מסמך: <type>" line and one "מע״מ: <label>" line, the label being exactly
+# one of the three below. The legacy path builds the same two lines in code
+# (ai_handler._build_pending_approval_details / _approval_vat_label). Labels are
+# kept literal here so a silent wording change fails these tests instead of
+# moving with them. Quote style (״ vs ") is normalised; wording is not.
+APPROVAL_BLOCK_HEADER = "📋 לאישור"  # "📋 לאישור:" or "📋 לאישור — <what it is>:"
+APPROVAL_VAT_PREFIX = "מע״מ:"
+VAT_INCLUDED = "כולל מע״מ"
+VAT_NOT_INCLUDED = "לא כולל מע״מ"
+VAT_FROM_ORIGINAL = "לפי המסמך המקורי"
+VAT_NOT_STATED_MARKER = "(לא צוין"
+_KNOWN_APPROVAL_VAT_LABELS = (VAT_INCLUDED, VAT_NOT_INCLUDED, VAT_FROM_ORIGINAL)
+# Words that make an approval a DOCUMENT approval when they appear in its
+# "סוג מסמך:" line or its header (add_client/reminder approvals carry neither).
+_DOCUMENT_TYPE_WORDS = ("חשבונית", "חשבון עסקה", "קבלה")
+
+
+def _norm_quotes(text: str) -> str:
+    return text.replace('"', "״").replace("״", "״")
+
+
+def _last_approval_block(text: Optional[str]) -> Optional[str]:
+    if not text or APPROVAL_BLOCK_HEADER not in text:
+        return None
+    return _norm_quotes(text[text.rindex(APPROVAL_BLOCK_HEADER):])
+
+
+def approval_document_type(text: Optional[str]) -> Optional[str]:
+    """The document type of the LAST approval block in `text`: its "סוג מסמך:"
+    line, else the "📋 לאישור — <type>:" header suffix. None if neither names a
+    document (a non-document approval, or no approval at all)."""
+    block = _last_approval_block(text)
+    if block is None:
+        return None
+    lines = [line.strip() for line in block.splitlines()]
+    for line in lines:
+        if line.startswith("סוג מסמך:"):
+            return line[len("סוג מסמך:"):].strip()
+    header = lines[0][len(APPROVAL_BLOCK_HEADER):].strip(" —-:")
+    return header if any(w in header for w in _DOCUMENT_TYPE_WORDS) else None
+
+
+def approval_vat_label(text: Optional[str]) -> Optional[str]:
+    """The VAT label of the LAST document-approval block in `text`; None when
+    `text` holds no document approval; "" when the document approval has no
+    VAT line. Only lines inside the block count, so the model's own narration
+    above it can never satisfy this."""
+    if approval_document_type(text) is None:
+        return None
+    for line in _last_approval_block(text).splitlines():
+        if line.strip().startswith(APPROVAL_VAT_PREFIX):
+            return line.strip()[len(APPROVAL_VAT_PREFIX):].strip()
+    return ""
+
+
+def _may_be_not_included(doc_type: str) -> bool:
+    """Only a 305 (חשבונית מס, not the 320 חשבונית מס/קבלה) or a 300 may ever
+    be approved as "not included" - a 320/400 records money actually paid and a
+    330 takes its VAT from the original, so there it is a conflict to ask about
+    (the tool refuses it, but only after the user has already said yes)."""
+    if "קבלה" in doc_type or "זיכוי" in doc_type:
+        return False
+    return "חשבון עסקה" in doc_type or "חשבונית מס" in doc_type
+
+
+def assert_document_approval_states_vat(text: Optional[str], expected: Optional[str] = None) -> Optional[str]:
+    """bugfix-071 (user, 2026-10-06): VAT ALWAYS appears in the approval of a
+    write tool. Every document approval must carry a resolved VAT line - one of
+    the three known labels, never missing and never the "not stated" placeholder
+    (an unstated 305/300 VAT must be asked about BEFORE an approval exists).
+    No-op for a reply with no document approval. `expected` pins the label."""
+    label = approval_vat_label(text)
+    if label is None:
+        assert expected is None, f"expected a document approval stating VAT {expected!r}; reply: {text!r}"
+        return None
+    assert label, f"bugfix-071: the document approval has no VAT line: {text!r}"
+    assert not label.startswith(VAT_NOT_STATED_MARKER), (
+        f"bugfix-071: an approval was raised with VAT unresolved ({label!r}) - it "
+        f"must be asked about before approving: {text!r}"
+    )
+    assert label in _KNOWN_APPROVAL_VAT_LABELS, f"bugfix-071: unknown VAT label {label!r}: {text!r}"
+    if label == VAT_NOT_INCLUDED:
+        doc_type = approval_document_type(text)
+        assert _may_be_not_included(doc_type), (
+            f"bugfix-071: a {doc_type!r} was put up for approval as {label!r} - a VAT "
+            f"conflict that must be asked about, never approved: {text!r}"
+        )
+    if expected is not None:
+        assert label == expected, f"bugfix-071: approval VAT is {label!r}, expected {expected!r}: {text!r}"
+    return label
 
 
 def get_response(notification):
@@ -652,6 +751,7 @@ def converse_until_ledger_events_captured(
         handle_text_message(notification)
         reply = get_response(notification)
         assert_response_exists(reply)
+        assert_document_approval_states_vat(reply)  # bugfix-071
         log.info(f"THEN turn {turn_num} reply: {reply!r}")
 
         events = events_for_chat(chat_id)

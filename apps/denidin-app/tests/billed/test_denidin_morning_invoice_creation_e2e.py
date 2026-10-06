@@ -57,6 +57,8 @@ import pytest
 
 from .denidin_mcp_e2e_helpers import (
     GODFATHER_CHAT_ID,
+    VAT_INCLUDED,
+    VAT_NOT_INCLUDED,
     _HEBREW_FAMILY_NAMES,
     _HEBREW_NAME_SPELLING_VARIANTS,
     _SEED_PHONE,
@@ -70,6 +72,8 @@ from .denidin_mcp_e2e_helpers import (
     _resolve_client_name,
     _seed_client,
     ResolveOutcome,
+    assert_document_approval_states_vat,
+    assert_stored_vat,
     pick_existing_client,
     _send_button_tap,
     _send_turn,
@@ -151,6 +155,7 @@ def test_godfather_creates_invoice_via_whatsapp(denidin_app):
     )
     asked = [q for q in vat_questions if q in (ask_response or "")]
     assert not asked, f"bugfix-061: the bot asked a VAT question ({asked!r}): {ask_response!r}"
+    assert_document_approval_states_vat(ask_response, VAT_INCLUDED)  # bugfix-071
 
     create_calls = _calls_for(ai_response, "create_combo_document")
 
@@ -168,6 +173,9 @@ def test_godfather_creates_invoice_via_whatsapp(denidin_app):
     assert any(client_name in (c["arguments"] or "") for c in create_calls), (
         f"create_combo_document was not called with the client name {client_name!r}: {create_calls!r}"
     )
+    # bugfix-071: the production defect - this 320 was stored VAT-exempt
+    # (VAT 0) and every check above still passed.
+    assert_stored_vat(create_calls[0], amount)
 
     # NOTE (bugfix-050, 2026-09-02): the Morning create tools drop response["url"], so
     # format_invoice_confirmation never emits a link - the model only sometimes adds one via a
@@ -230,6 +238,7 @@ def test_godfather_creates_invoice_via_whatsapp_button_tap(denidin_app):
     assert _is_real_approval_prompt(ask_response), (
         f"ASK turn's reply was not a real approval prompt: {ask_response!r}"
     )
+    assert_document_approval_states_vat(ask_response, VAT_NOT_INCLUDED)  # bugfix-071
 
     # The ASK turn must specifically have sent real interactive buttons (not
     # a plain-text fallback of that same prompt) - checked via the actual
@@ -274,6 +283,8 @@ def test_godfather_creates_invoice_via_whatsapp_button_tap(denidin_app):
         f"resolution path, expected exactly 1 (duplicate-execution guard "
         f"regression): {create_calls!r}"
     )
+    # bugfix-071: "לא כולל" -> Morning stores the amount plus VAT.
+    assert_stored_vat(create_calls[0], round(amount * 1.18, 2))
 
     # 2026-09-27: a download link is no longer a required part of the reply
     # (flows/*.md were changed to stop unconditionally fetching one - it was

@@ -301,8 +301,8 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         client_name: str,
         amount: float,
         description: str,
+        vat_included: bool,
         due_date: Optional[str] = None,
-        vat_included: bool = True,
         name_resolved: bool = False,
     ) -> str:
         """Create an ordinary TAX INVOICE ("חשבונית מס", document type 305) - a
@@ -313,13 +313,17 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         transfer confirmation, a payment screenshot): use create_combo_document for
         a new payment, or create_receipt against the invoice the payment settles.
 
+        `vat_included` is REQUIRED, no default (bugfix-071): true = the amount
+        includes VAT (100 stays 100), false = VAT is added on top (100 becomes
+        118). Ask the user if they haven't said.
+
         REQUIRES name_resolved=True: call resolve_client_name first with this
         client_name, then pass the EXACT name it returns here, together with
         name_resolved=True. Without it, this refuses immediately.
         """
         return _call_with_error_boundary(
             tools.create_invoice, morning_client, client_name, amount, description,
-            due_date, vat_included, name_resolved
+            vat_included, due_date, name_resolved
         )
 
     @mcp.tool(structured_output=False)
@@ -354,8 +358,8 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         client_name: str,
         amount: float,
         description: str,
-        vat_included: bool,
         payment_date: str,
+        vat_included: Optional[bool] = None,
         payment_method: str = "bank_transfer",
         bank_number: Optional[str] = None,
         bank_branch: Optional[str] = None,
@@ -373,10 +377,15 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         305, create_combo_document_as_reference for a 300) - never a second document for the
         same money.
 
-        `vat_included` and `payment_date` are REQUIRED and must come from the real
-        transaction, never a guess: `payment_date` is the date the money actually
-        moved (ISO YYYY-MM-DD, never a future date, never "today" unless that is
-        genuinely when it arrived). Ask the user if either is unclear.
+        `payment_date` is REQUIRED and must come from the real transaction, never
+        a guess: the date the money actually moved (ISO YYYY-MM-DD, never a future
+        date, never "today" unless that is genuinely when it arrived). Ask the
+        user if it is unclear.
+
+        VAT is always inside the amount paid (bugfix-071) - never ask about it.
+        `vat_included` is optional: omit it (or True, which changes nothing);
+        False is refused as a VAT conflict, creating nothing - ask the user
+        what they meant.
 
         `payment_method` records how it arrived: "bank_transfer" (default), "cash",
         "cheque", "credit_card", "paypal", or an app ("bit", "pay", "paybox",
@@ -391,7 +400,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         """
         return _call_with_error_boundary(
             tools.create_combo_document, morning_client, client_name, amount, description,
-            vat_included, payment_date, payment_method, bank_number, bank_branch,
+            payment_date, vat_included, payment_method, bank_number, bank_branch,
             bank_account, transaction_reference, name_resolved
         )
 
@@ -400,6 +409,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         original_internal_morning_id: str,
         amount: Optional[float] = None,
         description: Optional[str] = None,
+        vat_included: Optional[bool] = None,
     ) -> str:
         """Create a standalone credit note ("חשבונית זיכוי", document type 330)
         linked to an existing document, identified by original_internal_morning_id (the
@@ -408,9 +418,16 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         number). Defaults to a full credit against the original's total; pass
         amount for a partial credit note. Also the correct target for "cancel
         this invoice" phrasing (there is no separate status-update tool) -
-        call this directly with the full amount in that case."""
+        call this directly with the full amount in that case.
+
+        VAT mirrors the original document (bugfix-071) - never ask the user
+        about it, and normally omit `vat_included`. True is fine against a
+        taxable original; False against a taxable original, or ANY value
+        against a VAT-exempt original, is refused as a VAT conflict, creating
+        nothing - ask the user what they meant."""
         return _call_with_error_boundary(
-            tools.create_credit_note, morning_client, original_internal_morning_id, amount, description
+            tools.create_credit_note, morning_client, original_internal_morning_id, amount, description,
+            vat_included
         )
 
     @mcp.tool(structured_output=False)
@@ -425,6 +442,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         bank_number: Optional[str] = None,
         bank_branch: Optional[str] = None,
         bank_account: Optional[str] = None,
+        vat_included: Optional[bool] = None,
     ) -> str:
         """Create a receipt ("קבלה", document type 400) - either linked to an
         existing document being paid, or STANDALONE, with no invoice at all
@@ -461,7 +479,13 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         "bank_transfer" (default) or "cash". Bank details (`bank_number`,
         `bank_branch`, `bank_account`) are stored only on a bank transfer.
         `bank_number` is the bank's NUMBER (e.g. "31"), not its name - never
-        invent a bank's name when only its number is known."""
+        invent a bank's name when only its number is known.
+
+        VAT is never asked about (bugfix-071): a receipt records money
+        actually received - VAT is inside it, or comes from the invoice it
+        pays. `vat_included` is optional: omit it (or True, which changes
+        nothing); False is refused as a VAT conflict, creating nothing - ask
+        the user what they meant."""
         return _call_with_error_boundary(
             tools.create_receipt,
             morning_client,
@@ -475,6 +499,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
             bank_number,
             bank_branch,
             bank_account,
+            vat_included,
         )
 
     @mcp.tool(structured_output=False)
@@ -483,7 +508,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         payment_date: str,
         amount: Optional[float] = None,
         description: Optional[str] = None,
-        vat_included: bool = True,
+        vat_included: Optional[bool] = None,
         payment_method: str = "bank_transfer",
         bank_number: Optional[str] = None,
         bank_branch: Optional[str] = None,
@@ -497,12 +522,14 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         list_invoices, if the user only gave a client name or document number).
         Defaults to closing the full amount; pass amount for a partial close.
         Only supports type-300 originals - raises a clear error for any other
-        original document type. A transaction account itself carries no VAT
-        field to infer vat_included from - if it isn't clear from the
-        conversation whether VAT should be included, ask the user rather than
-        guessing. Also the correct target for "mark as paid" phrasing once
-        the referenced document's type is resolved to 300 (there is no
-        separate status-update tool).
+        original document type. Also the correct target for "mark as paid"
+        phrasing once the referenced document's type is resolved to 300 (there
+        is no separate status-update tool).
+
+        VAT comes from the original document (bugfix-071) - never ask the
+        user about it. `vat_included` is optional: omit it (or True, which
+        changes nothing); False contradicts the original and is refused as a
+        VAT conflict, creating nothing - ask the user what they meant.
 
         REQUIRES payment_date: the real date the money moved, ISO YYYY-MM-DD.
         "Today" is a genuinely fine answer for a verbal "mark as paid" request,

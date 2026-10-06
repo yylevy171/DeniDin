@@ -139,7 +139,7 @@ def test_cancel_transaction_account_rejects_a_tax_invoice_original(morning_clien
 
     marker = f"DENIDIN_056_CANCEL_WRONGTYPE_{int(now_local().timestamp())}"
     client_id, _ = seed_real_client(morning_client, marker)
-    payload = _build_create_invoice_payload(client_id=client_id, amount=45.0, description=marker)
+    payload = _build_create_invoice_payload(client_id=client_id, amount=45.0, description=marker, vat_included=True)
     response = morning_client.create_invoice(payload)
     internal_morning_id = str(response.get("id") or response.get("documentId") or "")
     assert internal_morning_id
