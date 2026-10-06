@@ -73,6 +73,25 @@ _LIST_INVOICES_TOKEN_BUDGET_RESERVE = 120
 
 _TOKEN_ENCODING = tiktoken.get_encoding("o200k_base")
 
+# bugfix-071: Morning's two VAT enums (official OpenAPI v2.0.0) are NOT the
+# same scale, and conflating them made every "VAT included" document exempt:
+#   DocumentVatType (document `vatType`): 0 = Default (per the business type),
+#                                         1 = Exempt, 2 = Mixed.
+#   ItemVatType (income row `vatType`):   0 = Default (VAT added on top),
+#                                         1 = Included (VAT inside the price),
+#                                         2 = Exempt.
+# Row `vatRate` is never sent: Morning ignores it and applies the business rate.
+_DOCUMENT_VAT_DEFAULT = 0
+_DOCUMENT_VAT_EXEMPT = 1
+_ROW_VAT_ADDED = 0
+_ROW_VAT_INCLUDED = 1
+
+
+def _row_vat_type(vat_included: bool) -> int:
+    """The income row's ItemVatType for a stated VAT treatment (305/300)."""
+    return _ROW_VAT_INCLUDED if vat_included else _ROW_VAT_ADDED
+
+
 _STATUS_ALIASES = {
     "unpaid": {"unpaid", "open"},
     "paid": {"paid", "closed"},
@@ -85,8 +104,8 @@ def _build_create_invoice_payload(
     client_id: str,
     amount: float,
     description: str,
+    vat_included: bool,
     due_date: Optional[str] = None,
-    vat_included: bool = True,
     currency: str = "ILS",
 ) -> dict:
     """Map friendly create_invoice inputs onto a real Morning /documents payload.
@@ -103,13 +122,12 @@ def _build_create_invoice_payload(
     payment line (תקבולים) to accept a document.
     """
     today = now_local().date().isoformat()
-    vat_type = 1 if vat_included else 0
 
     payload = {
         "type": _TAX_INVOICE_DOCUMENT_TYPE,
         "date": today,
         "lang": "he",
-        "vatType": vat_type,
+        "vatType": _DOCUMENT_VAT_DEFAULT,
         "currency": currency,
         "rounding": False,
         "signed": True,
@@ -126,8 +144,7 @@ def _build_create_invoice_payload(
                 "price": amount,
                 "currency": currency,
                 "currencyRate": 1,
-                "vatRate": 0,
-                "vatType": vat_type,
+                "vatType": _row_vat_type(vat_included),
             }
         ],
         "payment": [
@@ -381,15 +398,19 @@ def _build_transaction_account_payload(
     as `vatType: 0` ("price EXCLUDES vat"), so Morning adds ~18% - a price of 11
     is stored as 12.98, and in production ₪2,360 was stored as ₪2,784.80.
     `vatType: 1` ("price INCLUDES vat") stores 11 as 11.
+
+    bugfix-071: that `vatType: 1` was sent at BOTH levels, but at document
+    level 1 means Exempt (see `_DOCUMENT_VAT_DEFAULT`), so a 300 "including
+    VAT" stored 11 as 11 with zero VAT inside it. The document is now always
+    Default and only the income row carries included/added.
     """
     today = now_local().date().isoformat()
-    vat_type = 1 if vat_included else 0
 
     payload = {
         "type": _TRANSACTION_ACCOUNT_DOCUMENT_TYPE,
         "date": today,
         "lang": "he",
-        "vatType": vat_type,
+        "vatType": _DOCUMENT_VAT_DEFAULT,
         "currency": currency,
         "rounding": False,
         "signed": True,
@@ -406,7 +427,7 @@ def _build_transaction_account_payload(
                 "price": amount,
                 "currency": currency,
                 "currencyRate": 1,
-                "vatType": vat_type,
+                "vatType": _row_vat_type(vat_included),
             }
         ],
         # No "payment" line (Feature 063): a transaction account requests
@@ -488,7 +509,6 @@ def _build_combo_document_core_payload(
     client_id: str,
     amount: float,
     description: str,
-    vat_included: bool,
     payment_date: str,
     payment_method: str = _DEFAULT_PAYMENT_METHOD,
     bank_number: Optional[str] = None,
@@ -529,15 +549,20 @@ def _build_combo_document_core_payload(
     the original type-300's own language, links back to it) - the fresh
     caller never passes them, preserving its exact prior payload shape (no
     `linkedDocumentIds` key at all when closing nothing).
+
+    bugfix-071: `amount` is money actually paid, so VAT is always inside it -
+    document Default, income row Included. There is no "not included" 320:
+    the tools refuse that as a VAT conflict (`VatConflictError`) before ever
+    building a payload. A 320 closing a VAT-excluded 300 of 100 closes its
+    stored total, 118, with VAT inside it.
     """
     today = now_local().date().isoformat()
-    vat_type = 1 if vat_included else 0
 
     payload: Dict[str, Any] = {
         "type": _INVOICE_RECEIPT_COMBO_DOCUMENT_TYPE,
         "date": today,
         "lang": lang,
-        "vatType": vat_type,
+        "vatType": _DOCUMENT_VAT_DEFAULT,
         "currency": currency,
         "rounding": False,
         "signed": True,
@@ -554,8 +579,7 @@ def _build_combo_document_core_payload(
                 "price": amount,
                 "currency": currency,
                 "currencyRate": 1,
-                "vatRate": 0,
-                "vatType": vat_type,
+                "vatType": _ROW_VAT_INCLUDED,
             }
         ],
         "payment": [
@@ -580,7 +604,6 @@ def _build_combo_document_payload(
     client_id: str,
     amount: float,
     description: str,
-    vat_included: bool,
     payment_date: str,
     payment_method: str = _DEFAULT_PAYMENT_METHOD,
     bank_number: Optional[str] = None,
@@ -606,7 +629,6 @@ def _build_combo_document_payload(
         client_id=client_id,
         amount=amount,
         description=description,
-        vat_included=vat_included,
         payment_date=payment_date,
         payment_method=payment_method,
         bank_number=bank_number,
@@ -622,8 +644,8 @@ def create_combo_document(
     client_name: str,
     amount: float,
     description: str,
-    vat_included: bool,
     payment_date: str,
+    vat_included: Optional[bool] = None,
     payment_method: str = _DEFAULT_PAYMENT_METHOD,
     bank_number: Optional[str] = None,
     bank_branch: Optional[str] = None,
@@ -644,18 +666,22 @@ def create_combo_document(
     exact, word-order-independent match - see `_require_resolved_client`'s
     docstring for the full contract.
 
-    bugfix-028 (A2/A3/A3b): `vat_included` and `payment_date` are both REQUIRED.
-    This document asserts that money has already arrived, so how much of it is
-    VAT, and when it arrived, are facts about a real transaction - neither may be
-    defaulted or guessed. Ask the user rather than assuming.
+    bugfix-028 (A3/A3b): `payment_date` is REQUIRED. This document asserts that
+    money has already arrived, so when it arrived is a fact about a real
+    transaction - never defaulted or guessed. Ask the user rather than assuming.
+
+    bugfix-071 (replacing bugfix-028 A2's required `vat_included` here): money
+    actually paid always has VAT inside it, so VAT is never asked about.
+    `vat_included` may be omitted or `True` (consistent, changes nothing);
+    `False` is a VAT conflict - refused before anything reaches Morning.
 
     Args:
         client: An authenticated MorningClient (injected).
         client_name: The client's exact, already-resolved name.
         amount: Amount in NIS, already received.
         description: Service/product description.
-        vat_included: Whether VAT is included in `amount`. Required - an
-            undecided VAT treatment must never reach Morning (A2).
+        vat_included: Optional. Omit or True - VAT is inside the amount paid.
+            False raises VatConflictError (nothing is created).
         payment_date: The real date the money moved, ISO YYYY-MM-DD. Required,
             must not be in the future, never defaulted to today (A3).
         payment_method: How the money arrived - "bank_transfer" (default),
@@ -681,13 +707,13 @@ def create_combo_document(
         ValueError: if payment_date is missing, unparseable, or in the future,
             or payment_method is unknown.
     """
+    _refuse_vat_not_included("create_combo_document", vat_included, client_name=client_name)
     resolved_client = _require_resolved_client(client, client_name, name_resolved, "create_combo_document")
 
     payload = _build_combo_document_payload(
         resolved_client.id,
         amount,
         description,
-        vat_included=vat_included,
         payment_date=payment_date,
         payment_method=payment_method,
         bank_number=bank_number,
@@ -720,8 +746,8 @@ def create_invoice(
     client_name: str,
     amount: float,
     description: str,
+    vat_included: bool,
     due_date: Optional[str] = None,
-    vat_included: bool = True,
     name_resolved: bool = False,
 ) -> str:
     """Create an invoice in Morning and return a Hebrew confirmation message.
@@ -750,7 +776,10 @@ def create_invoice(
         amount: Invoice amount in NIS.
         description: Service/product description.
         due_date: Optional due date, ISO format YYYY-MM-DD.
-        vat_included: Whether VAT is included in the amount (default True).
+        vat_included: Whether VAT is included in the amount. Required, no
+            default (bugfix-071, completing bugfix-028 A2): a 305 is a request
+            for money not yet paid, so it can go either way - True keeps 100
+            as 100 with VAT inside it, False makes 100 into 118.
         name_resolved: Must be True (asserting `resolve_client_name` was
             already called with this name) or this refuses immediately,
             attempting no Morning lookup at all.
@@ -766,7 +795,7 @@ def create_invoice(
     """
     resolved_client = _require_resolved_client(client, client_name, name_resolved, "create_invoice")
 
-    payload = _build_create_invoice_payload(resolved_client.id, amount, description, due_date, vat_included)
+    payload = _build_create_invoice_payload(resolved_client.id, amount, description, vat_included, due_date)
     response = client.create_invoice(payload)
     log_mutation(
         "create_invoice",
@@ -1053,12 +1082,24 @@ def _build_cancellation_payload(
     rebuilding a bare-name client object - callers (create_credit_note) MUST
     check `_extract_linked_client_id(original)` and refuse before calling
     this if it's None (a pre-feature, bare-name-only original).
+
+    bugfix-071: the credit reverses exactly what the original booked. Its
+    document `vatType` mirrors the original's DocumentVatType (Default or
+    Exempt - callers validate it via `_original_document_vat_type`), and its
+    single income row carries the credited amount with VAT inside it. It used
+    to mirror the original's DOCUMENT vatType onto the ROW too, where the same
+    number means something else (0 = VAT added), over-crediting a correct
+    original by 18%. The full default is the original's stored VAT-inclusive
+    `amount` (not the raw row prices, which exclude VAT on a VAT-added
+    original).
     """
     today = now_local().date().isoformat()
     income_items = original.get("income") or []
     original_id = str(original.get("id") or original.get("documentId") or "")
     original_number = original.get("number")
     total_amount = original.get("total")
+    if total_amount is None:
+        total_amount = original.get("amount")
     if total_amount is None:
         total_amount = sum(
             float(item.get("price", 0)) * float(item.get("quantity", 1)) for item in income_items
@@ -1070,7 +1111,7 @@ def _build_cancellation_payload(
         "type": _CREDIT_INVOICE_DOCUMENT_TYPE,
         "date": today,
         "lang": original.get("lang", "he"),
-        "vatType": original.get("vatType", 1),
+        "vatType": _original_document_vat_type(original),
         "currency": original.get("currency", "ILS"),
         "rounding": False,
         "signed": True,
@@ -1088,8 +1129,7 @@ def _build_cancellation_payload(
                 "price": credit_amount,
                 "currency": original.get("currency", "ILS"),
                 "currencyRate": 1,
-                "vatRate": 0,
-                "vatType": original.get("vatType", 1),
+                "vatType": _ROW_VAT_INCLUDED,
             }
         ],
         "payment": [{"type": 1, "price": credit_amount, "date": today}],
@@ -1101,6 +1141,7 @@ def create_credit_note(
     original_internal_morning_id: str,
     amount: Optional[float] = None,
     description: Optional[str] = None,
+    vat_included: Optional[bool] = None,
 ) -> str:
     """Create a standalone credit note ("חשבונית זיכוי", type 330) linked to
     an existing document, and return a Hebrew confirmation.
@@ -1117,6 +1158,10 @@ def create_credit_note(
         original_internal_morning_id: Morning document id of the invoice being credited.
         amount: Optional override — defaults to the original's full total.
         description: Optional override — defaults to a generated cancellation note.
+        vat_included: Optional - VAT comes from the original (bugfix-071).
+            Against a taxable original: omit or True; False is a VAT
+            conflict. Against an exempt original any value is a VAT
+            conflict. A conflict raises VatConflictError, nothing created.
 
     Returns:
         A Hebrew confirmation string with the new credit note's number, or a
@@ -1135,6 +1180,17 @@ def create_credit_note(
             original_internal_morning_id=original_internal_morning_id,
         )
         return format_original_not_linked_to_client()
+
+    if _original_document_vat_type(original) == _DOCUMENT_VAT_EXEMPT:
+        if vat_included is not None:
+            _raise_vat_conflict(
+                "create_credit_note", vat_included,
+                original_internal_morning_id=original_internal_morning_id, original_exempt=True,
+            )
+    else:
+        _refuse_vat_not_included(
+            "create_credit_note", vat_included, original_internal_morning_id=original_internal_morning_id
+        )
 
     payload = _build_cancellation_payload(original, amount=amount, description=description)
     credit_response = client.create_invoice(payload)
@@ -1292,7 +1348,6 @@ def _build_combo_closing_payload(
     transaction_reference: Optional[str] = None,
     amount: Optional[float] = None,
     description: Optional[str] = None,
-    vat_included: bool = True,
 ) -> dict:
     """Build a Morning invoice/receipt combo (type 320) payload that closes a
     type-300 ("חשבון עסקה") `original` as paid, either in full (defaults) or
@@ -1314,11 +1369,10 @@ def _build_combo_closing_payload(
     A 320 document is self-contained and invoice-shaped (carries its own
     line items/VAT), unlike a bare receipt.
 
-    `vat_included` controls the new document's own top-level `vatType`
-    (1/0) - it must NOT be inferred from the original's own `vatType`
-    (confirmed live, feature 023): a real type-300 document created via
-    create_transaction_account carries no VAT concept and Morning reports it
-    back as `vatType: 0`.
+    bugfix-071: VAT comes from the 300 being closed - its stored total
+    already reflects whether its amount included VAT (100 included -> 100;
+    100 not included -> 118), and the 320 records that total as paid, VAT
+    inside it (see `_build_combo_document_core_payload`).
 
     Always builds a single clean income line from the resolved close amount
     (never mirrors the original's raw `income` items - confirmed live,
@@ -1359,7 +1413,6 @@ def _build_combo_closing_payload(
         client_id=_extract_linked_client_id(original),
         amount=close_amount,
         description=close_description,
-        vat_included=vat_included,
         payment_date=payment_date,
         payment_method=payment_method,
         bank_number=bank_number,
@@ -1378,7 +1431,7 @@ def create_combo_document_as_reference(
     payment_date: str,
     amount: Optional[float] = None,
     description: Optional[str] = None,
-    vat_included: bool = True,
+    vat_included: Optional[bool] = None,
     payment_method: str = _DEFAULT_PAYMENT_METHOD,
     bank_number: Optional[str] = None,
     bank_branch: Optional[str] = None,
@@ -1453,6 +1506,10 @@ def create_combo_document_as_reference(
         Any exception raised by `client.get_invoice` if `original_internal_morning_id`
         does not resolve to a real document (propagated, not swallowed).
     """
+    _refuse_vat_not_included(
+        "create_combo_document_as_reference", vat_included,
+        original_internal_morning_id=original_internal_morning_id,
+    )
     original = client.get_invoice(original_internal_morning_id)
     original_type = original.get("type")
     if original_type != _TRANSACTION_ACCOUNT_DOCUMENT_TYPE:
@@ -1485,7 +1542,6 @@ def create_combo_document_as_reference(
         transaction_reference=transaction_reference,
         amount=amount,
         description=description,
-        vat_included=vat_included,
     )
     combo_response = client.create_invoice(payload)
     log_mutation(
@@ -1596,6 +1652,7 @@ def create_receipt(
     bank_number: Optional[str] = None,
     bank_branch: Optional[str] = None,
     bank_account: Optional[str] = None,
+    vat_included: Optional[bool] = None,
 ) -> str:
     """Create a receipt ("קבלה", type 400) and return a Hebrew confirmation -
     either linked to an existing document being paid, or standalone (feature
@@ -1685,6 +1742,13 @@ def create_receipt(
         Any exception raised by `client.get_invoice` if `original_internal_morning_id`
         does not resolve to a real document (propagated, not swallowed).
     """
+    # bugfix-071: a receipt records money actually received - VAT is inside
+    # it (standalone) or comes from the 305 it pays. Omitted/True proceed;
+    # False is a VAT conflict, refused before anything reaches Morning.
+    _refuse_vat_not_included(
+        "create_receipt", vat_included,
+        original_internal_morning_id=original_internal_morning_id, client_name=client_name,
+    )
     if original_internal_morning_id is None:
         # Feature 056: standalone receipt, no original to fetch at all.
         if client_name:
@@ -2161,6 +2225,40 @@ def _require_resolved_client(
     if resolved is None:
         _raise_client_not_found(tool_name, client_name)
     return resolved
+
+
+class VatConflictError(ValueError):
+    """The VAT treatment the caller stated contradicts the document type
+    (bugfix-071): "not included" on money already paid (a 320 or a 400), or
+    on a document whose VAT comes from its original (a 320 closing a 300, a
+    400 against a 305, a 330), or any VAT statement on a credit note against
+    a VAT-exempt original. Raised before anything is sent to Morning, so
+    nothing is created; surfaces as a real MCP failure with
+    `errors.VAT_CONFLICT` (see `friendly_error_message`), telling the model
+    to ask the user what they meant rather than pick one side.
+    """
+
+
+def _raise_vat_conflict(tool_name: str, vat_included: Optional[bool], **context: Any) -> NoReturn:
+    log_refusal(tool_name, "vat_conflict", vat_included=vat_included, **context)
+    raise VatConflictError(f"{tool_name}: vat_included={vat_included} contradicts the document's VAT rule")
+
+
+def _refuse_vat_not_included(tool_name: str, vat_included: Optional[bool], **context: Any) -> None:
+    """The VAT rule for every document whose VAT is not the caller's to
+    choose: omitted or True proceed, False is a conflict."""
+    if vat_included is False:
+        _raise_vat_conflict(tool_name, vat_included, **context)
+
+
+def _original_document_vat_type(original: dict) -> int:
+    """The original's DocumentVatType, for a credit note to mirror. Only
+    Default (0) and Exempt (1) are supported - a Mixed (2) or missing value
+    is refused rather than guessed (bugfix-071)."""
+    vat_type = original.get("vatType")
+    if vat_type not in (_DOCUMENT_VAT_DEFAULT, _DOCUMENT_VAT_EXEMPT):
+        raise ValueError(f"Unsupported original document vatType {vat_type!r} for a credit note")
+    return vat_type
 
 
 class ClientNotFoundError(ValueError):

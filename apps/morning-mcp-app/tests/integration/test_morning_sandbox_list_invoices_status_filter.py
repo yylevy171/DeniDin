@@ -49,7 +49,7 @@ def unpaid_invoice(morning_client):
 
     marker = f"DENIDIN_STATUSFILTER_UNPAID_{int(now_local().timestamp())}"
     _, client_name = seed_real_client(morning_client, marker)
-    create_invoice(morning_client, client_name=client_name, amount=61.0, description=marker, name_resolved=True)
+    create_invoice(morning_client, client_name=client_name, amount=61.0, description=marker, name_resolved=True, vat_included=True)
     return {"client_name": client_name}
 
 
@@ -62,7 +62,7 @@ def paid_invoice(morning_client):
     marker = f"DENIDIN_STATUSFILTER_PAID_{int(now_local().timestamp())}"
     _, client_name = seed_real_client(morning_client, marker)
     response = create_invoice(
-        morning_client, client_name=client_name, amount=62.0, description=marker, name_resolved=True
+        morning_client, client_name=client_name, amount=62.0, description=marker, name_resolved=True, vat_included=True
     )
 
     # Real invoice id is only in the tool's own confirmation text - resolve

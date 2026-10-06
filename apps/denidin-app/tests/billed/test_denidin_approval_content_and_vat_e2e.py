@@ -31,11 +31,15 @@ import pytest
 
 from tests.billed.denidin_mcp_e2e_helpers import (  # noqa: F401
     GODFATHER_CHAT_ID,
+    VAT_INCLUDED,
+    VAT_NOT_INCLUDED,
     _calls_for,
     _is_genuine_document_creation,
     pick_existing_client,
     _send_turn,
     _send_turn_and_approve,
+    assert_document_approval_states_vat,
+    assert_stored_vat,
     require_live_morning_tunnel,
 )
 
@@ -61,11 +65,12 @@ def test_vat_included_transaction_account_is_stored_at_the_approved_amount(denid
     """
     client_name = pick_existing_client()["name"]  # Feature 059 item 5: any existing client works
 
-    _, (reply, ai_response) = _send_turn_and_approve(
+    ask_result, (reply, ai_response) = _send_turn_and_approve(
         GODFATHER_CHAT_ID,
         f"תפיק חשבון עסקה ל{client_name} על סך {AMOUNT} ₪ כולל מע״מ, עבור ייעוץ משפטי",
         id_prefix="B028_A2T1",
     )
+    assert_document_approval_states_vat(_approval_text(ask_result), VAT_INCLUDED)  # bugfix-071
 
     calls = _calls_for(ai_response, "create_transaction_account")
     assert calls and calls[0]["error"] is None, f"document was not created: {ai_response.mcp_calls if ai_response else None!r}"
@@ -79,6 +84,9 @@ def test_vat_included_transaction_account_is_stored_at_the_approved_amount(denid
         f"the created document is not the {AMOUNT} that was approved: {output!r}"
     )
     assert payload.get("amount") == AMOUNT, f"the approved amount {AMOUNT} is absent from the result: {output!r}"
+    # bugfix-071: the amount alone passed while Morning stored this as VAT-exempt
+    # (47 with VAT 0). The VAT must be inside the 47.
+    assert_stored_vat(calls[0], AMOUNT)
 
 
 def test_unstated_vat_is_asked_about_rather_than_assumed(denidin_app):
@@ -122,12 +130,13 @@ def test_the_approval_states_every_mandatory_element(denidin_app):
 
     client_name = pick_existing_client()["name"]  # Feature 059 item 5: any existing client works
 
-    ask_result, _ = _send_turn_and_approve(
+    ask_result, (_, approve_ai_response) = _send_turn_and_approve(
         GODFATHER_CHAT_ID,
         f"תפיק חשבון עסקה ל{client_name} על סך {AMOUNT} ₪ לפני מע״מ, עבור ייעוץ משפטי",
         id_prefix="B028_B3T1",
     )
     approval = _approval_text(ask_result)
+    assert_document_approval_states_vat(approval, VAT_NOT_INCLUDED)  # bugfix-071
 
     # Israel-local date - the model injects the local date into the approval
     # text (ai_handler.py current-date injection), so a UTC-derived date here
@@ -154,6 +163,11 @@ def test_the_approval_states_every_mandatory_element(denidin_app):
         f"the approval request omits {missing} - the user cannot approve what "
         f"was never stated. Approval text was: {approval!r}"
     )
+
+    # bugfix-071: "לפני מע״מ" must reach Morning as 47 + VAT.
+    calls = _calls_for(approve_ai_response, "create_transaction_account")
+    assert calls, f"the approved document was not created: {approve_ai_response.mcp_calls if approve_ai_response else None!r}"
+    assert_stored_vat(calls[0], round(AMOUNT * 1.18, 2))
 
 
 # --------------------------------------------------------------------- B4
@@ -194,11 +208,12 @@ def test_a_client_qualified_by_its_tax_id_still_resolves(denidin_app):
     _send_turn(GODFATHER_CHAT_ID, "אילו לקוחות יש לי ששמם מתחיל בהסתדרות?",
                id_prefix="B028_B4T1_LIST")
 
-    _, (reply, ai_response) = _send_turn_and_approve(
+    ask_result, (reply, ai_response) = _send_turn_and_approve(
         GODFATHER_CHAT_ID,
         f"תפיק חשבון עסקה ל{_B4_CLIENT} על סך {AMOUNT} ₪ כולל מע״מ, עבור ייעוץ משפטי",
         id_prefix="B028_B4T1",
     )
+    assert_document_approval_states_vat(ask_result[0], VAT_INCLUDED)  # bugfix-071
 
     calls = _calls_for(ai_response, "create_transaction_account")
     assert calls, (
@@ -224,3 +239,4 @@ def test_a_client_qualified_by_its_tax_id_still_resolves(denidin_app):
     assert "כללית חדשה" in (created.get("client_name") or ""), (
         f"the document must be attached to the client that was actually asked for: {created!r}"
     )
+    assert_stored_vat(calls[0], AMOUNT)  # bugfix-071

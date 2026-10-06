@@ -75,6 +75,7 @@ def test_create_invoice_raises_when_the_client_cannot_be_resolved(
             client_name=nonexistent_client_name,
             amount=47.0,
             description="bugfix-028 B4c",
+            vat_included=True,
             name_resolved=True,
         )
     _assert_is_a_real_failure(exc_info.value)

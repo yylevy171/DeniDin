@@ -69,6 +69,7 @@ def seeded_invoice(morning_client):
         client_id=client_id,
         amount=90.0,
         description=f"Seed invoice {marker}",
+        vat_included=True,
     )
     response = morning_client.create_invoice(payload)
     internal_morning_id = _extract_id(response)

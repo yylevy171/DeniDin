@@ -45,6 +45,7 @@ def seeded_invoice(morning_client):
         amount=55.0,
         description=f"Summary seed {unique_marker}",
         name_resolved=True,
+        vat_included=True,
     )
     # Give the sandbox's search index a moment (see the widened-retry fix in
     # test_morning_sandbox_list_invoices_tool.py for the same class of delay).

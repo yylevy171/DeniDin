@@ -1,7 +1,9 @@
 # Bugfix 071: Morning Documents Created with VAT = 0 Instead of VAT Included
 
-**Status**: Open — Root cause isolated, production scope quantified, awaiting human approval / handoff to engineering.
+**Status**: In progress — BDD: bug reproduced (VAT matrix, 2026-10-05), root cause APPROVED (2026-10-05, see §2a), sandbox research done (§2b), fix proposal awaiting approval.
+**Priority**: P0
 **Severity**: P0 / Critical (Compliance & Tax Under-reporting)
+**Branch**: `bugfix/071-morning-vat-zero-defect`
 **Components**: `apps/morning-mcp-app/src/denidin_mcp_morning/tools.py` (`_build_combo_document_payload`, `create_combo_document`, `_build_create_invoice_payload`)
 **Found via**: Operational audit requested by CEO (2026-10-05)
 
@@ -25,6 +27,11 @@ A live audit of the production Morning Green-Invoice API across all combo tax in
 ---
 
 ## 2. Root Cause Analysis
+
+> **Superseded (2026-10-05).** The `vatRate: 0` analysis below, as originally filed, was
+> disproven by the VAT matrix (§2a): `vatRate` is ignored by Morning in every probed shape.
+> Kept for history. The approved root cause is §2a.
+
 
 In `apps/morning-mcp-app/src/denidin_mcp_morning/tools.py`:
 
@@ -57,6 +64,94 @@ Comparing a valid document (#112346) against a defective document (#112347) in t
 When DeniDin explicitly passed `"vatRate": 0` in the `income` dictionary, Morning treated the line as **tax-exempt income (`vatType: 2`)** and overrode the document calculation to zero VAT.
 
 ---
+
+## 2a. Approved Root Cause (human-approved 2026-10-05)
+
+Source: Morning's official OpenAPI spec (`developers.morning.co/docs/openapi.bundled.json`,
+v2.0.0). `vatType` is **two different enums** sharing one field name:
+
+- `DocumentVatType` (`CreateDocumentRequest.vatType`): `0` Default (based on business type),
+  `1` **Exempt (VAT-free)**, `2` Mixed.
+- `ItemVatType` (`IncomeRowRequest.vatType`): `0` Default (VAT added based on business type),
+  `1` **Included (VAT included in price)**, `2` Exempt.
+
+Every payload builder in `apps/morning-mcp-app/src/denidin_mcp_morning/tools.py` computes ONE value
+(`vat_type = 1 if vat_included else 0`) and writes it to BOTH levels. "VAT included" therefore
+sends document-level `1` = Exempt; Morning exempts the whole document (rewrites the row to
+`vatType: 2`, `vat: 0`). "VAT excluded" sends `0`/`0`, which is correct. Affected builders: 305
+(`_build_create_invoice_payload`), 300 (`_build_transaction_account_payload`), 320
+(`_build_combo_document_core_payload`, fresh and closing-a-300), 330 (`_build_cancellation_payload`,
+which mirrors the original's DOCUMENT-level `vatType` onto the ROW and falls back to `1`).
+
+Why it shipped: the code was never checked against Morning's published enums. bugfix-028's live
+probe (2026-08-09) observed "11 stays 11" with `vatType: 1` and recorded it as "price includes
+VAT" (`tools.py:380-383`) - it was Morning's exemption. Unit tests then pinned the conflated payload.
+
+Separate defect found alongside (bugfix-028 A2 implemented only halfway): `create_invoice` (305) and
+`create_combo_document_as_reference` still default `vat_included=True` in their MCP schema, so a VAT
+treatment the model never established silently becomes "included" - and, via this root cause, exempt.
+
+Reproduction: `apps/morning-mcp-app/tests/integration/test_morning_sandbox_vat_matrix.py` (17 cells,
+real MCP server + real sandbox): 10 failed / 7 passed on current code.
+
+## 2b. Sandbox Research (2026-10-05)
+
+Raw payloads to the sandbox, each read back via `GET /documents/{id}`. Business settings
+(`GET /documents/info?type=305`): `vatRate: 0.18`, `documentVatType: 0`, `rowVatType: 0`,
+`mixedVatEnabled: false`.
+
+| Probe | Sent (doc / row / vatRate / price / payment) | Stored (vat / amount / net) |
+|---|---|---|
+| 305, 300, 320 VAT included | 0 / 1 / omitted, 0.18 or 0 / 118 / (320: 118) | 18 / 118 / 100 ✅ all 9 |
+| 305, 300, 320 VAT excluded | 0 / 0 / omitted or 0 / 100 / (320: 118) | 18 / 118 / 100 ✅ all 6 |
+| 330 full, against correct 305 (incl. or excl.) | 0 / 1 / omitted / 118 | 18 / 118 / 100 ✅ |
+| 330 partial, against correct 305 | 0 / 1 / omitted / 59 | 9 / 59 / 50 ✅ |
+| 330 as the CURRENT builder would send it against a correct original (mirror doc 0 onto row) | 0 / 0 / 0 / 118 | **21.24 / 139.24 / 118 ❌ over-credits 18%** |
+| 320 closing a 300 (incl. or excl.), price = the 300's stored total | 0 / 1 / omitted / 118 / 118 | 18 / 118 / 100 ✅ |
+
+Findings: (1) document-level `vatType: 0` + row-level `vatType` 1/0 is correct for every taxable
+type; (2) row `vatRate` has no effect (omitted, `0.18` and `0` all stored 18%) - Morning applies the
+business rate; (3) a 320 with VAT excluded is accepted when the payment line carries the gross; (4) a
+330 must NOT mirror the original's document-level `vatType` onto its row - against a correctly-issued
+original that over-credits by 18%.
+
+## 2c. Approved User-Level VAT Matrix (human-approved 2026-10-05)
+
+From the user's perspective there is one VAT: the VAT inside the amount paid / to be paid. X = what the
+user said.
+
+| Document | User says "VAT included" | User says "VAT not included" | User says nothing |
+|---|---|---|---|
+| 305 tax invoice | total = X (VAT inside) | total = X + VAT | refuse - ask |
+| 300 transaction account | total = X (VAT inside) | total = X + VAT | refuse - ask |
+| 320 standalone | ignored (VAT inside X) | conflict - refuse, ask | total paid = X, VAT inside |
+| 320 closing a 300 | ignored | conflict - refuse, ask | amount paid (300's total or partial), VAT inside |
+| 400 standalone | ignored | conflict - refuse, ask | receipt = X, no VAT on the receipt |
+| 400 against a 305 | ignored | conflict - refuse, ask | 305's total or the partial paid |
+| 330 against a taxable original (305/320) | ignored | conflict - refuse, ask | mirrors the original (VAT inside) |
+| 330 against an exempt original | conflict - refuse, ask | conflict - refuse, ask | mirrors the original (no VAT) |
+
+A 300 is not a tax document - its total always includes VAT whichever way it was created (100 incl. -> 100;
+100 excl. -> 118); the 320 that closes it is the tax document, and the amount paid always includes VAT.
+
+Refusal = MCP `isError` via the existing error boundary (`errors.py`), nothing created in Morning, any
+referenced original untouched. Successful results stay on the existing JSON-only contract (2026-09-04) -
+no new prose.
+
+Sandbox-confirmed payload translation (§2b + 2026-10-05 gap probes G1-G4): document-level `vatType` 0
+(Default) everywhere except a 330 against an exempt original (mirrors the original's 1); row `vatType` 1 for
+every VAT-inside amount, 0 only for an explicit "not included" on 305/300; no `vatRate` sent; a 320's payment
+line = the amount paid.
+
+### Out of scope (human decision, 2026-10-05): amounts relative to the original
+
+Sandbox probe (2026-10-05) found Morning itself enforces NO amount limits on referencing documents: a
+receipt of 150 against a 100 tax invoice, a credit note of 150 against 100 (original `amountOpened` -50),
+a 320 of 150 closing a 100 transaction account, cumulative partials exceeding the total, and a "full"
+close after a partial (our tools use the original's TOTAL, not its open balance `amountOpened`, so 40 +
+100 = 140 paid against 100) were all accepted. This is a separate defect (no amount validation against the
+original's open balance) and is NOT addressed by bugfix-071; the VAT matrix varies VAT only, at full
+amounts, and existing amount tests are left as they are and are not used as evidence here.
 
 ## 3. Complete List of Impacted Documents
 

@@ -135,14 +135,20 @@ def test_build_transaction_account_payload_states_its_vat_treatment():
 
     assert payload["type"] == 300
     assert payload["client"] == {"self": False, "id": "client-1"}
-    assert payload["vatType"] == 1, "a VAT-inclusive amount must say so explicitly"
+    # bugfix-071: the document-level vatType is Morning's DocumentVatType, where
+    # 1 means EXEMPT - it is always Default (0). Included/added lives on the row
+    # (ItemVatType: 1 = included, 0 = added). Previously asserted 1 at both
+    # levels, which pinned the exempt bug in place.
+    assert payload["vatType"] == 0
     for income_item in payload["income"]:
-        assert income_item["vatType"] == 1
+        assert income_item["vatType"] == 1, "a VAT-inclusive amount must say so explicitly"
+        assert "vatRate" not in income_item
 
     exclusive = tools._build_transaction_account_payload(
         client_id="client-1", amount=45.0, description="שירות ייעוץ", vat_included=False
     )
     assert exclusive["vatType"] == 0
+    assert [item["vatType"] for item in exclusive["income"]] == [0]
 
 
 def test_build_transaction_account_payload_carries_no_payment_line():
@@ -173,22 +179,31 @@ def test_build_transaction_account_payload_includes_due_date_when_given():
 def test_build_combo_document_payload_type_and_shape():
     payload = tools._build_combo_document_payload(
         client_id="client-1", amount=65.0, description="מכירה מיידית",
-        vat_included=True, payment_date="2026-07-12"
+        payment_date="2026-07-12"
     )
 
     assert payload["type"] == 320
     assert payload["client"] == {"self": False, "id": "client-1"}
-    assert payload["vatType"] == 1
+    # bugfix-071: document Default (0), row Included (1) - money paid has VAT inside it.
+    assert payload["vatType"] == 0
+    assert [item["vatType"] for item in payload["income"]] == [1]
+    assert all("vatRate" not in item for item in payload["income"])
     assert "dueDate" not in payload
 
 
-def test_build_combo_document_payload_vat_excluded_when_requested():
-    payload = tools._build_combo_document_payload(
-        client_id="client-1", amount=65.0, description="מכירה מיידית",
-        vat_included=False, payment_date="2026-07-12"
-    )
+def test_create_combo_document_vat_not_included_is_a_vat_conflict():
+    """bugfix-071 (replaces test_build_combo_document_payload_vat_excluded_when_requested,
+    which pinned a "VAT excluded" 320): money already paid always has VAT inside
+    it, so "not included" is a conflict - refused before anything reaches Morning."""
+    client = _FakeMorningClient(create_invoice_response={"id": "combo-1", "number": "801", "status": 1})
 
-    assert payload["vatType"] == 0
+    with pytest.raises(tools.VatConflictError):
+        tools.create_combo_document(
+            client, "לקוח בדיקה", 65.0, "מכירה מיידית",
+            vat_included=False, payment_date="2026-07-12", name_resolved=True,
+        )
+
+    assert client.create_invoice_calls == []
 
 
 # --- _build_cancellation_payload (type 330) — refactored for overrides ---
@@ -346,7 +361,7 @@ def test_full_payment_still_works_via_create_receipt():
 def test_create_invoice_returns_hebrew_confirmation():
     client = _FakeMorningClient(create_invoice_response={"id": "inv-1", "number": "900", "status": None})
 
-    result = tools.create_invoice(client, "לקוח בדיקה", 120.0, "ייעוץ", name_resolved=True)
+    result = tools.create_invoice(client, "לקוח בדיקה", 120.0, "ייעוץ", vat_included=True, name_resolved=True)
 
     assert "900" in result
     sent_payload = client.create_invoice_calls[0]
@@ -357,7 +372,7 @@ def test_create_invoice_refuses_when_client_not_found():
     client = _FakeMorningClient(search_clients_response={"items": [], "total": 0})
 
     with pytest.raises(tools.ClientNotFoundError):
-        tools.create_invoice(client, "לקוח שלא קיים", 120.0, "ייעוץ", name_resolved=True)
+        tools.create_invoice(client, "לקוח שלא קיים", 120.0, "ייעוץ", vat_included=True, name_resolved=True)
 
     assert client.create_invoice_calls == []
 
@@ -371,7 +386,7 @@ def test_create_invoice_not_resolved_refuses_without_any_lookup():
     client = _FakeMorningClient(search_clients_response={"items": [], "total": 0})
 
     with pytest.raises(tools.ClientNameNotResolvedError) as exc_info:
-        tools.create_invoice(client, "לקוח בדיקה", 120.0, "ייעוץ")
+        tools.create_invoice(client, "לקוח בדיקה", 120.0, "ייעוץ", vat_included=True)
 
     assert "resolve_client_name" in str(exc_info.value)
     assert client.search_clients_calls == []
@@ -393,8 +408,10 @@ def test_create_transaction_account_returns_hebrew_confirmation():
     assert sent_payload["type"] == 300
     assert sent_payload["client"] == {"self": False, "id": "client-1"}
     # bugfix-028 A2 (inverted): omitting vatType is NOT "no VAT" to Morning - it
-    # is "price excludes VAT", and it silently adds ~18%.
-    assert sent_payload["vatType"] == 1
+    # is "price excludes VAT", and it silently adds ~18%. bugfix-071: "included"
+    # is stated on the row; the document level stays Default (1 there = exempt).
+    assert sent_payload["vatType"] == 0
+    assert [item["vatType"] for item in sent_payload["income"]] == [1]
 
 
 def test_create_transaction_account_refuses_when_client_not_found():
@@ -652,7 +669,9 @@ def test_build_combo_closing_payload_defaults_use_a_clean_single_income_line():
     assert payload["description"] == "תשלום עבור חשבון עסקה מספר 900"
     assert len(payload["income"]) == 1
     assert payload["income"][0]["price"] == 85.0
-    assert payload["income"][0]["vatRate"] == 0
+    # bugfix-071: no vatRate (Morning ignores it); VAT inside the amount paid.
+    assert "vatRate" not in payload["income"][0]
+    assert payload["income"][0]["vatType"] == 1
     assert payload["payment"][0]["price"] == 85.0
     # bugfix-038: payment_date is now real (validated), never hardcoded to today.
     assert payload["payment"][0]["date"] == "2026-07-12"
@@ -819,7 +838,10 @@ def test_create_combo_document_as_reference_still_works_after_vat_included_param
     assert sent_payload["type"] == 320
     assert sent_payload["linkedDocumentIds"] == ["orig-10"]
     assert sent_payload["payment"][0]["price"] == 60.0
-    assert sent_payload["vatType"] == 1  # vat_included defaults to True
+    # bugfix-071: VAT comes from the 300 being closed - document Default, the
+    # closed total recorded with VAT inside it.
+    assert sent_payload["vatType"] == 0
+    assert [item["vatType"] for item in sent_payload["income"]] == [1]
 
 
 # --- bugfix-026: every document payload must be created signed, or Morning
@@ -829,7 +851,7 @@ def test_create_combo_document_as_reference_still_works_after_vat_included_param
 
 def test_build_create_invoice_payload_is_signed():
     payload = tools._build_create_invoice_payload(
-        client_id="client-1", amount=100.0, description="שירות ייעוץ"
+        client_id="client-1", amount=100.0, description="שירות ייעוץ", vat_included=True
     )
     assert payload["signed"] is True
 
@@ -844,7 +866,7 @@ def test_build_transaction_account_payload_is_signed():
 def test_build_combo_document_payload_is_signed():
     payload = tools._build_combo_document_payload(
         client_id="client-1", amount=65.0, description="מכירה מיידית",
-        vat_included=True, payment_date="2026-07-12"
+        payment_date="2026-07-12"
     )
     assert payload["signed"] is True
 
@@ -865,3 +887,123 @@ def test_build_combo_closing_payload_is_signed():
     original = _original_invoice(doc_type=300)
     payload = tools._build_combo_closing_payload(original, payment_date="2026-07-12")
     assert payload["signed"] is True
+
+
+# --- bugfix-071: Morning's DocumentVatType vs ItemVatType, and VAT conflicts ---
+
+
+def _taxable_original(doc_type=305, amount=118.0):
+    original = _original_invoice(doc_id="orig-071", number="071", amount=amount, doc_type=doc_type)
+    original["vatType"] = 0  # DocumentVatType Default - a document that carries VAT
+    original["total"] = None  # the real shape: only "amount" (VAT-inclusive) is authoritative
+    original["income"][0].update({"price": 100.0, "vatType": 0})  # 100 + VAT = 118
+    return original
+
+
+def _exempt_original():
+    original = _original_invoice(doc_id="orig-071ex", number="071ex", amount=100.0)
+    original["vatType"] = 1  # DocumentVatType Exempt
+    return original
+
+
+def test_build_create_invoice_payload_splits_document_and_row_vat_types():
+    included = tools._build_create_invoice_payload("client-1", 100.0, "ייעוץ", vat_included=True)
+    added = tools._build_create_invoice_payload("client-1", 100.0, "ייעוץ", vat_included=False)
+
+    assert included["vatType"] == 0 and added["vatType"] == 0
+    assert [i["vatType"] for i in included["income"]] == [1]
+    assert [i["vatType"] for i in added["income"]] == [0]
+    assert all("vatRate" not in i for i in included["income"] + added["income"])
+
+
+def test_build_cancellation_payload_against_a_taxable_original_credits_its_vat_inclusive_amount():
+    payload = tools._build_cancellation_payload(_taxable_original())
+
+    assert payload["vatType"] == 0
+    assert payload["income"][0]["vatType"] == 1
+    assert payload["income"][0]["price"] == 118.0
+    assert "vatRate" not in payload["income"][0]
+
+
+def test_build_cancellation_payload_against_an_exempt_original_is_exempt():
+    payload = tools._build_cancellation_payload(_exempt_original())
+
+    assert payload["vatType"] == 1
+
+
+@pytest.mark.parametrize("vat_type", [2, None])
+def test_build_cancellation_payload_refuses_an_unsupported_original_vat_type(vat_type):
+    original = _original_invoice()
+    original["vatType"] = vat_type
+
+    with pytest.raises(ValueError):
+        tools._build_cancellation_payload(original)
+
+
+@pytest.mark.parametrize("vat_included", [None, True])
+def test_create_credit_note_against_a_taxable_original_proceeds(vat_included):
+    client = _FakeMorningClient(
+        get_invoice_response=_taxable_original(),
+        get_invoice_responses={"new-doc-1": _original_invoice(doc_id="new-doc-1", doc_type=330)},
+    )
+
+    tools.create_credit_note(client, "orig-071", vat_included=vat_included)
+
+    assert len(client.create_invoice_calls) == 1
+
+
+def test_create_credit_note_against_a_taxable_original_vat_not_included_is_a_conflict():
+    client = _FakeMorningClient(get_invoice_response=_taxable_original())
+
+    with pytest.raises(tools.VatConflictError):
+        tools.create_credit_note(client, "orig-071", vat_included=False)
+
+    assert client.create_invoice_calls == []
+
+
+@pytest.mark.parametrize("vat_included", [True, False])
+def test_create_credit_note_against_an_exempt_original_any_vat_statement_is_a_conflict(vat_included):
+    client = _FakeMorningClient(get_invoice_response=_exempt_original())
+
+    with pytest.raises(tools.VatConflictError):
+        tools.create_credit_note(client, "orig-071ex", vat_included=vat_included)
+
+    assert client.create_invoice_calls == []
+
+
+def test_create_receipt_vat_not_included_is_a_conflict_on_both_paths():
+    linked = _FakeMorningClient(get_invoice_response=_taxable_original())
+    with pytest.raises(tools.VatConflictError):
+        tools.create_receipt(linked, "orig-071", payment_date="2026-07-12", vat_included=False)
+    assert linked.create_invoice_calls == []
+
+    standalone = _FakeMorningClient()
+    with pytest.raises(tools.VatConflictError):
+        tools.create_receipt(
+            standalone, payment_date="2026-07-12", amount=100.0, client_name="לקוח בדיקה",
+            description="פיקדון", name_resolved=True, vat_included=False,
+        )
+    assert standalone.create_invoice_calls == []
+    assert standalone.search_clients_calls == []
+
+
+def test_create_combo_document_as_reference_vat_not_included_is_a_conflict():
+    original = _original_invoice(doc_id="orig-300", doc_type=300)
+    client = _FakeMorningClient(get_invoice_response=original)
+
+    with pytest.raises(tools.VatConflictError):
+        tools.create_combo_document_as_reference(
+            client, "orig-300", payment_date="2026-07-12", vat_included=False
+        )
+
+    assert client.create_invoice_calls == []
+    assert client.get_invoice_calls == []
+
+
+def test_vat_conflict_surfaces_as_its_own_error_message():
+    from denidin_mcp_morning import errors
+
+    message = errors.friendly_error_message(tools.VatConflictError("x"), "corr-071")
+
+    assert message == errors.VAT_CONFLICT
+    assert message != errors.friendly_error_message(ValueError("x"), "corr-071")

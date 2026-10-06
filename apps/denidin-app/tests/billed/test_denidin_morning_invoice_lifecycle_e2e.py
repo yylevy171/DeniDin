@@ -500,14 +500,14 @@ def test_godfather_marks_transaction_account_invoice_paid_via_whatsapp(denidin_a
 
     (ask_response, ask_ai_response), (paid_response, paid_ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
-        # States VAT-inclusion AND the payment date explicitly. Feature 023's
-        # constitution rules otherwise have the model ask "כולל מע״מ?" and
-        # "האם התשלום התקבל היום?" (both confirmed live - VAT 2026-07-30, the
-        # payment_date question 2026-09-02) before calling
-        # create_combo_document_as_reference. This test is about the
-        # mark-as-paid dispatch itself, not those clarifications, so the prompt
-        # removes both up front rather than adding conversational turns the
-        # fixed ask->approve helper cannot answer.
+        # States the payment date explicitly: otherwise the model asks "האם
+        # התשלום התקבל היום?" (confirmed live 2026-09-02) before calling
+        # create_combo_document_as_reference, a turn the fixed ask->approve
+        # helper cannot answer. "כולל מע״מ" is a leftover from before bugfix-071:
+        # closing a 300 takes its VAT from the 300, the bot never asks about it,
+        # and an "included" statement is simply ignored (bugfix-071 matrix).
+        # Kept as-is so this test stays about the mark-as-paid dispatch; the
+        # never-asks-about-VAT behaviour is covered by the bugfix-071 scenarios.
         text=f"סמן את חשבון העסקה של {client_name} כשולם היום, כולל מע״מ",
         id_prefix="E2E_020_PAID_300",
     )
@@ -580,9 +580,9 @@ def test_godfather_declines_marking_transaction_account_invoice_paid(denidin_app
     decline_response, decline_ai_response = _send_turn_and_decline(
         chat_id=GODFATHER_CHAT_ID,
         # See test_godfather_marks_transaction_account_invoice_paid_via_whatsapp's
-        # comment above - states VAT-inclusion explicitly so there's a real
-        # create_combo_document_as_reference pending approval to decline, rather than
-        # the model asking a VAT-clarifying question with nothing yet pending.
+        # comment above - "כולל מע״מ" is a pre-bugfix-071 leftover the bot now
+        # ignores (closing a 300 never asks about VAT); kept so this test stays
+        # about declining the pending approval.
         text=f"סמן את חשבון העסקה של {client_name} כשולם היום, כולל מע״מ",
         id_prefix="E2E_020_PAID_300_DECLINE",
     )
