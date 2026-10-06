@@ -1,7 +1,7 @@
 """Feature 080: TelemetryBuilder + TelemetryManager - per-request latency/token telemetry.
 
 TelemetryBuilder accumulates timing/token data across one in-flight request, threaded through
-AIHandler.get_response() and its helpers (never global/thread-local state - AIHandler already
+AIHandler.single_turn() and its helpers (never global/thread-local state - AIHandler already
 serves concurrent chats, so telemetry must be scoped to the single in-flight request).
 TelemetryManager persists the finished RequestTelemetry into a SQLite store, one row per
 request, mirroring the RollMarkerStore/ReminderManager connection idiom already established in
@@ -11,14 +11,14 @@ See specs/repo/features/080-higher-verbosity-speed/contracts/telemetry-recorder.
 full interface contract and data-model.md for the RequestTelemetry field-level contract.
 Recording is entirely best-effort: neither TelemetryBuilder nor TelemetryManager.record() may
 ever raise into the request path - a telemetry failure must never be able to break message
-processing (mirrors send_typing_indicator/log_outbound's existing posture in this codebase).
+processing (mirrors send_typing_indicator/audit_wire's existing posture in this codebase).
 """
 
 import json
 import sqlite3
 import time
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from src.models.telemetry import RequestTelemetry
 from src.utils.logger import get_logger
@@ -122,8 +122,11 @@ class TelemetryManager:
     mirroring the RollMarkerStore/ReminderManager connection idiom (one long-lived connection,
     check_same_thread=False, idempotent executescript schema)."""
 
-    def __init__(self, data_root: str) -> None:
-        storage_dir = Path(data_root) / "telemetry"
+    def __init__(self, denidin: Any) -> None:
+        """`denidin`: the DeniDin object (REQ-063-08) - the store lives under its
+        config's {data_root}/telemetry/."""
+        self.denidin = denidin
+        storage_dir = Path(denidin.config.data_root) / "telemetry"
         storage_dir.mkdir(parents=True, exist_ok=True)
         self._db_path = storage_dir / "telemetry.db"
         self._conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
@@ -171,9 +174,10 @@ class TelemetryManager:
 
     def get(self, request_id: str) -> Optional[sqlite3.Row]:
         """Read-only lookup, used by tests/manual inspection - not on the request path."""
-        return self._conn.execute(
+        row: Optional[sqlite3.Row] = self._conn.execute(
             "SELECT * FROM request_telemetry WHERE request_id = ?", (request_id,)
         ).fetchone()
+        return row
 
     def get_latest_by_chat(self, chat_id: str) -> Optional[sqlite3.Row]:
         """Read-only lookup of the most recently recorded row for a chat - used by
@@ -181,10 +185,11 @@ class TelemetryManager:
         they sent a turn on but not that turn's internal request_id. rowid is
         insertion-order, so MAX(rowid) is "most recent" without needing a separate
         timestamp-ordering column."""
-        return self._conn.execute(
+        row: Optional[sqlite3.Row] = self._conn.execute(
             "SELECT * FROM request_telemetry WHERE chat_id = ? ORDER BY rowid DESC LIMIT 1",
             (chat_id,),
         ).fetchone()
+        return row
 
 
 def monotonic_ms() -> int:

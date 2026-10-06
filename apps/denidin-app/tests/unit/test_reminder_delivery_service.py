@@ -30,6 +30,7 @@ from src.services.reminder_delivery_service import (
     _sweep_due_reminders, run_startup_reminder_sweep, start_reminder_scheduler,
     REMINDER_SWEEP_JOB_ID,
 )
+from tests.denidin_test_support import make_reminder_manager, make_user_manager
 
 GODFATHER_PHONE = "972506205541"
 ADMIN_PHONE = "972522968679"
@@ -40,18 +41,18 @@ GROUP_CHAT_ID = "123456789-group@g.us"
 
 @pytest.fixture
 def reminder_manager(tmp_path):
-    return ReminderManager(storage_dir=str(tmp_path / "reminders"))
+    return make_reminder_manager(storage_dir=str(tmp_path / "reminders"))
 
 
 @pytest.fixture
 def user_manager():
-    return UserManager(godfather_phone=GODFATHER_PHONE, admin_phones=[ADMIN_PHONE], blocked_phones=[])
+    return make_user_manager(godfather_phone=GODFATHER_PHONE, admin_phones=[ADMIN_PHONE], blocked_phones=[])
 
 
 @pytest.fixture
 def global_context(reminder_manager, user_manager):
     return SimpleNamespace(
-        ai_handler=SimpleNamespace(reminder_manager=reminder_manager, user_manager=user_manager),
+        reminder_manager=reminder_manager, user_manager=user_manager,
         session_manager=MagicMock(),
         config=SimpleNamespace(godfather_phone=GODFATHER_PHONE),
     )
@@ -105,7 +106,7 @@ class TestSweepDueReminders:
     ):
         send = MagicMock(return_value="wamid.1")
         monkeypatch.setattr(delivery_service, "send_proactive_message", send)
-        reminder_manager = global_context.ai_handler.reminder_manager
+        reminder_manager = global_context.reminder_manager
         reminder_id = _insert_due_reminder(reminder_manager, "לקנות חלב", GODFATHER_PHONE, "GODFATHER")
 
         _sweep_due_reminders(global_context, stub_bot)
@@ -124,7 +125,7 @@ class TestSweepDueReminders:
     def test_second_sweep_does_not_redeliver_already_fired(self, global_context, stub_bot, monkeypatch):
         send = MagicMock(return_value="wamid.1")
         monkeypatch.setattr(delivery_service, "send_proactive_message", send)
-        _insert_due_reminder(global_context.ai_handler.reminder_manager, "once only", GODFATHER_PHONE, "GODFATHER")
+        _insert_due_reminder(global_context.reminder_manager, "once only", GODFATHER_PHONE, "GODFATHER")
 
         _sweep_due_reminders(global_context, stub_bot)
         _sweep_due_reminders(global_context, stub_bot)
@@ -136,7 +137,7 @@ class TestSweepDueReminders:
     ):
         send = MagicMock(return_value=None)  # simulates a failed send
         monkeypatch.setattr(delivery_service, "send_proactive_message", send)
-        reminder_manager = global_context.ai_handler.reminder_manager
+        reminder_manager = global_context.reminder_manager
         reminder_id = _insert_due_reminder(reminder_manager, "will fail", GODFATHER_PHONE, "GODFATHER")
 
         _sweep_due_reminders(global_context, stub_bot)
@@ -150,7 +151,7 @@ class TestSweepDueReminders:
     def test_failed_send_is_retried_on_next_sweep(self, global_context, stub_bot, monkeypatch):
         send = MagicMock(return_value=None)
         monkeypatch.setattr(delivery_service, "send_proactive_message", send)
-        _insert_due_reminder(global_context.ai_handler.reminder_manager, "retry me", GODFATHER_PHONE, "GODFATHER")
+        _insert_due_reminder(global_context.reminder_manager, "retry me", GODFATHER_PHONE, "GODFATHER")
 
         _sweep_due_reminders(global_context, stub_bot)
         _sweep_due_reminders(global_context, stub_bot)
@@ -162,7 +163,7 @@ class TestSweepDueReminders:
     ):
         send = MagicMock(return_value="wamid.1")
         monkeypatch.setattr(delivery_service, "send_proactive_message", send)
-        reminder_manager = global_context.ai_handler.reminder_manager
+        reminder_manager = global_context.reminder_manager
         due_at = (now_local() - timedelta(minutes=1)).isoformat()
         reminder_id = str(uuid.uuid4())
         reminder_manager._conn.execute(  # pylint: disable=protected-access
@@ -185,7 +186,7 @@ class TestSweepDueReminders:
         send = MagicMock(return_value="wamid.1")
         monkeypatch.setattr(delivery_service, "send_proactive_message", send)
         _insert_due_reminder(
-            global_context.ai_handler.reminder_manager, "group reminder",
+            global_context.reminder_manager, "group reminder",
             GODFATHER_PHONE, "GODFATHER", delivery_chat_id=GROUP_CHAT_ID,
         )
 
@@ -206,7 +207,7 @@ class TestDeliveryTargetAndFallback:
     ):
         send = MagicMock(side_effect=[None, "wamid.fallback"])
         monkeypatch.setattr(delivery_service, "send_proactive_message", send)
-        reminder_manager = global_context.ai_handler.reminder_manager
+        reminder_manager = global_context.reminder_manager
         reminder_id = _insert_due_reminder(
             reminder_manager, "group exited", GODFATHER_PHONE, "GODFATHER",
             delivery_chat_id=GROUP_CHAT_ID,
@@ -233,7 +234,7 @@ class TestDeliveryTargetAndFallback:
         send = MagicMock(side_effect=[None, "wamid.fallback"])
         monkeypatch.setattr(delivery_service, "send_proactive_message", send)
         _insert_due_reminder(
-            global_context.ai_handler.reminder_manager, "admin group reminder",
+            global_context.reminder_manager, "admin group reminder",
             ADMIN_PHONE, "ADMIN", delivery_chat_id=GROUP_CHAT_ID,
         )
 
@@ -247,7 +248,7 @@ class TestDeliveryTargetAndFallback:
     ):
         send = MagicMock(return_value=None)
         monkeypatch.setattr(delivery_service, "send_proactive_message", send)
-        reminder_manager = global_context.ai_handler.reminder_manager
+        reminder_manager = global_context.reminder_manager
         reminder_id = _insert_due_reminder(
             reminder_manager, "totally unreachable", GODFATHER_PHONE, "GODFATHER",
             delivery_chat_id=GROUP_CHAT_ID,
@@ -272,7 +273,7 @@ class TestDeliveryTargetAndFallback:
         send = MagicMock(return_value=None)
         monkeypatch.setattr(delivery_service, "send_proactive_message", send)
         _insert_due_reminder(
-            global_context.ai_handler.reminder_manager, "same chat both ways",
+            global_context.reminder_manager, "same chat both ways",
             GODFATHER_PHONE, "GODFATHER",  # delivery_chat_id defaults to GODFATHER_CHAT_ID
         )
 
@@ -290,7 +291,7 @@ class TestSweepDueRemindersMisc:
     def test_session_history_persisted_on_successful_delivery(self, global_context, stub_bot, monkeypatch):
         send = MagicMock(return_value="wamid.1")
         monkeypatch.setattr(delivery_service, "send_proactive_message", send)
-        _insert_due_reminder(global_context.ai_handler.reminder_manager, "persist me", GODFATHER_PHONE, "GODFATHER")
+        _insert_due_reminder(global_context.reminder_manager, "persist me", GODFATHER_PHONE, "GODFATHER")
 
         _sweep_due_reminders(global_context, stub_bot)
 
@@ -305,14 +306,14 @@ class TestSweepDueRemindersMisc:
             raise RuntimeError("db error")
 
         monkeypatch.setattr(
-            global_context.ai_handler.reminder_manager, "get_due_occurrences", broken_get_due_occurrences
+            global_context.reminder_manager, "get_due_occurrences", broken_get_due_occurrences
         )
         _sweep_due_reminders(global_context, stub_bot)  # must not raise
 
     def test_multiple_due_reminders_all_delivered_in_one_sweep(self, global_context, stub_bot, monkeypatch):
         send = MagicMock(return_value="wamid.1")
         monkeypatch.setattr(delivery_service, "send_proactive_message", send)
-        reminder_manager = global_context.ai_handler.reminder_manager
+        reminder_manager = global_context.reminder_manager
         _insert_due_reminder(reminder_manager, "first", GODFATHER_PHONE, "GODFATHER")
         _insert_due_reminder(reminder_manager, "second", GODFATHER_PHONE, "GODFATHER")
 
@@ -341,7 +342,7 @@ class TestRunStartupReminderSweep:
         send = MagicMock(return_value="wamid.1")
         monkeypatch.setattr(delivery_service, "send_proactive_message", send)
         _insert_due_reminder(
-            global_context.ai_handler.reminder_manager, "missed while down", GODFATHER_PHONE,
+            global_context.reminder_manager, "missed while down", GODFATHER_PHONE,
             "GODFATHER", due_minutes_ago=120,
         )
 
@@ -392,7 +393,7 @@ class TestStartReminderScheduler:
         send = MagicMock(return_value="wamid.1")
         monkeypatch.setattr(delivery_service, "send_proactive_message", send)
         _insert_due_reminder(
-            global_context.ai_handler.reminder_manager, "really fired live", GODFATHER_PHONE, "GODFATHER"
+            global_context.reminder_manager, "really fired live", GODFATHER_PHONE, "GODFATHER"
         )
 
         scheduler = start_reminder_scheduler(

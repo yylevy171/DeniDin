@@ -653,7 +653,7 @@ def test_godfather_searches_invoice_by_number_finds_it(denidin_app):
 
     _, (seed_response, seed_ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
-        text=f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח עבור {description}",
+        text=f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח כולל מע\"מ עבור {description}",
         id_prefix="E2E_NUMSEARCH_SEED",
     )
     create_calls = _calls_for(seed_ai_response, "create_invoice")

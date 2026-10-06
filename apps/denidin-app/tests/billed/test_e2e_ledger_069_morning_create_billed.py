@@ -56,7 +56,7 @@ class TestLedgerPostTurnCaptureMorningCreate:
             ),
         )
 
-        last_ai = denidin_app.ai_handler.last_response
+        last_ai = denidin_app.last_response
         create_calls = [
             c for c in (last_ai.mcp_calls if last_ai else [])
             if c["name"] in _CREATE_TOOLS and c.get("error") is None

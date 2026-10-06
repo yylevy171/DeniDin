@@ -41,6 +41,7 @@ import pytest
 from src.managers.ledger_event_manager import LedgerEventManager
 from src.managers.session_manager import SessionManager
 from src.utils.time_utils import now_local
+from tests.denidin_test_support import make_ledger_event_manager, make_session_manager
 
 CHAT_ID = "group-ledgerer@g.us"
 # The economic content was stated here (earlier) ...
@@ -52,13 +53,12 @@ EXPECTED_EVENT_DATETIME = "15/07/2026 09:30"
 
 @pytest.fixture
 def sm(tmp_path):
-    return SessionManager(storage_dir=str(tmp_path / "sessions"))
+    return make_session_manager(storage_dir=str(tmp_path / "sessions"))
 
 
 @pytest.fixture
 def lem(tmp_path, sm):
-    manager = LedgerEventManager(storage_dir=str(tmp_path / "events"))
-    manager.session_manager = sm          # injected the same way AIHandler will wire it
+    manager = make_ledger_event_manager(storage_dir=str(tmp_path / "events"), session_manager=sm)
     return manager
 
 
@@ -318,7 +318,7 @@ def _invoice_verdict(trigger_id, doc=None, **event_overrides):
 class TestInvoiceComplete:
     """`persist_recognized_event` for `source_type=חשבונית` - the branch that
     delegates straight to `add_ledger_events_from_call` (the same path the
-    reconciliation sweep's `_handle_accounting_reconciliation_capture` uses),
+    reconciliation sweep's `AccountingReconciler.capture` uses),
     bypassing every `הסכם`/`בנק`-shaped step."""
 
     def test_single_record_with_every_field_derived_from_the_blob(self, lem, sm):

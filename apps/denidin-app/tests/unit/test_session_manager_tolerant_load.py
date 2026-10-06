@@ -10,13 +10,14 @@ import pytest
 
 from src.managers.session_manager import SessionManager
 from tests.helpers.seed import seed_message
+from tests.denidin_test_support import make_session_manager
 
 CHAT = "972522968679@c.us"
 
 
 @pytest.fixture
 def sm(tmp_path):
-    return SessionManager(storage_dir=str(tmp_path / "sessions"))
+    return make_session_manager(storage_dir=str(tmp_path / "sessions"))
 
 
 def _poison(session_dir, **extra_keys):
@@ -33,7 +34,7 @@ class TestUnknownKeyTolerated:
         sdir = sm.storage_dir / (session.storage_path or session.session_id)
         _poison(sdir, pending_ledger_events=[])  # the real 0f5eaa04 shape
 
-        fresh = SessionManager(storage_dir=str(sm.storage_dir))
+        fresh = make_session_manager(storage_dir=str(sm.storage_dir))
         with caplog.at_level("WARNING"):
             reloaded = fresh.get_session(CHAT)
         assert reloaded.session_id == session.session_id
@@ -50,7 +51,7 @@ class TestUnknownKeyTolerated:
         session = sm.get_session(CHAT)
         sdir = sm.storage_dir / (session.storage_path or session.session_id)
         _poison(sdir, some_future_field=42, another_one={"x": 1})
-        fresh = SessionManager(storage_dir=str(sm.storage_dir))
+        fresh = make_session_manager(storage_dir=str(sm.storage_dir))
         assert fresh.get_session(CHAT).session_id == session.session_id
 
 

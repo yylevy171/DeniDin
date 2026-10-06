@@ -4,7 +4,7 @@ processes to completion, capturing end-to-end/LLM/tool timing and token counts.
 See specs/repo/features/080-higher-verbosity-speed/data-model.md for the full field-level
 contract. Write-once (built up across a turn, persisted a single time at turn completion) -
 no update-in-place, no retry on a crashed/failed turn (mirrors the best-effort, no-retry
-posture of send_typing_indicator/log_outbound elsewhere in this codebase for non-critical-path
+posture of send_typing_indicator/audit_wire elsewhere in this codebase for non-critical-path
 observability concerns).
 """
 

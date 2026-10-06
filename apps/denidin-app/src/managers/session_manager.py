@@ -8,10 +8,10 @@ Supports UUID-based architecture with separate file storage for messages.
 import json
 import sqlite3
 import uuid
-from dataclasses import dataclass, asdict, field, fields
+from dataclasses import dataclass, asdict, field, fields as dataclass_fields
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Dict
+from typing import Any, Collection, List, Optional, Dict
 
 import tiktoken
 
@@ -143,6 +143,30 @@ class Session:
     # several conversational turns. Set when such a workflow's document is ingested; cleared
     # once it resolves (see data-model.md's message_id resolution fallback chain).
     active_document_message_id: Optional[str] = None
+    # Feature 063 redesign (2026-09-24, "resolution" model): the Backbone
+    # capability tags currently "loaded" for this chat — CapabilityTag values
+    # (plain strings; the dataclass never imports src.backbone.capability_tags,
+    # same reasoning as every other plain-string persisted field on this class).
+    # Grows via load_capabilities, shrinks via unload_capabilities/reset_to_backbone,
+    # and is cleared by the capabilities_reset_minutes idle sweep - see
+    # Backbone's own docstring for the full contract. Deliberately a
+    # Session field, not a Backbone instance attribute: it must
+    # survive across separate single_turn() calls for the same chat (a button
+    # tap is a new webhook, not a new conversation), and persisting it here reuses
+    # the exact save path every other message write already goes through - no new
+    # data model, no new file, per explicit user instruction to not maintain a
+    # second persistence mechanism just for this.
+    active_capabilities: List[str] = field(default_factory=list)
+    # Same contract as active_capabilities, for the loaded FLOWS (blueprints in
+    # config/prompts/flows/) - grows via load_flows, shrinks via unload_flows/
+    # reset_to_backbone, cleared by the same idle sweep.
+    active_flows: List[str] = field(default_factory=list)
+    # Feature 047 parity under the Backbone: the WhatsApp idMessage of the
+    # interactive-buttons message currently offering this chat an approval
+    # (set by denidin.py right after that send; cleared when a tap consumes it
+    # or any new turn starts). A tap whose stanzaId doesn't equal this value is
+    # stale and ignored - WhatsApp itself offers no staleness protection.
+    approval_message_id: Optional[str] = None
 
 
 class SessionManager:
@@ -156,21 +180,20 @@ class SessionManager:
     - Date-based archival to expired/YYYY-MM-DD/ folders
     """
 
-    def __init__(
-        self,
-        storage_dir: str = "data/sessions",
-    ):
+    def __init__(self, denidin: Any):
         """
         Initialize SessionManager.
 
         Args:
-            storage_dir: Directory for session storage. The caller composes this
-                (SessionManager never reads AppConfiguration). `chat_index.db`
-                lives directly under it.
+            denidin: the DeniDin object (REQ-063-08) - the storage directory is its
+                config's memory.session.storage_dir (default data/sessions);
+                `chat_index.db` lives directly under it.
 
         Feature 070: there is no idle-expiry timeout - sessions never expire.
         """
-        self.storage_dir = Path(storage_dir)
+        self.denidin = denidin
+        session_config = (denidin.config.memory or {}).get('session', {}) or {}
+        self.storage_dir = Path(session_config.get('storage_dir', 'data/sessions'))
         self.storage_dir.mkdir(parents=True, exist_ok=True)
 
         # In-memory index: whatsapp_chat -> session_id. NON-AUTHORITATIVE cache
@@ -282,7 +305,7 @@ class SessionManager:
         logs ONE warning - never raises TypeError. Generic: not an allowlist for
         `pending_ledger_events`, so a future field removal can't strand older
         session.json files either."""
-        valid = {f.name for f in fields(Session)}
+        valid = {f.name for f in dataclass_fields(Session)}
         unknown = sorted(k for k in data if k not in valid)
         if unknown:
             logger.warning(
@@ -330,6 +353,32 @@ class SessionManager:
 
         logger.info(f"Created new session {session_id} for chat {chat_id}")
         return session
+
+    def set_active_capabilities(self, chat_id: str, capabilities: List[str]) -> None:
+        """Persists this chat's currently-loaded Backbone capability tags
+        (Feature 063 redesign) - the one write path every load_capabilities/
+        unload_capabilities/reset_to_backbone dispatch and the
+        capabilities_reset_minutes idle sweep all go through, so there is
+        exactly one place that mutates+saves this field. `capabilities` is
+        taken as the new value verbatim (caller's own list, already
+        de-duplicated/ordered) - this does not merge or append."""
+        session = self.get_session(chat_id)
+        session.active_capabilities = list(capabilities)
+        self._save_session(session)
+
+    def set_active_flows(self, chat_id: str, flows: List[str]) -> None:
+        """Persists this chat's currently-loaded flow tags - same single write
+        path/verbatim-replace contract as set_active_capabilities."""
+        session = self.get_session(chat_id)
+        session.active_flows = list(flows)
+        self._save_session(session)
+
+    def set_approval_message_id(self, chat_id: str, message_id: Optional[str]) -> None:
+        """Persists (or clears, with None) the idMessage of the approval-buttons
+        message currently outstanding for this chat."""
+        session = self.get_session(chat_id)
+        session.approval_message_id = message_id
+        self._save_session(session)
 
     def add_message(
         self,
@@ -561,7 +610,7 @@ class SessionManager:
             return None
         with open(message_file, encoding="utf-8") as f:
             data = json.load(f)
-        known = {f.name for f in Message.__dataclass_fields__.values()}
+        known = {f.name for f in dataclass_fields(Message)}
         return Message(**{k: v for k, v in data.items() if k in known})
 
     def append_ledger_event_ids(
@@ -657,8 +706,13 @@ class SessionManager:
         now: Optional[datetime] = None,
         window_days: int = 14,
         max_tokens: Optional[int] = None,
+        exclude_message_ids: Optional[Collection[str]] = None,
     ) -> List[Dict]:
         """The per-turn conversation context under Feature 070 (REQ-MEM-001).
+
+        `exclude_message_ids` (2026-09-30): messages left out of the window - the
+        current turn's own inbound message, which is stored the moment it arrives
+        and which the caller sends to the model explicitly as the turn's input.
 
         Every message for the chat whose Israel-local calendar date is within
         the last `window_days` calendar days, verbatim, oldest-first, with the
@@ -685,7 +739,10 @@ class SessionManager:
 
         # Collect in-window messages in stored (chronological) order.
         in_window: List[Dict] = []
+        excluded = set(exclude_message_ids or ())
         for _mid, mdata in self._iter_persisted_messages(session, live_only=True):
+            if _mid in excluded:
+                continue
             mdate = self._message_local_date(mdata)
             # A future-dated / undatable message is kept (never excludes
             # everything because of one bad timestamp).
@@ -712,6 +769,35 @@ class SessionManager:
             kept_reversed.append(item)
             running += cost
         return list(reversed(kept_reversed))
+
+    # Fields of an already-stored message that may be filled in after it was stored -
+    # facts learned later in the turn (2026-09-30: every message is stored the moment
+    # it's sent/received, so these can no longer wait for the end of the turn).
+    UPDATABLE_MESSAGE_FIELDS = frozenset({"image_path", "extracted_text", "ledger_event_ids", "mcp_calls"})
+
+    def update_message(self, whatsapp_chat: str, message_id: str, **fields: Any) -> bool:
+        """Sets `fields` (only UPDATABLE_MESSAGE_FIELDS) on an already-stored live message
+        of the chat. Returns False - never raises - when the message isn't found or the
+        write fails."""
+        unknown = set(fields) - self.UPDATABLE_MESSAGE_FIELDS
+        if unknown:
+            raise ValueError(f"update_message: fields not updatable: {sorted(unknown)}")
+        try:
+            session = self.get_session(whatsapp_chat)
+            message_file = (self.storage_dir / (session.storage_path or session.session_id)
+                            / "messages" / f"{message_id}.json")
+            if not message_file.exists():
+                logger.warning("update_message: message %s not found for %s", message_id, whatsapp_chat)
+                return False
+            with open(message_file, encoding="utf-8") as f:
+                data = json.load(f)
+            data.update(fields)
+            with open(message_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            return True
+        except Exception as e:  # pylint: disable=broad-except
+            logger.error("update_message failed for %s/%s: %s", whatsapp_chat, message_id, e)
+            return False
 
     def has_whatsapp_id_message(self, whatsapp_chat: str, whatsapp_id_message: str) -> bool:
         """Whether a live (non-archived) message of the chat already carries this real Green API
@@ -919,6 +1005,8 @@ class SessionManager:
         mcp_calls: Optional[List[Dict]] = None,
         timestamp: Optional[datetime] = None,
         whatsapp_id_message: Optional[str] = None,
+        image_path: Optional[str] = None,
+        extracted_text: Optional[str] = None,
     ) -> str:
         """
         Add message and update session token count.
@@ -956,6 +1044,7 @@ class SessionManager:
             ledger_event_ids=ledger_event_ids, message_id=message_id,
             mcp_calls=mcp_calls, timestamp=timestamp,
             whatsapp_id_message=whatsapp_id_message,
+            image_path=image_path, extracted_text=extracted_text,
         )
 
         # Count and add tokens
@@ -1002,4 +1091,3 @@ class SessionManager:
         """
         session = self.get_session(chat_id)
         return session.total_tokens
-

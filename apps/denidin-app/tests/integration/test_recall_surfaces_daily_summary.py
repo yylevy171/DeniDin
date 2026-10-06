@@ -17,6 +17,7 @@ from src.managers.memory_collections import collection_name_for_chat
 from src.models.message import WhatsAppMessage
 from src.utils.time_utils import local_calendar_date, now_local
 from tests.integration._rolling_helpers import fake_client, rolling_config
+from tests.ai_handler_test_support import make_ai_handler
 
 CHAT = "972501230000@c.us"
 
@@ -55,10 +56,10 @@ class TestRecallSurfacesDailySummary:
         capture = []
         cfg = rolling_config(tmp_path, CHAT)
         cfg.memory["longterm"]["min_similarity"] = 0.0  # fake embeddings — rank, don't threshold
-        handler = AIHandler(fake_client(capture), cfg)
+        handler = make_ai_handler(fake_client(capture), cfg)
         self._seed_summaries(handler)
 
-        handler.get_response(_msg(handler, "מתי הפגישה עם רואה חשבון?"),
+        handler.single_turn(_msg(handler, "מתי הפגישה עם רואה חשבון?"),
                              chat_id=CHAT, user_phone=CHAT, sender="Avi", recipient="DeniDin")
 
         assert capture, "the OpenAI boundary must have been called"
@@ -73,10 +74,10 @@ class TestRecallSurfacesDailySummary:
         capture = []
         cfg = rolling_config(tmp_path, CHAT)
         cfg.memory["longterm"]["min_similarity"] = 0.0
-        handler = AIHandler(fake_client(capture), cfg)
+        handler = make_ai_handler(fake_client(capture), cfg)
         self._seed_summaries(handler)  # includes 2 legacy session_summary records
         # a plain turn still succeeds and still recalls daily summaries
-        handler.get_response(_msg(handler, "עדכון כללי"),
+        handler.single_turn(_msg(handler, "עדכון כללי"),
                              chat_id=CHAT, user_phone=CHAT, sender="Avi", recipient="DeniDin")
         assert capture
         assert "RECALLED MEMORIES" in capture[-1]["instructions"]

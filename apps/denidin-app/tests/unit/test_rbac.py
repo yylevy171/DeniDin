@@ -25,6 +25,8 @@ from src.handlers.ai_handler import AIHandler
 from src.managers.user_manager import UserManager
 from src.managers.memory_manager import MemoryManager
 from src.managers.session_manager import SessionManager
+from tests.ai_handler_test_support import make_ai_handler
+from tests.denidin_test_support import make_memory_manager, make_session_manager, make_user_manager
 
 
 @pytest.fixture
@@ -80,7 +82,7 @@ class TestEndToEndRBACEnforcement:
     def test_client_user_flow(self, rbac_config, mock_ai_client):
         """CLIENT user: filtered memories, 4K token limit."""
         # Arrange
-        handler = AIHandler(mock_ai_client, rbac_config)
+        handler = make_ai_handler(mock_ai_client, rbac_config)
         client_phone = "+972501111111"
         
         # Act: Create request
@@ -97,7 +99,7 @@ class TestEndToEndRBACEnforcement:
         request = handler.create_request(message, user_phone=client_phone)
         
         # Act: Get response (stores in session with token limit)
-        response = handler.get_response(
+        response = handler.single_turn(
             request,
             user_phone=client_phone,
             sender=client_phone,
@@ -123,7 +125,7 @@ class TestEndToEndRBACEnforcement:
         while production silently resolved real godfather messages to CLIENT.
         """
         # Arrange
-        handler = AIHandler(mock_ai_client, rbac_config)
+        handler = make_ai_handler(mock_ai_client, rbac_config)
         godfather_phone = "+972501234567"
         godfather_whatsapp_id = f"{godfather_phone}@c.us"
 
@@ -141,7 +143,7 @@ class TestEndToEndRBACEnforcement:
         # No user_phone= override - matches denidin.py's real call shape exactly
         # (get_response(ai_request, sender=message.sender_id, recipient="AI")).
         request = handler.create_request(message)
-        response = handler.get_response(
+        response = handler.single_turn(
             request,
             sender=godfather_whatsapp_id,
             recipient="AI"
@@ -156,7 +158,7 @@ class TestEndToEndRBACEnforcement:
     def test_admin_user_flow(self, rbac_config, mock_ai_client):
         """ADMIN user: full access including SYSTEM scope."""
         # Arrange
-        handler = AIHandler(mock_ai_client, rbac_config)
+        handler = make_ai_handler(mock_ai_client, rbac_config)
         admin_phone = "+972509999999"
         
         # Act
@@ -171,7 +173,7 @@ class TestEndToEndRBACEnforcement:
     def test_blocked_user_rejected(self, rbac_config, mock_ai_client):
         """BLOCKED user: rejected at all entry points."""
         # Arrange
-        handler = AIHandler(mock_ai_client, rbac_config)
+        handler = make_ai_handler(mock_ai_client, rbac_config)
         blocked_phone = "+972505555555"
         
         message = WhatsAppMessage(
@@ -199,7 +201,7 @@ class TestEndToEndRBACEnforcement:
         )
         
         with pytest.raises(PermissionError, match="User is blocked"):
-            handler.get_response(request, user_phone=blocked_phone, sender=blocked_phone)
+            handler.single_turn(request, user_phone=blocked_phone, sender=blocked_phone)
 
 
 
@@ -209,7 +211,7 @@ class TestMemoryScopeFiltering:
     def test_client_sees_public_and_own_private(self, rbac_config, mock_ai_client, temp_data_dir):
         """CLIENT can recall PUBLIC memories and their own PRIVATE memories."""
         # Arrange
-        memory_manager = MemoryManager(
+        memory_manager = make_memory_manager(
             storage_dir=f'{temp_data_dir}/memory',
             embedding_model='text-embedding-3-small',
             ai_client=mock_ai_client
@@ -259,7 +261,7 @@ class TestMemoryScopeFiltering:
     def test_godfather_sees_all_private_memories(self, rbac_config, mock_ai_client, temp_data_dir):
         """GODFATHER sees PUBLIC + ALL PRIVATE memories (not SYSTEM)."""
         # Arrange
-        memory_manager = MemoryManager(
+        memory_manager = make_memory_manager(
             storage_dir=f'{temp_data_dir}/memory',
             embedding_model='text-embedding-3-small',
             ai_client=mock_ai_client
@@ -296,7 +298,7 @@ class TestMemoryScopeFiltering:
     def test_admin_sees_everything_including_system(self, rbac_config, mock_ai_client, temp_data_dir):
         """ADMIN sees all scopes including SYSTEM."""
         # Arrange
-        memory_manager = MemoryManager(
+        memory_manager = make_memory_manager(
             storage_dir=f'{temp_data_dir}/memory',
             embedding_model='text-embedding-3-small',
             ai_client=mock_ai_client
@@ -335,7 +337,7 @@ class TestMultiUserMemoryIsolation:
     def test_private_memories_isolated_between_clients(self, rbac_config, mock_ai_client, temp_data_dir):
         """User A's PRIVATE memories not visible to User B (both CLIENTs)."""
         # Arrange
-        memory_manager = MemoryManager(
+        memory_manager = make_memory_manager(
             storage_dir=f'{temp_data_dir}/memory',
             embedding_model='text-embedding-3-small',
             ai_client=mock_ai_client
@@ -391,7 +393,7 @@ class TestMultiUserMemoryIsolation:
     def test_public_memory_visible_to_all_users(self, rbac_config, mock_ai_client, temp_data_dir):
         """PUBLIC memories visible to all user roles."""
         # Arrange
-        memory_manager = MemoryManager(
+        memory_manager = make_memory_manager(
             storage_dir=f'{temp_data_dir}/memory',
             embedding_model='text-embedding-3-small',
             ai_client=mock_ai_client
@@ -442,7 +444,7 @@ class TestConfigLoadingAndRoleAssignment:
         """ADMIN role takes precedence over GODFATHER."""
         # Arrange: Phone number in both godfather AND admin list
         # Create custom config with same phone in both roles
-        user_manager = UserManager(
+        user_manager = make_user_manager(
             godfather_phone="+972501234567",
             admin_phones=["+972501234567"],  # Same number!
             blocked_phones=[]
@@ -457,7 +459,7 @@ class TestConfigLoadingAndRoleAssignment:
     def test_role_precedence_blocked_over_client(self):
         """BLOCKED role takes precedence over default CLIENT."""
         # Arrange
-        user_manager = UserManager(
+        user_manager = make_user_manager(
             godfather_phone="+972501234567",
             admin_phones=[],
             blocked_phones=["+972505555555"]
@@ -472,7 +474,7 @@ class TestConfigLoadingAndRoleAssignment:
     def test_unknown_phone_defaults_to_client(self):
         """Unknown phone number defaults to CLIENT role."""
         # Arrange
-        user_manager = UserManager(
+        user_manager = make_user_manager(
             godfather_phone="+972501234567",
             admin_phones=["+972509999999"],
             blocked_phones=["+972505555555"]
@@ -491,7 +493,7 @@ class TestErrorHandling:
     def test_blocked_user_create_request_raises_permission_error(self, rbac_config, mock_ai_client):
         """create_request() raises PermissionError for blocked users."""
         # Arrange
-        handler = AIHandler(mock_ai_client, rbac_config)
+        handler = make_ai_handler(mock_ai_client, rbac_config)
         blocked_phone = "+972505555555"
         
         message = WhatsAppMessage(
@@ -513,7 +515,7 @@ class TestErrorHandling:
     def test_blocked_user_get_response_raises_permission_error(self, rbac_config, mock_ai_client):
         """get_response() raises PermissionError for blocked users."""
         # Arrange
-        handler = AIHandler(mock_ai_client, rbac_config)
+        handler = make_ai_handler(mock_ai_client, rbac_config)
         blocked_phone = "+972505555555"
         
         request = AIRequest(
@@ -527,14 +529,14 @@ class TestErrorHandling:
         
         # Act & Assert
         with pytest.raises(PermissionError) as exc_info:
-            handler.get_response(request, user_phone=blocked_phone, sender=blocked_phone)
+            handler.single_turn(request, user_phone=blocked_phone, sender=blocked_phone)
         
         assert "User is blocked" in str(exc_info.value)
     
     def test_recall_with_empty_allowed_scopes(self, rbac_config, mock_ai_client, temp_data_dir):
         """Recall with empty allowed_scopes returns nothing."""
         # Arrange
-        memory_manager = MemoryManager(
+        memory_manager = make_memory_manager(
             storage_dir=f'{temp_data_dir}/memory',
             embedding_model='text-embedding-3-small',
             ai_client=mock_ai_client
@@ -565,7 +567,7 @@ class TestConcurrentUserScenarios:
     def test_multiple_users_same_collection_isolated(self, rbac_config, mock_ai_client, temp_data_dir):
         """Multiple users storing memories in same collection remain isolated."""
         # Arrange
-        memory_manager = MemoryManager(
+        memory_manager = make_memory_manager(
             storage_dir=f'{temp_data_dir}/memory',
             embedding_model='text-embedding-3-small',
             ai_client=mock_ai_client
@@ -601,7 +603,7 @@ class TestConcurrentUserScenarios:
     def test_godfather_sees_all_concurrent_users_memories(self, rbac_config, mock_ai_client, temp_data_dir):
         """GODFATHER can see memories from all concurrent users."""
         # Arrange
-        memory_manager = MemoryManager(
+        memory_manager = make_memory_manager(
             storage_dir=f'{temp_data_dir}/memory',
             embedding_model='text-embedding-3-small',
             ai_client=mock_ai_client
@@ -639,7 +641,7 @@ class TestConcurrentUserScenarios:
     def test_session_isolation_between_concurrent_users(self, rbac_config, temp_data_dir):
         """Multiple users' sessions remain isolated."""
         # Arrange
-        session_manager = SessionManager(
+        session_manager = make_session_manager(
             storage_dir=f'{temp_data_dir}/sessions',
         )
         

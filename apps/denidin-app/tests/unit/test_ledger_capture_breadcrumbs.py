@@ -23,6 +23,7 @@ import pytest
 
 from src.managers.ledger_event_manager import LedgerEventManager
 from src.managers.session_manager import SessionManager
+from tests.denidin_test_support import make_ledger_event_manager, make_session_manager
 
 CHAT_ID = "group-crumbs@g.us"
 TRIGGER_TS = "2026-07-15T09:30:00+03:00"
@@ -32,13 +33,12 @@ _TIME_OFFSET = re.compile(r"time=\S*[+-]\d{2}:\d{2}")
 
 @pytest.fixture
 def sm(tmp_path):
-    return SessionManager(storage_dir=str(tmp_path / "sessions"))
+    return make_session_manager(storage_dir=str(tmp_path / "sessions"))
 
 
 @pytest.fixture
 def lem(tmp_path, sm):
-    manager = LedgerEventManager(storage_dir=str(tmp_path / "events"))
-    manager.session_manager = sm
+    manager = make_ledger_event_manager(storage_dir=str(tmp_path / "events"), session_manager=sm)
     return manager
 
 

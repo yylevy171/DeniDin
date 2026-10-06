@@ -83,20 +83,20 @@ class TestReactionCaptureStub:
         assert stub.calls == []
 
     def test_records_a_react_to_message_tool_call(self):
-        from src.handlers import ai_handler
+        from src.handlers import whatsapp_handler
 
         stub = ReactionCaptureStub()
         with stub.installed():
-            ai_handler.send_reaction(None, "972500000000@c.us", "wamid.2", "✅")
+            whatsapp_handler.send_reaction(None, "972500000000@c.us", "wamid.2", "✅")
         assert len(stub.calls) == 1
         assert stub.calls[0].source == "react_to_message"
 
     def test_fresh_stub_per_scenario_does_not_leak_calls(self):
-        from src.handlers import ai_handler
+        from src.handlers import whatsapp_handler
 
         first = ReactionCaptureStub()
         with first.installed():
-            ai_handler.send_reaction(None, "chat@c.us", "wamid.1", "👀")
+            whatsapp_handler.send_reaction(None, "chat@c.us", "wamid.1", "👀")
 
         second = ReactionCaptureStub()
         with second.installed():
@@ -138,11 +138,11 @@ class TestReactionTuningJudgmentLog:
         assert len(second.entries) == 2
 
     def test_captured_reaction_calls_are_serialized_as_dicts(self, tmp_path):
-        from src.handlers import ai_handler
+        from src.handlers import whatsapp_handler
 
         stub = ReactionCaptureStub()
         with stub.installed():
-            ai_handler.send_reaction(None, "chat@c.us", "wamid.1", "👀")
+            whatsapp_handler.send_reaction(None, "chat@c.us", "wamid.1", "👀")
 
         log = ReactionTuningJudgmentLog(tmp_path, "round1")
         log.append("scenario_a", stub.calls)

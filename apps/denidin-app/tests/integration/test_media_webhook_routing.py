@@ -76,7 +76,8 @@ class TestMediaWebhookRoutingUserPerspective:
                 'ai_reply_max_tokens': config.ai_reply_max_tokens,
                 'log_level': config.log_level,
                 'data_root': config.data_root,
-                'feature_flags': config.feature_flags,
+                # Legacy AIHandler routing tests: pin the backbone flag off (config.test.json keeps it ON).
+                'feature_flags': {**(config.feature_flags or {}), 'enable_capability_backbone': False},
                 'godfather_phone': config.godfather_phone,
                 'memory': config.memory,
                 'constitution_config': config.constitution_config,

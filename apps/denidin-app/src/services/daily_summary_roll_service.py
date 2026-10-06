@@ -60,8 +60,7 @@ def _roll_one_chat_day(global_context: Any, chat: str, date, *, source: str, log
     Raises on an unrecoverable failure (summary/remember) - the caller's
     per-(chat, date) try/except logs it and leaves the marker un-committed for
     the next sweep to retry."""
-    ai_handler = global_context.ai_handler
-    store = ai_handler.roll_marker_store
+    store = global_context.roll_marker_store
     date_str = date.isoformat()
 
     if store.is_rolled(chat, date_str):
@@ -77,9 +76,9 @@ def _roll_one_chat_day(global_context: Any, chat: str, date, *, source: str, log
         logger.info("%sdaily-roll: %s %s empty - marker only, no summary", log_prefix, chat, date_str)
         return
 
-    summary = summarize_conversation(ai_handler.client, ai_handler.config.ai_model, messages)
+    summary = summarize_conversation(global_context.ai_client, global_context.config.ai_model, messages)
     collection_name = collection_name_for_chat(chat)
-    collection = ai_handler.memory_manager.get_or_create_collection(collection_name)
+    collection = global_context.memory_manager.get_or_create_collection(collection_name)
     try:
         collection.delete(where={"$and": [
             {"type": {"$eq": "daily_summary"}},
@@ -89,7 +88,7 @@ def _roll_one_chat_day(global_context: Any, chat: str, date, *, source: str, log
     except Exception as e:  # pylint: disable=broad-except
         logger.warning("%sdaily-roll: pre-delete of an existing summary failed (%s) - continuing", log_prefix, e)
 
-    memory_id = ai_handler.memory_manager.remember(
+    memory_id = global_context.memory_manager.remember(
         summary,
         collection_name,
         metadata={

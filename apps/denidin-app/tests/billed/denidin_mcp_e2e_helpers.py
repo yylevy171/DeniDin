@@ -42,11 +42,12 @@ import logging
 import random
 import time
 import unicodedata
+import weakref
 from datetime import datetime, timezone
 from pathlib import Path
 from dataclasses import dataclass
 from enum import Enum
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 from whatsapp_chatbot_python import Notification
 
@@ -222,6 +223,40 @@ def get_button_send(notification: Notification) -> Optional[dict]:
     approval was created) or sent nothing at all."""
     sends = notification._test_button_sends
     return sends[0] if sends else None
+
+
+# REQ-063-08 (2026-10-02): the approval-buttons message currently on each chat's screen
+# (its idMessage) - what a real user would see and tap. Tracked from what was actually
+# sent over the WhatsApp boundary, never read from either AI implementation's internal
+# state (the legacy pending-approval managers don't exist with the backbone flag on).
+# Keyed by the live DeniDin app first, so every test's freshly initialized app starts
+# with nothing on screen - a prior test's buttons on the same chat id never leak in.
+_APPROVAL_BUTTONS_ON_SCREEN: "weakref.WeakKeyDictionary[object, Dict[str, str]]" = (
+    weakref.WeakKeyDictionary()
+)
+
+
+def _screens_of_current_app() -> Dict[str, str]:
+    import denidin
+    return _APPROVAL_BUTTONS_ON_SCREEN.setdefault(denidin.denidin_app, {})
+
+
+def _track_approval_buttons(chat_id: str, notification: Notification) -> None:
+    """After a turn: a reply sent as approval buttons puts them on screen; any other
+    reply supersedes them; a turn that sent nothing leaves the screen as it was."""
+    if not notification._test_sent_messages:
+        return
+    send = get_button_send(notification)
+    if send is not None:
+        _screens_of_current_app()[chat_id] = send["idMessage"]
+    else:
+        _screens_of_current_app().pop(chat_id, None)
+
+
+def approval_buttons_on_screen(chat_id: str) -> Optional[str]:
+    """The idMessage of the approval-buttons message the user is looking at in this
+    chat, or None when no approval prompt with buttons is outstanding."""
+    return _screens_of_current_app().get(chat_id)
 
 
 # ============================================================================
@@ -434,6 +469,20 @@ def _send_turn(chat_id: str, text: str, id_prefix: str,
     `timestamp` (unix epoch seconds) pins the Green API notification time — pass
     it when the test needs a known `event_datetime`; defaults to now.
     """
+    response, ai_response, _notification = _send_turn_with_notification(
+        chat_id, text, id_prefix, timestamp=timestamp
+    )
+    return response, ai_response
+
+
+def _send_turn_with_notification(
+    chat_id: str, text: str, id_prefix: str, timestamp: Optional[int] = None
+) -> Tuple[Optional[str], Optional[AIResponse], Notification]:
+    """Same as `_send_turn`, but also returns the `Notification` object this
+    turn used - the test harness's own simulated-webhook-plus-outbound-send-spy
+    object (not app business state), needed whenever a test must read what was
+    actually sent over the WhatsApp boundary (e.g. `get_button_send()`, for the
+    real message id a button tap needs) rather than inferring it from app state."""
     from denidin import handle_text_message
 
     notification = create_real_notification(build_text_webhook(
@@ -445,9 +494,10 @@ def _send_turn(chat_id: str, text: str, id_prefix: str,
     ))
     handle_text_message(notification)
     response = get_response(notification)
+    _track_approval_buttons(chat_id, notification)
 
     import denidin
-    ai_response = denidin.denidin_app.ai_handler.last_response
+    ai_response = denidin.denidin_app.last_response
 
     if ai_response is not None:
         for call in ai_response.mcp_calls:
@@ -457,7 +507,7 @@ def _send_turn(chat_id: str, text: str, id_prefix: str,
             )
     logger.info(f"Bot response: {response}")
 
-    return response, ai_response
+    return response, ai_response, notification
 
 
 def _calls_for(ai_response: Optional[AIResponse], tool_name: str) -> List[dict]:
@@ -767,6 +817,45 @@ def _strip_invisible_marks(name):
     return unicodedata.normalize("NFC", str(name)).translate(_BIDI_CONTROLS)
 
 
+_APPROVAL_WORD_VARIANTS = (
+    # noun forms ("approval")
+    "לאישור",
+    "אישור",
+    "האישור",
+    "אישורך",
+    "אישורו",
+    # infinitive/imperative ("to approve"/"approve!")
+    "לאשר",
+    "אשר",
+    "אשרי",
+    "אשרו",
+    # present-tense verb, all genders/numbers ("I/you/it approve(s)")
+    "מאשר",
+    "מאשרת",
+    "מאשרים",
+    "מאשרות",
+    # future-tense verb ("will approve")
+    "תאשר",
+    "תאשרי",
+    "תאשרו",
+    "יאשר",
+    "יאשרו",
+    "נאשר",
+    # past-tense/passive verb ("approved")
+    "אישרתי",
+    "אישרת",
+    "אישר",
+    "אישרה",
+    "אישרנו",
+    "אישרתם",
+    "אישרו",
+    "אושר",
+    "אושרה",
+)
+_YES_WORD_VARIANTS = ("כן",)
+_NO_WORD_VARIANTS = ("לא",)
+
+
 def _is_real_approval_prompt(text: Optional[str]) -> bool:
     """Whether `text` is the REAL mutation-approval gate ("...לאישור...
     אישור — כן/לא?"), as opposed to an identity-resolution question
@@ -774,9 +863,22 @@ def _is_real_approval_prompt(text: Optional[str]) -> bool:
     found live 2026-08-13: a bare "כן" only correctly answers the former: it
     isn't a valid answer to either shape of the latter, and a test blindly
     sending "כן" every round can stall forever against one. The real
-    approval gate is reliably identifiable by its own fixed shape - it
-    always contains all three of "לאישור", "כן", and "לא" together."""
-    return bool(text and "לאישור" in text and "כן" in text and "לא" in text)
+    approval gate's fixed contract (`cap_approval_with_buttons.md`) is to end
+    the text with the exact literal `לאישור — כן/לא?`. Match on that anchor
+    string first; fall back to a broad, deliberately over-inclusive check
+    against every Hebrew conjugation/form of "approve"/"approval" (noun,
+    infinitive, present/future/past-tense verb, any gender/number) alongside
+    "כן"/"לא", so a future wording drift in the prompt NEVER silently breaks
+    this detector again the way the single-noun-only version did on
+    2026-09-27."""
+    if not text:
+        return False
+    if "לאישור — כן/לא?" in text:
+        return True
+    has_approval_word = any(variant in text for variant in _APPROVAL_WORD_VARIANTS)
+    has_yes = any(variant in text for variant in _YES_WORD_VARIANTS)
+    has_no = any(variant in text for variant in _NO_WORD_VARIANTS)
+    return has_approval_word and has_yes and has_no
 
 
 def _is_genuine_document_creation(call: dict) -> bool:
@@ -827,25 +929,19 @@ def _send_button_tap(
     (resolve_button_tap returned None) means both are None, since nothing at
     all gets sent in that case (spec.md Clarifications: silent).
 
-    `stanza_id` defaults to chat_id's CURRENT pending approval's
-    `sent_message_id` - the same thing a real device would be tapping (the
-    button actually rendered on screen), read via the same
-    PendingApprovalManager.attach_sent_message_id wiring denidin.py's real
-    turn-processing path uses (see create_real_notification's
-    answer_with_interactive_buttons stub - it returns a real idMessage-shaped
-    Response, so this wiring fires exactly as it does in production). Pass an
-    explicit stanza_id to deliberately simulate a stale tap (e.g. a
-    previous turn's idMessage, after a newer pending approval has replaced
-    it)."""
+    `stanza_id` defaults to the idMessage of the approval-buttons message
+    currently on chat_id's screen - the same thing a real device would be tapping
+    (the button actually rendered), as captured at the WhatsApp boundary (see
+    approval_buttons_on_screen). Pass an explicit stanza_id to deliberately
+    simulate a stale tap (e.g. a previous turn's idMessage, after a newer
+    approval prompt has replaced it)."""
     import denidin
 
     if stanza_id is None:
-        pending = denidin.denidin_app.ai_handler.pending_approval_manager.get(chat_id)
-        assert pending is not None and pending.sent_message_id, (
-            f"No pending approval with a sent_message_id for chat={chat_id!r} - "
-            f"nothing to tap. pending={pending!r}"
+        stanza_id = approval_buttons_on_screen(chat_id)
+        assert stanza_id, (
+            f"No approval prompt with buttons on screen for chat={chat_id!r} - nothing to tap."
         )
-        stanza_id = pending.sent_message_id
 
     notification = create_real_notification(build_button_tap_webhook(
         chat_id=chat_id,
@@ -856,8 +952,9 @@ def _send_button_tap(
     ))
     denidin.handle_button_tap(notification)
     response = get_response(notification)
+    _track_approval_buttons(chat_id, notification)
 
-    ai_response = denidin.denidin_app.ai_handler.last_response
+    ai_response = denidin.denidin_app.last_response
 
     if ai_response is not None:
         for call in ai_response.mcp_calls:
@@ -1039,8 +1136,6 @@ def _seed_client(
     regression for weeks. `time.sleep(3)` after a successful create covers
     Morning's search-index lag so the client resolves on the very next turn.
     """
-    import denidin
-
     drawn = name is None
     attempts = max_attempts if drawn else 1
 
@@ -1113,7 +1208,7 @@ def _seed_client(
         # 2026-09-02).
         add_calls = _calls_for(ai_response, "add_client")
         already_succeeded = bool(add_calls and add_calls[0]["error"] is None)
-        pending = denidin.denidin_app.ai_handler.pending_approval_manager.get(chat_id)
+        pending = approval_buttons_on_screen(chat_id)
         if not already_succeeded and pending is None:
             force_new_text = (
                 f"לא, תוסיף לקוח חדש בשם {candidate}, מייל {seed_email}, טלפון {phone}"

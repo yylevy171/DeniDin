@@ -10,13 +10,14 @@ import pytest
 
 from src.managers.session_manager import SessionManager
 from src.models.config import AppConfiguration
+from tests.denidin_test_support import make_session_manager
 
 CHAT = "972500000001@c.us"
 
 
 class TestNoWriteTimePrune:
     def test_appending_far_over_the_role_token_limit_persists_every_message(self, tmp_path):
-        sm = SessionManager(storage_dir=str(tmp_path / "sessions"))
+        sm = make_session_manager(storage_dir=str(tmp_path / "sessions"))
         for i in range(200):
             sm.add_message_with_tokens(
                 chat_id=CHAT,
@@ -34,17 +35,17 @@ class TestNoWriteTimePrune:
         assert len(list(msg_dir.glob("*.json"))) == 200, "every message must be on disk — no prune"
 
     def test_a_restart_still_sees_every_message(self, tmp_path):
-        sm = SessionManager(storage_dir=str(tmp_path / "sessions"))
+        sm = make_session_manager(storage_dir=str(tmp_path / "sessions"))
         for i in range(120):
             sm.add_message_with_tokens(chat_id=CHAT, role="user", content=f"m{i} " + "x " * 30,
                                        user_role="client")
-        sm2 = SessionManager(storage_dir=str(tmp_path / "sessions"))
+        sm2 = make_session_manager(storage_dir=str(tmp_path / "sessions"))
         reloaded = sm2.get_session(CHAT)
         assert reloaded.message_counter == 120
         assert len(reloaded.message_ids) == 120
 
     def test_total_tokens_still_tracked_but_never_triggers_a_drop(self, tmp_path):
-        sm = SessionManager(storage_dir=str(tmp_path / "sessions"))
+        sm = make_session_manager(storage_dir=str(tmp_path / "sessions"))
         for i in range(50):
             sm.add_message_with_tokens(chat_id=CHAT, role="user", content="word " * 100,
                                        user_role="client")

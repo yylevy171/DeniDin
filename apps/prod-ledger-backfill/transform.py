@@ -3,7 +3,7 @@
 Phase 3 (Transform) — Feature 061, prod-morning-ledger-backfill.
 
 Reads raw document files from --input-dir (Phase 1's own output — never a live Morning API call,
-REQ-BACKFILL-003) and persists correctly-shaped LedgerEvent files to --output-dir via the real
+REQ-BACKFILL-003) and persists correctly-shaped LedgerEvent files to --output-dir/events/ via the real
 LedgerEventManager.add_ledger_event, so dedup and the tri-state new/duplicate/anomaly guard come
 for real, unmodified, from that existing mechanism (research.md R7/R8) — every anomaly outcome is
 retained on disk (LedgerEventManager's own pending_review.json) for Phase 3.5 (validate.py) to
@@ -40,6 +40,7 @@ for _extra_path in (
 import method_a
 
 from _ledger_event_manager_loader import get_ledger_event_manager_class
+from ledger_denidin import LedgerDeniDin
 
 _DEFAULT_BUILD_ENVELOPE_FN = method_a.build_capture_envelope
 
@@ -56,7 +57,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output-dir",
         required=True,
-        help="Local directory for output LedgerEvent files (LedgerEventManager storage_dir).",
+        help="Local data root for the output: LedgerEvent files are written to "
+             "<output-dir>/events/ (LedgerEventManager's {data_root}/events/).",
     )
     return parser
 
@@ -151,7 +153,7 @@ def main(argv=None) -> int:
         return 1
 
     ledger_event_manager_cls = get_ledger_event_manager_class()
-    ledger_event_manager = ledger_event_manager_cls(storage_dir=args.output_dir)
+    ledger_event_manager = ledger_event_manager_cls(LedgerDeniDin(args.output_dir))
 
     summary = run_transform(iter(raw_documents), ledger_event_manager)
 

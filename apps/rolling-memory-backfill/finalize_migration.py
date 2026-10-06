@@ -18,6 +18,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import List, Optional
 
+from backfill_denidin import BackfillDeniDin, backfill_config
 from _denidin_loader import SessionManager, assert_message_integrity, local_calendar_date, now_local
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s", force=True)
@@ -90,7 +91,7 @@ def main(argv: Optional[List[str]] = None) -> int:  # pylint: disable=too-many-r
     if now is None:
         return _fail(f"--now is not a valid ISO datetime: {args.now!r}")
 
-    sm = SessionManager(storage_dir=str(sessions_dir))
+    sm = SessionManager(BackfillDeniDin(backfill_config(data_root)))
     all_chats = sorted(sm.known_chats())
     targets = args.chat or all_chats
     missing = [c for c in targets if c not in all_chats]

@@ -20,7 +20,7 @@ from typing import Any, Callable, Optional
 from whatsapp_chatbot_python import GreenAPIBot, GreenAPIBotError
 
 from src.utils.logger import get_logger
-from src.utils.whatsapp_audit_log import log_outbound
+from src.utils.wire_log import audit_wire, debug_wire
 
 logger = get_logger(__name__)
 
@@ -111,7 +111,9 @@ def send_proactive_message(bot: Any, chat_id: str, message: str) -> Optional[str
 
     id_message = response.data.get("idMessage")
     logger.info(f"Sent proactive message (chatId={chat_id}, idMessage={id_message})")
-    log_outbound(chat_id, message, kind="proactive")
+    _wire_payload = {"chat_id": chat_id, "message": message}
+    audit_wire("whatsapp", "out", "proactive", _wire_payload)
+    debug_wire("whatsapp", "out", "proactive", _wire_payload)
     return id_message
 
 
@@ -136,11 +138,25 @@ def send_reaction(bot: Any, chat_id: str, id_message: str, reaction: str) -> boo
     for attempt in range(2):
         transport_error: Optional[Exception] = None
         code: Optional[int] = None
+        response_data: Any = None
+        # Two-log pattern (2026-09-24, debug_exact_calls skill investigation -
+        # this call previously logged NOTHING on success, and only a bare
+        # WARNING on failure - a real gap, not a script limitation, found
+        # trying to trace a reaction through a turn): audit_wire/debug_wire
+        # are the ONLY two wire-logging functions in this codebase (see
+        # src/utils/wire_log.py) - every call site, this one included, calls
+        # both directly.
+        audit_wire("whatsapp", "out", "reaction", {"chat_id": chat_id, "message": payload})
+        debug_wire("whatsapp", "out", "reaction", payload)
         try:
             response = bot.api.request("POST", url, payload)
             code = getattr(response, "code", None)
+            response_data = getattr(response, "data", None)
         except Exception as error:  # pylint: disable=broad-except
             transport_error = error
+        _received = {"code": code, "data": response_data, "error": str(transport_error) if transport_error else None}
+        audit_wire("whatsapp", "in", "reaction", {"chat_id": chat_id, "message": _received})
+        debug_wire("whatsapp", "in", "reaction", _received)
 
         if code == 200:
             return True
@@ -150,10 +166,10 @@ def send_reaction(bot: Any, chat_id: str, id_message: str, reaction: str) -> boo
             time.sleep(1.0)
             continue
 
+        error_text = f", error={transport_error}" if transport_error is not None else ""
         logger.warning(
             f"Failed to send reaction (chatId={chat_id}, idMessage={id_message}, "
-            f"reaction={reaction!r}): code={code!r}"
-            + (f", error={transport_error}" if transport_error is not None else "")
+            f"reaction={reaction!r}): code={code!r}{error_text}"
         )
         return False
 

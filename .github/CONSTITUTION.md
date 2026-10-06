@@ -507,14 +507,23 @@ def test_something():
 
 ## VI. Feature Flags for Safe Deployment
 
-**Principle**: New features deployed behind feature flags to enable safe rollouts.
+**Principle**: A feature flag is a tool for a specific risk (a risky rollout, a needed rollback
+path, incremental delivery of a large refactor) — not a default every new feature must carry.
 
-**Requirements**:
-- New features MUST be configurable via feature flags (default: disabled)
-- Feature flags in `config.json` under `feature_flags` dictionary
-- Code MUST check feature flag state before executing new functionality
-- Document feature flags and their purpose
-- Remove feature flags after feature is stable
+**Requirements (revised 2026-09-14, explicit human decision — flags are opt-in per feature, not
+mandatory)**:
+- An AI agent MUST NOT unilaterally decide a new feature needs a feature flag. **Ask the human
+  whether this specific piece of work should be flag-gated** — same "ask, don't default" posture
+  as every other judgment call this document and CLAUDE.md require explicit human sign-off on.
+  Reasonable prompts to raise it: a large structural refactor with real regression risk, a change
+  to `prod`-facing behavior with no other rollback path, or the human simply asking for one.
+- If the human says yes: feature flags live in `config.json` under `feature_flags` (default:
+  disabled), code MUST check flag state before executing the new path, the flag and its purpose
+  MUST be documented, and it MUST be removed once the feature is stable (an old flag left forever
+  is technical debt, not safety).
+- If the human says no (or doesn't ask for one): ship the change directly, with the
+  zero-regression bar (existing tests, spec's own acceptance criteria) as the actual safety net —
+  do not add a flag "just in case" as an unrequested extra layer.
 
 **Example**:
 ```python
@@ -587,9 +596,9 @@ if config.feature_flags.get("enable_memory_system", False):
 
 ## VIII. Test Immutability
 
-**Principle**: Once tests are approved, they are immutable without explicit human approval.
+**Principle**: Once tests are approved, they are immutable without explicit human approval — but this only applies to the tier the human actually reviews and approves as user experience: `billed`/`expensive` acceptance tests (per §VI's TDD redefinition — the plain-language scenarios drafted and approved with the human before `speckit.plan`, then coded once as the final acceptance pass). **This is a 2026-09-24 clarification, not a new rule** — the original wording below read as blanket-covering every test tier, which was never the actual intent and caused confusion about what an AI agent may freely change.
 
-**Requirements**:
+**Requirements (billed/expensive acceptance tests — human-approved, genuinely immutable)**:
 - Tests reviewed and approved by human are IMMUTABLE
 - New phases ADD new tests, never modify existing ones
 - If test change is necessary:
@@ -597,7 +606,9 @@ if config.feature_flags.get("enable_memory_system", False):
   2. Explicit human approval before changes
   3. Documentation in commit message with "HUMAN APPROVED:" tag
 
-**Rationale**: Ensures regression protection and maintains confidence in previously validated functionality.
+**Unit and integration tests are NOT covered by this section.** They are the agent's own tooling for verifying an implementation, not a human-reviewed acceptance artifact — an agent may add, rewrite, restructure, or delete them freely to keep pace with a design change (e.g. a refactor that changes an internal contract), with no separate human sign-off required for the test-file edit itself, **as long as the rewritten test still faithfully exercises the real functionality it's meant to cover** — never weakened, narrowed, or deleted just to make a failing test pass without the underlying behavior actually being fixed. The RED→GREEN/human-approval-on-the-underlying-code discipline (§VI.b) is unchanged — this only removes a separate approval gate on the *test file* itself for these two tiers.
+
+**Rationale**: Ensures regression protection and maintains confidence in previously validated *user-facing* functionality, without blocking normal agent-driven maintenance of the tests that only verify internal implementation.
 
 ---
 

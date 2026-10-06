@@ -10,6 +10,7 @@ import pytest
 
 from src.managers.session_manager import SessionManager
 from tests.helpers.seed import seed_message
+from tests.denidin_test_support import make_session_manager
 
 ONE_ON_ONE = "972522968679@c.us"
 GROUP = "120363210094632983@g.us"
@@ -17,7 +18,7 @@ GROUP = "120363210094632983@g.us"
 
 @pytest.fixture
 def sm(tmp_path):
-    return SessionManager(storage_dir=str(tmp_path / "sessions"))
+    return make_session_manager(storage_dir=str(tmp_path / "sessions"))
 
 
 class TestWindowMembership:

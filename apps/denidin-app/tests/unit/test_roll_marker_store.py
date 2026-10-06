@@ -10,11 +10,12 @@ import pytest
 from src.managers.roll_marker_store import RollMarkerStore
 from src.models.config import AppConfiguration
 from src.utils.time_utils import now_local
+from tests.denidin_test_support import make_roll_marker_store
 
 
 @pytest.fixture
 def store(tmp_path):
-    return RollMarkerStore(str(tmp_path / "memory_rolls"))
+    return make_roll_marker_store(str(tmp_path / "memory_rolls"))
 
 
 CHAT = "120363210094632983@g.us"
@@ -54,12 +55,12 @@ class TestClaimCommitCycle:
 
 class TestStaleClaimRetake:
     def test_young_claim_not_retakeable(self, tmp_path):
-        s = RollMarkerStore(str(tmp_path / "mr"), stale_claim_minutes=120)
+        s = make_roll_marker_store(str(tmp_path / "memory_rolls"), stale_claim_minutes=120)
         s.try_claim(CHAT, DATE, "daily-roll")
         assert s.try_claim(CHAT, DATE, "catch-up") is False
 
     def test_old_claim_is_retakeable(self, tmp_path):
-        s = RollMarkerStore(str(tmp_path / "mr"), stale_claim_minutes=120)
+        s = make_roll_marker_store(str(tmp_path / "memory_rolls"), stale_claim_minutes=120)
         s.try_claim(CHAT, DATE, "daily-roll")
         # Backdate the claim well past the stale threshold.
         past = (now_local() - timedelta(minutes=200)).isoformat()
@@ -78,9 +79,9 @@ class TestConstruction:
             green_api_instance_id="x", green_api_token="y", ai_api_key="z",
         )
         with pytest.raises(TypeError):
-            RollMarkerStore(cfg)  # type: ignore[arg-type]
+            make_roll_marker_store(cfg)  # type: ignore[arg-type]
 
     def test_db_file_created_under_storage_dir(self, tmp_path):
         d = tmp_path / "nested" / "memory_rolls"
-        RollMarkerStore(str(d))
+        make_roll_marker_store(str(d))
         assert (d / "roll_markers.db").exists()

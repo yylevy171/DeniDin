@@ -114,7 +114,7 @@ class TestGroupBReferenceApprovalE2E:
             }
             denidin.denidin_app = denidin.initialize_app(config_dict)
 
-        actual_events_dir = Path(denidin.denidin_app.ai_handler.ledger_event_manager.storage_dir).resolve()
+        actual_events_dir = Path(denidin.denidin_app.ledger_event_manager.storage_dir).resolve()
         expected_root = Path(config.data_root).resolve()
         assert actual_events_dir.is_relative_to(expected_root), (
             f"LedgerEventManager.storage_dir={actual_events_dir} is NOT under this "
@@ -155,8 +155,8 @@ class TestGroupBReferenceApprovalE2E:
         applied in test_ledger_event_capture_e2e.py's identical helper."""
         import json as _json
 
-        session_id = denidin_app.ai_handler.session_manager.get_session(chat_id).session_id
-        events_dir = denidin_app.ai_handler.ledger_event_manager.storage_dir
+        session_id = denidin_app.session_manager.get_session(chat_id).session_id
+        events_dir = denidin_app.ledger_event_manager.storage_dir
         for f in list(events_dir.glob("*.json")):
             try:
                 with open(f, encoding='utf-8') as fh:
@@ -166,7 +166,7 @@ class TestGroupBReferenceApprovalE2E:
             if data.get("session_id") == session_id:
                 f.unlink()
 
-        session_manager = denidin_app.ai_handler.session_manager
+        session_manager = denidin_app.session_manager
         if session_manager is not None:
             from tests.e2e_helpers import wipe_chat_messages_on_disk
             wipe_chat_messages_on_disk(session_manager.storage_dir, chat_id)

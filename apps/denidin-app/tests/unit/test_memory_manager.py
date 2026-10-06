@@ -23,6 +23,7 @@ from openai import OpenAI
 
 from src.managers.memory_manager import MemoryManager
 from src.models.config import AppConfiguration
+from tests.denidin_test_support import make_memory_manager
 
 
 # Load test configuration once for all tests (CONSTITUTION I)
@@ -54,7 +55,7 @@ class TestMemoryManagerInitialization(unittest.TestCase):
     
     def test_initialize_chromadb_client(self):
         """Test ChromaDB client initialization with persistent storage."""
-        memory_manager = MemoryManager(storage_dir=self.temp_dir, ai_client=self.ai_client)
+        memory_manager = make_memory_manager(storage_dir=self.temp_dir, ai_client=self.ai_client)
         
         # Verify client initialized
         self.assertIsNotNone(memory_manager.client)
@@ -67,14 +68,14 @@ class TestMemoryManagerInitialization(unittest.TestCase):
         new_dir = Path(self.temp_dir) / "new_memory_dir"
         self.assertFalse(new_dir.exists())
         
-        memory_manager = MemoryManager(storage_dir=str(new_dir), ai_client=self.ai_client)
+        memory_manager = make_memory_manager(storage_dir=str(new_dir), ai_client=self.ai_client)
         
         # ChromaDB should create the directory
         self.assertIsNotNone(memory_manager.client)
     
     def test_custom_embedding_model(self):
         """Test initialization with custom embedding model."""
-        memory_manager = MemoryManager(
+        memory_manager = make_memory_manager(
             storage_dir=self.temp_dir,
             embedding_model="text-embedding-3-large",
             ai_client=self.ai_client
@@ -90,7 +91,7 @@ class TestMemoryManagerInitialization(unittest.TestCase):
         
         # Should raise exception (caller sets memory_enabled=False)
         with self.assertRaises(Exception) as context:
-            MemoryManager(storage_dir=self.temp_dir, ai_client=self.ai_client)
+            make_memory_manager(storage_dir=self.temp_dir, ai_client=self.ai_client)
         
         self.assertIn("ChromaDB init failed", str(context.exception))
     
@@ -98,7 +99,7 @@ class TestMemoryManagerInitialization(unittest.TestCase):
         """Test that ai_client parameter is required (CONSTITUTION I: NO ENV VARS)."""
         # Should raise ValueError if ai_client not provided
         with self.assertRaises(ValueError) as context:
-            MemoryManager(storage_dir=self.temp_dir, ai_client=None)
+            make_memory_manager(storage_dir=self.temp_dir, ai_client=None)
         
         self.assertIn("ai_client is required", str(context.exception))
         self.assertIn("config.json", str(context.exception).lower())
@@ -110,7 +111,7 @@ class TestCollectionManagement(unittest.TestCase):
     def setUp(self):
         """Create temporary directory and memory manager."""
         self.temp_dir = tempfile.mkdtemp()
-        self.memory_manager = MemoryManager(storage_dir=self.temp_dir, ai_client=test_ai_client)
+        self.memory_manager = make_memory_manager(storage_dir=self.temp_dir, ai_client=test_ai_client)
     
     def tearDown(self):
         """Clean up temporary directory."""
@@ -168,7 +169,7 @@ class TestMemoryStorage(unittest.TestCase):
         self.temp_dir = tempfile.mkdtemp()
         # Create mock OpenAI client for tests (avoid real API calls)
         self.mock_ai_client = Mock()
-        self.memory_manager = MemoryManager(storage_dir=self.temp_dir, ai_client=self.mock_ai_client)
+        self.memory_manager = make_memory_manager(storage_dir=self.temp_dir, ai_client=self.mock_ai_client)
         
         # Setup default mock embedding response
         mock_response = Mock()
@@ -288,7 +289,7 @@ class TestSemanticRecall(unittest.TestCase):
         self.temp_dir = tempfile.mkdtemp()
         # Create mock OpenAI client for tests (avoid real API calls)
         self.mock_ai_client = Mock()
-        self.memory_manager = MemoryManager(storage_dir=self.temp_dir, ai_client=self.mock_ai_client)
+        self.memory_manager = make_memory_manager(storage_dir=self.temp_dir, ai_client=self.mock_ai_client)
         
         # Setup default mock embedding response
         mock_response = Mock()
@@ -474,7 +475,7 @@ class TestMemoryListing(unittest.TestCase):
         self.temp_dir = tempfile.mkdtemp()
         # Create mock OpenAI client for tests (avoid real API calls)
         self.mock_ai_client = Mock()
-        self.memory_manager = MemoryManager(storage_dir=self.temp_dir, ai_client=self.mock_ai_client)
+        self.memory_manager = make_memory_manager(storage_dir=self.temp_dir, ai_client=self.mock_ai_client)
         
         # Setup default mock embedding response
         mock_response = Mock()
@@ -558,7 +559,7 @@ class TestEmbeddingGeneration(unittest.TestCase):
         self.temp_dir = tempfile.mkdtemp()
         # Create mock OpenAI client for tests (avoid real API calls)
         self.mock_ai_client = Mock()
-        self.memory_manager = MemoryManager(storage_dir=self.temp_dir, ai_client=self.mock_ai_client)
+        self.memory_manager = make_memory_manager(storage_dir=self.temp_dir, ai_client=self.mock_ai_client)
     
     def tearDown(self):
         """Clean up temporary directory."""
@@ -591,7 +592,7 @@ class TestEmbeddingGeneration(unittest.TestCase):
         mock_client.embeddings.create.return_value = mock_response
         
         # Create manager with custom model
-        memory_manager = MemoryManager(
+        memory_manager = make_memory_manager(
             storage_dir=self.temp_dir,
             embedding_model="text-embedding-3-large",
             ai_client=mock_client

@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from utils.time_utils import now_local  # apps/denidin-app/src on path (webapp_backend/__init__)
+from webapp_backend.webapp_denidin import WebappDeniDin
 
 
 def _load_ledger_event_manager_class():
@@ -202,8 +203,8 @@ def _build_detail_fields(record: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 class LedgerReader:
     def __init__(self, data_root: str) -> None:
-        self._events_dir = str(Path(data_root) / "events")
-        self._manager = LedgerEventManager(self._events_dir)
+        self._denidin = WebappDeniDin(data_root)
+        self._manager = LedgerEventManager(self._denidin)
         self._by_id: Optional[Dict[str, Dict[str, Any]]] = None
         # Bumped on every reload so dependents (the clients report cache) can tell their
         # cached result was computed from an older event set.
@@ -212,7 +213,7 @@ class LedgerReader:
     def reload(self) -> None:
         """Re-read every event from disk (the manager only indexes at construction). The new
         manager is built fully before the swap, so concurrent readers keep the old one."""
-        fresh = LedgerEventManager(self._events_dir)
+        fresh = LedgerEventManager(self._denidin)
         self._manager = fresh
         self._by_id = None
         self.generation += 1

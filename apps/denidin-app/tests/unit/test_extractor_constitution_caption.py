@@ -13,6 +13,7 @@ from src.models.media import Media
 from src.handlers.extractors.image_extractor import ImageExtractor
 from src.handlers.extractors.pdf_extractor import PDFExtractor
 from src.handlers.extractors.docx_extractor import DOCXExtractor
+from tests.extractor_test_support import make_extractor_ai_manager
 
 
 class TestConstitutionUsage:
@@ -21,14 +22,15 @@ class TestConstitutionUsage:
     def test_image_extractor_uses_constitution_in_user_prompt(self):
         """ImageExtractor must prepend constitution to user prompt, NOT use system message."""
         mock_denidin = Mock()
+        mock_denidin.ai_manager = make_extractor_ai_manager()
         mock_denidin.config.vision_model = "gpt-4o"
         mock_denidin.config.ai_reply_max_tokens = 4000
-        mock_denidin.ai_handler._load_constitution = Mock(return_value="I am DeniDin, a helpful assistant.")
+        mock_denidin.ai_manager.extraction_prompt_prefix = Mock(return_value="I am DeniDin, a helpful assistant.")
         
         # Mock OpenAI Responses API response
         mock_response = Mock()
         mock_response.output_text = "TEXT:\nSample text\n\nDOCUMENT_TYPE: receipt\nSUMMARY: Test\nKEY_POINTS:\n- Point 1\n\nCONFIDENCE: high\n"
-        mock_denidin.ai_handler.client.responses.create = Mock(return_value=mock_response)
+        mock_denidin.ai_manager.client.responses.create = Mock(return_value=mock_response)
 
         extractor = ImageExtractor(mock_denidin)
         media = Media(data=b"fake_image", mime_type="image/jpeg", filename="test.jpg")
@@ -47,10 +49,10 @@ class TestConstitutionUsage:
             extractor.analyze_media(media)
 
         # Verify constitution was loaded
-        mock_denidin.ai_handler._load_constitution.assert_called_once()
+        mock_denidin.ai_manager.extraction_prompt_prefix.assert_called_once()
 
         # Verify client.responses.create was called
-        call_args = mock_denidin.ai_handler.client.responses.create.call_args
+        call_args = mock_denidin.ai_manager.client.responses.create.call_args
         input_items = call_args[1]["input"]
 
         # Should have exactly 1 user message (NO system message - constitution
@@ -66,16 +68,17 @@ class TestConstitutionUsage:
     def test_docx_extractor_uses_constitution_not_system_prompt(self):
         """DOCXExtractor must use constitution in user prompt, NOT system_prompt parameter."""
         mock_denidin = Mock()
+        mock_denidin.ai_manager = make_extractor_ai_manager()
         mock_denidin.config.ai_model = "gpt-4o-mini"
         mock_denidin.config.ai_reply_max_tokens = 4096
         mock_denidin.config.constitution_config = {}
-        mock_denidin.ai_handler = Mock()
-        mock_denidin.ai_handler._load_constitution = Mock(return_value="I am DeniDin, a helpful assistant.")
+        mock_denidin.ai_manager = make_extractor_ai_manager()
+        mock_denidin.ai_manager.extraction_prompt_prefix = Mock(return_value="I am DeniDin, a helpful assistant.")
         
-        # Mock get_response to return proper response
+        # Mock the standalone responses.create call
         mock_ai_response = Mock()
-        mock_ai_response.response_text = "DOCUMENT_TYPE: letter\nSUMMARY: Test\nKEY_POINTS:\n- Point 1\n"
-        mock_denidin.ai_handler.get_response = Mock(return_value=mock_ai_response)
+        mock_ai_response.output_text = "DOCUMENT_TYPE: letter\nSUMMARY: Test\nKEY_POINTS:\n- Point 1\n"
+        mock_denidin.ai_manager.client.responses.create = Mock(return_value=mock_ai_response)
         
         extractor = DOCXExtractor(mock_denidin)
         
@@ -100,11 +103,11 @@ class TestConstitutionUsage:
             extractor.analyze_media(media, analyze=True)
         
         # Verify constitution was loaded and used
-        mock_denidin.ai_handler._load_constitution.assert_called_once()
+        mock_denidin.ai_manager.extraction_prompt_prefix.assert_called_once()
         
-        # Verify get_response was called
-        assert mock_denidin.ai_handler.get_response.call_count == 1
-        call_args = mock_denidin.ai_handler.get_response.call_args
+        # Verify the standalone analysis call was made
+        assert mock_denidin.ai_manager.client.responses.create.call_count == 1
+        call_args = mock_denidin.ai_manager.client.responses.create.call_args
         
         # The AIRequest object should have been created with the constitution in the prompt
         assert call_args is not None
@@ -112,13 +115,14 @@ class TestConstitutionUsage:
     def test_pdf_extractor_passes_caption_to_image_extractor(self):
         """PDFExtractor must pass caption through to ImageExtractor for page analysis."""
         mock_denidin = Mock()
+        mock_denidin.ai_manager = make_extractor_ai_manager()
         mock_denidin.config.vision_model = "gpt-4o"
         mock_denidin.config.ai_reply_max_tokens = 4000
-        mock_denidin.ai_handler._load_constitution = Mock(return_value="")
+        mock_denidin.ai_manager.extraction_prompt_prefix = Mock(return_value="")
         
         mock_response = Mock()
         mock_response.output_text = "TEXT:\nPage text\n\nDOCUMENT_TYPE: invoice\nSUMMARY: Test\nKEY_POINTS:\n- Item\n\nCONFIDENCE: high\n"
-        mock_denidin.ai_handler.client.responses.create = Mock(return_value=mock_response)
+        mock_denidin.ai_manager.client.responses.create = Mock(return_value=mock_response)
 
         extractor = PDFExtractor(mock_denidin)
 
@@ -136,7 +140,7 @@ class TestConstitutionUsage:
             extractor.analyze_media(media, caption="What's the total amount?")
 
         # Verify caption in prompt
-        call_args = mock_denidin.ai_handler.client.responses.create.call_args
+        call_args = mock_denidin.ai_manager.client.responses.create.call_args
         input_items = call_args[1]["input"]
         text_content = next(c for c in input_items[0]["content"] if c["type"] == "input_text")
 
@@ -149,13 +153,14 @@ class TestCaptionContext:
     def test_image_extractor_includes_caption_in_prompt(self):
         """ImageExtractor should include user's caption/question in the analysis prompt."""
         mock_denidin = Mock()
+        mock_denidin.ai_manager = make_extractor_ai_manager()
         mock_denidin.config.vision_model = "gpt-4o"
         mock_denidin.config.ai_reply_max_tokens = 4000
-        mock_denidin.ai_handler._load_constitution = Mock(return_value="")
+        mock_denidin.ai_manager.extraction_prompt_prefix = Mock(return_value="")
         
         mock_response = Mock()
         mock_response.output_text = "TEXT:\nContract text\n\nDOCUMENT_TYPE: contract\nSUMMARY: Service agreement\nKEY_POINTS:\n- Amount: $5000\n\nCONFIDENCE: high\n"
-        mock_denidin.ai_handler.client.responses.create = Mock(return_value=mock_response)
+        mock_denidin.ai_manager.client.responses.create = Mock(return_value=mock_response)
 
         extractor = ImageExtractor(mock_denidin)
         media = Media(data=b"image", mime_type="image/jpeg")
@@ -171,7 +176,7 @@ class TestCaptionContext:
         with patch('pathlib.Path.read_text', mock_read_text):
             extractor.analyze_media(media, caption="Who is the client in this contract?")
 
-        call_args = mock_denidin.ai_handler.client.responses.create.call_args
+        call_args = mock_denidin.ai_manager.client.responses.create.call_args
         input_items = call_args[1]["input"]
         text_content = next(c for c in input_items[0]["content"] if c["type"] == "input_text")
 
@@ -181,18 +186,19 @@ class TestCaptionContext:
     def test_image_extractor_works_without_caption(self):
         """ImageExtractor should work when caption is empty (optional parameter)."""
         mock_denidin = Mock()
+        mock_denidin.ai_manager = make_extractor_ai_manager()
         mock_denidin.config.vision_model = "gpt-4o"
         mock_denidin.config.ai_reply_max_tokens = 4000
         mock_denidin.config.ai_model = "gpt-4o"
-        mock_denidin.ai_handler = Mock()
-        mock_denidin.ai_handler._load_constitution = Mock(return_value="")
+        mock_denidin.ai_manager = make_extractor_ai_manager()
+        mock_denidin.ai_manager.extraction_prompt_prefix = Mock(return_value="")
         
         # Mock the OpenAI Responses API client
         mock_response = Mock()
         mock_response.output_text = "TEXT:\nText\n\nDOCUMENT_TYPE: generic\nSUMMARY: Test\nKEY_POINTS:\n- Point\n\nCONFIDENCE: high\n"
-        mock_denidin.ai_handler.client = Mock()
-        mock_denidin.ai_handler.client.responses = Mock()
-        mock_denidin.ai_handler.client.responses.create = Mock(return_value=mock_response)
+        mock_denidin.ai_manager.client = Mock()
+        mock_denidin.ai_manager.client.responses = Mock()
+        mock_denidin.ai_manager.client.responses.create = Mock(return_value=mock_response)
 
         extractor = ImageExtractor(mock_denidin)
         media = Media(data=b"image", mime_type="image/jpeg")
@@ -200,23 +206,24 @@ class TestCaptionContext:
         result = extractor.analyze_media(media)
 
         # Should succeed - check that client was called
-        assert mock_denidin.ai_handler.client.responses.create.call_count == 1
+        assert mock_denidin.ai_manager.client.responses.create.call_count == 1
         assert result["extraction_quality"] in ["high", "medium", "low", "failed"]
         assert "raw_response" in result
     
     def test_docx_extractor_includes_caption_in_analysis(self):
         """DOCXExtractor should include caption in AI analysis prompt."""
         mock_denidin = Mock()
+        mock_denidin.ai_manager = make_extractor_ai_manager()
         mock_denidin.config.ai_model = "gpt-4o-mini"
         mock_denidin.config.ai_reply_max_tokens = 4096
         mock_denidin.config.constitution_config = {}
-        mock_denidin.ai_handler = Mock()
-        mock_denidin.ai_handler._load_constitution = Mock(return_value="")
+        mock_denidin.ai_manager = make_extractor_ai_manager()
+        mock_denidin.ai_manager.extraction_prompt_prefix = Mock(return_value="")
         
-        # Mock get_response to return proper response
+        # Mock the standalone responses.create call
         mock_ai_response = Mock()
-        mock_ai_response.response_text = "DOCUMENT_TYPE: invoice\nSUMMARY: Total is $2500\nKEY_POINTS:\n- Total: $2500\n"
-        mock_denidin.ai_handler.get_response = Mock(return_value=mock_ai_response)
+        mock_ai_response.output_text = "DOCUMENT_TYPE: invoice\nSUMMARY: Total is $2500\nKEY_POINTS:\n- Total: $2500\n"
+        mock_denidin.ai_manager.client.responses.create = Mock(return_value=mock_ai_response)
         
         extractor = DOCXExtractor(mock_denidin)
         
@@ -238,25 +245,26 @@ class TestCaptionContext:
             media = Media(data=b"docx", mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
             extractor.analyze_media(media, analyze=True, caption="What is the total amount?")
         
-        # Verify get_response was called
-        assert mock_denidin.ai_handler.get_response.call_count == 1
-        call_args = mock_denidin.ai_handler.get_response.call_args
+        # Verify the standalone analysis call was made
+        assert mock_denidin.ai_manager.client.responses.create.call_count == 1
+        call_args = mock_denidin.ai_manager.client.responses.create.call_args
         # Check that caption was included in the request
         assert call_args is not None
     
     def test_docx_extractor_analysis_guided_by_caption(self):
         """DOCXExtractor prompt should instruct AI to focus on user's question when caption exists."""
         mock_denidin = Mock()
+        mock_denidin.ai_manager = make_extractor_ai_manager()
         mock_denidin.config.ai_model = "gpt-4o-mini"
         mock_denidin.config.ai_reply_max_tokens = 4096
         mock_denidin.config.constitution_config = {}
-        mock_denidin.ai_handler = Mock()
-        mock_denidin.ai_handler._load_constitution = Mock(return_value="")
+        mock_denidin.ai_manager = make_extractor_ai_manager()
+        mock_denidin.ai_manager.extraction_prompt_prefix = Mock(return_value="")
         
-        # Mock get_response to return proper response
+        # Mock the standalone responses.create call
         mock_ai_response = Mock()
-        mock_ai_response.response_text = "DOCUMENT_TYPE: contract\nSUMMARY: Client is John Doe\nKEY_POINTS:\n- Client: John Doe\n"
-        mock_denidin.ai_handler.get_response = Mock(return_value=mock_ai_response)
+        mock_ai_response.output_text = "DOCUMENT_TYPE: contract\nSUMMARY: Client is John Doe\nKEY_POINTS:\n- Client: John Doe\n"
+        mock_denidin.ai_manager.client.responses.create = Mock(return_value=mock_ai_response)
         
         extractor = DOCXExtractor(mock_denidin)
         
@@ -278,15 +286,16 @@ class TestCaptionContext:
             media = Media(data=b"docx", mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
             extractor.analyze_media(media, analyze=True, caption="Who is the client?")
         
-        # Verify get_response was called
-        assert mock_denidin.ai_handler.get_response.call_count == 1
+        # Verify the standalone analysis call was made
+        assert mock_denidin.ai_manager.client.responses.create.call_count == 1
     
     def test_pdf_extractor_passes_caption_to_all_pages(self):
         """PDFExtractor should pass same caption to all page extractions."""
         mock_denidin = Mock()
+        mock_denidin.ai_manager = make_extractor_ai_manager()
         mock_denidin.config.vision_model = "gpt-4o"
         mock_denidin.config.ai_reply_max_tokens = 4000
-        mock_denidin.ai_handler._load_constitution = Mock(return_value="")
+        mock_denidin.ai_manager.extraction_prompt_prefix = Mock(return_value="")
         
         # Track calls
         call_count = [0]
@@ -296,7 +305,7 @@ class TestCaptionContext:
             mock_resp.output_text = "TEXT:\nPage\n\nDOCUMENT_TYPE: invoice\nSUMMARY: Test\nKEY_POINTS:\n- Item\n\nCONFIDENCE: high\n"
             return mock_resp
 
-        mock_denidin.ai_handler.client.responses.create = mock_create
+        mock_denidin.ai_manager.client.responses.create = mock_create
         
         extractor = PDFExtractor(mock_denidin)
         

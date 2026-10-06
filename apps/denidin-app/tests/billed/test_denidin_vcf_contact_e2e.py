@@ -9,7 +9,7 @@ Flow (entry point is the real Green API webhook, dispatched through the actual
     Green API contactMessage webhook (godfather sender)
       -> handle_contact_message (real router handler, not a direct internal call)
       -> WhatsAppMessage.from_notification (vCard framed into text_content)
-      -> AIHandler.get_response
+      -> AIHandler.single_turn
            -> client.responses.create (real OpenAI Responses API call)
               with the real Morning MCP server registered as a remote tool
       -> bot replies in Hebrew
@@ -114,7 +114,7 @@ def _send_contact_card(chat_id: str, display_name: str, vcard: str, id_prefix: s
     response = get_response(notification)
 
     import denidin
-    ai_response = denidin.denidin_app.ai_handler.last_response
+    ai_response = denidin.denidin_app.last_response
     logger.info(f"contact-card turn reply: {response!r}")
     return response, ai_response
 
@@ -161,8 +161,8 @@ def _ledger_event_count_for_chat(denidin_app, chat_id: str) -> int:
     caught a real false positive. Fixed to resolve session_id via SessionManager
     and filter by that instead, matching the same fix already applied to every
     other ledger-event helper in this schema revision."""
-    session_id = denidin_app.ai_handler.session_manager.get_session(chat_id).session_id
-    storage_dir = denidin_app.ai_handler.ledger_event_manager.storage_dir
+    session_id = denidin_app.session_manager.get_session(chat_id).session_id
+    storage_dir = denidin_app.ledger_event_manager.storage_dir
     count = 0
     for f in storage_dir.glob("*.json"):
         with open(f, encoding="utf-8") as fh:

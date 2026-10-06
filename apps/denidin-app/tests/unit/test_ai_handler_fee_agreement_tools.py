@@ -25,6 +25,7 @@ from src.handlers.fee_agreement_tools import (
 )
 from src.models.config import AppConfiguration
 from src.models.message import AIRequest
+from tests.ai_handler_test_support import make_ai_handler
 
 TEMPLATES_DIR = Path(__file__).resolve().parents[2] / "config" / "fee_agreement_templates"
 
@@ -81,7 +82,7 @@ def mock_ai_client():
 
 @pytest.fixture
 def ai_handler(mock_config, mock_ai_client):
-    return AIHandler(mock_ai_client, mock_config)
+    return make_ai_handler(mock_ai_client, mock_config)
 
 
 def _request(prompt="שכר טרחה"):
@@ -290,7 +291,7 @@ class TestSendImmediateDispatch:
 
         fake_whatsapp_handler = Mock()
         fake_whatsapp_handler.send_document_response.return_value = True
-        ai_handler.whatsapp_handler = fake_whatsapp_handler
+        ai_handler.denidin.whatsapp_handler = fake_whatsapp_handler
         mock_ai_client.responses.create.return_value = _followup_response(text="נשלח בהצלחה")
 
         response = _response(output=[
@@ -315,7 +316,7 @@ class TestSendImmediateDispatch:
         generated = ai_handler.doc_template_engine.render_free_text("hourly_consultation", "ישראל ישראלי", SAMPLE_BODY_TEXT)
         generated.verified = True
         ai_handler.fee_agreement_tools._documents[generated.document_id] = generated
-        ai_handler.whatsapp_handler = None  # not injected (e.g. test harness)
+        ai_handler.denidin.whatsapp_handler = None  # not built (e.g. test harness)
 
         captured = {}
 

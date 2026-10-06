@@ -58,7 +58,7 @@ def check_whatsapp_connectivity(green_api) -> bool:
     a real failure must be checked via .code, not just try/except."""
     try:
         response = green_api.account.getStateInstance()
-        return response.code == 200
+        return bool(response.code == 200)
     except Exception:  # noqa: BLE001
         logger.warning("check_whatsapp_connectivity: failed", exc_info=True)
         return False
@@ -84,13 +84,13 @@ def check_whatsapp_authorized(green_api) -> bool:
         return False
 
 
-def check_morning_connectivity_via_tunnel(mcp_config: dict) -> bool:
-    """Discovers the current Morning MCP tunnel URL the same way AIHandler
-    does (MorningMcpLocator, the shared status file - never a direct import
+def check_morning_connectivity_via_tunnel(morning_mcp_locator: MorningMcpLocator) -> bool:
+    """Discovers the current Morning MCP tunnel URL the same way the AI implementation
+    does (DeniDin's MorningMcpLocator, the shared status file - never a direct import
     of morning-mcp-app code) and calls its deliberately-minimal /is_alive
     endpoint (not /health - that would trigger a real, non-free Morning API
     call on morning-mcp-app's side on every single probe here)."""
-    server_url = MorningMcpLocator(mcp_config).current_server_url()
+    server_url = morning_mcp_locator.current_server_url()
     if not server_url:
         return False
     base_url = server_url[: -len("/mcp")] if server_url.endswith("/mcp") else server_url
@@ -160,7 +160,7 @@ def start_heartbeat_thread(interval_seconds: float = HEARTBEAT_INTERVAL_SECONDS)
 def build_health_check_fns(
     ai_client=None,
     green_api=None,
-    mcp_config: Optional[dict] = None,
+    morning_mcp_locator: Optional[MorningMcpLocator] = None,
     memory_manager=None,
     log_path: Optional[Path] = None,
 ) -> Dict[str, Callable[[], bool]]:
@@ -174,8 +174,8 @@ def build_health_check_fns(
         checks["ai_connectivity"] = lambda: check_ai_connectivity(ai_client)
     if green_api is not None:
         checks["whatsapp_connectivity"] = lambda: check_whatsapp_connectivity(green_api)
-    if mcp_config is not None:
-        checks["morning_connectivity_via_tunnel"] = lambda: check_morning_connectivity_via_tunnel(mcp_config)
+    if morning_mcp_locator is not None:
+        checks["morning_connectivity_via_tunnel"] = lambda: check_morning_connectivity_via_tunnel(morning_mcp_locator)
     if memory_manager is not None:
         checks["chromadb_connectivity"] = lambda: check_chromadb_connectivity(memory_manager)
     if log_path is not None:

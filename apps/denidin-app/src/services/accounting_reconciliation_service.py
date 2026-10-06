@@ -24,13 +24,16 @@ poll target (same guardrail as reminder_delivery_service.py).
 import json
 import re
 from datetime import timedelta
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
-# type: ignore[import-untyped] on both - no stub package exists for apscheduler
+# apscheduler ships no type stubs - hence the import-untyped ignore on its imports.
 from apscheduler.schedulers.background import BackgroundScheduler  # type: ignore[import-untyped]
 from apscheduler.triggers.interval import IntervalTrigger  # type: ignore[import-untyped]
 
-from src.handlers.ai_handler import LEDGER_EVENT_TOOL, _log_outgoing_request, _log_raw_response
+from src.core.ai_manager import MORNING_READ_MCP_TOOLS, MORNING_WRITE_MCP_TOOLS
+from src.managers.ledger_event_recognizer import LEDGER_EVENT_TOOL
+from src.utils.function_calls import extract_all_function_calls
+from src.utils.wire_log import audit_wire, debug_wire
 from src.models.user import Role
 from src.utils.logger import get_logger
 from src.utils.time_utils import now_local
@@ -123,6 +126,11 @@ def _parse_list_invoices_total(response: Any) -> Optional[int]:
             if isinstance(payload, dict) and "total_matched" in payload:
                 totals.append(int(payload["total_matched"]))
                 continue
+            # Over the tool's own listing limit it answers
+            # {"status": "too_many", "total": N} instead of the documents.
+            if isinstance(payload, dict) and payload.get("status") == "too_many" and "total" in payload:
+                totals.append(int(payload["total"]))
+                continue
         except (ValueError, TypeError):
             pass
 
@@ -173,100 +181,189 @@ def _build_reconciliation_prompt(since) -> str:
     )
 
 
+class AccountingReconciler:
+    """The accounting-document reconciliation sweep (Feature 025), its own class
+    (REQ-063-08). Uses DeniDin's ledger and, from the AI implementation in use, only
+    the OpenAI client and the Morning MCP connection - so it runs the same whichever
+    implementation the backbone flag selects."""
+
+    def __init__(self, ai_manager: Any, ledger_event_manager: Any):
+        self.ai_manager = ai_manager
+        self.ledger_event_manager = ledger_event_manager
+
+    def _morning_tools(self) -> List[Dict[str, Any]]:
+        """The Morning MCP tools entry for the sweep - a headless background job with no
+        real user, so it runs as an admin. Reads are never gated; writes would need
+        approval (the sweep only ever reads)."""
+        connection = self.ai_manager.morning_mcp_connection("accounting-reconciliation-sweep", Role.ADMIN)
+        if connection is None:
+            return []
+        return [self.ai_manager.morning_mcp_entry(
+            connection,
+            server_label=connection[2].get('morning_server_label', 'morning-invoices'),
+            require_approval={
+                "always": {"tool_names": list(MORNING_WRITE_MCP_TOOLS)},
+                "never": {"tool_names": list(MORNING_READ_MCP_TOOLS)},
+            },
+        )]
+
+    def sweep(self, log_prefix: str = "") -> None:
+        """Shared worker: derive the poll watermark from LedgerEventManager's
+        in-memory accounting-document cache, safety-cap-check the gap (5-day half
+        pre-hoc, 100-document half post-hoc - see MAX_CATCHUP_LOOKBACK/
+        MAX_CATCHUP_DOCUMENT_COUNT above), then - if within bounds - ask OpenAI
+        (with Morning MCP + LEDGER_EVENT_TOOL attached) to list/detail every
+        not-yet-known Morning document since that watermark and capture each as
+        a LedgerEvent via capture().
+        Shared by both the periodic APScheduler job and
+        run_startup_accounting_reconciliation_sweep's boot-time catch-up call.
+        See contracts/accounting-reconciliation-service.md for the full
+        step-by-step this implements.
+        """
+        ai_manager = self.ai_manager
+        ledger_event_manager = self.ledger_event_manager
+
+        now = now_local()
+        since = ledger_event_manager.get_accounting_document_watermark()
+        if since is None:
+            since = now - FALLBACK_LOOKBACK
+
+        if now - since > MAX_CATCHUP_LOOKBACK:
+            logger.error(
+                f"{log_prefix}[025] Accounting reconciliation sweep: gap since watermark "
+                f"({since.isoformat()}) exceeds {MAX_CATCHUP_LOOKBACK} - skipping this tick "
+                "entirely (this is not a backfill mechanism) - needs admin intervention"
+            )
+            return
+
+        morning_tools = self._morning_tools()
+        if not morning_tools:
+            logger.error(
+                f"{log_prefix}[025] Accounting reconciliation sweep: Morning MCP tools "
+                "unavailable this tick - skipping, next tick will retry"
+            )
+            return
+        tools = morning_tools + [LEDGER_EVENT_TOOL]
+
+        prompt = _build_reconciliation_prompt(since)
+
+        reconciliation_kwargs = {
+            "model": ai_manager.config.ai_model,
+            "input": [{"role": "user", "content": prompt}],
+            "tools": tools,
+            # Real bug (2026-08-22): this call originally set no output cap at
+            # all - the only OpenAI call in this app that didn't - leaving it
+            # on whatever the API's own default is. A full sweep legitimately
+            # emits one capture_ledger_event call per document (~185 output
+            # tokens each; ~3.3k for 18 documents, and this feature's own
+            # safety cap allows up to 100), so an unstated default is a real
+            # truncation risk. Uses the same config value every conversational
+            # call already uses.
+            "max_output_tokens": ai_manager.config.ai_reply_max_tokens,
+        }
+        try:
+            audit_wire("openai", "out", f"{log_prefix}accounting_reconciliation_sweep", reconciliation_kwargs)
+            debug_wire("openai", "out", f"{log_prefix}accounting_reconciliation_sweep", reconciliation_kwargs)
+            # bugfix-047: override the shared client's conversational-turn timeout
+            # (30s) and retry (1) - see RECONCILIATION_CALL_TIMEOUT_SECONDS above.
+            response = ai_manager.client.with_options(
+                timeout=RECONCILIATION_CALL_TIMEOUT_SECONDS, max_retries=0
+            ).responses.create(**reconciliation_kwargs)
+            audit_wire("openai", "in", f"{log_prefix}accounting_reconciliation_sweep", response)
+            debug_wire("openai", "in", f"{log_prefix}accounting_reconciliation_sweep", response)
+        except Exception as e:  # pylint: disable=broad-except
+            logger.error(
+                f"{log_prefix}[025] Accounting reconciliation sweep failed (OpenAI/MCP call): {e}",
+                exc_info=True,
+            )
+            return
+
+        total = _parse_list_invoices_total(response)
+        if total is not None and total > MAX_CATCHUP_DOCUMENT_COUNT:
+            logger.error(
+                f"{log_prefix}[025] Accounting reconciliation sweep: list_invoices reported "
+                f"{total} candidate document(s) (> {MAX_CATCHUP_DOCUMENT_COUNT}) - discarding this "
+                "entire turn's captures (this is not a backfill mechanism) - needs admin intervention"
+            )
+            return
+
+        try:
+            event_ids = self.capture(response)
+        except Exception as e:  # pylint: disable=broad-except
+            logger.error(
+                f"{log_prefix}[025] Accounting reconciliation sweep failed (persist step): {e}",
+                exc_info=True,
+            )
+            return
+
+        ledger_event_manager.prune_accounting_document_cache()
+        logger.info(f"{log_prefix}[025] Accounting reconciliation sweep captured {len(event_ids)} event(s)")
+
+    def capture(self, response) -> List[str]:
+        """Feature 025 (Morning-Sourced Ledger Events): thin adapter for the
+        accounting-document reconciliation sweep's headless OpenAI+MCP call
+        (services/accounting_reconciliation_service.py) - parses every
+        capture_ledger_event call in `response` and passes each straight
+        through to LedgerEventManager.add_ledger_events_from_call,
+        unconditionally.
+
+        Structurally separate from the conversational post-turn recognition
+        call (`recognize_ledger_event`, Feature 069):
+        - NO same-turn-mcp_call suppression - list_invoices/
+          get_invoice_details mcp_calls co-occurring with capture_ledger_event
+          in the same turn is the normal, expected shape here.
+        - NO one-call-per-turn limit - calling once per new document, several
+          times in the same sweep tick, is the normal case.
+        - NO dedup/anomaly decision of its own (round 3 of spec.md's
+          Clarifications: "it's clearly a ledger requirement regardless of
+          ai") - LedgerEventManager.add_ledger_event owns that entirely via
+          its own in-memory cache; this handler trusts it completely, same
+          as every other capture path.
+        - NO follow-up OpenAI round-trip, no confirmation reply - this is not
+          a conversational turn, nothing user-facing is ever produced here.
+
+        Returns the list of newly-persisted event_ids (empty if nothing was
+        captured, or everything was a true duplicate/malformed).
+        """
+        calls = extract_all_function_calls(response, LEDGER_EVENT_TOOL["name"])
+        event_ids: List[str] = []
+        for call in calls:
+            if call["arguments"] is None:
+                logger.error(
+                    "[025] Reconciliation sweep: capture_ledger_event call had "
+                    f"unparseable arguments (call_id={call['call_id']!r}) - rejected, "
+                    "not silently dropped"
+                )
+                continue
+            # message_timestamp=None: this sweep has no real source message, and
+            # LedgerEventManager.add_ledger_event already derives the correct
+            # event_datetime itself for source_type=חשבונית directly from the
+            # Morning document's own creation timestamp (carried inside
+            # accounting_document_json, expanded internally) - it only falls
+            # back to message_timestamp/now_local() when that's unavailable.
+            # A prior separate ai_handler-side timestamp derivation here
+            # (removed 2026-08-25) was redundant with that and, since it read
+            # the raw un-expanded call arguments, never actually fired.
+            try:
+                new_event_ids = self.ledger_event_manager.add_ledger_events_from_call(
+                    session_id="accounting-reconciliation",
+                    call_arguments=call["arguments"],
+                    message_id=None,
+                    message_timestamp=None,
+                )
+                event_ids.extend(new_event_ids)
+            except Exception as e:  # pylint: disable=broad-except
+                logger.error(
+                    f"[025] Failed to persist accounting-document ledger event(s): {e}",
+                    exc_info=True
+                )
+        return event_ids
+
+
 def _sweep_accounting_documents(global_context: Any, log_prefix: str = "") -> None:
-    """Shared worker: derive the poll watermark from LedgerEventManager's
-    in-memory accounting-document cache, safety-cap-check the gap (5-day half
-    pre-hoc, 100-document half post-hoc - see MAX_CATCHUP_LOOKBACK/
-    MAX_CATCHUP_DOCUMENT_COUNT above), then - if within bounds - ask OpenAI
-    (with Morning MCP + LEDGER_EVENT_TOOL attached) to list/detail every
-    not-yet-known Morning document since that watermark and capture each as
-    a LedgerEvent via AIHandler._handle_accounting_reconciliation_capture.
-    Shared by both the periodic APScheduler job and
-    run_startup_accounting_reconciliation_sweep's boot-time catch-up call.
-    See contracts/accounting-reconciliation-service.md for the full
-    step-by-step this implements.
-    """
-    ai_handler = global_context.ai_handler
-    ledger_event_manager = ai_handler.ledger_event_manager
-
-    now = now_local()
-    since = ledger_event_manager.get_accounting_document_watermark()
-    if since is None:
-        since = now - FALLBACK_LOOKBACK
-
-    if now - since > MAX_CATCHUP_LOOKBACK:
-        logger.error(
-            f"{log_prefix}[025] Accounting reconciliation sweep: gap since watermark "
-            f"({since.isoformat()}) exceeds {MAX_CATCHUP_LOOKBACK} - skipping this tick "
-            "entirely (this is not a backfill mechanism) - needs admin intervention"
-        )
-        return
-
-    # Synthetic authorized "user" for _build_morning_mcp_tools' RBAC check -
-    # there is no real per-turn user_obj for a headless background job.
-    synthetic_user = type("SyntheticAdmin", (), {"role": Role.ADMIN})()
-    morning_tools = ai_handler._build_morning_mcp_tools(  # pylint: disable=protected-access
-        synthetic_user, "accounting-reconciliation-sweep"
-    )
-    if not morning_tools:
-        logger.error(
-            f"{log_prefix}[025] Accounting reconciliation sweep: Morning MCP tools "
-            "unavailable this tick - skipping, next tick will retry"
-        )
-        return
-    tools = morning_tools + [LEDGER_EVENT_TOOL]
-
-    prompt = _build_reconciliation_prompt(since)
-
-    reconciliation_kwargs = {
-        "model": ai_handler.config.ai_model,
-        "input": [{"role": "user", "content": prompt}],
-        "tools": tools,
-        # Real bug (2026-08-22): this call originally set no output cap at
-        # all - the only OpenAI call in this app that didn't - leaving it
-        # on whatever the API's own default is. A full sweep legitimately
-        # emits one capture_ledger_event call per document (~185 output
-        # tokens each; ~3.3k for 18 documents, and this feature's own
-        # safety cap allows up to 100), so an unstated default is a real
-        # truncation risk. Uses the same config value every conversational
-        # call already uses.
-        "max_output_tokens": ai_handler.config.ai_reply_max_tokens,
-    }
-    try:
-        _log_outgoing_request(f"{log_prefix}accounting_reconciliation_sweep", reconciliation_kwargs)
-        # bugfix-047: override the shared client's conversational-turn timeout
-        # (30s) and retry (1) - see RECONCILIATION_CALL_TIMEOUT_SECONDS above.
-        response = ai_handler.client.with_options(
-            timeout=RECONCILIATION_CALL_TIMEOUT_SECONDS, max_retries=0
-        ).responses.create(**reconciliation_kwargs)
-        _log_raw_response(f"{log_prefix}accounting_reconciliation_sweep", response)
-    except Exception as e:  # pylint: disable=broad-except
-        logger.error(
-            f"{log_prefix}[025] Accounting reconciliation sweep failed (OpenAI/MCP call): {e}",
-            exc_info=True,
-        )
-        return
-
-    total = _parse_list_invoices_total(response)
-    if total is not None and total > MAX_CATCHUP_DOCUMENT_COUNT:
-        logger.error(
-            f"{log_prefix}[025] Accounting reconciliation sweep: list_invoices reported "
-            f"{total} candidate document(s) (> {MAX_CATCHUP_DOCUMENT_COUNT}) - discarding this "
-            "entire turn's captures (this is not a backfill mechanism) - needs admin intervention"
-        )
-        return
-
-    try:
-        event_ids = ai_handler._handle_accounting_reconciliation_capture(response)  # pylint: disable=protected-access
-    except Exception as e:  # pylint: disable=broad-except
-        logger.error(
-            f"{log_prefix}[025] Accounting reconciliation sweep failed (persist step): {e}",
-            exc_info=True,
-        )
-        return
-
-    ledger_event_manager.prune_accounting_document_cache()
-    logger.info(f"{log_prefix}[025] Accounting reconciliation sweep captured {len(event_ids)} event(s)")
+    """One sweep, for the scheduler and the startup catch-up: DeniDin's ledger, the AI
+    implementation in use."""
+    AccountingReconciler(global_context.ai_manager, global_context.ledger_event_manager).sweep(log_prefix)
 
 
 def run_startup_accounting_reconciliation_sweep(global_context: Any) -> None:

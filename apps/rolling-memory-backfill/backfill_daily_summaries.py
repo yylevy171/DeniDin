@@ -19,11 +19,11 @@ import json
 import sys
 from datetime import date, timedelta
 from pathlib import Path
-from types import SimpleNamespace
 from typing import List, Optional
 
 from openai import OpenAI
 
+from backfill_denidin import BackfillDeniDin, backfill_config
 from _denidin_loader import (
     MemoryManager,
     RollMarkerStore,
@@ -120,15 +120,17 @@ def main(argv: Optional[List[str]] = None) -> int:
             f"(must be <= {latest_allowed}); backfilling into it is the nightly roll's job"
         )
 
-    # --- Real components via the loader ----------------------------------------
-    session_manager = SessionManager(storage_dir=str(sessions_dir))
-    roll_marker_store = RollMarkerStore(str(data_root / "memory_rolls"))
-    ai_client = OpenAI(api_key=api_key)
-    memory_manager = MemoryManager(
-        storage_dir=str(data_root / "memory"),
-        embedding_model=embedding_model,
-        ai_client=ai_client,
+    # --- Real components via the loader, on this tool's own DeniDin -------------
+    # (the global context the nightly roll reads - it never uses the AI
+    # implementation, so this is the same whichever one the backbone flag selects)
+    global_context = BackfillDeniDin(
+        backfill_config(data_root, memory=memory_block, ai_model=ai_model,
+                        ai_embedding_model=embedding_model),
+        ai_client=OpenAI(api_key=api_key),
     )
+    session_manager = global_context.session_manager = SessionManager(global_context)
+    roll_marker_store = global_context.roll_marker_store = RollMarkerStore(global_context)
+    global_context.memory_manager = MemoryManager(global_context)
 
     all_chats = sorted(session_manager.known_chats())
     if args.chat:
@@ -161,17 +163,6 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"max billed calls (upper bound): {len(chats) * len(dates)}")
         if input("Type 'yes' to proceed: ").strip() != "yes":
             return _fail("aborted at confirmation prompt")
-
-    global_context = SimpleNamespace(
-        session_manager=session_manager,
-        ai_handler=SimpleNamespace(
-            roll_marker_store=roll_marker_store,
-            memory_manager=memory_manager,
-            client=ai_client,
-            config=SimpleNamespace(ai_model=ai_model, memory=memory_block),
-        ),
-        config=SimpleNamespace(memory=memory_block),
-    )
 
     grand = {"summaries": 0, "empty": 0, "skipped": 0, "billed": 0}
     for chat in chats:

@@ -1,5 +1,6 @@
 """
-Expensive tests for AIHandler behavior with REAL API calls (Phase 5: US3).
+Billed tests for the AI implementation's behavior with REAL API calls (Phase 5: US3) -
+whichever one the backbone flag selects (REQ-063-08: AIHandler or Backbone).
 Tests exception handling and message-length validation - NO MOCKING.
 
 Moved out of tests/integration/test_bot_exception_handling.py: these all
@@ -9,10 +10,9 @@ recall), so they belong under tests/billed/ with the other
 
 Run with: pytest tests/billed/test_ai_handler_real_api.py -m billed -v
 """
+import dataclasses
 import pytest
 from pathlib import Path
-from openai import OpenAI
-from src.handlers.ai_handler import AIHandler
 from src.models.config import AppConfiguration
 from tests.e2e_helpers import sanity_worker_data_root
 from src.models.message import WhatsAppMessage
@@ -38,15 +38,11 @@ def real_config():
 
 
 @pytest.fixture
-def real_openai_client(real_config):
-    """Create real OpenAI client"""
-    return OpenAI(api_key=real_config.ai_api_key, timeout=30.0)
-
-
-@pytest.fixture
-def real_ai_handler(real_openai_client, real_config):
-    """Create real AIHandler instance"""
-    return AIHandler(real_openai_client, real_config)
+def real_ai_manager(real_config):
+    """The real AI implementation, exactly as the app builds it (initialize_app) -
+    the Backbone or the legacy AIHandler, per config.test.json's backbone flag."""
+    import denidin
+    return denidin.initialize_app(dataclasses.asdict(real_config)).ai_manager
 
 
 class TestBotExceptionHandlingWithRealAPI:
@@ -54,8 +50,8 @@ class TestBotExceptionHandlingWithRealAPI:
 
     @pytest.mark.billed
     @pytest.mark.sanity
-    def test_openai_error_handling_real_api(self, real_ai_handler):
-        """Test AIHandler catches REAL OpenAI API error - 1 REAL API CALL"""
+    def test_openai_error_handling_real_api(self, real_ai_manager):
+        """The AI implementation catches a REAL OpenAI API error - 1 REAL API CALL"""
         # Create a real message
         from datetime import datetime, timezone
         message = WhatsAppMessage(
@@ -71,26 +67,27 @@ class TestBotExceptionHandlingWithRealAPI:
         )
 
         # Force an error by using invalid model
-        original_model = real_ai_handler.config.ai_model
-        real_ai_handler.config.ai_model = "invalid-model-xyz-12345"
+        original_model = real_ai_manager.config.ai_model
+        real_ai_manager.config.ai_model = "invalid-model-xyz-12345"
 
         try:
             # Create request
-            request = real_ai_handler.create_request(message)
+            request = real_ai_manager.create_request(message)
 
             # This makes 1 REAL API call that will fail
-            response = real_ai_handler.get_response(request)
+            response = real_ai_manager.single_turn(request)
 
-            # Should return error response (retry logic will have run)
-            assert response.response_text is not None
-            assert "error" in response.response_text.lower() or "unable" in response.response_text.lower()
+            # Should return the error fallback (retry logic will have run) - recognized
+            # by its own marker, not by wording (the backbone's is Hebrew, legacy's English).
+            assert response.model == "error-fallback", response
+            assert response.response_text
         finally:
             # Restore original model
-            real_ai_handler.config.ai_model = original_model
+            real_ai_manager.config.ai_model = original_model
 
 
 class TestMessageLengthValidation:
-    """Test AIHandler message length validation via create_request().
+    """Test the AI implementation's message length validation via create_request().
 
     NOTE: create_request() triggers a real OpenAI embeddings API call via
     memory recall (real_config's production config.json has
@@ -99,7 +96,7 @@ class TestMessageLengthValidation:
     """
 
     @pytest.mark.billed
-    def test_long_prompt_truncated_to_10000(self, real_ai_handler):
+    def test_long_prompt_truncated_to_10000(self, real_ai_manager):
         """Test long prompt truncated to 10000 chars"""
         from datetime import datetime, timezone
         long_message = WhatsAppMessage(
@@ -114,11 +111,11 @@ class TestMessageLengthValidation:
             received_timestamp=datetime.now(timezone.utc)
         )
 
-        request = real_ai_handler.create_request(long_message)
+        request = real_ai_manager.create_request(long_message)
         assert len(request.user_prompt) <= 10000
 
     @pytest.mark.billed
-    def test_short_messages_pass_through(self, real_ai_handler):
+    def test_short_messages_pass_through(self, real_ai_manager):
         """Test short messages (<10000) pass through unchanged"""
         from datetime import datetime, timezone
         short_text = "שלום, זו הודעה רגילה."
@@ -134,5 +131,5 @@ class TestMessageLengthValidation:
             received_timestamp=datetime.now(timezone.utc)
         )
 
-        request = real_ai_handler.create_request(short_message)
+        request = real_ai_manager.create_request(short_message)
         assert request.user_prompt == short_text

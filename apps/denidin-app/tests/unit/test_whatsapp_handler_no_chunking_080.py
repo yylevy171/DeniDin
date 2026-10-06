@@ -14,6 +14,7 @@ more interim updates before it.
 from unittest.mock import MagicMock
 
 from src.handlers.whatsapp_handler import WhatsAppHandler
+from tests.denidin_test_support import make_denidin
 from src.models.message import AIResponse
 
 
@@ -35,7 +36,7 @@ class TestNoResponseChunking080:
     def test_final_answer_is_one_notification_answer_call(self):
         """The baseline case: send_response() calls notification.answer() exactly once,
         with the complete response_text, not split into multiple sends."""
-        handler = WhatsAppHandler()
+        handler = WhatsAppHandler(make_denidin())
         notification = MagicMock()
         notification.answer = MagicMock()
         long_text = "א" * 3500  # long, but under the 4000-char truncation threshold
@@ -51,7 +52,7 @@ class TestNoResponseChunking080:
         AIHandler._handle_send_progress_update's progress_callback) must still have its
         REAL final answer delivered as exactly one further, separate, complete message -
         never merged, chunked, or skipped because an interim message already went out."""
-        handler = WhatsAppHandler()
+        handler = WhatsAppHandler(make_denidin())
         notification = MagicMock()
         notification.answer = MagicMock()
 

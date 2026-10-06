@@ -24,7 +24,7 @@ actual @bot.router.message-decorated `handle_text_message` - CONSTITUTION
     Green API textMessage webhook (godfather sender)
       -> handle_text_message (real router handler, not a direct internal call)
       -> WhatsAppHandler.process_notification
-      -> AIHandler.get_response
+      -> AIHandler.single_turn
            -> client.responses.create (real OpenAI Responses API call)
               with the real Morning MCP server registered as a remote tool
               (reached over its already-open ngrok tunnel, bearer-authenticated)
@@ -75,6 +75,8 @@ from .denidin_mcp_e2e_helpers import (
     _send_turn,
     _send_turn_and_approve,
     _send_turn_and_decline,
+    _send_turn_with_notification,
+    get_button_send,
 )
 
 logger = logging.getLogger(__name__)
@@ -132,7 +134,7 @@ def test_godfather_creates_invoice_via_whatsapp(denidin_app):
 
     (ask_response, ask_ai_response), (response, ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
-        text=f"{client_name} שילם {amount} שח היום עבור {description}. תפיק חשבונית מס קבלה",
+        text=f"{client_name} שילם {amount} שח היום במזומן עבור {description}. תפיק חשבונית מס קבלה",
         id_prefix="E2E_CREATE",
     )
 
@@ -189,20 +191,22 @@ def test_godfather_creates_invoice_via_whatsapp_button_tap(denidin_app):
     resolve to the same real, single create_invoice execution the text path
     produces.
 
-    bugfix-061 (C2b): this prompt never states VAT and create_invoice is a
-    type-305 document, so a VAT-inclusion question is mandatory before any
-    pending approval is created - a plain tax invoice's amount is ambiguous
-    without it (unlike a type-320 combo document, which is unconditionally
-    VAT-included by definition). This is genuinely three-turn: ASK (must ask
-    about VAT, must NOT create a pending approval yet) -> VAT ANSWER (now the
-    real pending approval with buttons is created) -> TAP (executes)."""
+    bugfix-061 (C2b): create_invoice is a type-305 document, whose amount is
+    ambiguous without a stated VAT treatment (unlike a type-320 combo
+    document, which is unconditionally VAT-included by definition, exercised
+    by test_godfather_creates_invoice_via_whatsapp above). This test's ASK
+    turn explicitly states the VAT treatment up front ("לא כולל מע\"מ") so
+    the bot has no reason to insert its own VAT-clarifying turn - keeping
+    this test's own flow a simple two-turn ASK -> TAP, the same shape this
+    test had before bugfix-061 introduced the VAT-question behavior for an
+    *unstated*-VAT type-305 request."""
     amount = _random_amount()
     description = _random_description()
     client_name = pick_existing_client()["name"]  # Feature 059 item 5: any existing client works
 
-    ask_response, ask_ai_response = _send_turn(
+    ask_response, ask_ai_response, ask_notification = _send_turn_with_notification(
         chat_id=GODFATHER_CHAT_ID,
-        text=f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח עבור {description}",
+        text=f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח לא כולל מע\"מ עבור {description}",
         id_prefix="E2E_CREATE_TAP_ASK",
     )
 
@@ -211,71 +215,42 @@ def test_godfather_creates_invoice_via_whatsapp_button_tap(denidin_app):
         f"{ask_ai_response.mcp_calls if ask_ai_response else None!r}"
     )
 
-    # bugfix-061: VAT was never stated for this type-305 invoice, so the bot
-    # must ask about it before proposing anything to approve - not silently
-    # assume a default the way a type-320 combo document may. Checked as
-    # "mentions VAT AND asks a question" rather than a fixed phrase - the
-    # model may legitimately insert the resolved client name/amount between
-    # words (e.g. "האם הסכום של 95 ₪ כולל מע״מ?"), which a rigid substring
-    # match would wrongly report as "no VAT question asked" (a real false
-    # negative hit live, 2026-09-27).
-    vat_keywords = ('מע"מ', "מע״מ", "מעמ")
-    asked = any(k in (ask_response or "") for k in vat_keywords) and "?" in (ask_response or "")
-    assert asked, (
-        f"bugfix-061: unstated VAT on a type-305 invoice request must produce a "
-        f"VAT question before any pending approval - the bot said: {ask_response!r}"
+    # The ASK turn must have actually sent a real approval prompt - not
+    # silently skipped straight to creation (which would make this test
+    # indistinguishable from a no-approval regression). `ask_response` is
+    # dual-written identically whether the prompt went out as plain text or
+    # as real interactive buttons, so parsing it directly is sufficient proof
+    # a genuine approval gate was reached.
+    #
+    # bugfix-061 note: this test's ASK turn explicitly states the VAT
+    # treatment up front ("לא כולל מע\"מ" in the request text above), so the
+    # mandatory VAT-question turn bugfix-061 introduced for an *unstated*
+    # VAT case never triggers here - the bot can and must go straight to a
+    # real approval prompt on this turn, same as before that bugfix.
+    assert _is_real_approval_prompt(ask_response), (
+        f"ASK turn's reply was not a real approval prompt: {ask_response!r}"
     )
 
-    import denidin as denidin_module
-    pending_after_ask = denidin_module.denidin_app.ai_handler.pending_approval_manager.get(
-        GODFATHER_CHAT_ID
-    )
-    assert pending_after_ask is None or not pending_after_ask.sent_message_id, (
-        "bugfix-061: a real pending approval (with interactive buttons already "
-        "sent) must not exist yet - VAT is still unresolved at this point, "
-        f"but found: {pending_after_ask!r}"
-    )
-
-    # Answer the VAT question - THIS turn is what should produce the real
-    # pending approval with buttons attached. Unlike create_transaction_account's
-    # yes/no phrasing ("האם הסכום כולל מעמ?"), create_invoice's VAT question is an
-    # explicit either/or ("... כולל מע״מ או לא כולל מע״מ?") - a bare "כן" does not
-    # resolve it (confirmed live: the model correctly re-asks rather than guess),
-    # so the answer must state the VAT treatment unambiguously.
-    vat_response, vat_ai_response = _send_turn(
-        chat_id=GODFATHER_CHAT_ID, text="כן, כולל מע\"מ", id_prefix="E2E_CREATE_TAP_VAT",
-    )
-    assert not _calls_for(vat_ai_response, "create_invoice"), (
-        f"create_invoice executed on the VAT-answering turn, before the actual "
-        f"approval was given: {vat_ai_response.mcp_calls if vat_ai_response else None!r}"
-    )
-
-    # The VAT-answer turn must have actually sent real interactive buttons - not
-    # silently fallen back to plain text (which would make this test
-    # indistinguishable from the text-path test above, and mask a real
-    # regression the way this exact scenario did before the E2E harness
-    # gained answer_with_interactive_buttons support, 2026-08-14). Checked
-    # right here, between the VAT-answer and TAP turns - checking any later
-    # (e.g. after the tap has already resolved and cleared it) would always
-    # show None regardless of whether the buttons send itself actually worked,
-    # a real ordering bug caught in this test's own first run, 2026-08-14.
-    # sent_message_id is populated by the exact same production wiring
-    # (denidin.py's attach_sent_message_id call) that requires a real,
-    # successful buttons send in the first place, so its presence here is
-    # direct proof - no need for get_button_send()'s captured body/buttons.
-    pending_after_vat = denidin_module.denidin_app.ai_handler.pending_approval_manager.get(
-        GODFATHER_CHAT_ID
-    )
-    assert pending_after_vat is not None and pending_after_vat.sent_message_id, (
-        "VAT-answer turn did not result in a pending approval with a real "
-        "sent_message_id attached - either no pending approval was created, "
-        "or the interactive-buttons send failed and silently fell back "
+    # The ASK turn must specifically have sent real interactive buttons (not
+    # a plain-text fallback of that same prompt) - checked via the actual
+    # captured WhatsApp buttons send on this turn's own Notification object
+    # (the test harness's outbound-send spy, not app business state), right
+    # here between the ASK and TAP turns - checking any later (e.g. after the
+    # tap has already resolved) would no longer prove anything about the ASK
+    # turn's own send, a real ordering bug caught in this test's own first
+    # run, 2026-08-14. The real idMessage read here is also what a real phone
+    # would have on-screen to tap - needed to drive the TAP turn below.
+    button_send = get_button_send(ask_notification)
+    assert button_send is not None and button_send.get("idMessage"), (
+        "ASK turn did not send real interactive buttons - either it fell "
+        "back to plain text, or the interactive-buttons send failed "
         "(check for 'Failed to send approval buttons' in the log)."
     )
 
     from src.managers.pending_approval_manager import BUTTON_ID_APPROVE
     response, ai_response = _send_button_tap(
-        GODFATHER_CHAT_ID, BUTTON_ID_APPROVE, id_prefix="E2E_CREATE_TAP_APPROVE"
+        GODFATHER_CHAT_ID, BUTTON_ID_APPROVE, id_prefix="E2E_CREATE_TAP_APPROVE",
+        stanza_id=button_send["idMessage"],
     )
 
     create_calls = _calls_for(ai_response, "create_invoice")
@@ -300,9 +275,9 @@ def test_godfather_creates_invoice_via_whatsapp_button_tap(denidin_app):
         f"regression): {create_calls!r}"
     )
 
-    assert "http" in response, (
-        f"Bot reply did not include an invoice link. Full reply: {response!r}"
-    )
+    # 2026-09-27: a download link is no longer a required part of the reply
+    # (flows/*.md were changed to stop unconditionally fetching one - it was
+    # causing real tool-confusion failures) - no longer asserted here.
 
 
 @pytest.mark.billed
@@ -317,7 +292,7 @@ def test_godfather_declines_invoice_creation(denidin_app):
 
     response, ai_response = _send_turn_and_decline(
         chat_id=GODFATHER_CHAT_ID,
-        text=f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח עבור {description}",
+        text=f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח כולל מע\"מ עבור {description}",
         id_prefix="E2E_CREATE_DECLINE",
     )
 
@@ -345,7 +320,7 @@ def test_godfather_ignores_pending_approval_with_unrelated_message(denidin_app):
 
     _send_turn(
         chat_id=GODFATHER_CHAT_ID,
-        text=f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח עבור {description}",
+        text=f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח כולל מע\"מ עבור {description}",
         id_prefix="E2E_CREATE_UNRELATED_ASK",
     )
     response, ai_response = _send_turn(
@@ -369,7 +344,7 @@ def test_godfather_approval_survives_intervening_small_talk(denidin_app):
     amount = _random_amount()
     description = _random_description()
     client_name = pick_existing_client()["name"]  # Feature 059 item 5: any existing client works
-    request_text = f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח עבור {description}"
+    request_text = f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח כולל מע\"מ עבור {description}"
 
     _send_turn(
         chat_id=GODFATHER_CHAT_ID,
@@ -398,10 +373,15 @@ def test_godfather_approval_survives_intervening_small_talk(denidin_app):
     )
     # Feature 027: "no error" alone isn't proof of real success anymore - a
     # "client not found" refusal is also a normal (error=None) tool return.
-    # An actual link is airtight proof the document was really created.
-    assert "http" in response, (
-        f"Bot reply did not include an invoice link - possibly a silent "
-        f"'client not found' refusal rather than a real success. Full reply: {response!r}"
+    # 2026-09-27: switched from asserting "http" in the model's own reply
+    # text (a download link is no longer a required part of the report,
+    # flows/*.md) to checking the tool call's own raw output for a real
+    # display_number - still airtight proof the document was actually
+    # created, but no longer dependent on the model choosing to relay a link.
+    assert create_calls[0]["output"] and '"display_number"' in create_calls[0]["output"], (
+        f"create_invoice's own tool output carried no display_number - "
+        f"possibly a silent 'client not found' refusal rather than a real "
+        f"success. Tool output: {create_calls[0]['output']!r}. Full reply: {response!r}"
     )
 
 
@@ -616,9 +596,7 @@ def test_godfather_add_client_near_duplicate_name_is_asked_before_creating(denid
     near_duplicate_name = f"{chaser_spelling} {family_name}"
     seed_email = _random_seed_email()
 
-    import denidin
-
-    ask_response, ask_ai_response = _send_turn(
+    ask_response, ask_ai_response, ask_notification = _send_turn_with_notification(
         chat_id=GODFATHER_CHAT_ID,
         text=(
             f"תוסיף לקוח חדש בשם {near_duplicate_name}, מייל {seed_email}, "
@@ -633,13 +611,13 @@ def test_godfather_add_client_near_duplicate_name_is_asked_before_creating(denid
         f"chance to flag the near-duplicate: "
         f"{ask_ai_response.mcp_calls if ask_ai_response else None!r}"
     )
-    pending = denidin.denidin_app.ai_handler.pending_approval_manager.get(GODFATHER_CHAT_ID)
-    assert pending is None or pending.tool_name != "add_client", (
-        f"add_client got a pending approval immediately, with NO chance for "
+    # What the godfather sees (REQ-063-08): no approval prompt with buttons yet.
+    assert get_button_send(ask_notification) is None, (
+        f"add_client was put up for approval immediately, with NO chance for "
         f"the godfather to say 'that's actually the same person' about the "
         f"just-seeded, genuinely similar client {seed_name!r} - this is "
         f"exactly the silent-duplicate risk the courtesy check exists to "
-        f"prevent: {pending!r}"
+        f"prevent: {get_button_send(ask_notification)!r}"
     )
     assert _strip_invisible_marks(seed_name) in (ask_response or ""), (
         f"Expected the reply to explicitly name the existing similar client "
@@ -651,7 +629,7 @@ def test_godfather_add_client_near_duplicate_name_is_asked_before_creating(denid
     # Confirming intent to create anyway (not "use the existing one") must
     # still work - the courtesy check blocks SILENT creation, not creation
     # itself once the godfather has actually seen and rejected the match.
-    confirm_response, confirm_ai_response = _send_turn(
+    confirm_response, confirm_ai_response, confirm_notification = _send_turn_with_notification(
         chat_id=GODFATHER_CHAT_ID,
         text=(
             "לא, זה לא אותו לקוח, זה אדם אחר לגמרי - אני יודע שיש לקוח עם שם "
@@ -659,11 +637,13 @@ def test_godfather_add_client_near_duplicate_name_is_asked_before_creating(denid
         ),
         id_prefix="E2E_ADD_CLIENT_NEARDUP_CONFIRMNEW",
     )
-    pending = denidin.denidin_app.ai_handler.pending_approval_manager.get(GODFATHER_CHAT_ID)
-    assert pending is not None and pending.tool_name == "add_client", (
+    # What the godfather sees (REQ-063-08): an approval prompt with buttons naming
+    # the new client.
+    buttons = get_button_send(confirm_notification)
+    assert buttons is not None and _strip_invisible_marks(near_duplicate_name) in _strip_invisible_marks(buttons["body"]), (
         f"After explicitly insisting on a new client despite the near-"
-        f"duplicate warning, no pending add_client approval was created. "
-        f"Reply: {confirm_response!r}, calls: "
+        f"duplicate warning, no approval prompt for adding {near_duplicate_name!r} "
+        f"was shown. Reply: {confirm_response!r}, calls: "
         f"{confirm_ai_response.mcp_calls if confirm_ai_response else None!r}"
     )
 

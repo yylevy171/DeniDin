@@ -3,7 +3,7 @@ Component-Integration Tests: post-turn ledger recognition through the real route
 (Feature 069 — the mechanism move + mandatory client resolution).
 
 A real Green API notification → `bot.router` → `handle_text_message` →
-`_process_conversational_message` → `AIHandler.get_response` (normal reply) → **the
+`_process_conversational_message` → `AIHandler.single_turn` (normal reply) → **the
 post-turn recognition call** → the zero-AI ledgerer → `LedgerEvent` file(s) on disk,
 back-linked from the completing `Message`.
 
@@ -36,7 +36,8 @@ from pathlib import Path
 
 import pytest
 
-from src.handlers.ai_handler import AIHandler, LEDGER_EVENT_TOOL
+from src.handlers.ai_handler import AIHandler
+from src.managers.ledger_event_recognizer import LEDGER_EVENT_TOOL
 from src.models.config import AppConfiguration
 
 from tests.e2e_helpers import event_datetime_for_message_ts, wipe_chat_messages_on_disk
@@ -81,7 +82,9 @@ class TestLedgerClientResolutionRouting:
                 'ai_reply_max_tokens': config.ai_reply_max_tokens,
                 'log_level': config.log_level,
                 'data_root': config.data_root,
-                'feature_flags': config.feature_flags,
+                # This file tests the legacy AIHandler routing; config.test.json keeps the
+                # backbone flag ON for billed runs, so pin it off here.
+                'feature_flags': {**(config.feature_flags or {}), 'enable_capability_backbone': False},
                 'godfather_phone': config.godfather_phone,
                 'memory': config.memory,
                 'constitution_config': config.constitution_config,
@@ -101,13 +104,13 @@ class TestLedgerClientResolutionRouting:
     @pytest.fixture(autouse=True)
     def _clean_state(self, denidin_app):
         def _wipe():
-            manager = denidin_app.ai_handler.ledger_event_manager
+            manager = denidin_app.ledger_event_manager
             manager._index = []
             manager._accounting_document_cache = None
             for path in manager.storage_dir.glob("*.json"):
                 path.unlink()
-            wipe_chat_messages_on_disk(denidin_app.ai_handler.session_manager.storage_dir, GODFATHER_CHAT_ID)
-            denidin_app.ai_handler.pending_approval_manager._pending.clear()
+            wipe_chat_messages_on_disk(denidin_app.session_manager.storage_dir, GODFATHER_CHAT_ID)
+            denidin_app.ai_manager.pending_approval_manager._pending.clear()
         _wipe()
         yield
         _wipe()
@@ -135,7 +138,7 @@ class TestLedgerClientResolutionRouting:
         return notification
 
     def _install(self, denidin_app, monkeypatch, script: ScriptedOpenAI) -> ScriptedOpenAI:
-        monkeypatch.setattr(denidin_app.ai_handler.client.responses, 'create', script)
+        monkeypatch.setattr(denidin_app.ai_manager.client.responses, 'create', script)
         return script
 
     def _send(self, text: str, msg_id: str = "u"):
@@ -145,18 +148,18 @@ class TestLedgerClientResolutionRouting:
         return notification
 
     def _events(self, denidin_app):
-        mgr = denidin_app.ai_handler.ledger_event_manager
+        mgr = denidin_app.ledger_event_manager
         return [json.loads(p.read_text(encoding="utf-8"))
                 for p in sorted(mgr.storage_dir.glob("*.json"))]
 
     def _session(self, denidin_app):
-        return denidin_app.ai_handler.session_manager.get_session(GODFATHER_CHAT_ID)
+        return denidin_app.session_manager.get_session(GODFATHER_CHAT_ID)
 
     def _first_message_id(self, denidin_app):
         return self._session(denidin_app).message_ids[0]
 
     def _messages_by_role(self, denidin_app):
-        sm = denidin_app.ai_handler.session_manager
+        sm = denidin_app.session_manager
         session = sm.get_session(GODFATHER_CHAT_ID)
         messages_dir = Path(sm.storage_dir) / session.session_id / "messages"
         by_role = {}
@@ -273,7 +276,7 @@ class TestLedgerClientResolutionRouting:
         def boom(*a, **k):
             raise RuntimeError("recognition exploded")
 
-        monkeypatch.setattr(denidin_app.ai_handler, "recognize_ledger_event", boom)
+        monkeypatch.setattr(denidin_app.ledger_event_recognizer, "recognize_ledger_event", boom)
 
         notification = self._send("חתמנו הסכם עם דנה כהן, ריטיינר 4000", "u1")
 
@@ -413,7 +416,7 @@ class TestLedgerClientResolutionRouting:
 
         # Feature 025 dedup: the display number is now in the cache, so the
         # reconciliation sweep re-seeing it that same day is a no-op.
-        mgr = denidin_app.ai_handler.ledger_event_manager
+        mgr = denidin_app.ledger_event_manager
         again = mgr.add_ledger_events_from_call(
             session_id="accounting-reconciliation",
             call_arguments={
@@ -481,7 +484,7 @@ class TestLedgerClientResolutionRouting:
         # OWN persisted timestamp. Every webhook in this test carries the same
         # fixed epoch, so this is also the original agreement message's time -
         # never "now".
-        messages_dir = (Path(denidin_app.ai_handler.session_manager.storage_dir)
+        messages_dir = (Path(denidin_app.session_manager.storage_dir)
                         / self._session(denidin_app).session_id / "messages")
         for e in events:
             completing = json.loads(
@@ -643,7 +646,7 @@ class TestLedgerClientResolutionRouting:
 
     def _send_image(self, monkeypatch, denidin_app, extractor_result, msg_id="img1"):
         from whatsapp_chatbot_python import Notification
-        media = denidin_app.whatsapp_handler.media_handler
+        media = denidin_app.media_handler
         monkeypatch.setattr(media.image_extractor, "analyze_media",
                             lambda *a, **k: extractor_result)
         mfm = media.media_file_manager
@@ -717,7 +720,7 @@ class TestLedgerClientResolutionRouting:
         synthetic conversational turn → one הסכם LedgerEvent, never persisted by
         MediaHandler itself."""
         from whatsapp_chatbot_python import Notification
-        media = denidin_app.whatsapp_handler.media_handler
+        media = denidin_app.media_handler
         monkeypatch.setattr(media.docx_extractor, "analyze_media", lambda *a, **k: {
             "raw_response": "מסמך הסכם שכר טרחה עם רון לוי.",
             "extracted_text": "הסכם שכר טרחה בין עו\"ד לבין רון לוי. ריטיינר 1,500 ש\"ח.",

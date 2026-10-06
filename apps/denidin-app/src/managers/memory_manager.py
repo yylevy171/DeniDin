@@ -17,9 +17,8 @@ Error Handling:
 """
 
 import uuid
-from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, cast
 
 import chromadb
 from chromadb.config import Settings
@@ -44,26 +43,27 @@ class CollectionWrapper:
 class MemoryManager:
     """Long-term semantic memory using ChromaDB vector database."""
 
-    def __init__(
-        self,
-        storage_dir: str = "data/memory",
-        embedding_model: str = "text-embedding-3-small",
-        ai_client: Optional[OpenAI] = None
-    ):
+    def __init__(self, denidin: Any):
         """
         Initialize MemoryManager with ChromaDB and AI clients.
 
         Args:
-            storage_dir: Directory for ChromaDB persistent storage
-            embedding_model: OpenAI embedding model to use
-            ai_client: OpenAI client instance (required, no environment variables per CONSTITUTION I)
+            denidin: the DeniDin object (REQ-063-08). ChromaDB lives under its
+                config's memory.longterm.storage_dir (default data/memory); embeddings
+                use its config's ai_embedding_model and its OpenAI client
+                (`ai_client` - required, no environment variables per CONSTITUTION I).
 
         Raises:
             Exception: If ChromaDB or AI initialization fails (ERR-MEMORY-001)
         """
-        self.storage_dir = Path(storage_dir)
-        self.embedding_model = embedding_model
-        self._collection_cache: Dict[str, CollectionWrapper] = {}  # Cache collection objects for test mocking compatibility
+        self.denidin = denidin
+        config = denidin.config
+        longterm_config = (config.memory or {}).get('longterm', {}) or {}
+        self.storage_dir = Path(longterm_config.get('storage_dir', 'data/memory'))
+        self.embedding_model = config.ai_embedding_model
+        ai_client = getattr(denidin, "ai_client", None)
+        # Cache collection objects for test mocking compatibility
+        self._collection_cache: Dict[str, CollectionWrapper] = {}
 
         # Initialize ChromaDB persistent client
         try:
@@ -76,25 +76,22 @@ class MemoryManager:
         except Exception as e:
             raise RuntimeError(f"ChromaDB initialization failed: {e}") from e
 
-        # Initialize AI client
-        # MUST be provided explicitly (no environment variables per CONSTITUTION I)
+        # The AI client MUST be provided explicitly (no environment variables per
+        # CONSTITUTION I) - DeniDin's, read at use time.
         if ai_client is None:
             raise ValueError(
                 "ai_client is required. "
                 "MemoryManager does not use environment variables. "
-                "Pass AI client initialized from config.json."
+                "Construct it with a DeniDin holding the AI client initialized from config.json."
             )
-        self._ai_client = ai_client
 
     @property
     def ai_client(self) -> OpenAI:
-        """Access AI client (must be initialized in __init__)."""
-        if self._ai_client is None:
-            raise RuntimeError(
-                "AI client not initialized. "
-                "This should not happen - client is required in __init__."
-            )
-        return self._ai_client
+        """DeniDin's OpenAI client (required at construction)."""
+        ai_client = getattr(self.denidin, "ai_client", None)
+        if ai_client is None:
+            raise RuntimeError("AI client not initialized - DeniDin has no ai_client.")
+        return cast(OpenAI, ai_client)
 
     def get_or_create_collection(self, collection_name: str):
         """

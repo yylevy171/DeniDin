@@ -7,12 +7,13 @@ create_request()) moved to tests/billed/test_ai_handler_real_api.py.
 """
 import pytest
 from src.handlers.whatsapp_handler import WhatsAppHandler
+from tests.denidin_test_support import make_denidin
 
 
 @pytest.fixture
 def real_whatsapp_handler():
     """Create real WhatsAppHandler instance"""
-    return WhatsAppHandler()
+    return WhatsAppHandler(make_denidin())
 
 
 class TestWhatsAppValidation:

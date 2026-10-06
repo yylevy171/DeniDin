@@ -1,7 +1,7 @@
 """
 Feature 069 (mechanism move) — Task A / T004a.
 
-Pins `AIHandler.recognize_ledger_event(...)` — the ONE dedicated text-only OpenAI
+Pins `LedgerEventRecognizer.recognize_ledger_event(...)` — the ONE dedicated text-only OpenAI
 call fired AFTER a godfather/admin turn's reply has been sent. It is the only place
 prose → `LedgerEvent`-schema mapping happens; its output is a tri-state verdict
 (`contracts/recognition-and-logging.md` C2, `data-model.md` §2) consumed immediately
@@ -19,7 +19,7 @@ Verdicts:
                    "reason": "declined_by_operator"}
 
 Only the OpenAI client is a stand-in (external service, CONSTITUTION §I); the
-`AIHandler` / `SessionManager` are real.
+`LedgerEventRecognizer` / `SessionManager` are real.
 
 The recognition call reports its verdict by calling a dedicated function tool named
 `report_ledger_recognition` (its `event` sub-object reuses `LEDGER_EVENT_TOOL`'s
@@ -32,7 +32,10 @@ from unittest.mock import Mock, MagicMock
 
 import pytest
 
-from src.handlers.ai_handler import AIHandler, LEDGER_EVENT_TOOL, RECOGNITION_TOOL
+from tests.denidin_test_support import make_app_denidin
+from src.managers.ledger_event_recognizer import (
+    LEDGER_EVENT_TOOL, RECOGNITION_TOOL, LedgerEventRecognizer,
+)
 from src.models.config import AppConfiguration
 
 RECOGNITION_TOOL_NAME = "report_ledger_recognition"
@@ -60,15 +63,16 @@ def mock_config(tmp_path):
 
 
 @pytest.fixture
-def ai_handler(mock_config):
-    return AIHandler(MagicMock(), mock_config)
+def recognizer(mock_config):
+    app = make_app_denidin(MagicMock(), mock_config)
+    return app.ledger_event_recognizer
 
 
 @pytest.fixture
-def session(ai_handler):
+def session(recognizer):
     """A real session with a trigger user message + an assistant reply."""
     chat_id = "group-1@g.us"
-    sm = ai_handler.session_manager
+    sm = recognizer.session_manager
     trigger_id = sm.add_message(
         chat_id=chat_id, role="user", content="חתמנו היום הסכם שכר טרחה עם דנה כהן",
         user_role="godfather", sender="972500000002", sender_name="בעל הבית",
@@ -142,10 +146,10 @@ def _agreement_event(**overrides):
 
 class TestSignature:
     def test_method_exists(self):
-        assert hasattr(AIHandler, "recognize_ledger_event")
+        assert hasattr(LedgerEventRecognizer, "recognize_ledger_event")
 
     def test_signature_is_keyword_only(self):
-        sig = inspect.signature(AIHandler.recognize_ledger_event)
+        sig = inspect.signature(LedgerEventRecognizer.recognize_ledger_event)
         params = list(sig.parameters)
         assert params[0] == "self"
         for name in ("session", "reply_text", "turn_mcp_calls", "constitution_text"):
@@ -154,13 +158,13 @@ class TestSignature:
 
 
 class TestVerdicts:
-    def test_complete_verdict_passes_through_event_and_trigger(self, ai_handler, session):
+    def test_complete_verdict_passes_through_event_and_trigger(self, recognizer, session):
         payload = {"verdict": "complete", "event": _agreement_event(),
                    "trigger_message_id": session.trigger_id,
                    "source_type": None, "client_name_stated": None, "reason": None}
-        ai_handler.client.responses.create.return_value = _verdict_response(payload)
+        recognizer.client.responses.create.return_value = _verdict_response(payload)
 
-        result = ai_handler.recognize_ledger_event(
+        result = recognizer.recognize_ledger_event(
             session=session.session, reply_text="מצוין, רשמתי.",
             turn_mcp_calls=[], constitution_text="C")
 
@@ -170,33 +174,33 @@ class TestVerdicts:
         assert result["event"]["client_name"] == "דנה כהן"
         assert result["event"]["payer_name"] == "איגוד העובדים"
 
-    def test_none_verdict_when_model_calls_nothing(self, ai_handler, session):
-        ai_handler.client.responses.create.return_value = _no_call_response()
+    def test_none_verdict_when_model_calls_nothing(self, recognizer, session):
+        recognizer.client.responses.create.return_value = _no_call_response()
 
-        result = ai_handler.recognize_ledger_event(
+        result = recognizer.recognize_ledger_event(
             session=session.session, reply_text="בסדר גמור.",
             turn_mcp_calls=[], constitution_text="C")
 
         assert result == {"verdict": "none"}
 
-    def test_none_verdict_when_model_reports_none(self, ai_handler, session):
+    def test_none_verdict_when_model_reports_none(self, recognizer, session):
         payload = {"verdict": "none", "event": None, "trigger_message_id": None,
                    "source_type": None, "client_name_stated": None, "reason": None}
-        ai_handler.client.responses.create.return_value = _verdict_response(payload)
+        recognizer.client.responses.create.return_value = _verdict_response(payload)
 
-        result = ai_handler.recognize_ledger_event(
+        result = recognizer.recognize_ledger_event(
             session=session.session, reply_text="מה שלומך?",
             turn_mcp_calls=[], constitution_text="C")
 
         assert result == {"verdict": "none"}
 
-    def test_declined_verdict_shape(self, ai_handler, session):
+    def test_declined_verdict_shape(self, recognizer, session):
         payload = {"verdict": "declined", "event": None, "trigger_message_id": None,
                    "source_type": "בנק", "client_name_stated": "יוסי מהחנייה",
                    "reason": "declined_by_operator"}
-        ai_handler.client.responses.create.return_value = _verdict_response(payload)
+        recognizer.client.responses.create.return_value = _verdict_response(payload)
 
-        result = ai_handler.recognize_ledger_event(
+        result = recognizer.recognize_ledger_event(
             session=session.session, reply_text="הבנתי, לא אשמור.",
             turn_mcp_calls=[], constitution_text="C")
 
@@ -205,7 +209,7 @@ class TestVerdicts:
         assert result["client_name_stated"] == "יוסי מהחנייה"
         assert result["reason"] == "declined_by_operator"
 
-    def test_invoice_source_type_taken_from_verdict_not_prose(self, ai_handler, session):
+    def test_invoice_source_type_taken_from_verdict_not_prose(self, recognizer, session):
         """A successful create_* this turn → source_type=='חשבונית' straight from the
         recognition verdict (which the model builds off the real Morning tool result)."""
         turn_mcp_calls = [{
@@ -226,9 +230,9 @@ class TestVerdicts:
         payload = {"verdict": "complete", "event": event,
                    "trigger_message_id": session.trigger_id,
                    "source_type": None, "client_name_stated": None, "reason": None}
-        ai_handler.client.responses.create.return_value = _verdict_response(payload)
+        recognizer.client.responses.create.return_value = _verdict_response(payload)
 
-        result = ai_handler.recognize_ledger_event(
+        result = recognizer.recognize_ledger_event(
             session=session.session, reply_text="נוצרה עסקה משולבת 1042.",
             turn_mcp_calls=turn_mcp_calls, constitution_text="C")
 
@@ -238,21 +242,21 @@ class TestVerdicts:
 
 
 class TestRetry:
-    def test_one_shot_retry_on_unparseable_then_success(self, ai_handler, session):
+    def test_one_shot_retry_on_unparseable_then_success(self, recognizer, session):
         good = _verdict_response({"verdict": "complete", "event": _agreement_event(),
                                   "trigger_message_id": session.trigger_id,
                                   "source_type": None, "client_name_stated": None,
                                   "reason": None})
-        ai_handler.client.responses.create.side_effect = [_garbage_response(), good]
+        recognizer.client.responses.create.side_effect = [_garbage_response(), good]
 
-        result = ai_handler.recognize_ledger_event(
+        result = recognizer.recognize_ledger_event(
             session=session.session, reply_text="רשמתי.",
             turn_mcp_calls=[], constitution_text="C")
 
-        assert ai_handler.client.responses.create.call_count == 2
+        assert recognizer.client.responses.create.call_count == 2
         assert result["verdict"] == "complete"
 
-    def test_one_shot_retry_on_incomplete_capture(self, ai_handler, session):
+    def test_one_shot_retry_on_incomplete_capture(self, recognizer, session):
         """`complete` but components empty while component_count=2 → is_incomplete_capture
         → retry once, then accept the corrected verdict."""
         incomplete = _verdict_response({
@@ -269,13 +273,13 @@ class TestRetry:
                 ], component_count=2),
             "trigger_message_id": session.trigger_id,
             "source_type": None, "client_name_stated": None, "reason": None})
-        ai_handler.client.responses.create.side_effect = [incomplete, fixed]
+        recognizer.client.responses.create.side_effect = [incomplete, fixed]
 
-        result = ai_handler.recognize_ledger_event(
+        result = recognizer.recognize_ledger_event(
             session=session.session, reply_text="רשמתי.",
             turn_mcp_calls=[], constitution_text="C")
 
-        assert ai_handler.client.responses.create.call_count == 2
+        assert recognizer.client.responses.create.call_count == 2
         assert len(result["event"]["components"]) == 2
 
 
@@ -286,19 +290,19 @@ class TestInputAssemblyAndIsolation:
         blob += "\n" + str(kwargs.get("instructions", ""))
         return blob, kwargs
 
-    def test_input_includes_reply_mcp_calls_and_recognition_prompt(self, ai_handler, session):
-        ai_handler.client.responses.create.return_value = _no_call_response()
+    def test_input_includes_reply_mcp_calls_and_recognition_prompt(self, recognizer, session):
+        recognizer.client.responses.create.return_value = _no_call_response()
         turn_mcp_calls = [{
             "name": "list_invoices", "error": None, "arguments": {"client_name": "דנה כהן"},
             "output": json.dumps({"invoices": [{"number": "UNIQ-MARKER-777"}]},
                                  ensure_ascii=False),
         }]
 
-        ai_handler.recognize_ledger_event(
+        recognizer.recognize_ledger_event(
             session=session.session, reply_text="REPLY-MARKER-abc",
             turn_mcp_calls=turn_mcp_calls)
 
-        blob, kwargs = self._stringify_call(ai_handler.client.responses.create)
+        blob, kwargs = self._stringify_call(recognizer.client.responses.create)
         assert "REPLY-MARKER-abc" in blob
         assert "UNIQ-MARKER-777" in blob          # mcp call result carried verbatim
         # Feature 069 decision #11: the dedicated recognition prompt drives this
@@ -315,16 +319,16 @@ class TestInputAssemblyAndIsolation:
         assert RECOGNITION_TOOL_NAME in tool_names
         assert "query_ledger_events" in tool_names
 
-    def test_window_anchored_to_newest_message_not_wall_clock(self, ai_handler):
+    def test_window_anchored_to_newest_message_not_wall_clock(self, recognizer):
         """Player replay: a conversation whose messages carry real (weeks-old)
         timestamps must still land in the recognition transcript. The window is
         measured back from the newest message in the session, not `now`."""
         from datetime import timedelta
         from src.utils.time_utils import now_local
 
-        ai_handler.client.responses.create.return_value = _no_call_response()
+        recognizer.client.responses.create.return_value = _no_call_response()
         chat_id = "player-replay@g.us"
-        sm = ai_handler.session_manager
+        sm = recognizer.session_manager
         base = now_local() - timedelta(days=30)  # 30 days ago
         sm.add_message(chat_id=chat_id, role="user",
                        content="OLD-TURN-MARKER חתמנו הסכם עם דנה כהן",
@@ -333,28 +337,28 @@ class TestInputAssemblyAndIsolation:
         sm.add_message(chat_id=chat_id, role="assistant", content="רשמתי.",
                        user_role="godfather", timestamp=base + timedelta(seconds=120))
 
-        ai_handler.recognize_ledger_event(
+        recognizer.recognize_ledger_event(
             session=sm.get_session(chat_id), reply_text="רשמתי.", turn_mcp_calls=[])
 
-        blob, _ = self._stringify_call(ai_handler.client.responses.create)
+        blob, _ = self._stringify_call(recognizer.client.responses.create)
         assert "OLD-TURN-MARKER" in blob, (
             "a 30-day-old replayed conversation was dropped from the recognition "
             "window - the cutoff is still wall-clock-relative"
         )
         assert "outside the window and omitted" not in blob
 
-    def test_verdict_output_never_appended_to_session(self, ai_handler, session):
+    def test_verdict_output_never_appended_to_session(self, recognizer, session):
         before = list(session.session.message_ids)
         payload = {"verdict": "complete", "event": _agreement_event(),
                    "trigger_message_id": session.trigger_id,
                    "source_type": None, "client_name_stated": None, "reason": None}
-        ai_handler.client.responses.create.return_value = _verdict_response(payload)
+        recognizer.client.responses.create.return_value = _verdict_response(payload)
 
-        ai_handler.recognize_ledger_event(
+        recognizer.recognize_ledger_event(
             session=session.session, reply_text="רשמתי.",
             turn_mcp_calls=[], constitution_text="C")
 
-        after = list(ai_handler.session_manager.get_session(session.chat_id).message_ids)
+        after = list(recognizer.session_manager.get_session(session.chat_id).message_ids)
         assert after == before
 
 

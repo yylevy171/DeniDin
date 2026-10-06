@@ -9,14 +9,17 @@ display name - confirmed via a real Green API getWaSettings call, NOT assumed fr
 documentation (CONSTITUTION.md "NO UNVERIFIED THIRD-PARTY ASSUMPTIONS"). These tests
 cover the pure normalization function directly - no OpenAI call, no network.
 """
-from datetime import datetime, timezone
-from unittest.mock import MagicMock
+from unittest.mock import Mock
 
-import pytest
+from src.handlers.whatsapp_handler import WhatsAppHandler
+from tests.denidin_test_support import make_denidin
 
-from src.handlers.ai_handler import AIHandler, _normalize_self_mentions
-from src.models.config import AppConfiguration
-from src.models.message import WhatsAppMessage
+
+def _normalize_self_mentions(text: str, own_whatsapp_number: str) -> str:
+    """REQ-063-08: the rewrite lives on WhatsAppHandler, which owns DeniDin's number."""
+    handler = WhatsAppHandler(make_denidin())
+    handler.own_whatsapp_number = own_whatsapp_number
+    return handler.normalize_self_mentions(text)
 
 
 class TestNormalizeSelfMentions:
@@ -59,43 +62,31 @@ class TestNormalizeSelfMentions:
         assert result == "@972501234567 ו@DeniDin שניכם תעזרו לי"
 
 
-class TestCreateRequestAppliesSelfMentionNormalization:
-    """Confirms AIHandler.create_request actually wires own_whatsapp_number into the
-    normalization (not just the pure function in isolation) - own_whatsapp_number is
-    set by denidin.py's initialize_app, never passed to create_request directly."""
+class TestProcessNotificationAppliesSelfMentionNormalization:
+    """Confirms WhatsAppHandler.process_notification actually wires own_whatsapp_number
+    into the normalization (not just the method in isolation) - own_whatsapp_number is
+    set by denidin.py's initialize_app (REQ-063-08: the rewrite moved here from
+    AIManager.create_request, so the stored message and the model see the same text)."""
 
-    @pytest.fixture
-    def handler(self):
-        config = AppConfiguration(
-            green_api_instance_id="test",
-            green_api_token="test",
-            ai_api_key="test-key",
-            ai_model="gpt-4o-mini",
-            ai_reply_max_tokens=100,
-            log_level="INFO",
-        )
-        handler = AIHandler(MagicMock(), config)
-        handler.session_manager.get_conversation_history = MagicMock(return_value=[])
-        return handler
+    def _notification(self, text: str) -> Mock:
+        notification = Mock()
+        notification.event = {
+            'typeWebhook': 'incomingMessageReceived',
+            'messageData': {'typeMessage': 'textMessage',
+                            'textMessageData': {'textMessage': text}},
+            'senderData': {'chatId': '120363410226011645@g.us',
+                           'sender': '972522968679@c.us', 'senderName': 'Test Sender'},
+            'timestamp': 1234567890,
+        }
+        return notification
 
-    def _message(self, text_content: str) -> WhatsAppMessage:
-        return WhatsAppMessage(
-            message_id='msg_bugfix024',
-            chat_id='120363410226011645@g.us',
-            sender_id='972522968679@c.us',
-            sender_name='Test Sender',
-            text_content=text_content,
-            timestamp=1234567890,
-            message_type='textMessage',
-            is_group=True,
-            received_timestamp=datetime.now(timezone.utc),
-        )
+    def test_own_number_unset_leaves_text_unchanged(self):
+        handler = WhatsAppHandler(make_denidin())
+        message = handler.process_notification(self._notification("@972559723730 מי אתה?"))
+        assert message.text_content == "@972559723730 מי אתה?"
 
-    def test_own_number_unset_leaves_prompt_unchanged(self, handler):
-        request = handler.create_request(self._message("@972559723730 מי אתה?"))
-        assert request.user_prompt == "@972559723730 מי אתה?"
-
-    def test_own_number_set_normalizes_prompt(self, handler):
+    def test_own_number_set_normalizes_text(self):
+        handler = WhatsAppHandler(make_denidin())
         handler.own_whatsapp_number = "972559723730"
-        request = handler.create_request(self._message("@972559723730 מי אתה?"))
-        assert request.user_prompt == "@DeniDin מי אתה?"
+        message = handler.process_notification(self._notification("@972559723730 מי אתה?"))
+        assert message.text_content == "@DeniDin מי אתה?"

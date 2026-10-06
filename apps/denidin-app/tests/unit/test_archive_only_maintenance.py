@@ -9,13 +9,14 @@ import pytest
 from src.managers.session_manager import SessionManager
 from tests.helpers.message_integrity import assert_message_integrity
 from tests.helpers.seed import seed_message
+from tests.denidin_test_support import make_session_manager
 
 CHAT = "972522968679@c.us"
 
 
 @pytest.fixture
 def sm(tmp_path):
-    return SessionManager(storage_dir=str(tmp_path / "sessions"))
+    return make_session_manager(storage_dir=str(tmp_path / "sessions"))
 
 
 def _sdir(sm):

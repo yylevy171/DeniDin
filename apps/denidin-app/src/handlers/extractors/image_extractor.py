@@ -19,7 +19,7 @@ import logging
 import re
 from src.models.media import Media
 from src.handlers.extractors.base import MediaExtractor
-from src.handlers.ai_handler import _log_raw_response
+from src.utils.wire_log import audit_wire, debug_wire
 
 logger = logging.getLogger(__name__)
 
@@ -107,37 +107,36 @@ def _parse_vision_json(raw: str) -> Dict:
 class ImageExtractor(MediaExtractor):
     """
     Extract text and analyze documents from images using GPT-4o Vision.
-    
+
     Phase 4: Enhanced to return text + document analysis in single AI call.
     """
-    
+
     def __init__(self, denidin_context):
         """
         Initialize with DeniDin global context.
-        
+
         Args:
-            denidin_context: DeniDin instance with ai_handler and config
+            denidin_context: DeniDin instance (or any context) with ai_manager and config
         """
         super().__init__(denidin_context)
-        self.ai_handler = denidin_context.ai_handler
         self.vision_model = self.config.ai_vision_model
-    
+
     def analyze_media(self, media: Media, caption: str = "", today_timestamp: Optional[int] = None) -> Dict:
         """
         Analyze image using GPT-4o Vision (Phase 4 enhancement).
-        
+
         Single AI call returns AI-generated analysis with:
         - Document summary (סיכום:)
         - Key points (נקודות חשובות:)
         - Document type and confidence
         - Full response formatted per prompt requirements
-        
+
         CHK006-011: Hebrew text extraction with layout preservation.
-        
+
         Args:
             media: Media object containing image data in memory
             caption: User's message/question sent with the image (optional)
-            
+
         Returns:
             {
                 "raw_response": str,  # Full unmodified AI response
@@ -204,7 +203,7 @@ class ImageExtractor(MediaExtractor):
             # Plural (2026-07-30): a single document can genuinely warrant more than one
             # capture - see capture_ledger_events_from_text's docstring for the real bug
             # this replaced (silently dropping every component after the first).
-            ledger_events = self.ai_handler.capture_ledger_events_from_text(
+            ledger_events = self.ai_manager.capture_ledger_events_from_text(
                 extracted_text, today_timestamp=today_timestamp
             )
 
@@ -252,20 +251,22 @@ class ImageExtractor(MediaExtractor):
             The vision model's extracted text response.
         """
         # Load constitution for context
-        constitution = self.ai_handler._load_constitution()
+        constitution = self.ai_manager.extraction_prompt_prefix()
 
         # Prepend constitution to user prompt (NO system message!)
         full_prompt = f"{constitution}\n\n{prompt}" if constitution else prompt
 
         logger.debug(f"[ImageExtractor._vision_extract] Full prompt length: {len(full_prompt)} chars")
         logger.debug(f"[ImageExtractor._vision_extract] Constitution loaded: {bool(constitution)}")
-        logger.debug(f"[ImageExtractor._vision_extract] Constitution preview: {constitution[:200] if constitution else 'NONE'}")
+        constitution_preview = constitution[:200] if constitution else 'NONE'
+        logger.debug(f"[ImageExtractor._vision_extract] Constitution preview: {constitution_preview}")
 
         # Get the data URL
         data_url = media.get_data_url()
         logger.info(f"[ImageExtractor._vision_extract] Media data URL length: {len(data_url)} chars")
         logger.info(f"[ImageExtractor._vision_extract] Media data URL preview: {data_url[:100]}...")
-        logger.info(f"[ImageExtractor._vision_extract] Media file size: {media.size} bytes, MIME type: {media.mime_type}")
+        logger.info(f"[ImageExtractor._vision_extract] Media file size: {media.size} bytes, "
+                    f"MIME type: {media.mime_type}")
 
         # Call OpenAI Vision via the Responses API with in-memory data URL.
         # detail="high" (2026-07-30 finding): omitting this left the API defaulting to
@@ -273,10 +274,10 @@ class ImageExtractor(MediaExtractor):
         # the content needs - a real, clean, high-resolution fee-agreement screenshot came
         # back with garbled text and a dropped fee tier. Forcing "high" processes the image
         # at full resolution (more tiles), matching what document/text-heavy images need.
-        logger.info(f"[ImageExtractor._vision_extract] Sending request to OpenAI Vision API")
-        response = self.ai_handler.client.responses.create(
-            model=self.vision_model,
-            input=[
+        logger.info("[ImageExtractor._vision_extract] Sending request to OpenAI Vision API")
+        request_kwargs = {
+            "model": self.vision_model,
+            "input": [
                 {
                     "role": "user",
                     "content": [
@@ -285,9 +286,16 @@ class ImageExtractor(MediaExtractor):
                     ]
                 }
             ],
-            max_output_tokens=self.config.ai_reply_max_tokens
-        )
-        _log_raw_response("ImageExtractor._vision_extract", response)
+            "max_output_tokens": self.config.ai_reply_max_tokens,
+        }
+        # boundary 'vision' (2026-10-01): the vision model, not the conversational
+        # one - and the request is logged too, so a trace shows exactly what the
+        # vision model was told (the image itself is redacted by wire_log).
+        audit_wire("vision", "out", "ImageExtractor._vision_extract", request_kwargs)
+        debug_wire("vision", "out", "ImageExtractor._vision_extract", request_kwargs)
+        response = self.ai_manager.client.responses.create(**request_kwargs)
+        audit_wire("vision", "in", "ImageExtractor._vision_extract", response)
+        debug_wire("vision", "in", "ImageExtractor._vision_extract", response)
 
         raw_response = cast(str, response.output_text)
         logger.info(f"[ImageExtractor._vision_extract] Raw OpenAI response ({len(raw_response)} chars):")

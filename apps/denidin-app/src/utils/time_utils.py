@@ -103,3 +103,17 @@ def n_calendar_days_ago(n: int, now: Optional[datetime] = None) -> date:
     """
     base = local_calendar_date(now or now_local())
     return base - timedelta(days=n)
+
+
+# 2020-01-01 00:00:00 UTC (Feature 069). Anything below this - 0, a negative
+# value, a malformed webhook timestamp, a test sentinel - is treated as "no
+# usable source time", so the persisted Message.timestamp falls back to
+# processing time instead of landing the message decades in the past.
+_MIN_PLAUSIBLE_SOURCE_EPOCH = 1_577_836_800
+
+
+def sane_source_epoch(epoch: Optional[int]) -> Optional[int]:
+    """Return `epoch` when it's a plausible real send-time, else None."""
+    if epoch is None or epoch < _MIN_PLAUSIBLE_SOURCE_EPOCH:
+        return None
+    return epoch
