@@ -147,6 +147,12 @@ class TestParseListInvoicesTotal:
         ])
         assert _parse_list_invoices_total(response) == 340
 
+    def test_too_many_json_returns_the_stated_total(self):
+        response = SimpleNamespace(output=[
+            _mcp_call_item("list_invoices", json.dumps({"status": "too_many", "total": 502, "kind": "invoices"})),
+        ])
+        assert _parse_list_invoices_total(response) == 502
+
     def test_multiple_list_invoices_calls_takes_the_max(self):
         response = SimpleNamespace(output=[
             _mcp_call_item("list_invoices", "נמצאו 5 חשבוניות:"),

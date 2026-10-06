@@ -2,7 +2,7 @@
 
 **Feature Branch**: `feature/063-refactor-oversized-handlers` (Bundled with 073, 085 — both filed
 under `specs/obsolete/`, their scope absorbed here)
-**Status**: Draft
+**Status**: Done - implemented and tested (backbone flag ON parity reruns), merging to master
 **Input**: Refactor `ai_handler.py` and `runtime_constitution.md` into a modular "backbone and plugins" architecture where capability prompts and code are dynamically loaded only at need.
 
 ---

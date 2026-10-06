@@ -35,8 +35,9 @@ pytestmark = pytest.mark.billed
 # cap. Measured 2026-08-23: a 3-day window held 18 documents, a 4-day window
 # held 168 - the sandbox has days with ~150 documents in them. Both failure
 # modes are handled by _sweep_or_skip below with an actionable message rather
-# than a confusing assertion failure.
-_TEST_LOOKBACK = timedelta(days=3)
+# than a confusing assertion failure. Narrowed to 1 day 2026-10-06: the 3-day
+# window then held 502 documents.
+_TEST_LOOKBACK = timedelta(days=1)
 
 
 def _events_dir(config) -> Path:

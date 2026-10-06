@@ -154,19 +154,41 @@ class TestAC1RollThenRecall:
         assert "74-ALPHA-9152" in answer, f"expected the out-of-window fact in: {answer!r}"
 
 
+def _ask_via_denidin(app, chat, text, message_id):
+    """One real turn through DeniDin's WhatsApp entry point (handle_text_message), so the
+    message and reply are stored the way production stores them - REQ-063-08 moved storing
+    out of ai_manager.single_turn and onto DeniDin. Returns the reply the user would see."""
+    import denidin
+    from tests.billed.denidin_mcp_e2e_helpers import build_text_webhook
+    from tests.e2e_helpers import create_real_notification, get_response
+
+    original_app = getattr(denidin, "denidin_app", None)
+    try:
+        denidin.denidin_app = app
+        if app.green_api_bot is None:
+            app.green_api_bot = object()
+        notification = create_real_notification(build_text_webhook(
+            chat_id=chat, sender_name="Avi", text=text, message_id=message_id))
+        denidin.handle_text_message(notification)
+        return get_response(notification)
+    finally:
+        denidin.denidin_app = original_app
+
+
 class TestAC2RestartContinuity:
     def test_a_fresh_process_continues_the_same_conversation(self, tmp_path):
         cfg = _config(tmp_path, SOLO)
         h1 = _handler(cfg)
-        _ask(h1, SOLO, "קוראים לי אבי ואני עובד על פרויקט לוּנה. תזכור את זה.")
+        _ask_via_denidin(h1, SOLO, "קוראים לי אבי ואני עובד על פרויקט לוּנה. תזכור את זה.",
+                         f"AC2_TELL_{int(time.time())}")
         sid = h1.session_manager.get_session(SOLO).session_id
 
         # "restart": a brand-new handler stack on the SAME data_root
         h2 = _handler(_config(tmp_path, SOLO))
         assert h2.session_manager.get_session(SOLO).session_id == sid  # bugfix-044 / AC-2
 
-        resp = _ask(h2, SOLO, "איך קוראים לי ועל איזה פרויקט אני עובד?")
-        answer = resp.response_text
+        answer = _ask_via_denidin(h2, SOLO, "איך קוראים לי ועל איזה פרויקט אני עובד?",
+                                  f"AC2_ASK_{int(time.time())}") or ""
         assert "אבי" in answer and ("לונה" in answer or "לוּנה" in answer or "Luna" in answer.lower()
                                     or "luna" in answer.lower())
 

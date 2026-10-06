@@ -402,15 +402,19 @@ def assert_extracted_text_persisted(denidin_app, chat_id):
     with open(Path(session_manager.storage_dir) / session_id / "session.json", encoding='utf-8') as f:
         session_data = json.load(f)
 
+    # The most recent user message that carries the media file (image_path), same
+    # rule as assert_image_path_persisted above: the backbone stores the read
+    # document's stash as a later internal user message, which has no extracted_text.
     last_user_message = None
     for message_id in session_data["message_ids"]:
         with open(messages_dir / f"{message_id}.json", encoding='utf-8') as f:
             message_data = json.load(f)
-        if message_data.get("ai_required_role", message_data.get("role")) == "user":
+        if (message_data.get("ai_required_role", message_data.get("role")) == "user"
+                and message_data.get("image_path")):
             last_user_message = message_data
 
     assert last_user_message is not None, (
-        f"No user session message found at all for chat_id={chat_id!r}"
+        f"No user session message with a media file found for chat_id={chat_id!r}"
     )
     extracted_text = last_user_message.get("extracted_text")
     assert extracted_text, (

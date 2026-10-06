@@ -126,6 +126,11 @@ def _parse_list_invoices_total(response: Any) -> Optional[int]:
             if isinstance(payload, dict) and "total_matched" in payload:
                 totals.append(int(payload["total_matched"]))
                 continue
+            # Over the tool's own listing limit it answers
+            # {"status": "too_many", "total": N} instead of the documents.
+            if isinstance(payload, dict) and payload.get("status") == "too_many" and "total" in payload:
+                totals.append(int(payload["total"]))
+                continue
         except (ValueError, TypeError):
             pass
 
