@@ -47,10 +47,10 @@ if str(APP_ROOT) not in sys.path:
 
 from openai import OpenAI  # noqa: E402
 
-from src.handlers.ai_handler import (  # noqa: E402
+from src.managers.ledger_event_recognizer import LEDGER_EVENT_TOOL  # noqa: E402
+from src.tool_actions.tool_schemas import (  # noqa: E402
     CREATE_REMINDER_TOOL,
     DELETE_REMINDER_TOOL,
-    LEDGER_EVENT_TOOL,
     LIST_REMINDERS_TOOL,
     MODIFY_REMINDER_TOOL,
     QUERY_LEDGER_EVENTS_TOOL,

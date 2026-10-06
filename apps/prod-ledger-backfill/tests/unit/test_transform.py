@@ -51,7 +51,7 @@ def test_transform_produces_correctly_shaped_ledger_events(tmp_path):
     exit_code = transform.main(["--input-dir", str(input_dir), "--output-dir", str(output_dir)])
     assert exit_code == 0
 
-    written_files = list(output_dir.glob("*.json"))
+    written_files = list((output_dir / "events").glob("*.json"))
     assert len(written_files) == 1
 
     event = json.loads(written_files[0].read_text(encoding="utf-8"))
@@ -104,5 +104,5 @@ def test_transform_large_input_produces_no_artificial_output_cap(tmp_path):
     exit_code = transform.main(["--input-dir", str(input_dir), "--output-dir", str(output_dir)])
     assert exit_code == 0
 
-    written_files = list(output_dir.glob("*.json"))
+    written_files = list((output_dir / "events").glob("*.json"))
     assert len(written_files) == 155

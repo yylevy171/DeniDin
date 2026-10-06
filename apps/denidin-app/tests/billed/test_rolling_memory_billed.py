@@ -16,17 +16,15 @@ Covers, per METHODOLOGY §VI (written here, run once, together):
 
 Run: scripts/run_single_test.sh "tests/billed/test_rolling_memory_billed.py::<Class>::<test>"
 """
+import dataclasses
 import json
 import statistics
 import time
 from datetime import timedelta
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
-from openai import OpenAI
 
-from src.handlers.ai_handler import AIHandler
 from src.managers.memory_collections import collection_name_for_chat
 from src.managers.message_integrity import assert_message_integrity
 from src.models.config import AppConfiguration
@@ -61,7 +59,10 @@ def _config(tmp_path, chat, *, window_days=14, max_tokens_by_role=None):
         ai_embedding_model=raw.get("ai_embedding_model", "text-embedding-3-large"),
         ai_reply_max_tokens=600,
         godfather_phone=chat,
-        feature_flags={"enable_memory_system": True, "enable_rbac": True},
+        # config.test.json's own flags (the backbone flag included), so the turn runs
+        # through whichever AI implementation the suite runs with.
+        feature_flags={**raw.get("feature_flags", {}),
+                       "enable_memory_system": True, "enable_rbac": True},
         data_root=str(tmp_path),
         memory={
             "session": {
@@ -77,12 +78,26 @@ def _config(tmp_path, chat, *, window_days=14, max_tokens_by_role=None):
 
 
 def _handler(cfg):
-    return AIHandler(OpenAI(api_key=cfg.ai_api_key), cfg)
+    """DeniDin's real global context (initialize_app) on this test's config - its
+    Shared Managers plus the one AI implementation the backbone flag selects."""
+    import denidin
+    return denidin.initialize_app(dataclasses.asdict(cfg))
 
 
-def _roll_ctx(handler):
-    return SimpleNamespace(session_manager=handler.session_manager,
-                           ai_handler=handler, config=handler.config)
+def _roll_ctx(app):
+    """The daily roll's global context - the same DeniDin object production hands it."""
+    return app
+
+
+def _worst_case_system_prompt(app):
+    """The largest fixed system prompt the running AI implementation sends: the
+    legacy constitution, or the backbone's instructions with every flow and every
+    capability loaded at once."""
+    if app.backbone_enabled:
+        from src.backbone.capability_tags import CapabilityTag
+        from src.backbone.flow_tags import FlowTag
+        return app.ai_manager.build_instructions(list(CapabilityTag), active_flows=list(FlowTag))
+    return app.ai_manager._load_constitution()  # pylint: disable=protected-access
 
 
 def _seed(sm, chat, role, content, days_ago, *, sender_name=None):
@@ -92,11 +107,12 @@ def _seed(sm, chat, role, content, days_ago, *, sender_name=None):
     )
 
 
-def _ask(handler, chat, text):
+def _ask(app, chat, text):
     m = WhatsAppMessage(message_id="q", chat_id=chat, sender_id=chat, sender_name="Avi",
                         text_content=text, timestamp=0, message_type="text")
-    req = handler.create_request(m, chat_id=chat, user_phone=chat)
-    return handler.get_response(req, chat_id=chat, user_phone=chat, sender="Avi", recipient="DeniDin")
+    req = app.ai_manager.create_request(m, chat_id=chat, user_phone=chat)
+    return app.ai_manager.single_turn(req, chat_id=chat, user_phone=chat, sender="Avi",
+                                      recipient="DeniDin")
 
 
 class TestAC1RollThenRecall:
@@ -138,19 +154,41 @@ class TestAC1RollThenRecall:
         assert "74-ALPHA-9152" in answer, f"expected the out-of-window fact in: {answer!r}"
 
 
+def _ask_via_denidin(app, chat, text, message_id):
+    """One real turn through DeniDin's WhatsApp entry point (handle_text_message), so the
+    message and reply are stored the way production stores them - REQ-063-08 moved storing
+    out of ai_manager.single_turn and onto DeniDin. Returns the reply the user would see."""
+    import denidin
+    from tests.billed.denidin_mcp_e2e_helpers import build_text_webhook
+    from tests.e2e_helpers import create_real_notification, get_response
+
+    original_app = getattr(denidin, "denidin_app", None)
+    try:
+        denidin.denidin_app = app
+        if app.green_api_bot is None:
+            app.green_api_bot = object()
+        notification = create_real_notification(build_text_webhook(
+            chat_id=chat, sender_name="Avi", text=text, message_id=message_id))
+        denidin.handle_text_message(notification)
+        return get_response(notification)
+    finally:
+        denidin.denidin_app = original_app
+
+
 class TestAC2RestartContinuity:
     def test_a_fresh_process_continues_the_same_conversation(self, tmp_path):
         cfg = _config(tmp_path, SOLO)
         h1 = _handler(cfg)
-        _ask(h1, SOLO, "קוראים לי אבי ואני עובד על פרויקט לוּנה. תזכור את זה.")
+        _ask_via_denidin(h1, SOLO, "קוראים לי אבי ואני עובד על פרויקט לוּנה. תזכור את זה.",
+                         f"AC2_TELL_{int(time.time())}")
         sid = h1.session_manager.get_session(SOLO).session_id
 
         # "restart": a brand-new handler stack on the SAME data_root
         h2 = _handler(_config(tmp_path, SOLO))
         assert h2.session_manager.get_session(SOLO).session_id == sid  # bugfix-044 / AC-2
 
-        resp = _ask(h2, SOLO, "איך קוראים לי ועל איזה פרויקט אני עובד?")
-        answer = resp.response_text
+        answer = _ask_via_denidin(h2, SOLO, "איך קוראים לי ועל איזה פרויקט אני עובד?",
+                                  f"AC2_ASK_{int(time.time())}") or ""
         assert "אבי" in answer and ("לונה" in answer or "לוּנה" in answer or "Luna" in answer.lower()
                                     or "luna" in answer.lower())
 
@@ -249,7 +287,7 @@ class TestSC007:
 
         window = sm.get_rolling_window(SOLO, window_days=14, max_tokens=100000)
         window_tokens = sum(sm.count_tokens(i["content"]) for i in window)
-        constitution_tokens = sm.count_tokens(h._load_constitution())  # pylint: disable=protected-access
+        constitution_tokens = sm.count_tokens(_worst_case_system_prompt(h))
         worst_case = window_tokens + constitution_tokens + 4000  # + tools/output headroom
         # gpt-5.6-luna context window = 1,050,000 (research.md D11)
         headroom = 1_050_000 - worst_case

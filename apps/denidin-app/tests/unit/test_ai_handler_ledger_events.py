@@ -25,12 +25,14 @@ from unittest.mock import Mock, MagicMock
 
 import pytest
 
-from src.handlers.ai_handler import (
-    AIHandler, extract_function_call, extract_function_call_id, extract_all_function_calls,
-    LEDGER_EVENT_TOOL
+from src.handlers.ai_handler import AIHandler
+from src.managers.ledger_event_recognizer import LEDGER_EVENT_TOOL
+from src.utils.function_calls import (
+    extract_all_function_calls, extract_function_call, extract_function_call_id,
 )
 from src.models.config import AppConfiguration
 from src.models.message import AIRequest
+from tests.ai_handler_test_support import make_ai_handler
 
 
 def _function_call_item(name, arguments, call_id=None):
@@ -409,7 +411,7 @@ def mock_ai_client():
 
 @pytest.fixture
 def ai_handler(mock_config, mock_ai_client):
-    return AIHandler(mock_ai_client, mock_config)
+    return make_ai_handler(mock_ai_client, mock_config)
 
 
 class TestCaptureLedgerEventsFromText:
@@ -560,10 +562,15 @@ ACCOUNTING_EVENT = _accounting_event()
 
 
 class TestHandleAccountingReconciliationCapture:
-    """Feature 025, T010a: the NEW reconciliation-capture handler
-    (_handle_accounting_reconciliation_capture) - a thin adapter. It is the only
-    remaining code path that turns a `capture_ledger_event` call into a persisted
-    LedgerEvent inside AIHandler (Feature 069 removed the conversational one)."""
+    """Feature 025, T010a: the reconciliation-capture handler - a thin adapter
+    (REQ-063-08: AccountingReconciler.capture, moved out of AIHandler). It is the
+    only remaining code path that turns a `capture_ledger_event` call into a
+    persisted LedgerEvent (Feature 069 removed the conversational one)."""
+
+    @staticmethod
+    def _capture(ai_handler, response):
+        from src.services.accounting_reconciliation_service import AccountingReconciler
+        return AccountingReconciler(ai_handler, ai_handler.ledger_event_manager).capture(response)
 
     def test_persists_via_ledger_event_manager_even_with_mcp_call_in_same_turn(
         self, ai_handler
@@ -581,7 +588,7 @@ class TestHandleAccountingReconciliationCapture:
             ],
         )
 
-        event_ids = ai_handler._handle_accounting_reconciliation_capture(response)
+        event_ids = self._capture(ai_handler, response)
 
         assert len(event_ids) == 1
         events_dir = ai_handler.ledger_event_manager.storage_dir
@@ -604,7 +611,7 @@ class TestHandleAccountingReconciliationCapture:
                 "capture_ledger_event", json.dumps(ACCOUNTING_EVENT), call_id="call_0"
             ),
         ])
-        event_ids = ai_handler._handle_accounting_reconciliation_capture(response)
+        event_ids = self._capture(ai_handler, response)
         assert len(event_ids) == 1
 
     def test_two_calls_in_one_turn_both_persisted_not_a_protocol_violation(self, ai_handler):
@@ -621,7 +628,7 @@ class TestHandleAccountingReconciliationCapture:
             ),
         ])
 
-        event_ids = ai_handler._handle_accounting_reconciliation_capture(response)
+        event_ids = self._capture(ai_handler, response)
 
         assert len(event_ids) == 2
         events_dir = ai_handler.ledger_event_manager.storage_dir
@@ -635,7 +642,7 @@ class TestHandleAccountingReconciliationCapture:
         ])
 
         with caplog.at_level(logging.ERROR):
-            event_ids = ai_handler._handle_accounting_reconciliation_capture(response)
+            event_ids = self._capture(ai_handler, response)
 
         assert event_ids == []
         assert any(r.levelno == logging.ERROR for r in caplog.records)
@@ -647,7 +654,7 @@ class TestHandleAccountingReconciliationCapture:
             ),
         ])
 
-        ai_handler._handle_accounting_reconciliation_capture(response)
+        self._capture(ai_handler, response)
 
         events_dir = ai_handler.ledger_event_manager.storage_dir
         files = list(events_dir.glob("*.json"))
@@ -671,7 +678,7 @@ class TestHandleAccountingReconciliationCapture:
             ),
         ])
 
-        ai_handler._handle_accounting_reconciliation_capture(response)
+        self._capture(ai_handler, response)
 
         send_mock.assert_not_called()
 
@@ -686,7 +693,7 @@ class TestHandleAccountingReconciliationCapture:
             ),
         ])
 
-        ai_handler._handle_accounting_reconciliation_capture(response)
+        self._capture(ai_handler, response)
 
         mock_ai_client.responses.create.assert_not_called()
 
@@ -767,8 +774,7 @@ class TestMaxOutputTokensTruncationCausesEmptyReply:
 
         ai_response = ai_handler._finalize_response(
             request, response, effective_chat_id="972500000000@c.us",
-            user_obj=None, user_role="godfather", sender="972500000000@c.us",
-            recipient=None, tools=None,
+            sender="972500000000@c.us", tools=None,
         )
 
         assert ai_response.response_text.strip() != "", (
@@ -780,10 +786,19 @@ class TestMaxOutputTokensTruncationCausesEmptyReply:
 
 
 class TestFinalizeResponseThreadsLedgerEventIds:
-    """T008a: the stored user message must carry ledger_event_ids at creation
-    time (Feature 033's Message.ledger_event_ids, REQ-TRACE-003)."""
+    """T008a: the stored user message carries ledger_event_ids (Feature 033's
+    Message.ledger_event_ids, REQ-TRACE-003). 2026-09-30: the user message is stored on
+    receipt (DeniDin.store_inbound/store_outbound); _finalize_response fills its ids in afterwards."""
 
     def test_no_capture_leaves_ledger_event_ids_empty(self, ai_handler, mock_ai_client):
+        from datetime import datetime, timezone
+        from src.models.message import WhatsAppMessage
+        ai_handler.denidin.store_inbound(WhatsAppMessage(
+            message_id="msg-none", chat_id="972500000000@c.us", sender_id="972500000000@c.us",
+            sender_name="John", text_content="מה קורה?", timestamp=1770000000,
+            message_type="textMessage", is_group=False,
+            received_timestamp=datetime.now(timezone.utc),
+        ))
         response = SimpleNamespace(
             id="resp_no_capture", output=[], output_text="שלום, איך אפשר לעזור?",
             model="gpt-5.6-luna",
@@ -797,8 +812,7 @@ class TestFinalizeResponseThreadsLedgerEventIds:
 
         ai_handler._finalize_response(
             request, response, effective_chat_id="972500000000@c.us",
-            user_obj=None, user_role="client", sender="972500000000@c.us",
-            recipient="AI", tools=None
+            sender="972500000000@c.us", tools=None
         )
 
         session = ai_handler.session_manager.get_session("972500000000@c.us")

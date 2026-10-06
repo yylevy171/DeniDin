@@ -15,17 +15,15 @@ reconcile whatever documents already exist in the window, which is exactly
 what the sweep does in production, and keeps the suite re-runnable without
 accumulating test data in a real account.
 """
+import dataclasses
 import json
 import shutil
 from datetime import timedelta
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
-from openai import OpenAI
 
 import src.services.accounting_reconciliation_service as svc
-from src.handlers.ai_handler import AIHandler
 from src.utils.time_utils import now_local
 
 pytestmark = pytest.mark.billed
@@ -37,8 +35,9 @@ pytestmark = pytest.mark.billed
 # cap. Measured 2026-08-23: a 3-day window held 18 documents, a 4-day window
 # held 168 - the sandbox has days with ~150 documents in them. Both failure
 # modes are handled by _sweep_or_skip below with an actionable message rather
-# than a confusing assertion failure.
-_TEST_LOOKBACK = timedelta(days=3)
+# than a confusing assertion failure. Narrowed to 1 day 2026-10-06: the 3-day
+# window then held 502 documents.
+_TEST_LOOKBACK = timedelta(days=1)
 
 
 def _events_dir(config) -> Path:
@@ -74,16 +73,19 @@ def clean_ledger(denidin_config):
 
 
 @pytest.fixture
-def sweep_context(denidin_config, live_morning_tunnel):
-    """A real AIHandler (real LedgerEventManager, real OpenAI client, real
-    Morning MCP attachment) in the shape _sweep_accounting_documents expects.
+def sweep_context(denidin_config, live_morning_tunnel, clean_ledger):
+    """DeniDin's real global context (initialize_app) - the same object the
+    production scheduler hands the sweep, holding whichever AI implementation
+    the backbone flag selects (REQ-063-08). No live Green API: the sweep never
+    sends a WhatsApp message.
 
-    Deliberately NOT the `denidin_app` fixture: the sweep is a headless
-    background job with no session/chat, and building only what it actually
-    needs keeps the test honest about that.
+    Depends on clean_ledger so the ledger files are wiped BEFORE the
+    LedgerEventManager is built - its dedup cache is loaded once, at
+    construction, and a cache built from a previous test's captures would make
+    this test's sweep treat every document as a duplicate.
     """
-    handler = AIHandler(OpenAI(api_key=denidin_config.ai_api_key), denidin_config)
-    return SimpleNamespace(ai_handler=handler)
+    import denidin
+    return denidin.initialize_app(dataclasses.asdict(denidin_config))
 
 
 def _run_sweep(context, lookback=_TEST_LOOKBACK, log_prefix="[BILLED] "):
@@ -283,11 +285,11 @@ class TestUS5FailureNeverSilentlySkipsAWindow:
         self, denidin_config, sweep_context, clean_ledger
     ):
         events_before = {e["event_id"] for e in _sweep_or_skip(sweep_context, denidin_config)}
-        manager = sweep_context.ai_handler.ledger_event_manager
+        manager = sweep_context.ledger_event_manager
         watermark_before = manager.get_accounting_document_watermark()
 
         # A real failure mode: the Morning MCP tunnel unreachable for one tick.
-        locator = sweep_context.ai_handler.morning_mcp_locator
+        locator = sweep_context.morning_mcp_locator
         original = locator.current_server_url
         locator.current_server_url = lambda: None
         try:
@@ -310,7 +312,7 @@ class TestUS5FailureNeverSilentlySkipsAWindow:
         them or duplicating them)."""
         baseline = {e["event_id"] for e in _sweep_or_skip(sweep_context, denidin_config)}
 
-        locator = sweep_context.ai_handler.morning_mcp_locator
+        locator = sweep_context.morning_mcp_locator
         original = locator.current_server_url
         locator.current_server_url = lambda: None
         try:

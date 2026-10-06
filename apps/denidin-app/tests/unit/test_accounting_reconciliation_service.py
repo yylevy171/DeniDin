@@ -26,6 +26,7 @@ from src.services.accounting_reconciliation_service import (
     run_startup_accounting_reconciliation_sweep, start_accounting_reconciliation_scheduler,
     RECONCILIATION_SWEEP_JOB_ID, MAX_CATCHUP_LOOKBACK, MAX_CATCHUP_DOCUMENT_COUNT,
 )
+from tests.ai_handler_test_support import make_ai_handler
 
 
 @pytest.fixture
@@ -55,7 +56,7 @@ def mock_ai_client():
 
 @pytest.fixture
 def ai_handler(mock_config, mock_ai_client, monkeypatch):
-    handler = AIHandler(mock_ai_client, mock_config)
+    handler = make_ai_handler(mock_ai_client, mock_config)
     # Morning MCP is normally discovered via a live status file - stubbed here
     # to always report a reachable server, matching this file's "only the
     # OpenAI client is a stand-in" scope.
@@ -68,7 +69,7 @@ def ai_handler(mock_config, mock_ai_client, monkeypatch):
 
 @pytest.fixture
 def global_context(ai_handler):
-    return SimpleNamespace(ai_handler=ai_handler)
+    return SimpleNamespace(ai_manager=ai_handler, ledger_event_manager=ai_handler.ledger_event_manager)
 
 
 def _mcp_call_item(name, output):
@@ -145,6 +146,12 @@ class TestParseListInvoicesTotal:
             ),
         ])
         assert _parse_list_invoices_total(response) == 340
+
+    def test_too_many_json_returns_the_stated_total(self):
+        response = SimpleNamespace(output=[
+            _mcp_call_item("list_invoices", json.dumps({"status": "too_many", "total": 502, "kind": "invoices"})),
+        ])
+        assert _parse_list_invoices_total(response) == 502
 
     def test_multiple_list_invoices_calls_takes_the_max(self):
         response = SimpleNamespace(output=[

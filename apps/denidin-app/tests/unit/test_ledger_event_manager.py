@@ -37,6 +37,7 @@ from pathlib import Path
 import pytest
 
 from src.managers.ledger_event_manager import LedgerEventManager, is_incomplete_capture, _parse_iso_local
+from tests.denidin_test_support import make_ledger_event_manager
 
 # Raw arguments shape capture_ledger_event's LEDGER_EVENT_TOOL produces (Phase 11
 # shape, 2026-08-16). Not every test needs every field non-null.
@@ -115,7 +116,7 @@ def temp_events_dir(tmp_path):
 
 @pytest.fixture
 def manager(temp_events_dir):
-    return LedgerEventManager(storage_dir=str(temp_events_dir))
+    return make_ledger_event_manager(storage_dir=str(temp_events_dir))
 
 
 def _read(temp_events_dir, event_id):
@@ -128,7 +129,7 @@ class TestLedgerEventManagerCore:
 
     def test_storage_dir_created_on_init(self, temp_events_dir):
         assert not temp_events_dir.exists()
-        LedgerEventManager(storage_dir=str(temp_events_dir))
+        make_ledger_event_manager(storage_dir=str(temp_events_dir))
         assert temp_events_dir.exists()
 
     def test_add_ledger_event_writes_file_named_by_event_id(self, manager, temp_events_dir):
@@ -1294,7 +1295,7 @@ class TestInMemoryIndex:
         _write_raw_event_file(temp_events_dir, "A2807261407", dict(SAMPLE_EVENT, event_id="A2807261407"))
         _write_raw_event_file(temp_events_dir, "B2807261408", dict(SAMPLE_EVENT, event_id="B2807261408"))
 
-        manager = LedgerEventManager(storage_dir=str(temp_events_dir))
+        manager = make_ledger_event_manager(storage_dir=str(temp_events_dir))
 
         assert len(manager._index) == 3
         assert {e["event_id"] for e in manager._index} == {
@@ -1302,14 +1303,14 @@ class TestInMemoryIndex:
         }
 
     def test_construction_with_no_existing_files_yields_empty_index(self, temp_events_dir):
-        manager = LedgerEventManager(storage_dir=str(temp_events_dir))
+        manager = make_ledger_event_manager(storage_dir=str(temp_events_dir))
         assert manager._index == []
 
     def test_list_events_returns_shallow_copy_of_every_record(self, temp_events_dir):
         # Feature 068: additive read-only accessor for the webapp-backend.
         _write_raw_event_file(temp_events_dir, "A2807261406", dict(SAMPLE_EVENT, event_id="A2807261406"))
         _write_raw_event_file(temp_events_dir, "B2807261408", dict(SAMPLE_EVENT, event_id="B2807261408"))
-        manager = LedgerEventManager(storage_dir=str(temp_events_dir))
+        manager = make_ledger_event_manager(storage_dir=str(temp_events_dir))
 
         events = manager.list_events()
         assert {e["event_id"] for e in events} == {"A2807261406", "B2807261408"}
@@ -1323,7 +1324,7 @@ class TestInMemoryIndex:
         _write_raw_event_file(temp_events_dir, "B2807261408", dict(SAMPLE_EVENT, event_id="B2807261408"))
 
         with caplog.at_level(logging.ERROR):
-            manager = LedgerEventManager(storage_dir=str(temp_events_dir))
+            manager = make_ledger_event_manager(storage_dir=str(temp_events_dir))
 
         # FR-007: the corrupt file never prevents the others from loading, and
         # never crashes construction (no exception raised above).
@@ -1348,7 +1349,7 @@ class TestInMemoryIndex:
         self, temp_events_dir
     ):
         _write_raw_event_file(temp_events_dir, "A2807261406", dict(SAMPLE_EVENT, event_id="A2807261406"))
-        manager = LedgerEventManager(storage_dir=str(temp_events_dir))
+        manager = make_ledger_event_manager(storage_dir=str(temp_events_dir))
         assert len(manager._index) == 1
 
         manager.add_ledger_event(

@@ -63,7 +63,7 @@ class TestLedgerPostTurnCaptureText:
         assert_ledger_event_matches_manifest(
             denidin_app, events, "agreement_us1", trigger_epoch,
         )
-        last = denidin_app.ai_handler.last_response
+        last = denidin_app.last_response
         if last is not None:
             assert not any(
                 c["name"] == "capture_ledger_event" for c in last.mcp_calls

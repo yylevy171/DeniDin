@@ -1,0 +1,248 @@
+# Implementation Plan: The Dynamic Capability Backbone (063 + 073 + 085)
+
+**Branch**: `feature/063-refactor-oversized-handlers` | **Date**: 2026-09-14 | **Spec**: [spec.md](./spec.md)
+**Input**: Feature specification from `specs/repo/features/063-refactor-oversized-handlers/spec.md`
+
+---
+
+**IMPORTANT**: This plan complies with:
+- **CONSTITUTION.md** (§I-III, VI): no environment variables, Israel-local timestamps, git
+  workflow (feature branch + PR/merge), feature-flag-gated rollout for safe deployment.
+- **METHODOLOGY.md** (§II, IV, VI.a/VI.b, VII): spec-first, acceptance scenarios defined+approved
+  before this plan (satisfied — see `user-stories.md`'s "no new scenarios" decision, approved
+  2026-09-14), phased planning, per-story unit/integration TDD discipline in `speckit.tasks`.
+
+---
+
+## Summary
+
+Build a **new, fully parallel** implementation of DeniDin's turn-handling: a thin **Backbone
+backbone kernel** (static behavioral constants only — persona, boundaries, always-on UX) that
+drives ONE tool-driven loop (`load_flows`/`load_capabilities` + unload counterparts/`reset_to_backbone`, persisted
+per chat — `contracts/capability-resolution-loop.md`) over 10 **domain capabilities** (Invoicing
+Write/Read, Client Write/Read, Ledger Events Capture/Query, Reminders Write/Read, Docx Write, and
+**Media Analysis** — image/PDF/DOCX extraction, folded into this same capability model instead of
+living outside it). Loading a capability attaches its prompt AND its real tools. Every message — text or media — enters through
+this one backbone; there is no separate deterministic media pre-route. Every round of the loop is one OpenAI call carrying Backbone + the prompt and tools of every
+currently-loaded capability, rebuilt from the persisted set each call.
+
+This is selected at startup via `config.feature_flags.enable_capability_backbone` (default
+`false`) — **not** a conditional inside the existing handler, and not a default for new work in
+general (CONSTITUTION.md §VI now requires asking before adding a flag; this feature keeps one
+because it was explicitly requested for this specific large refactor). With the flag off,
+`denidin.py` constructs the existing, completely untouched `AIHandler`, reading the existing,
+completely untouched `runtime_constitution.md`, `config/ledger_recognition_prompt.md`, and
+`prompts/*.txt` (REQ-063-07) — `ai_handler.py` and the extractor classes are never modified by
+this feature. The two domains with real local storage (Ledger Events, Reminders) and Media
+Analysis's extraction code all stay exactly where they are, imported unmodified by the new
+backbone's capability handlers — everything else in the new path is independent, new code
+under a new `config/prompts/` folder. No new persisted data shape, no new user-facing behavior, no
+new acceptance scenarios (human-approved decision, 2026-09-14) — the pre-existing
+`billed`/`expensive` test suite, run against both implementations, is the acceptance gate.
+
+## Technical Context
+
+**Language/Version**: Python 3.11 (existing `apps/denidin-app` venv/Dockerfile, unchanged)
+**Primary Dependencies**: `openai` SDK (Responses API, already in use), existing internal
+`AppConfiguration`/`SessionManager`/domain managers — no new third-party dependency introduced.
+**Storage**: N/A for new data — `ledger_event_manager.py`/`reminder_manager.py`'s SQLite/iCalendar
+persistence and `handlers/extractors/*.py`'s extraction logic stay exactly where they are,
+imported unmodified by both implementations; no data reshaping.
+**Testing**: `pytest` — existing `unit`/`integration`/`billed`/`expensive`/`sanity` tiers,
+unchanged tooling (`scripts/run_single_test.sh` etc.). `ai_handler.py`'s existing unit tests are
+untouched (the file itself doesn't change); the new backbone gets its own new, standalone unit
+tests. `billed`/`expensive`/`sanity` suites run unmodified, against both implementations.
+**Target Platform**: Docker containers, `dev`/`prod`, unchanged (019-env-separation).
+**Project Type**: Single backend application (`apps/denidin-app`), no new project/service.
+**Performance Goals**: SC-004 — measurable per-turn input token reduction, text AND media turns
+alike (media vision calls today unconditionally prepend the full constitution), via the plan
+execution loop attaching only one capability's content per call instead of everything up front —
+net latency/cost tradeoff (more, smaller calls vs. one large call) instrumented per research.md R6,
+not assumed.
+**Constraints**: REQ-063-06 — Backbone+single-capability prefix must remain OpenAI's byte-stable
+cached prefix per call; REQ-063-07 — `ai_handler.py`, `runtime_constitution.md`,
+`config/ledger_recognition_prompt.md`, `prompts/*.txt`, and `handlers/extractors/*.py` must remain
+byte-for-byte untouched while the flag exists; zero observable behavior change with the flag on
+(REQ-063-05); the model, not code, chooses flows and capabilities (`load_flows`/`load_capabilities`), so there is no
+planning-failure fallback to maintain.
+**Scale/Scope**: 1 new `src/backbone/` package (backbone + resolution/backbone tools) + domain
+capability packages under `src/capabilities/` (10 domain capability prompt files,
+consolidating what's currently split across `runtime_constitution.md`,
+`ledger_recognition_prompt.md`, and 2 standalone `.txt` files) built alongside (not replacing) the
+existing 4,859-line `ai_handler.py`; the 3 named oversized managers plus the 3 extractor classes
+all stay exactly where they are, imported unmodified by the new capability handlers.
+
+## Constitution Check
+
+*GATE: Must pass before Phase 0 research (done above) and re-checked after Phase 1 design (this
+section, post-design).*
+
+| Gate | Status | Notes |
+|---|---|---|
+| No environment variables (CONSTITUTION §II) | ✅ Pass | New `backbone_config`/`enable_capability_backbone` are `config.json` fields, loaded via `AppConfiguration`, exactly like every other config value. |
+| Israel-local timestamps (CONSTITUTION §III) | ✅ Pass | No new timestamp logic introduced; existing `now_local()` usage untouched. |
+| Feature flags: ask before adding, don't default to one (CONSTITUTION §VI, revised 2026-09-14) | ✅ Pass | Explicitly discussed with and requested by the human for this feature (large structural change, real regression risk) — not unilaterally added. `enable_capability_backbone` default `false`; flag-off path is the literal untouched `AIHandler`/`runtime_constitution.md`, not a conditional branch (research.md R1). |
+| No monkey-patching (CONSTITUTION §XVII) | ✅ Pass | Capability/plan loading is plain conditional dispatch + dependency injection (config-driven file paths), no runtime method replacement. |
+| `pathlib.Path`, not string concatenation | ✅ Pass | New `_load_capability_prompt` follows `_load_constitution`'s existing `Path(base_dir) / ...` pattern. |
+| Integration tests as real entry points, zero internal mocking (CONSTITUTION §I/§V) | ✅ Pass | No new integration tests planned beyond what `speckit.tasks` derives per-capability; existing integration suite untouched. |
+| Retry policy (retry once on 5xx/timeout, never 4xx) | ✅ Pass | Every resolution-loop round reuses `_timed_llm_call`'s existing retry policy, reimplemented in the new module (research.md R2), no new policy. |
+| Version/release decisions human-only | ✅ N/A at plan stage | No release cut as part of this plan; flag-default-flip and eventual legacy-path deletion are explicitly out of scope, deferred to a later human decision. |
+
+No violations requiring Complexity Tracking justification.
+
+## Project Structure
+
+### Documentation (this feature)
+
+```text
+specs/repo/features/063-refactor-oversized-handlers/
+├── spec.md                          # updated across 2 clarify + 2 plan-phase revision passes (2026-09-14)
+├── user-stories.md                  # UAT + §VI.a decision (no new acceptance scenarios)
+├── plan.md                          # this file
+├── research.md                      # Phase 0 output (R1-R6, R2a, R2b)
+├── data-model.md                    # Phase 1 output
+├── quickstart.md                    # Phase 1 output
+├── contracts/
+│   ├── intent-planning-loop.md         # supersedes the retired pre-classifier.md
+│   └── prompt-assembly.md            # renamed from constitution-assembly.md
+└── tasks.md                         # Phase 2 output (speckit.tasks — not created here)
+```
+
+### Source Code (repository root)
+
+```text
+apps/denidin-app/
+├── config/
+│   ├── runtime_constitution.md                   # UNTOUCHED — still used verbatim by legacy AIHandler (flag off)
+│   ├── ledger_recognition_prompt.md               # UNTOUCHED — still used verbatim by legacy AIHandler
+│   └── prompts/                                   # NEW — used only by the new backbone (flag on)
+│       ├── backbone.md
+│       └── capabilities/
+│           ├── cap_invoicing_write.md
+│           ├── cap_invoicing_read.md
+│           ├── cap_client_write.md / cap_client_read.md
+│           ├── cap_docx_write.md
+│           ├── cap_ledger_query.md
+│           ├── cap_reminders_write.md
+│           ├── cap_reminders_read.md
+│           └── cap_media_analysis.md                   # consolidates prompts/image_analysis.txt + docx_analysis.txt
+├── prompts/                                        # UNTOUCHED — image_analysis.txt/docx_analysis.txt,
+│                                                     #   still used verbatim by the legacy extractors
+├── src/
+│   ├── handlers/
+│   │   ├── ai_handler.py                         # UNTOUCHED — legacy path, byte-for-byte (REQ-063-07)
+│   │   └── extractors/                            # UNTOUCHED — image/pdf/docx_extractor.py, byte-for-byte
+│   ├── backbone/                                  # NEW package — the backbone kernel (flag on)
+│   │   ├── backbone.py                        # new get_response/resolve_button_tap equivalent — the
+│   │   │                                            #   plan-execution loop (contracts/intent-planning-loop.md)
+│   │   ├── capability_tags.py                      # the 10-value CapabilityTag enum (data-model.md)
+│   │   ├── resolution_tools.py                  # load/unload/reset/record_planning_status/approval/send_to_user
+│   │   └── backbone_tools.py                       # send_progress_update / react_to_message
+│   ├── capabilities/                              # NEW package — 4 domain subpackages (write/read stays a
+│   │   │                                            #   prompt/tool distinction, not a Python file split)
+│   │   ├── invoicing/
+│   │   │   └── handler.py                        # NEW code (not extracted — parallel to ai_handler.py's logic)
+│   │   ├── ledger_events/
+│   │   │   └── handler.py                        # NEW code (capture + query)
+│   │   ├── reminders/
+│   │   │   └── handler.py                        # NEW code (write + read)
+│   │   └── media_analysis/
+│   │       └── handler.py                        # NEW code — wraps the unmodified extractor classes
+│   ├── managers/                                    # ALL UNTOUCHED — ai_handler.py's imports don't change
+│   │   ├── ledger_event_manager.py                # imported by both ai_handler.py (unchanged) and the new
+│   │   │                                            #   capabilities/ledger_events/handler.py (new import, new file)
+│   │   ├── reminder_manager.py                     # same sharing pattern
+│   │   └── session_manager.py                      # Backbone-layer infra, used unmodified by both implementations
+│   └── denidin.py (repo root of the app)          # initialize_app: constructs AIHandler XOR the new backbone;
+│                                                     #   when flag on, ALSO routes media dispatch into the new
+│                                                     #   backbone instead of WhatsAppHandler.handle_media_message
+│                                                     #   directly (R2a) — flag-off dispatch is fully unchanged
+└── tests/
+    ├── unit/
+    │   ├── test_ai_handler_*.py                    # UNTOUCHED — ai_handler.py didn't change
+    │   └── test_backbone_*.py, test_capabilities_*  # NEW — standalone unit tests for the new backbone/capabilities
+    ├── billed/  , tests/expensive/                # UNCHANGED — the actual regression gate (REQ-063-05), run
+                                                      #   against both implementations
+```
+
+**Structure Decision**: Single-project structure (Option 1 from the template), scoped entirely to
+`apps/denidin-app` — no new app, no frontend/backend split. `src/backbone/` (backbone +
+resolution tools) and `src/capabilities/` (domain subpackages + `toolsets.py`) are new top-level packages,
+fully additive alongside the existing (untouched) `src/handlers/ai_handler.py` and
+`src/handlers/extractors/`. Write/read stays a prompt/tool-attachment distinction (R3) rather than
+a Python package split, per research.md R5's rationale. The domains with real local
+storage/extraction logic (`managers/ledger_event_manager.py`, `managers/reminder_manager.py`,
+`handlers/extractors/*.py`) all stay exactly where they are and are imported, unmodified, by both
+the legacy path (unchanged, as today) and the new capability handlers — zero changes to any
+legacy file, including imports; everything else in the new path is independent new code, selected
+at startup per REQ-063-07.
+
+## App Ownership and the AIManager (REQ-063-08, approved 2026-10-02)
+
+**Problem.** `initialize_app` built `AIHandler` unconditionally, and `AIHandler`'s constructor built
+DeniDin's data (`UserManager`, `SessionManager`, `RollMarkerStore`, `LedgerEventManager`,
+`MemoryManager`, `ReminderManager`, `MorningMcpLocator`, `DocTemplateEngine`/`FeeAgreementToolHandler`).
+The backbone, `DeniDin`, every background service, `media_handler`, the media extractors, the player,
+scripts and tests all reached that data through `ai_handler`. With the flag on, the legacy object still
+existed, so a read of state only legacy writes (e.g. `ai_handler.pending_approval_manager.get(chat)`)
+silently returned `None` instead of failing.
+
+**Design.**
+
+1. **`DeniDin` owns the data.** `initialize_app` always builds: `UserManager`, `SessionManager`,
+   `RollMarkerStore`, `MemoryManager` (when memory is on), `LedgerEventManager`, `ReminderManager`,
+   `MorningMcpLocator`, `TelemetryManager`, `ChatLog`, `DocTemplateEngine` + `FeeAgreementToolHandler`,
+   `own_whatsapp_number`, the OpenAI client, `memory_enabled`/`rbac_enabled` (from config), and holds
+   `last_response` (the most recent `AIResponse`, set by both paths at the end of a turn). It hands them to
+   `DeniDin` and to the one `AIManager` it builds.
+2. **`AIManager`** — an abstract base class; `AIHandler` and `Backbone` are its two implementations.
+   `DeniDin.ai_manager` holds exactly one. Flag on: `Backbone` only — no `AIHandler`, no
+   `PendingApprovalManager`, no `PendingLocalToolApprovalManager`. Flag off: `AIHandler` only, given the
+   shared data instead of building it, keeping only its legacy-only state; behavior unchanged.
+   - Single implementations in the base class, used by both: `create_request`; Morning MCP tool building
+     (incl. `tool_actions/morning_mcp.py`'s connection lookup); what is today `src/core/model_calls.py`,
+     `turn_context.py`, `turn_result.py`, `write_guards.py`.
+   - Abstract, one per implementation: `single_turn()` (today `AIHandler.get_response` /
+     `Backbone.turn_with_rounds`), `resolve_button_tap()`, and the media extractors' two hooks — the
+     instructions to prepend to an extraction prompt (legacy: the constitution; backbone: none) and inline
+     ledger capture from extracted text (legacy: real; backbone: none). This retires the backbone's
+     `_ExtractorAIHandlerShim`.
+   - Legacy-only wiring in `denidin.py` (attaching the sent approval message id, lines ~561/~1410) moves
+     inside `AIHandler`.
+3. **Not `AIManager` methods:** `chat_log` (DeniDin data); `LedgerEventRecognizer` — its own class and
+   file: the after-turn recognition call plus `LEDGER_EVENT_TOOL` and `build_ledger_stash_text`;
+   `AccountingReconciler` — its own class in `accounting_reconciliation_service.py`, owning its sweep and
+   capture, using `ai_manager` only for the Morning tools and the client. `src/tool_actions/`
+   (`reminder_actions`, `messaging_actions`, `tool_schemas`) stays as separate modules.
+4. **Readers.** Services, `media_handler`, the extractors, the player, scripts and tests read data from
+   `DeniDin` and `ai_manager` only for AI needs (the extractors: client + the two hooks; the reconciler:
+   Morning tools + client; the daily-summary roll: the client). Nothing outside `AIHandler` imports from
+   the `ai_handler` module.
+5. **Outside denidin-app.** webapp backend: no change (uses the managers directly). `player/run_player.py`:
+   reads/sets `session_manager`/`own_whatsapp_number` on `denidin_app`. `apps/rolling-memory-backfill`
+   (`backfill_daily_summaries.py` + 2 tests): builds the new context shape instead of an `ai_handler`
+   stand-in. `apps/prod-ledger-backfill`: no change (a stale comment only).
+6. **Tests.** Read `denidin_app.*`. ST10's "add_client approval is pending" check and `_seed_client`'s
+   "an approval is already pending" check are rewritten against what the user sees (the approval prompt
+   and its buttons), never legacy state. New guards: with the flag on, `AIHandler` is never constructed;
+   nothing outside `AIHandler` imports the `ai_handler` module; unit + integration suites on both flag
+   settings.
+
+7. **Everything is built on `DeniDin` (2026-10-03, supersedes the constructor wiring in 1 and the
+   `chat_log` in 3).** Every manager and the AI implementation takes the `DeniDin` object as its only
+   constructor argument, reads its settings off `denidin.config`, and reaches other objects and DeniDin's
+   own methods through it — no callbacks (progress updates, reactions, sending a document all call
+   `DeniDin` directly), no manager-to-manager constructor wiring, cross-references read at use time and
+   `None`-guarded. `ChatLog` and `build_shared_managers`/`SharedManagers` are deleted:
+   `build_denidin_objects(denidin)` builds every object but the AI implementation. `WhatsAppHandler` owns
+   the own number and the `@<number>`→`@DeniDin` rewrite (applied while parsing) and knows nothing of
+   sessions; `SessionManager` stores what it's given and knows nothing of WhatsApp; `DeniDin` coordinates
+   by value (`receive`, `send_text`/`send_response`, `store_inbound`/`store_outbound`/`update_message`,
+   `begin_turn`/`end_turn` + `send_progress_update`, `send_document`, `send_reaction`). The legacy media
+   and unsupported-type replies move from `WhatsAppHandler` into `denidin.py`. Outside the app, the
+   backfill and the webapp build their own minimal stand-in (`BackfillDeniDin`, `WebappDeniDin`); the
+   player runs the real `initialize_app`.
+
+## Complexity Tracking
+
+*No Constitution Check violations — table intentionally empty.*

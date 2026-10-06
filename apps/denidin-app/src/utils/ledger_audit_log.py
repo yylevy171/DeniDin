@@ -14,7 +14,7 @@ The single call site is `LedgerEventManager.add_ledger_event`, the one
 chokepoint every persistence path funnels through - the Feature 069 post-turn
 ledgerer (`persist_recognized_event`) AND the Feature 025 reconciliation
 sweep alike. Every field of the record is plain metadata/text (no binary, no
-secrets) and is logged in full, unredacted - mirroring `whatsapp_audit_log`'s
+secrets) and is logged in full, unredacted - mirroring `wire_log.py`'s
 "the raw wire-level record, verbatim" intent for the ledger boundary.
 """
 import json

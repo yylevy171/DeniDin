@@ -19,6 +19,7 @@ from src.managers.message_integrity import assert_message_integrity
 from src.services import daily_summary_roll_service as svc
 from src.utils.time_utils import local_calendar_date, now_local
 from tests.integration._rolling_helpers import fake_client, roll_context, rolling_config
+from tests.ai_handler_test_support import make_ai_handler
 
 CHAT = "972501112222@c.us"
 
@@ -38,7 +39,7 @@ def _session_dir(sm, session):
 class TestArchiveOnlyIntegration:
     def test_aged_and_backstopped_messages_move_to_archived_and_balance_holds(self, tmp_path):
         capture = []
-        h = AIHandler(fake_client(capture), rolling_config(tmp_path, CHAT, window_days=14))
+        h = make_ai_handler(fake_client(capture), rolling_config(tmp_path, CHAT, window_days=14))
         sm = h.session_manager
 
         old_id = _seed(sm, "הודעה ישנה מלפני 40 יום על הפקדה בבנק", 40)   # aged out
@@ -66,7 +67,7 @@ class TestArchiveOnlyIntegration:
 
     def test_live_rolling_window_respects_the_token_backstop(self, tmp_path):
         capture = []
-        h = AIHandler(fake_client(capture), rolling_config(tmp_path, CHAT, window_days=14))
+        h = make_ai_handler(fake_client(capture), rolling_config(tmp_path, CHAT, window_days=14))
         for _ in range(12):
             _seed(h.session_manager, "פסקה ארוכה " * 60, 1)
         newest = _seed(h.session_manager, "ההודעה האחרונה", 0)
@@ -80,7 +81,7 @@ class TestArchiveOnlyIntegration:
 
     def test_roll_still_summarises_a_day_whose_messages_were_archived(self, tmp_path):
         capture = []
-        h = AIHandler(fake_client(capture), rolling_config(tmp_path, CHAT, window_days=14))
+        h = make_ai_handler(fake_client(capture), rolling_config(tmp_path, CHAT, window_days=14))
         sm = h.session_manager
 
         _seed(sm, "NEEDLE_ARCHIVED_CONTENT הפקדה של 12000 שקל", 30)  # aged → will be archived

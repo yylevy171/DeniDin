@@ -216,18 +216,17 @@ def _build_rrule(recurrence: Dict[str, Any]) -> str:
 class ReminderManager:
     """Owns {data_root}/reminders/reminders.db - the one shared reminder list."""
 
-    def __init__(self, storage_dir: str, max_active_reminders: int = 20):
+    def __init__(self, denidin: Any):
         """
         Args:
-            storage_dir: Directory for reminder storage. Callers MUST compose this
-                from AppConfiguration.data_root at construction time
-                (Path(config.data_root) / "reminders"), matching LedgerEventManager's
-                pattern.
-            max_active_reminders: The active-reminder cap (FR-006). Callers MUST
-                compose this from config.reminders.get('max_active_reminders', 20) -
-                never read from config internally, same discipline as storage_dir.
+            denidin: the DeniDin object (REQ-063-08). Reminders live under its
+                config's {data_root}/reminders/; the active-reminder cap (FR-006)
+                is its config's reminders.max_active_reminders (default 20).
         """
-        self.storage_dir = Path(storage_dir)
+        self.denidin = denidin
+        config = denidin.config
+        self.storage_dir = Path(config.data_root) / "reminders"
+        max_active_reminders = (getattr(config, 'reminders', {}) or {}).get('max_active_reminders', 20)
         self.storage_dir.mkdir(parents=True, exist_ok=True)
         self.max_active_reminders = max_active_reminders
         self._db_path = self.storage_dir / "reminders.db"
@@ -728,7 +727,8 @@ class ReminderManager:
                 f"occurrence_date_hint={occurrence_date_hint!r} (resolved date={hint_date.isoformat()}) "
                 f"matched {len(matches)} real occurrence(s) of reminder {reminder_id!r}, expected exactly 1"
             )
-        return matches[0]
+        occurrence: datetime = matches[0]
+        return occurrence
 
     def modify_single_occurrence(
         self,

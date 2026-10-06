@@ -15,6 +15,7 @@ from src.managers.memory_collections import collection_name_for_chat
 from src.services import daily_summary_roll_service as svc
 from src.utils.time_utils import local_calendar_date, now_local
 from tests.integration._rolling_helpers import fake_client, roll_context, rolling_config
+from tests.ai_handler_test_support import make_ai_handler
 
 GROUP = "120363000000000001@g.us"
 SOLO = "972509990000@c.us"
@@ -37,7 +38,7 @@ def _marker_row(store, chat, date_str):
 @pytest.mark.integration
 class TestDailyRollIntegration:
     def _handler(self, tmp_path, capture):
-        return AIHandler(fake_client(capture), rolling_config(tmp_path, SOLO))
+        return make_ai_handler(fake_client(capture), rolling_config(tmp_path, SOLO))
 
     def test_marker_rows_reach_committed_state_with_the_right_fields(self, tmp_path):
         capture = []

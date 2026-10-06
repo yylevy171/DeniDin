@@ -15,12 +15,11 @@ import pytest
 
 import backfill_daily_summaries as cli
 from _denidin_loader import (
-    RollMarkerStore,
     collection_name_for_chat,
     local_calendar_date,
     now_local,
 )
-from src.managers.session_manager import SessionManager
+from tests.backfill_test_support import make_session_manager, make_roll_marker_store
 
 GROUP = "120363210094632983@g.us"
 SOLO = "972522968679@c.us"
@@ -49,7 +48,7 @@ def env(tmp_path, fake_openai_client, monkeypatch):
     }), encoding="utf-8")
     monkeypatch.setattr(cli, "OpenAI", lambda api_key: fake_openai_client)
 
-    sm = SessionManager(storage_dir=str(data_root / "sessions"))
+    sm = make_session_manager(str(data_root / "sessions"))
     # 20 days ago — safely outside the 14-day live-window guard.
     day = (local_calendar_date(now_local()) - timedelta(days=20))
     seed_message(sm, GROUP, "user", "פגישה חשובה מחר", 20, sender_name="Dana")
@@ -93,7 +92,7 @@ def test_backfill_creates_one_summary_per_nonempty_chat_day(env):
 
 def test_markers_are_the_nightly_sweep_dedup_key(env):
     cli.main(_args(env))
-    store = RollMarkerStore(str(env["data_root"] / "memory_rolls"))
+    store = make_roll_marker_store(str(env["data_root"] / "memory_rolls"))
     ds = env["day"].isoformat()
     assert store.is_rolled(GROUP, ds) is True
     assert store.is_rolled(SOLO, ds) is True
@@ -104,7 +103,7 @@ def test_empty_day_gets_marker_and_no_openai_call(env):
     rc = cli.main(["--data-root", str(env["data_root"]), "--config", str(env["config"]),
                    "--since", empty_day.isoformat(), "--until", empty_day.isoformat(), "--yes"])
     assert rc == 0
-    store = RollMarkerStore(str(env["data_root"] / "memory_rolls"))
+    store = make_roll_marker_store(str(env["data_root"] / "memory_rolls"))
     assert store.is_rolled(GROUP, empty_day.isoformat()) is True
     assert env["client"]._calls["responses"] == []
 
@@ -122,7 +121,7 @@ def test_idempotent_rerun_is_noop_and_exits_zero(env):
 def test_message_integrity_balances_before_and_after(env):
     from src.managers.message_integrity import assert_message_integrity
     cli.main(_args(env))
-    sm = SessionManager(storage_dir=str(env["data_root"] / "sessions"))
+    sm = make_session_manager(str(env["data_root"] / "sessions"))
     for chat in (GROUP, SOLO):
         s = sm.get_session(chat)
         base = Path(sm.storage_dir) / (getattr(s, "storage_path", None) or s.session_id)

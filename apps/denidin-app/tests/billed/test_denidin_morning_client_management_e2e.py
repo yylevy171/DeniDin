@@ -483,7 +483,7 @@ def test_godfather_get_client_details_resolves_ambiguous_first_name_prefix_after
     # Feature 080 acceptance scenario (user-stories.md, Telemetry assertion):
     # a genuine multi-tool client-resolution flow must produce a RequestTelemetry row
     # for its final turn, with plausible non-zero timing/token data.
-    telemetry_manager = denidin_app.ai_handler.telemetry_manager
+    telemetry_manager = denidin_app.telemetry_manager
     if telemetry_manager is not None:  # None whenever the feature flag is off
         row = telemetry_manager.get_latest_by_chat(GODFATHER_CHAT_ID)
         assert row is not None, f"expected a telemetry row for chat={GODFATHER_CHAT_ID!r}"
@@ -624,7 +624,7 @@ def test_godfather_update_client_resolves_ambiguous_family_name_prefix_after_con
     # Feature 080 acceptance scenario (user-stories.md, Telemetry assertion):
     # a genuine multi-tool client-resolution + mutation flow must produce a
     # RequestTelemetry row for its final turn, with plausible non-zero timing/token data.
-    telemetry_manager = denidin_app.ai_handler.telemetry_manager
+    telemetry_manager = denidin_app.telemetry_manager
     if telemetry_manager is not None:  # None whenever the feature flag is off
         row = telemetry_manager.get_latest_by_chat(GODFATHER_CHAT_ID)
         assert row is not None, f"expected a telemetry row for chat={GODFATHER_CHAT_ID!r}"
@@ -665,13 +665,13 @@ def test_client_role_gets_no_client_management_tools(denidin_app):
 @pytest.mark.billed
 def test_blocked_role_gets_no_client_management_tools(denidin_app):
     """A blocked-role sender asking about clients never even reaches
-    AIHandler.get_response (create_request raises PermissionError first,
+    AIHandler.single_turn (create_request raises PermissionError first,
     per existing Feature 018 behavior) - the bot still replies (the generic
     fallback message, denidin.py's global exception handler), no crash, and
     no new AIResponse/mcp_calls is ever produced for this request."""
     import denidin
 
-    last_response_before = denidin.denidin_app.ai_handler.last_response
+    last_response_before = denidin.denidin_app.last_response
 
     response, _ = _send_turn(
         chat_id=BLOCKED_ROLE_CHAT_ID,
@@ -680,8 +680,8 @@ def test_blocked_role_gets_no_client_management_tools(denidin_app):
     )
 
     assert response is not None, "CRITICAL: blocked-role user got NO RESPONSE (silent drop)"
-    assert denidin.denidin_app.ai_handler.last_response is last_response_before, (
-        "A blocked user's message must never reach AIHandler.get_response at "
+    assert denidin.denidin_app.last_response is last_response_before, (
+        "A blocked user's message must never reach AIHandler.single_turn at "
         "all (rejected earlier, in create_request) - last_response changing "
         "means a real AI/tool call happened for a blocked user."
     )

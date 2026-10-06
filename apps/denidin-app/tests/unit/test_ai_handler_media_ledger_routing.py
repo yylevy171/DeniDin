@@ -7,7 +7,7 @@ Pure function, no OpenAI, no I/O - unit tier, no approval needed.
 """
 import pytest
 
-from src.handlers.ai_handler import build_ledger_stash_text, _STASH_MISSING
+from src.managers.ledger_event_recognizer import build_ledger_stash_text, _STASH_MISSING
 
 
 class TestBuildLedgerStashText:

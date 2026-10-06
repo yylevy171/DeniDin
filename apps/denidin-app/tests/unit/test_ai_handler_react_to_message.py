@@ -2,7 +2,7 @@
 Unit tests for Feature 084's react_to_message wiring in AIHandler:
 - unconditional tool attachment (every role, not RBAC-gated)
 - the message_id resolution fallback chain (data-model.md)
-- single/multi-call dispatch against a stubbed send_reaction
+- single/multi-call dispatch against a stubbed send_reaction (the Green API call itself)
 
 Real conversational accuracy (does the model call the tool at the right time,
 with a sensible emoji) is NOT unit-testable - that belongs to the
@@ -19,10 +19,12 @@ from unittest.mock import Mock, MagicMock, patch
 
 import pytest
 
-from src.handlers.ai_handler import AIHandler, REACT_TO_MESSAGE_TOOL
+from src.handlers.ai_handler import AIHandler
+from src.tool_actions.tool_schemas import REACT_TO_MESSAGE_TOOL
 from src.models.config import AppConfiguration
 from src.models.message import AIRequest, WhatsAppMessage
 from src.models.user import Role
+from tests.ai_handler_test_support import make_ai_handler
 
 
 def _function_call_item(name, arguments, call_id):
@@ -70,8 +72,8 @@ def mock_ai_client():
 
 @pytest.fixture
 def ai_handler(mock_config, mock_ai_client):
-    handler = AIHandler(mock_ai_client, mock_config)
-    handler.green_api_bot = Mock()  # stands in for the live bot
+    handler = make_ai_handler(mock_ai_client, mock_config)
+    handler.denidin.green_api_bot = Mock()  # stands in for the live bot
     return handler
 
 
@@ -160,10 +162,10 @@ class TestSingleCallDispatch:
         ])
         mock_ai_client.responses.create.return_value = _followup_response()
 
-        with patch("src.handlers.ai_handler.send_reaction", return_value=True) as mock_send:
+        with patch("src.handlers.whatsapp_handler.send_reaction", return_value=True) as mock_send:
             result = ai_handler._handle_react_to_message(request, response, None, "chat1")
 
-        mock_send.assert_called_once_with(ai_handler.green_api_bot, "chat1", "wamid.current", "🙏")
+        mock_send.assert_called_once_with(ai_handler.denidin.green_api_bot, "chat1", "wamid.current", "🙏")
         assert result is not None
         sent_output = mock_ai_client.responses.create.call_args.kwargs["input"]
         assert json.loads(sent_output[0]["output"]) == {"status": "ok"}
@@ -175,10 +177,10 @@ class TestSingleCallDispatch:
         ])
         mock_ai_client.responses.create.return_value = _followup_response()
 
-        with patch("src.handlers.ai_handler.send_reaction", return_value=True) as mock_send:
+        with patch("src.handlers.whatsapp_handler.send_reaction", return_value=True) as mock_send:
             ai_handler._handle_react_to_message(request, response, None, "chat1")
 
-        mock_send.assert_called_once_with(ai_handler.green_api_bot, "chat1", "wamid.earlier", "✅")
+        mock_send.assert_called_once_with(ai_handler.denidin.green_api_bot, "chat1", "wamid.earlier", "✅")
 
     def test_send_reaction_failure_reports_failed_status_never_raises(self, ai_handler, mock_ai_client):
         request = _request(chat_id="chat1", whatsapp_id_message="wamid.current")
@@ -187,7 +189,7 @@ class TestSingleCallDispatch:
         ])
         mock_ai_client.responses.create.return_value = _followup_response()
 
-        with patch("src.handlers.ai_handler.send_reaction", return_value=False):
+        with patch("src.handlers.whatsapp_handler.send_reaction", return_value=False):
             result = ai_handler._handle_react_to_message(request, response, None, "chat1")
 
         assert result is not None
@@ -195,14 +197,14 @@ class TestSingleCallDispatch:
         assert json.loads(sent_output[0]["output"]) == {"status": "failed"}
 
     def test_no_green_api_bot_reports_failed_never_raises(self, ai_handler, mock_ai_client):
-        ai_handler.green_api_bot = None
+        ai_handler.denidin.green_api_bot = None
         request = _request(chat_id="chat1", whatsapp_id_message="wamid.current")
         response = _response(output=[
             _function_call_item("react_to_message", {"emoji": "👍", "message_id": None}, "call_1"),
         ])
         mock_ai_client.responses.create.return_value = _followup_response()
 
-        with patch("src.handlers.ai_handler.send_reaction") as mock_send:
+        with patch("src.handlers.whatsapp_handler.send_reaction") as mock_send:
             result = ai_handler._handle_react_to_message(request, response, None, "chat1")
 
         mock_send.assert_not_called()
@@ -216,7 +218,7 @@ class TestSingleCallDispatch:
         ])
         mock_ai_client.responses.create.side_effect = RuntimeError("api down")
 
-        with patch("src.handlers.ai_handler.send_reaction", return_value=True):
+        with patch("src.handlers.whatsapp_handler.send_reaction", return_value=True):
             result = ai_handler._handle_react_to_message(request, response, None, "chat1")
 
         assert result is None
@@ -235,7 +237,7 @@ class TestMultiCallDispatch:
         ])
         mock_ai_client.responses.create.return_value = _followup_response()
 
-        with patch("src.handlers.ai_handler.send_reaction", return_value=True) as mock_send:
+        with patch("src.handlers.whatsapp_handler.send_reaction", return_value=True) as mock_send:
             ai_handler._handle_react_to_message(request, response, None, "chat1")
 
         assert mock_send.call_count == 2
@@ -253,7 +255,7 @@ class TestMultiCallDispatch:
         ])
         mock_ai_client.responses.create.return_value = _followup_response()
 
-        with patch("src.handlers.ai_handler.send_reaction", return_value=True) as mock_send:
+        with patch("src.handlers.whatsapp_handler.send_reaction", return_value=True) as mock_send:
             ai_handler._handle_react_to_message(request, response, None, "chat1")
 
         mock_send.assert_called_once()

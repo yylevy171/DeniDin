@@ -3,14 +3,14 @@ Feature 084 (WhatsApp reactions) - the reaction-judgment tuning harness's captur
 mechanism (contracts/reaction-judgment-tuning.md). `send_reaction()` is stubbed at the
 Green API boundary ONLY (permitted per CONSTITUTION SS V - external services may be
 mocked in tests; internal components may not) - everything else in a scenario run
-(AIHandler, tool dispatch, session persistence) is real.
+(the AI implementation, tool dispatch, session persistence) is real.
 
 The deterministic keyword-based fast-path hook in denidin.py has been removed
 (2026-09-12, explicit user instruction: "get rid of the fast in code. Fast should
-happen IN THE AI") - the only real send_reaction call site left is ai_handler.py's
-react_to_message tool. The model is now expected to produce its own fast initial
-reaction+ack itself (as its very first tool call in a turn), then do the rest of the
-work, then react again on resolution - not a separate non-AI heuristic. The
+happen IN THE AI") - the only real send_reaction call site left is the react_to_message
+tool (src/tool_actions/messaging_actions.py, shared by AIHandler and the Backbone). The
+model is now expected to produce its own fast initial reaction+ack itself (as its very
+first tool call in a turn), then do the rest of the work, then react again on resolution - not a separate non-AI heuristic. The
 "fast_path" source label is kept in CapturedReaction/the judgment log shape for
 backward-compatible log format only; it is never actually recorded anymore since
 nothing patches denidin.py's now-nonexistent send_reaction reference.
@@ -40,9 +40,10 @@ class CapturedReaction:
 
 class ReactionCaptureStub:
     """Records every send_reaction call made during a scenario run. The only real call
-    site left is ai_handler.py's react_to_message tool (denidin.py's deterministic
-    fast-path hook was removed 2026-09-12 - the model's own first tool call in a turn
-    is now the "fast" reaction). A scenario that makes zero calls is a valid, loggable
+    site left is the react_to_message tool (src/tool_actions/messaging_actions.py, sending
+    through DeniDin.send_reaction -> WhatsAppHandler.send_reaction);
+    denidin.py's deterministic fast-path hook was removed 2026-09-12 - the model's own
+    first tool call in a turn is now the "fast" reaction. A scenario that makes zero calls is a valid, loggable
     outcome - `self.calls` simply stays empty, never treated as an error by this class
     itself."""
 
@@ -61,7 +62,7 @@ class ReactionCaptureStub:
         `with` block. Each scenario run should use a FRESH ReactionCaptureStub instance
         (never reused across scenarios) so `self.calls` reflects exactly one scenario's
         outcome."""
-        with patch("src.handlers.ai_handler.send_reaction", side_effect=self._recorder("react_to_message")):
+        with patch("src.handlers.whatsapp_handler.send_reaction", side_effect=self._recorder("react_to_message")):
             yield self
 
 

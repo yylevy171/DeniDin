@@ -7,6 +7,13 @@ import pytest
 
 from src.managers.group_membership_resolver import GroupMembershipResolver
 from src.managers.user_manager import UserManager
+from tests.denidin_test_support import make_denidin, make_user_manager
+
+
+def _resolver(groups_client, user_manager):
+    """A GroupMembershipResolver on a DeniDin whose Green API exposes `groups_client`."""
+    return GroupMembershipResolver(make_denidin(
+        green_api=Mock(groups=groups_client), user_manager=user_manager))
 
 
 def _fake_response(code, data):
@@ -18,7 +25,7 @@ def _fake_response(code, data):
 
 @pytest.fixture
 def user_manager():
-    return UserManager(
+    return make_user_manager(
         godfather_phone="972501111111",
         admin_phones=["972502222222"],
         blocked_phones=["972503333333"]
@@ -34,7 +41,7 @@ class TestGroupMembershipResolverSuccess:
                 {'id': '972509999999@c.us', 'isAdmin': True},  # unknown -> CLIENT
             ]
         })
-        resolver = GroupMembershipResolver(groups_client, user_manager)
+        resolver = _resolver(groups_client, user_manager)
 
         resolution = resolver.resolve('120363012345678901@g.us')
 
@@ -52,7 +59,7 @@ class TestGroupMembershipResolverSuccess:
                 {'id': '972502222222@c.us'},  # ADMIN
             ]
         })
-        resolver = GroupMembershipResolver(groups_client, user_manager)
+        resolver = _resolver(groups_client, user_manager)
 
         resolution = resolver.resolve('120363012345678901@g.us')
 
@@ -63,7 +70,7 @@ class TestGroupMembershipResolverSuccess:
         groups_client.getGroupData.return_value = _fake_response(200, {
             'participants': [{'id': '972509999999@c.us'}]
         })
-        resolver = GroupMembershipResolver(groups_client, user_manager)
+        resolver = _resolver(groups_client, user_manager)
 
         resolution = resolver.resolve('120363012345678901@g.us')
 
@@ -74,7 +81,7 @@ class TestGroupMembershipResolverSuccess:
         groups_client.getGroupData.return_value = _fake_response(200, {
             'participants': [{'id': '972502222222@c.us'}]
         })
-        resolver = GroupMembershipResolver(groups_client, user_manager)
+        resolver = _resolver(groups_client, user_manager)
 
         resolver.resolve('120363012345678901@g.us')
         resolver.resolve('120363012345678901@g.us')
@@ -86,21 +93,21 @@ class TestGroupMembershipResolverFailure:
     def test_returns_none_on_exception(self, user_manager):
         groups_client = Mock()
         groups_client.getGroupData.side_effect = Exception("network error")
-        resolver = GroupMembershipResolver(groups_client, user_manager)
+        resolver = _resolver(groups_client, user_manager)
 
         assert resolver.resolve('120363012345678901@g.us') is None
 
     def test_returns_none_on_non_200(self, user_manager):
         groups_client = Mock()
         groups_client.getGroupData.return_value = _fake_response(500, None)
-        resolver = GroupMembershipResolver(groups_client, user_manager)
+        resolver = _resolver(groups_client, user_manager)
 
         assert resolver.resolve('120363012345678901@g.us') is None
 
     def test_returns_none_on_empty_participants(self, user_manager):
         groups_client = Mock()
         groups_client.getGroupData.return_value = _fake_response(200, {'participants': []})
-        resolver = GroupMembershipResolver(groups_client, user_manager)
+        resolver = _resolver(groups_client, user_manager)
 
         assert resolver.resolve('120363012345678901@g.us') is None
 
@@ -112,7 +119,7 @@ class TestGroupMembershipResolverFailure:
             Exception("transient error"),
             _fake_response(200, {'participants': [{'id': '972502222222@c.us'}]})
         ]
-        resolver = GroupMembershipResolver(groups_client, user_manager)
+        resolver = _resolver(groups_client, user_manager)
 
         assert resolver.resolve('120363012345678901@g.us') is None
         assert resolver.resolve('120363012345678901@g.us') is not None

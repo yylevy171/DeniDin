@@ -15,6 +15,7 @@ from src.handlers.ai_handler import AIHandler
 from src.models.config import AppConfiguration
 from src.models.message import WhatsAppMessage
 from tests.helpers.seed import seed_message
+from tests.ai_handler_test_support import make_ai_handler
 
 CHAT = "972501234567@c.us"
 
@@ -59,30 +60,39 @@ def _config(tmp_path):
     )
 
 
-def _msg(handler, text):
+def _turn(handler, text, message_id="m-new"):
+    """One turn as the WhatsApp boundary drives it (2026-09-30, DeniDin stores every
+    message): the user's message is stored on receipt, then the reply once "sent"."""
+    app = handler.denidin
     m = WhatsAppMessage(
-        message_id="m-new", chat_id=CHAT, sender_id=CHAT, sender_name="Avi",
+        message_id=message_id, chat_id=CHAT, sender_id=CHAT, sender_name="Avi",
         text_content=text, timestamp=0, message_type="text",
     )
-    return handler.create_request(m, chat_id=CHAT, user_phone=CHAT)
+    app.store_inbound(m)
+    request = handler.create_request(m, chat_id=CHAT, user_phone=CHAT)
+    response = handler.single_turn(request, chat_id=CHAT, user_phone=CHAT, sender="Avi", recipient="DeniDin")
+    app.store_outbound(m, response.response_text)
+    return response
 
 
 @pytest.mark.integration
 class TestRollingWindowThroughAIHandler:
     def test_input_items_are_the_rolling_window_plus_new_turn(self, tmp_path):
         capture = []
-        handler = AIHandler(_fake_client(capture), _config(tmp_path))
+        handler = make_ai_handler(_fake_client(capture), _config(tmp_path))
         # 3 simulated days; window_days=2 so the oldest is out of window.
         seed_message(handler.session_manager, CHAT, "user", "יום ראשון", 2)
         seed_message(handler.session_manager, CHAT, "assistant", "קיבלתי", 2)
         seed_message(handler.session_manager, CHAT, "user", "יום שני", 1)
 
         # The window the model should be given = everything currently in the
-        # last 2 calendar days, captured BEFORE the turn is persisted.
+        # last 2 calendar days, captured BEFORE the new message is stored - the
+        # new message itself is stored on receipt but excluded from the window
+        # (it's appended as the new user turn instead, never duplicated).
         expected_window = handler.session_manager.get_rolling_window(
             CHAT, window_days=2, max_tokens=100000
         )
-        handler.get_response(_msg(handler, "יום שלישי"), chat_id=CHAT, user_phone=CHAT, sender="Avi", recipient="DeniDin")
+        _turn(handler, "יום שלישי")
 
         assert capture, "OpenAI boundary must have been called"
         sent = capture[-1]["input"]
@@ -94,8 +104,8 @@ class TestRollingWindowThroughAIHandler:
 
     def test_restart_continues_the_same_session(self, tmp_path, caplog):
         cap1 = []
-        h1 = AIHandler(_fake_client(cap1), _config(tmp_path))
-        h1.get_response(_msg(h1, "ראשון"), chat_id=CHAT, user_phone=CHAT, sender="Avi", recipient="DeniDin")
+        h1 = make_ai_handler(_fake_client(cap1), _config(tmp_path))
+        _turn(h1, "ראשון", "m-1")
         sid = h1.session_manager.get_session(CHAT).session_id
         counter_after_1 = h1.session_manager.get_session(CHAT).message_counter
 
@@ -103,8 +113,8 @@ class TestRollingWindowThroughAIHandler:
         cap2 = []
         caplog.clear()
         with caplog.at_level("INFO"):
-            h2 = AIHandler(_fake_client(cap2), _config(tmp_path))
-            h2.get_response(_msg(h2, "שני"), chat_id=CHAT, user_phone=CHAT, sender="Avi", recipient="DeniDin")
+            h2 = make_ai_handler(_fake_client(cap2), _config(tmp_path))
+            _turn(h2, "שני", "m-2")
 
         assert h2.session_manager.get_session(CHAT).session_id == sid
         assert h2.session_manager.get_session(CHAT).message_counter > counter_after_1

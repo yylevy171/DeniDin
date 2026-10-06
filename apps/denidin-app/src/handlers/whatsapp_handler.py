@@ -2,7 +2,8 @@
 WhatsAppHandler - Handles WhatsApp message processing with retry logic
 Phase 5: US3 - Error Handling & Resilience
 """
-from typing import Callable, cast, Dict, Optional
+from dataclasses import dataclass
+from typing import Any, cast, Optional
 import requests
 from tenacity import (
     retry,
@@ -12,50 +13,90 @@ from tenacity import (
     retry_if_exception,
 )
 from whatsapp_chatbot_python import Notification
-from src.constants.error_messages import (
-    UNSUPPORTED_MESSAGE_TYPE_SUPPORTED_TYPES,
-    FAILED_TO_PROCESS_FILE_DEFAULT,
-    APPROVAL_BUTTONS_SEND_FAILED
-)
+from src.constants.error_messages import APPROVAL_BUTTONS_SEND_FAILED
 from src.managers.pending_approval_manager import BUTTON_ID_APPROVE, BUTTON_ID_DECLINE
 from src.models.message import WhatsAppMessage, AIResponse
 from src.models.fee_agreement import GeneratedDocument
+from src.utils.green_api_bot import send_reaction
 from src.utils.logger import get_logger
-from src.utils.whatsapp_audit_log import log_outbound
+from src.utils.wire_log import audit_wire, debug_wire
 
 logger = get_logger(__name__)
 
 
+@dataclass(frozen=True)
+class SentMessage:
+    """A message this handler just sent: its text and WhatsApp idMessage (None when
+    Green API didn't return one). `as_buttons` - sent as interactive approval
+    buttons; `is_notice` - a notice sent instead of the requested reply (the
+    approval buttons could not be sent)."""
+    text: str
+    whatsapp_id_message: Optional[str] = None
+    as_buttons: bool = False
+    is_notice: bool = False
+
+
+def _id_message_of(result: Any) -> Optional[str]:
+    """The idMessage off a Green API send result, or None."""
+    data = getattr(result, "data", None)
+    return data.get("idMessage") if isinstance(data, dict) else None
+
+
+def _is_retryable_send_error(exception: BaseException) -> bool:
+    """True for a timeout/connection error, or an HTTPError NOT in the
+    4xx range - the actual gate that makes "never retry a 4xx" real,
+    since a plain `retry_if_exception_type` would match every
+    requests.HTTPError regardless of status code (re-raising inside the
+    function body does not change what the retry decorator itself sees)."""
+    if isinstance(exception, (requests.Timeout, requests.ConnectionError)):
+        return True
+    if isinstance(exception, requests.HTTPError):
+        status_code = getattr(getattr(exception, 'response', None), 'status_code', None)
+        return not (status_code is not None and 400 <= status_code < 500)
+    return False
+
+
 class WhatsAppHandler:
     """
-    Handles WhatsApp message processing and response sending.
-    Implements retry logic with exponential backoff for Green API calls.
-    Phase 6: Adds media message detection and routing to MediaHandler.
+    DeniDin's WhatsApp side (REQ-063-08): parses incoming notifications and sends
+    messages, with the CONSTITUTION retry policy on Green API calls. Knows nothing
+    of sessions - every send returns what was sent (SentMessage), and DeniDin stores it.
     """
 
-    def __init__(self, media_handler=None):
+    def __init__(self, denidin: Any):
         """
-        Initialize WhatsAppHandler
-
         Args:
-            media_handler: Optional MediaHandler instance for processing media messages
+            denidin: the DeniDin object - only its live bot (`green_api_bot`) is read.
         """
-        self.media_handler = media_handler
-        # bugfix-058: AIHandler.record_exchange, injected post-construction by denidin.py's
-        # initialize_app (same DI idiom as green_api_bot below - WhatsAppHandler never depends
-        # on AIHandler). None = nothing is recorded (e.g. a bare handler in a unit test).
-        self.record_exchange: Optional[Callable[..., None]] = None
-        # Feature 083: injected post-construction (denidin.py's `__main__`,
-        # same idiom as denidin_app.green_api_bot) - the real, live bot
-        # object (`.api.sending.sendFileByUpload`), only available once this
-        # is the real, live-running app, never reachable from
-        # initialize_app()'s test-harness callers.
-        self.green_api_bot = None
+        self.denidin = denidin
+        # bugfix-024: DeniDin's own WhatsApp number (bare digits), resolved once at
+        # startup by initialize_app (the player sets it itself); "" when unknown.
+        self.own_whatsapp_number = ""
         logger.debug("WhatsAppHandler initialized")
+
+    @property
+    def green_api_bot(self) -> Any:
+        """The live bot (Feature 083's sendFileByUpload, Feature 084's reactions) -
+        set on DeniDin by __main__; None in tests and the player."""
+        return getattr(self.denidin, "green_api_bot", None)
+
+    @property
+    def own_jid(self) -> Optional[str]:
+        """DeniDin's own WhatsApp id ("<number>@c.us"), or None when unknown."""
+        return f"{self.own_whatsapp_number}@c.us" if self.own_whatsapp_number else None
+
+    def normalize_self_mentions(self, text: str) -> str:
+        """bugfix-024: rewrites "@<DeniDin's own number>" (WhatsApp's wire format for a
+        mention of DeniDin) into "@DeniDin" - an exact match on the bare-digit number
+        (2026-08-05). No-op when the number is unknown."""
+        if not self.own_whatsapp_number:
+            return text
+        return text.replace(f"@{self.own_whatsapp_number}", "@DeniDin")
 
     def process_notification(self, notification: Notification) -> WhatsAppMessage:
         """
-        Process a Green API notification into a WhatsAppMessage.
+        Process a Green API notification into a WhatsAppMessage, with mentions of
+        DeniDin's own number rewritten to "@DeniDin".
 
         Args:
             notification: Green API notification object
@@ -65,6 +106,7 @@ class WhatsAppHandler:
         """
         # Use the from_notification factory method which handles timestamp, message_id, etc.
         message = WhatsAppMessage.from_notification(notification)
+        message.text_content = self.normalize_self_mentions(message.text_content)
 
         logger.debug(
             f"Processed notification: {message.message_id} from {message.sender_name} "
@@ -94,46 +136,35 @@ class WhatsAppHandler:
 
         return True
 
-    def record_error_exchange(self, notification: Notification, user_text: Optional[str],
-                              assistant_text: Optional[str]) -> None:
-        """bugfix-058: records in the chat's session what the user sent (`user_text`, None when
-        only a notice is being recorded) and the message DeniDin sent back (`assistant_text`) for
-        an exchange that never reached the AI pipeline. Best-effort: never raises."""
-        if self.record_exchange is None:
-            return
-        try:
-            message = WhatsAppMessage.from_notification(notification)
-            self.record_exchange(
-                message.chat_id, user_text=user_text, assistant_text=assistant_text,
-                sender_phone=message.sender_id, sender_display=message.sender_display_name,
-                is_group=message.is_group, chat_name=message.chat_name,
-                whatsapp_id_message=message.whatsapp_id_message,
-                source_timestamp=message.timestamp,
-            )
-        except Exception as e:  # pylint: disable=broad-except
-            logger.error(f"Failed to record error exchange in session: {e}", exc_info=True)
+    def send_text(self, notification: Notification, text: str, *, wire_context: str = "text") -> SentMessage:
+        """The one plain-text send for a canned/notice reply: sends `text` in
+        `notification`'s chat and wire-logs it (an exception propagates to the caller
+        unchanged)."""
+        result = notification.answer(text)
+        _wire_payload = {"chat_id": notification.event.get("senderData", {}).get("chatId", ""), "message": text}
+        audit_wire("whatsapp", "out", wire_context, _wire_payload)
+        debug_wire("whatsapp", "out", wire_context, _wire_payload)
+        return SentMessage(text=text, whatsapp_id_message=_id_message_of(result))
 
-    def handle_unsupported_message(self, notification: Notification) -> None:
-        """
-        Send auto-reply for unsupported message types.
+    def send_progress_update(self, notification: Notification, text: str) -> SentMessage:
+        """Feature 080: an interim message mid-turn, in `notification`'s chat - the same
+        notification.answer send the final reply uses, wire-logged both directions."""
+        chat_id = notification.event.get("senderData", {}).get("chatId", "")
+        _wire_payload = {"chat_id": chat_id, "message": text}
+        audit_wire("whatsapp", "out", "progress_update", _wire_payload)
+        debug_wire("whatsapp", "out", "progress_update", _wire_payload)
+        result = notification.answer(text)
+        audit_wire("whatsapp", "in", "progress_update", {"chat_id": chat_id, "message": repr(result)})
+        debug_wire("whatsapp", "in", "progress_update", {"result": repr(result)})
+        return SentMessage(text=text, whatsapp_id_message=_id_message_of(result))
 
-        Args:
-            notification: Green API notification with unsupported message
-        """
-        message_type = notification.event.get('messageData', {}).get('typeMessage', 'unknown')
-        sender_name = notification.event.get('senderData', {}).get('senderName', 'Unknown')
-
-        logger.info(f"Sending unsupported message auto-reply to {sender_name} for {message_type}")
-
-        auto_reply = UNSUPPORTED_MESSAGE_TYPE_SUPPORTED_TYPES
-
-        try:
-            notification.answer(auto_reply)
-            log_outbound(notification.event.get("senderData", {}).get("chatId", ""), auto_reply, kind="text")
-            logger.debug("Unsupported message auto-reply sent successfully")
-            self.record_error_exchange(notification, f"[{message_type} message]", auto_reply)
-        except Exception as e:
-            logger.error(f"Failed to send unsupported message auto-reply: {e}", exc_info=True)
+    def send_reaction(self, chat_id: str, id_message: str, emoji: str) -> bool:
+        """Feature 084: sets (or, with emoji "", clears) a reaction on a message.
+        False - never raises - on any failure or without a live bot."""
+        if self.green_api_bot is None:
+            logger.warning(f"[084] No live bot - reaction on {id_message!r} in {chat_id!r} not sent")
+            return False
+        return send_reaction(self.green_api_bot, chat_id, id_message, emoji)
 
     @retry(
         retry=retry_if_exception_type((requests.Timeout, requests.ConnectionError, requests.HTTPError)),
@@ -141,7 +172,7 @@ class WhatsAppHandler:
         wait=wait_fixed(1),  # 1 second wait
         reraise=True
     )
-    def _send_with_retry(self, notification: Notification, message: str) -> None:
+    def _send_with_retry(self, notification: Notification, message: str) -> Any:
         """
         Send message via Green API with retry logic.
         Retries ONCE (max 2 attempts) only on 5xx errors and network errors, waits 1 second.
@@ -155,7 +186,7 @@ class WhatsAppHandler:
             requests.RequestException: After 2 attempts (1 retry) or immediately on 4xx errors
         """
         try:
-            notification.answer(message)
+            return notification.answer(message)
         except requests.HTTPError as e:
             # Check if this is a 4xx error that shouldn't be retried
             if hasattr(e, 'response') and e.response is not None:
@@ -165,22 +196,9 @@ class WhatsAppHandler:
                 # 5xx errors: let tenacity retry them by raising
             raise
 
-    @staticmethod
-    def _is_retryable_send_error(exception: BaseException) -> bool:
-        """True for a timeout/connection error, or an HTTPError NOT in the
-        4xx range - the actual gate that makes "never retry a 4xx" real,
-        since a plain `retry_if_exception_type` would match every
-        requests.HTTPError regardless of status code (re-raising inside the
-        function body does not change what the retry decorator itself sees)."""
-        if isinstance(exception, (requests.Timeout, requests.ConnectionError)):
-            return True
-        if isinstance(exception, requests.HTTPError):
-            status_code = getattr(getattr(exception, 'response', None), 'status_code', None)
-            return not (status_code is not None and 400 <= status_code < 500)
-        return False
 
     @retry(
-        retry=retry_if_exception(_is_retryable_send_error.__func__),
+        retry=retry_if_exception(_is_retryable_send_error),
         stop=stop_after_attempt(2),  # Initial attempt + 1 retry = 2 total attempts
         wait=wait_fixed(1),
         reraise=True
@@ -188,6 +206,8 @@ class WhatsAppHandler:
     def _send_file_with_retry(self, chat_id: str, path: str, file_name: str, caption: str) -> None:
         """Same CONSTITUTION retry policy as _send_with_retry: one retry on
         5xx/timeout/connection error after 1s, never on a 4xx client error."""
+        if self.green_api_bot is None:  # send_fee_agreement_document checks first
+            raise RuntimeError("no live bot object injected")
         try:
             self.green_api_bot.api.sending.sendFileByUpload(
                 chat_id, path, fileName=file_name, caption=caption,
@@ -237,7 +257,9 @@ class WhatsAppHandler:
                 f"[083] Fee agreement document sent: document_id={generated.document_id!r}, "
                 f"chat_id={chat_id!r}"
             )
-            log_outbound(chat_id, f"[fee agreement document: {generated.temp_path.name}]", kind="file")
+            _wire_payload = {"chat_id": chat_id, "message": f"[fee agreement document: {generated.temp_path.name}]"}
+            audit_wire("whatsapp", "out", "file", _wire_payload)
+            debug_wire("whatsapp", "out", "file", _wire_payload)
             return True
         except (requests.HTTPError, requests.Timeout, requests.ConnectionError) as e:
             logger.error(
@@ -246,7 +268,7 @@ class WhatsAppHandler:
             )
             return False
 
-    def send_response(self, notification: Notification, response: AIResponse) -> Optional[str]:
+    def send_response(self, notification: Notification, response: AIResponse) -> Optional[SentMessage]:
         """
         Send AI response back to WhatsApp with error handling.
 
@@ -255,11 +277,9 @@ class WhatsAppHandler:
             response: AI response to send
 
         Returns:
-            Feature 047: the sent WhatsApp idMessage when this was an approval-buttons
-            send (response.offer_approval_buttons=True) that succeeded; None in every
-            other case (plain-text sends, should_reply=False no-ops, or a failed
-            buttons send - see _send_approval_buttons). Every pre-047 caller ignores
-            this return value, so this is a superset of the existing contract.
+            What was sent - the reply (Feature 047: as_buttons when it went out as
+            approval buttons), or the notice sent instead when the buttons failed - or
+            None when nothing was sent (should_reply=False, or an empty reply).
         """
         # bugfix-028 B5: the send boundary is the last place that can tell a
         # deliberate silence from a broken turn, and it used to check neither.
@@ -295,16 +315,17 @@ class WhatsAppHandler:
             logger.debug(f"Sending response for request {response.request_id}")
 
             # Use retry wrapper for actual send
-            self._send_with_retry(notification, response.response_text)
+            result = self._send_with_retry(notification, response.response_text)
 
             logger.info(
                 f"Response sent successfully for request {response.request_id}: "
                 f"{len(response.response_text)} chars"
             )
-            log_outbound(
-                notification.event.get("senderData", {}).get("chatId", ""),
-                response.response_text, kind="text",
-            )
+            _wire_payload = {"chat_id": notification.event.get("senderData", {}).get("chatId", ""),
+                             "message": response.response_text}
+            audit_wire("whatsapp", "out", "text", _wire_payload)
+            debug_wire("whatsapp", "out", "text", _wire_payload)
+            return SentMessage(text=response.response_text, whatsapp_id_message=_id_message_of(result))
 
         except requests.HTTPError as e:
             # Log specific HTTP error details
@@ -339,9 +360,7 @@ class WhatsAppHandler:
             logger.error(f"Unexpected error sending response: {e}", exc_info=True)
             raise
 
-        return None
-
-    def _send_approval_buttons(self, notification: Notification, response: AIResponse) -> Optional[str]:
+    def _send_approval_buttons(self, notification: Notification, response: AIResponse) -> Optional[SentMessage]:
         """
         Feature 047: send response.response_text (the existing 📋 לאישור: block,
         unmodified) as WhatsApp interactive buttons ("כן"/"לא") instead of plain text.
@@ -354,9 +373,10 @@ class WhatsAppHandler:
         detect failure here, not a try/except around the call.
 
         Returns:
-            The sent idMessage on success; None on any failure (after sending a
-            distinct plain-text error notice - never a silent fallback to the
-            approval prompt itself, per spec.md Clarifications).
+            The sent buttons message on success. On any failure, the distinct
+            plain-text error notice sent instead (is_notice - never a silent fallback
+            to the approval prompt itself, per spec.md Clarifications), or None when
+            even that could not be sent.
         """
         buttons = [
             {"type": "reply", "buttonId": BUTTON_ID_APPROVE, "buttonText": "כן"},
@@ -386,36 +406,34 @@ class WhatsAppHandler:
                 f"error={getattr(result, 'error', None)!r}"
             )
             try:
-                notification.answer(APPROVAL_BUTTONS_SEND_FAILED)
-                log_outbound(
-                    notification.event.get("senderData", {}).get("chatId", ""),
-                    APPROVAL_BUTTONS_SEND_FAILED, kind="text",
-                )
-                self.record_error_exchange(notification, None, APPROVAL_BUTTONS_SEND_FAILED)
+                notice = self.send_text(notification, APPROVAL_BUTTONS_SEND_FAILED)
             except Exception as notice_error:  # pylint: disable=broad-except
                 logger.error(
                     f"Failed to send approval-buttons failure notice for request "
                     f"{response.request_id}: {notice_error}", exc_info=True
                 )
-            return None
+                return None
+            return SentMessage(text=notice.text, whatsapp_id_message=notice.whatsapp_id_message,
+                               is_notice=True)
 
         logger.info(
             f"Approval buttons sent successfully for request {response.request_id}: "
             f"idMessage={id_message}"
         )
-        log_outbound(
-            notification.event.get("senderData", {}).get("chatId", ""),
-            response.response_text, kind="buttons",
-        )
-        return cast(str, id_message)
+        _wire_payload = {"chat_id": notification.event.get("senderData", {}).get("chatId", ""),
+                         "message": response.response_text}
+        audit_wire("whatsapp", "out", "buttons", _wire_payload)
+        debug_wire("whatsapp", "out", "buttons", _wire_payload)
+        return SentMessage(text=response.response_text, whatsapp_id_message=cast(str, id_message),
+                           as_buttons=True)
 
     def is_media_message(self, notification: Notification) -> bool:
         """
         Check if notification contains a media message.
-        
+
         Args:
             notification: Green API notification
-            
+
         Returns:
             True if message is a media type (image, document, video), False otherwise
 
@@ -427,123 +445,30 @@ class WhatsAppHandler:
         """
         message_type = notification.event.get('messageData', {}).get('typeMessage', '')
         return message_type in ['imageMessage', 'documentMessage', 'videoMessage']
-    
+
     def get_media_type(self, notification: Notification) -> str:
         """
         Get the media message type from notification.
-        
+
         Args:
             notification: Green API notification
-            
+
         Returns:
             Media type string (e.g., 'imageMessage', 'documentMessage')
         """
         return cast(str, notification.event.get('messageData', {}).get('typeMessage', ''))
-    
+
     def is_supported_media_message(self, notification: Notification) -> bool:
         """
         Check if the media message type is supported for processing.
         Currently only imageMessage and documentMessage are supported.
         Video and audio are future scope.
-        
+
         Args:
             notification: Green API notification
-            
+
         Returns:
             True if media type is supported, False otherwise
         """
         message_type = self.get_media_type(notification)
         return message_type in ['imageMessage', 'documentMessage']
-    
-    def handle_media_message(self, notification: Notification) -> Optional[Dict]:
-        """
-        Process WhatsApp media messages (images, documents).
-        Routes to MediaHandler and sends summary back to user.
-
-        Returns the MediaHandler result dict (Feature 069: so the caller can route
-        a recognised `ledger_stash` as a synthetic conversational turn); None on
-        the early not-initialized / failed-processing paths.
-        CHK111: Caption is WhatsApp message text from webhook, not file metadata.
-        
-        Args:
-            notification: Green API notification containing media message
-        """
-        if not self.media_handler:
-            logger.error("MediaHandler not initialized, cannot process media")
-            return None
-
-        message_data = notification.event.get('messageData', {})
-
-        # Feature 033: parse through the SAME WhatsAppMessage.from_notification
-        # mechanism text messages use, rather than a separate bespoke field
-        # extraction - message_id/chat_id/sender_id/timestamp are decided exactly
-        # once, at "this message has arrived" time, by one shared code path (never
-        # regenerated downstream). text_content comes back empty for media
-        # notifications (irrelevant here - the caption below comes from
-        # fileMessageData.caption, not text_content).
-        message = WhatsAppMessage.from_notification(notification)
-        chat_id = message.chat_id
-        sender = message.sender_id
-        timestamp = message.timestamp
-        message_id = message.message_id
-
-        # Extract media information from Green API webhook
-        # Green API nests file metadata inside fileMessageData object
-        file_message_data = message_data.get('fileMessageData', {})
-
-        file_url = file_message_data.get('downloadUrl', '')
-        filename = file_message_data.get('fileName', 'unknown')
-        mime_type = file_message_data.get('mimeType', '')
-        caption = file_message_data.get('caption', '')  # CHK111: WhatsApp message text
-
-        # Note: Green API does NOT provide fileSize in webhook
-        # File size will be determined after download by MediaFileManager
-        file_size = 0  # Placeholder - actual size determined after download
-
-        logger.info(f"Processing media message: {filename} ({mime_type}) from {sender}")
-
-        # Process media through MediaHandler
-        result = self.media_handler.process_media_message(
-            file_url=file_url,
-            filename=filename,
-            mime_type=mime_type,
-            file_size=file_size,
-            caption=caption,  # CHK111: User's message text
-            sender_phone=sender,
-            chat_id=chat_id,
-            timestamp=timestamp,
-            message_id=message_id,
-            sender_display_name=message.sender_display_name,
-            is_group=message.is_group,
-            chat_name=message.chat_name
-        )
-        
-        if not result.get("success", False):
-            # Send error message to user
-            logger.warning(f"Media processing failed: {result.get('error_message', 'Unknown error')}")
-            notification.answer(FAILED_TO_PROCESS_FILE_DEFAULT)
-            log_outbound(chat_id, FAILED_TO_PROCESS_FILE_DEFAULT, kind="text")
-            self.record_error_exchange(
-                notification, caption or f"[{filename} sent]", FAILED_TO_PROCESS_FILE_DEFAULT
-            )
-            return None
-
-        # Feature 069 (Phase 9/10): a recognised fee-agreement / bank-deposit image
-        # or DOCX is NOT answered with the plain extraction summary. The caller
-        # (denidin.py `_process_media_message`) routes `ledger_stash` as a synthetic
-        # conversational turn, and the operator gets that turn's reply instead
-        # (a client-resolution question, a confirmation, etc.).
-        if result.get("ledger_stash"):
-            logger.info(
-                f"[069] media ledger event recognised "
-                f"(source_type={result.get('ledger_stash_source_type')!r}) - routing a "
-                f"synthetic conversational turn instead of the plain media summary"
-            )
-            return cast(Dict, result)
-
-        # Send summary to user (no approval workflow - just send as reply)
-        summary = result.get("summary", "")
-        logger.info(f"Sending media processing summary to {sender}")
-        notification.answer(summary)
-        log_outbound(chat_id, summary, kind="text")
-        return cast(Dict, result)

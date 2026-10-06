@@ -31,6 +31,25 @@ def event_datetime_for_message_ts(message_ts: str) -> str:
     epoch = int(datetime.fromisoformat(message_ts).timestamp())
     return local_from_timestamp(epoch).strftime("%d/%m/%Y %H:%M")
 
+
+def txn_date_forms(value) -> set:
+    """A deposit's txn_date in both accepted formats - DD/MM/YYYY (what the image
+    extractor reads, and the preferred one) and ISO YYYY-MM-DD - so a check passes
+    whichever format the value arrives in (2026-10-04)."""
+    s = str(value or "").strip()
+    iso = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", s)
+    if iso:
+        return {s, f"{iso.group(3)}/{iso.group(2)}/{iso.group(1)}"}
+    dmy = re.fullmatch(r"(\d{2})/(\d{2})/(\d{4})", s)
+    if dmy:
+        return {s, f"{dmy.group(3)}-{dmy.group(2)}-{dmy.group(1)}"}
+    return {s}
+
+
+def same_txn_date(actual, expected) -> bool:
+    """True when two txn_date values name the same day, in either accepted format."""
+    return bool(txn_date_forms(actual) & txn_date_forms(expected))
+
 logger = logging.getLogger(__name__)
 
 _DENIDIN_APP_DIR = Path(__file__).resolve().parents[1]
@@ -78,7 +97,7 @@ def wipe_chat_messages_on_disk(sessions_storage_dir, chat_id: str) -> None:
     no in-process cache to fight.
 
     `sessions_storage_dir` is the session store root (a `Path` or str — e.g.
-    `denidin_app.ai_handler.session_manager.storage_dir`, a read-only locate).
+    `denidin_app.session_manager.storage_dir`, a read-only locate).
     No-op-safe when the chat / index / files don't exist yet.
     """
     import sqlite3
@@ -111,6 +130,12 @@ def wipe_chat_messages_on_disk(sessions_storage_dir, chat_id: str) -> None:
         data["archived_message_ids"] = []
         data["total_tokens"] = 0
         data["message_counter"] = 0
+        # 2026-10-01: the backbone's per-chat state too - left behind, a later test in
+        # this chat started with the previous test's capabilities/flows already loaded.
+        data["active_capabilities"] = []
+        data["active_flows"] = []
+        data["approval_message_id"] = None
+        data["active_document_message_id"] = None
         session_json.write_text(
             json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
         )
@@ -316,7 +341,7 @@ def assert_image_path_persisted(denidin_app, chat_id):
     "user"/"assistant" value this check actually means, same field
     SessionManager.get_conversation_history_for_session already switched to.
     """
-    session_manager = denidin_app.ai_handler.session_manager
+    session_manager = denidin_app.session_manager
     session_id = session_manager.chat_to_session[chat_id]
     messages_dir = Path(session_manager.storage_dir) / session_id / "messages"
 
@@ -370,22 +395,26 @@ def assert_extracted_text_persisted(denidin_app, chat_id):
 
     Returns the extracted_text string, for further assertions if a caller wants them.
     """
-    session_manager = denidin_app.ai_handler.session_manager
+    session_manager = denidin_app.session_manager
     session_id = session_manager.chat_to_session[chat_id]
     messages_dir = Path(session_manager.storage_dir) / session_id / "messages"
 
     with open(Path(session_manager.storage_dir) / session_id / "session.json", encoding='utf-8') as f:
         session_data = json.load(f)
 
+    # The most recent user message that carries the media file (image_path), same
+    # rule as assert_image_path_persisted above: the backbone stores the read
+    # document's stash as a later internal user message, which has no extracted_text.
     last_user_message = None
     for message_id in session_data["message_ids"]:
         with open(messages_dir / f"{message_id}.json", encoding='utf-8') as f:
             message_data = json.load(f)
-        if message_data.get("ai_required_role", message_data.get("role")) == "user":
+        if (message_data.get("ai_required_role", message_data.get("role")) == "user"
+                and message_data.get("image_path")):
             last_user_message = message_data
 
     assert last_user_message is not None, (
-        f"No user session message found at all for chat_id={chat_id!r}"
+        f"No user session message with a media file found for chat_id={chat_id!r}"
     )
     extracted_text = last_user_message.get("extracted_text")
     assert extracted_text, (
@@ -669,8 +698,8 @@ def persisted_ledger_events_for_chat(denidin_app, chat_id):
     plus `_ledger_069_acceptance.ledger_events_for_chat` and
     `_ledger_069_post_turn_base.events_reader`.
     """
-    session_id = denidin_app.ai_handler.session_manager.get_session(chat_id).session_id
-    events_dir = Path(denidin_app.ai_handler.ledger_event_manager.storage_dir)
+    session_id = denidin_app.session_manager.get_session(chat_id).session_id
+    events_dir = Path(denidin_app.ledger_event_manager.storage_dir)
     out = []
     for f in events_dir.glob("*.json"):
         data = json.loads(f.read_text(encoding="utf-8"))
@@ -678,3 +707,108 @@ def persisted_ledger_events_for_chat(denidin_app, chat_id):
             out.append(data)
     out.sort(key=lambda d: (d.get("captured_at", ""), d.get("event_id", "")))
     return out
+
+
+# ============================================================================
+# No-errors-sent-to-user assertion (2026-09-30)
+# ============================================================================
+# Every E2E test should end with `assert_no_errors_sent_to_user(chat_id)`. It
+# needs no instrumentation in the test: it reads what DeniDin actually sent,
+# straight from the chat's stored session messages (every outbound message is
+# stored right after its send - DeniDin.store_outbound), limited to the current
+# test's own messages. Any failure to read them fails the test - an unverifiable
+# conversation is never a pass. Reactions are not stored, so they are not
+# covered; a failure the model admits to in text (the case that motivated
+# this: T1's "לא הצלחתי להשלים את שליפת החשבוניות", 2026-09-30) is.
+
+# Set by the root conftest.py's pytest_runtest_setup at the start of each billed/expensive test (None otherwise).
+CURRENT_TEST_STARTED_AT: "datetime | None" = None
+
+INTERNAL_NOTE_MARKER = "[[INTERNAL_PLANNING_NOTE]]"
+
+# The model's own words when it tells the user something failed.
+USER_FACING_FAILURE_PHRASES = (
+    "לא הצלחתי",
+    "נתקלתי בשגיאה",
+    "אירעה שגיאה",
+    "אירעה תקלה",
+    "הפעולה נכשלה",
+    "לא ניתן היה",
+    "איני יכול לקבוע",
+)
+
+
+def _app_error_texts() -> list:
+    """Every user-facing error string the app itself sends
+    (src/constants/error_messages.py - all module-level str constants)."""
+    from src.constants import error_messages  # pylint: disable=import-outside-toplevel
+    return [v for k, v in vars(error_messages).items()
+            if k.isupper() and isinstance(v, str) and v.strip()]
+
+
+def _messages_sent_to_user(chat_id: str, since: datetime) -> list:
+    """(timestamp, content) of every assistant message stored for `chat_id` since
+    `since`, internal planning notes excluded. Raises AssertionError on anything
+    that makes the stored conversation unreadable."""
+    import denidin  # pylint: disable=import-outside-toplevel
+
+    app = denidin.denidin_app
+    assert app is not None, "assert_no_errors_sent_to_user: denidin.denidin_app is not initialized"
+    session_manager = app.session_manager
+    # known_chats() first: get_session() would silently CREATE an empty session.
+    assert chat_id in session_manager.known_chats(), (
+        f"assert_no_errors_sent_to_user: no stored session for chat {chat_id!r}"
+    )
+    session = session_manager.get_session(chat_id)
+    sent = []
+    for message_id in session.message_ids:
+        message = session_manager.load_message(session, message_id)
+        assert message is not None, (
+            f"assert_no_errors_sent_to_user: stored message {message_id!r} of chat "
+            f"{chat_id!r} could not be read"
+        )
+        assert message.timestamp, (
+            f"assert_no_errors_sent_to_user: stored message {message_id!r} has no timestamp"
+        )
+        if datetime.fromisoformat(message.timestamp) < since:
+            continue
+        if message.role != "assistant" or (message.content or "").startswith(INTERNAL_NOTE_MARKER):
+            continue
+        sent.append((message.timestamp, message.content or ""))
+    return sent
+
+
+def assert_no_errors_sent_to_user(*chat_ids: str, allow=(), since: "datetime | None" = None) -> None:
+    """Fails if, during the current test, DeniDin sent the user in any of
+    `chat_ids` an app error message or a message admitting a failure.
+
+    `allow`: phrases a test legitimately expects in a reply (e.g. a "not found"
+    scenario's own wording) - a message containing any of them is not flagged.
+    `since` defaults to the current test's start (set by the root conftest).
+    Fails, too, if the conversation can't be read or nothing was sent at all.
+    """
+    assert CURRENT_TEST_STARTED_AT is not None, (
+        "assert_no_errors_sent_to_user is for billed/expensive tests only (root "
+        "conftest.py sets the test start time only for those markers)"
+    )
+    since = since or CURRENT_TEST_STARTED_AT
+    assert chat_ids, "assert_no_errors_sent_to_user: pass at least one chat_id"
+    error_texts = _app_error_texts()
+    offending = []
+    total = 0
+    for chat_id in chat_ids:
+        for timestamp, content in _messages_sent_to_user(chat_id, since):
+            total += 1
+            if any(a in content for a in allow):
+                continue
+            hits = [t for t in error_texts if t in content]
+            hits += [p for p in USER_FACING_FAILURE_PHRASES if p in content]
+            if hits:
+                offending.append(f"[{chat_id} {timestamp}] matched {hits!r}: {content!r}")
+    assert total, (
+        f"assert_no_errors_sent_to_user: no messages to the user stored since {since.isoformat()} "
+        f"in {chat_ids!r} - nothing to verify"
+    )
+    assert not offending, (
+        "DeniDin sent the user an error / failure message during this test:\n" + "\n".join(offending)
+    )

@@ -7,7 +7,7 @@ Flow (entry point is the real Green API webhook, dispatched through the actual
 
     Green API textMessage webhook (any role)
       -> handle_text_message (real router handler)
-      -> AIHandler.get_response -> client.responses.create (real OpenAI Responses API call)
+      -> AIHandler.single_turn -> client.responses.create (real OpenAI Responses API call)
            `instructions` includes the current version (research.md Decision 4 - same per-call
            injection mechanism already used for today's date, ai_handler.py:363-368 area)
       -> bot replies stating the exact version

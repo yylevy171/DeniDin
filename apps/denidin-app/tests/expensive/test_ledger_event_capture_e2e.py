@@ -89,6 +89,7 @@ from tests.billed.denidin_mcp_e2e_helpers import (
     require_live_morning_tunnel,
 )
 from tests.e2e_helpers import (
+    assert_no_errors_sent_to_user,
     persisted_ledger_events_for_chat,
     ClarificationAnswerBank,
     create_real_notification,
@@ -96,6 +97,7 @@ from tests.e2e_helpers import (
     get_response,
     assert_response_exists,
     assert_image_path_persisted,
+    same_txn_date,
 )
 
 logger = logging.getLogger(__name__)
@@ -204,7 +206,7 @@ class TestLedgerEventCaptureE2E:
         # under this test's isolated data_root (test_data/), never the real
         # production/dev data root - a wiring mistake here would write test noise
         # into the real financial ledger. Fails loud and immediately.
-        actual_events_dir = Path(denidin.denidin_app.ai_handler.ledger_event_manager.storage_dir).resolve()
+        actual_events_dir = Path(denidin.denidin_app.ledger_event_manager.storage_dir).resolve()
         expected_root = Path(config.data_root).resolve()
         assert actual_events_dir.is_relative_to(expected_root), (
             f"LedgerEventManager.storage_dir={actual_events_dir} is NOT under this "
@@ -220,13 +222,13 @@ class TestLedgerEventCaptureE2E:
         webhook epoch the old `_clean_fixed_timestamp_events` keyed off), so a
         blanket wipe of this isolated test_data/ events dir is the only reliable
         cleanup. Mirrors `test_e2e_media_client_resolution.py::_clean_ledger`."""
-        events_dir = Path(denidin_app.ai_handler.ledger_event_manager.storage_dir)
+        events_dir = Path(denidin_app.ledger_event_manager.storage_dir)
 
         def _wipe():
             if events_dir.exists():
                 for f in events_dir.glob("*.json"):
                     f.unlink()
-            mgr = denidin_app.ai_handler.ledger_event_manager
+            mgr = denidin_app.ledger_event_manager
             if hasattr(mgr, "_index"):
                 mgr._index = []  # keep the in-memory index consistent with disk
 
@@ -254,8 +256,8 @@ class TestLedgerEventCaptureE2E:
         the fixed godfather chat_id can't collide with a previous run. Only ever
         touches test_data/ - the `denidin_app` fixture already refuses to run if
         LedgerEventManager.storage_dir is not under this test's data_root."""
-        session_id = denidin_app.ai_handler.session_manager.get_session(chat_id).session_id
-        events_dir = denidin_app.ai_handler.ledger_event_manager.storage_dir
+        session_id = denidin_app.session_manager.get_session(chat_id).session_id
+        events_dir = denidin_app.ledger_event_manager.storage_dir
         for f in list(events_dir.glob("*.json")):
             try:
                 with open(f, encoding='utf-8') as fh:
@@ -265,7 +267,7 @@ class TestLedgerEventCaptureE2E:
             if data.get("session_id") == session_id:
                 f.unlink()
 
-        session_manager = denidin_app.ai_handler.session_manager
+        session_manager = denidin_app.session_manager
         if session_manager is not None:
             from tests.e2e_helpers import wipe_chat_messages_on_disk
             wipe_chat_messages_on_disk(session_manager.storage_dir, chat_id)
@@ -298,7 +300,7 @@ class TestLedgerEventCaptureE2E:
                 f"found {len(events)}: {events}"
             )
 
-        session_manager = denidin_app.ai_handler.session_manager
+        session_manager = denidin_app.session_manager
         session = session_manager.get_session(chat_id)
         for record in events:
             assert record.get("captured_at"), "captured_at was not persisted"
@@ -328,7 +330,7 @@ class TestLedgerEventCaptureE2E:
     def _assert_message_links_back_to_event(denidin_app, chat_id, event):
         """The completing message's `ledger_event_ids` (Feature 033) must
         include this event's event_id."""
-        session_manager = denidin_app.ai_handler.session_manager
+        session_manager = denidin_app.session_manager
         session_id = session_manager.chat_to_session[chat_id]
         message_id = event["message_id"]
         message_file = session_manager.storage_dir / session_id / "messages" / f"{message_id}.json"
@@ -529,7 +531,7 @@ class TestLedgerEventCaptureE2E:
             # fit for observing a real interim progress update, and definitely a real
             # RequestTelemetry row with non-null slowest_tool_name/vision-call
             # accounting.
-            telemetry_manager = denidin_app.ai_handler.telemetry_manager
+            telemetry_manager = denidin_app.telemetry_manager
             if telemetry_manager is not None:  # None whenever the feature flag is off
                 row = telemetry_manager.get_latest_by_chat(chat_id)
                 assert row is not None, f"expected a telemetry row for chat={chat_id!r}"
@@ -639,7 +641,7 @@ class TestLedgerEventCaptureE2E:
             assert captured.get("vat_status") == "כולל", (
                 f"vat_status is unconditionally כולל for בנק, got {captured.get('vat_status')!r}"
             )
-            assert captured.get("txn_date") == "05/08/2026", (
+            assert same_txn_date(captured.get("txn_date"), "05/08/2026"), (
                 f"the transaction date on the screenshot (05/08/2026) must be captured, "
                 f"got {captured.get('txn_date')!r}"
             )
@@ -718,8 +720,10 @@ class TestLedgerEventCaptureE2E:
                 f"the exchange never names the payer the screenshot shows "
                 f"(surname {BANK_IMAGE_PAYER_SURNAME!r}). Turns seen: {seen_texts!r}"
             )
-            for element, needle in (("transaction date", "05/08"), ("bank details", "בנק"), ("VAT treatment", "מע")):
-                assert needle in approval_text, (
+            # the transaction date in either accepted format (DD/MM or ISO MM-DD)
+            for element, needles in (("transaction date", ("05/08", "08-05")), ("bank details", ("בנק",)),
+                                     ("VAT treatment", ("מע",))):
+                assert any(needle in approval_text for needle in needles), (
                     f"B3/A2: the exchange omits the {element} even though the screenshot "
                     f"supplied it. Turns seen: {seen_texts!r}"
                 )
@@ -735,10 +739,14 @@ class TestLedgerEventCaptureE2E:
             # is a multi-field approval block (e.g. "מע״מ: כולל מע״מ" on one
             # line, "אישור — כן/לא?" on another, unrelated, line) - scanning
             # the whole message for a bare "?" anywhere would misfire on that
-            # unrelated trailing approval question.
+            # unrelated trailing approval question. "Included" is accepted in
+            # either wording - "כולל" ("including") or "כלול" ("included", e.g.
+            # "מע״מ: כלול") - and so is excluded in either wording.
             vat_keywords = ('מע"מ', "מע״מ", "מעמ")
+            included_words = ("כולל", "כלול")
             hedge_phrases = (
-                "לא כולל", "אינו כולל", "אינה כוללת", "לא ידוע", "לא צוין", "?",
+                "לא כולל", "לא כלול", "אינו כולל", "אינו כלול", "אינה כוללת",
+                "לא ידוע", "לא צוין", "?",
             )
             all_bot_texts = [t["reply"] for t in detour_transcript] + seen_texts
             for text in all_bot_texts:
@@ -748,7 +756,7 @@ class TestLedgerEventCaptureE2E:
                     if not any(k in line for k in vat_keywords):
                         continue
                     hedges = [h for h in hedge_phrases if h in line]
-                    assert "כולל" in line and not hedges, (
+                    assert any(w in line for w in included_words) and not hedges, (
                         f"bugfix-061: a בנק (bank deposit) event's VAT is unconditionally "
                         f"included - the bot must never mention VAT as unresolved/excluded/ "
                         f"a question. Offending line: {line!r} (hedge phrases found: {hedges!r}); "
@@ -821,7 +829,7 @@ class TestLedgerEventCaptureE2E:
             # this is a real vision call + multi-turn resolution/document-creation flow -
             # a RequestTelemetry row for the LAST turn must exist with plausible non-zero
             # timing/token data and non-null slowest_tool_name/vision-call accounting.
-            telemetry_manager = denidin_app.ai_handler.telemetry_manager
+            telemetry_manager = denidin_app.telemetry_manager
             if telemetry_manager is not None:  # None whenever the feature flag is off
                 row = telemetry_manager.get_latest_by_chat(chat_id)
                 assert row is not None, f"expected a telemetry row for chat={chat_id!r}"
@@ -833,6 +841,8 @@ class TestLedgerEventCaptureE2E:
                     f"expected a non-null slowest_tool_name for this multi-tool-call "
                     f"flow, got row={dict(row)!r}"
                 )
+
+            assert_no_errors_sent_to_user(chat_id)
         finally:
             # diff3 (2026-09-07): leave Morning net-clean - a full credit note
             # (type 330) for the 320 this run issued. Signed tax docs can never

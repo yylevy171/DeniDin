@@ -29,6 +29,13 @@ from src.services.health_server import (
 )
 
 
+def _locator(mcp_config):
+    """A MorningMcpLocator on a DeniDin whose config's `mcp` block is `mcp_config`."""
+    from src.handlers.morning_mcp_locator import MorningMcpLocator
+    from tests.denidin_test_support import make_config, make_denidin
+    return MorningMcpLocator(make_denidin(make_config(mcp=mcp_config)))
+
+
 # ---------------------------------------------------------------------------
 # check_ai_connectivity
 # ---------------------------------------------------------------------------
@@ -204,7 +211,7 @@ def test_check_morning_connectivity_via_tunnel_true_when_is_alive_reachable(tmp_
         }))
         mcp_config = {"morning_status_file": str(status_file)}
 
-        assert check_morning_connectivity_via_tunnel(mcp_config) is True
+        assert check_morning_connectivity_via_tunnel(_locator(mcp_config)) is True
     finally:
         _stop_fixture_server(server, thread)
 
@@ -214,7 +221,7 @@ def test_check_morning_connectivity_via_tunnel_false_when_status_not_running(tmp
     status_file.write_text(json.dumps({"status": "not running", "server_url": None}))
     mcp_config = {"morning_status_file": str(status_file)}
 
-    assert check_morning_connectivity_via_tunnel(mcp_config) is False
+    assert check_morning_connectivity_via_tunnel(_locator(mcp_config)) is False
 
 
 def test_check_morning_connectivity_via_tunnel_false_when_endpoint_unreachable(tmp_path):
@@ -225,7 +232,7 @@ def test_check_morning_connectivity_via_tunnel_false_when_endpoint_unreachable(t
     }))
     mcp_config = {"morning_status_file": str(status_file)}
 
-    assert check_morning_connectivity_via_tunnel(mcp_config) is False
+    assert check_morning_connectivity_via_tunnel(_locator(mcp_config)) is False
 
 
 # ---------------------------------------------------------------------------

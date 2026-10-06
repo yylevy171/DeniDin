@@ -15,19 +15,20 @@ import pytest
 from src.managers.session_manager import SessionManager
 from src.utils.time_utils import now_local, local_calendar_date
 from tests.helpers.seed import seed_message
+from tests.denidin_test_support import make_session_manager
 
 CHAT = "972522968679@c.us"
 
 
 @pytest.fixture
 def sm(tmp_path):
-    return SessionManager(storage_dir=str(tmp_path / "sessions"))
+    return make_session_manager(storage_dir=str(tmp_path / "sessions"))
 
 
 def test_chat_to_session_stable_across_restart(sm):
     seed_message(sm, CHAT, "user", "one", 1)
     sid = sm.get_session(CHAT).session_id
-    fresh = SessionManager(storage_dir=str(sm.storage_dir))
+    fresh = make_session_manager(storage_dir=str(sm.storage_dir))
     assert fresh.get_session(CHAT).session_id == sid
     seed_message(fresh, CHAT, "user", "two", 0)
     assert len(fresh.get_session(CHAT).message_ids) == 2
@@ -48,7 +49,7 @@ def test_reconcile_picks_up_a_preexisting_session_dir(sm, tmp_path):
         "message_counter": 0, "created_at": now_local().isoformat(),
         "last_active": now_local().isoformat(), "total_tokens": 0,
     }))
-    fresh = SessionManager(storage_dir=str(sm.storage_dir))
+    fresh = make_session_manager(storage_dir=str(sm.storage_dir))
     assert fresh.get_session(CHAT).session_id == sid
 
 
@@ -62,7 +63,7 @@ def test_reconcile_picks_up_a_session_under_expired(sm):
         "last_active": now_local().isoformat(), "total_tokens": 0,
         "storage_path": f"expired/2026-01-01/{sid}",
     }))
-    fresh = SessionManager(storage_dir=str(sm.storage_dir))
+    fresh = make_session_manager(storage_dir=str(sm.storage_dir))
     assert fresh.get_session(CHAT).session_id == sid
 
 
@@ -77,7 +78,7 @@ def test_duplicate_dirs_keep_max_counter_warn_delete_nothing(sm, caplog):
             "last_active": now_local().isoformat(), "total_tokens": 0,
         }))
     with caplog.at_level("WARNING"):
-        fresh = SessionManager(storage_dir=str(sm.storage_dir))
+        fresh = make_session_manager(storage_dir=str(sm.storage_dir))
     assert fresh.get_session(CHAT).session_id == hi  # max(message_counter)
     assert any(r.levelname == "WARNING" for r in caplog.records)
     assert (sm.storage_dir / lo).exists() and (sm.storage_dir / hi).exists()

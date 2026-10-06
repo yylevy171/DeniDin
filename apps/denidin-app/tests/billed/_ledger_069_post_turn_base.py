@@ -49,7 +49,7 @@ def clean_069_chat_history(denidin_app):
     (billed and expensive) so it applies uniformly; binds to whichever
     `denidin_app` fixture that module defines.
     """
-    sessions_dir = denidin_app.ai_handler.session_manager.storage_dir
+    sessions_dir = denidin_app.session_manager.storage_dir
     reset_manifest_cache()
     wipe_chat_messages_on_disk(sessions_dir, GODFATHER_CHAT_ID)
     yield

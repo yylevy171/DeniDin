@@ -17,7 +17,7 @@ thread per reminder (the original design guardrail).
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
-# type: ignore[import-untyped] on both - no stub package exists for apscheduler
+# apscheduler ships no type stubs - hence the import-untyped ignore on its imports.
 from apscheduler.schedulers.background import BackgroundScheduler  # type: ignore[import-untyped]
 from apscheduler.triggers.cron import CronTrigger  # type: ignore[import-untyped]
 
@@ -172,7 +172,7 @@ def _sweep_due_reminders(
     simulate a startup catch-up sweep specifically (rather than an ordinary
     periodic tick) must pass STARTUP_SWEEP_LOOKBACK explicitly too.
     """
-    reminder_manager = global_context.ai_handler.reminder_manager
+    reminder_manager = global_context.reminder_manager
 
     now = now or now_local()
     try:
@@ -187,7 +187,7 @@ def _sweep_due_reminders(
     for occurrence in due:
         _deliver_one_occurrence(
             occurrence, bot, reminder_manager,
-            global_context.session_manager, global_context.ai_handler.user_manager,
+            global_context.session_manager, global_context.user_manager,
             log_prefix,
         )
 

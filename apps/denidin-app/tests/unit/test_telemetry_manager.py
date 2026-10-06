@@ -10,11 +10,12 @@ import pytest
 
 from src.managers.telemetry_manager import TelemetryBuilder, TelemetryManager
 from src.models.telemetry import RequestTelemetry
+from tests.denidin_test_support import make_telemetry_manager
 
 
 @pytest.fixture
 def manager(tmp_path):
-    return TelemetryManager(str(tmp_path))
+    return make_telemetry_manager(str(tmp_path))
 
 
 class TestTelemetryBuilder:
@@ -135,9 +136,9 @@ class TestTelemetryManager:
         manager.record(record)  # must not raise
 
     def test_two_managers_same_data_root_share_the_same_db_file(self, tmp_path):
-        m1 = TelemetryManager(str(tmp_path))
+        m1 = make_telemetry_manager(str(tmp_path))
         builder = TelemetryBuilder("req-9", "chat-1", "2026-09-12T10:00:00+03:00")
         m1.record(builder.finalize("2026-09-12T10:00:01+03:00"))
 
-        m2 = TelemetryManager(str(tmp_path))
+        m2 = make_telemetry_manager(str(tmp_path))
         assert m2.get("req-9") is not None

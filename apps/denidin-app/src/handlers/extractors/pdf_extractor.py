@@ -11,8 +11,7 @@ CHK Requirements:
 - CHK010: Layout/structure preservation
 - CHK078: Empty document handling
 """
-from typing import Dict, List, Optional
-import io
+from typing import Dict, Optional
 import logging
 try:
     import fitz  # PyMuPDF
@@ -33,36 +32,36 @@ logger = logging.getLogger(__name__)
 class PDFExtractor(MediaExtractor):
     """
     Extract text and analyze documents from PDFs by converting pages to images.
-    
+
     Phase 4: Aggregates document analysis from all pages into single summary.
     """
-    
+
     def __init__(self, denidin_context):
         """
         Initialize with DeniDin global context.
-        
+
         Args:
-            denidin_context: DeniDin instance with ai_handler and config
+            denidin_context: DeniDin instance (or any context) with ai_manager and config
         """
         super().__init__(denidin_context)
         self.vision_model = self.config.ai_vision_model
-        
+
         # Create ImageExtractor for page processing
         self.image_extractor = ImageExtractor(denidin_context)
-    
+
     def analyze_media(self, media: Media, caption: str = "", today_timestamp: Optional[int] = None) -> Dict:
         """
         Analyze PDF using GPT-4o Vision (Phase 4 enhancement).
-        
+
         Multi-page PDF processing:
         1. Convert each page to image
         2. Send to Vision API for analysis
         3. Combine raw_responses from all pages
-        
+
         Args:
             media: Media object containing PDF data in memory
             caption: User's message/question sent with the PDF (optional)
-            
+
         Returns:
             {
                 "raw_response": str,  # Combined AI responses from all pages
@@ -85,10 +84,10 @@ class PDFExtractor(MediaExtractor):
                     "warnings": [["PyMuPDF not installed"]],
                     "model_used": self.vision_model
                 }
-            
+
             # Open PDF from in-memory bytes
             pdf_document = fitz.open(stream=media.data, filetype="pdf")
-            
+
             # CHK078: Handle empty PDF
             page_count = len(pdf_document)
             if page_count == 0:
@@ -105,7 +104,7 @@ class PDFExtractor(MediaExtractor):
                     "warnings": [],
                     "model_used": self.vision_model
                 }
-            
+
             # Process each page
             raw_responses = []  # Collect raw_response from each page
             extracted_texts = []  # Feature 043 (2026-08-18): same, for extracted_text
@@ -113,29 +112,29 @@ class PDFExtractor(MediaExtractor):
             warnings_list = []
             doc_types = []       # bugfix-028: per-page classification
             combined_fields: Dict = {}
-            page_analyses: List[Dict] = []  # Collect analyses from each page
-            
+
             for page_num, page in enumerate(pdf_document):
                 try:
                     # Convert page to image (PNG format)
                     pixmap = page.get_pixmap()
                     png_bytes = pixmap.tobytes(output="png")
-                    logger.info(f"[PDFExtractor.analyze_media] Page {page_num + 1}: Converted to PNG ({len(png_bytes)} bytes, {pixmap.width}x{pixmap.height}px)")
-                    
+                    logger.info(f"[PDFExtractor.analyze_media] Page {page_num + 1}: Converted to PNG "
+                                f"({len(png_bytes)} bytes, {pixmap.width}x{pixmap.height}px)")
+
                     # Create Media object for the page image
                     page_media = Media.from_bytes(
                         data=png_bytes,
                         mime_type="image/png",
                         filename=f"page_{page_num + 1}.png"
                     )
-                    
+
                     # Delegate to ImageExtractor (returns raw_response)
                     # Pass caption to provide context for analysis
                     logger.info(f"[PDFExtractor.analyze_media] Sending page {page_num + 1} to ImageExtractor")
                     page_result = self.image_extractor.analyze_media(
                         page_media, caption=caption, today_timestamp=today_timestamp
                     )
-                    
+
                     # Collect per-page results
                     raw_responses.append(page_result["raw_response"])
                     extracted_texts.append(page_result.get("extracted_text", ""))
@@ -147,8 +146,9 @@ class PDFExtractor(MediaExtractor):
                     # more likely to be annexes than corrections.
                     for key, value in (page_result.get("fields") or {}).items():
                         combined_fields.setdefault(key, value)
-                    logger.info(f"[PDFExtractor.analyze_media] Page {page_num + 1} analysis complete: {len(page_result.get('raw_response', ''))} chars")
-                    
+                    logger.info(f"[PDFExtractor.analyze_media] Page {page_num + 1} analysis complete: "
+                                f"{len(page_result.get('raw_response', ''))} chars")
+
                 except Exception as e:
                     # CHK007: Handle per-page failures gracefully
                     logger.error(f"[PDFExtractor.analyze_media] Page {page_num + 1} failed: {e}", exc_info=True)
@@ -170,7 +170,7 @@ class PDFExtractor(MediaExtractor):
             # only diverge in its JSON-parse-failure fallback case, but kept as its
             # own combine so a future divergence there flows through correctly).
             combined_extracted_text = "\n---\n".join([t for t in extracted_texts if t])
-            
+
             # bugfix-028 (user, 2026-08-09): "pdf and docx are ALWAYS agreements
             # or unknown - never bank." A bank transfer confirmation arrives as a
             # phone screenshot; nobody sends one as a PDF. Enforced here in code
@@ -204,4 +204,3 @@ class PDFExtractor(MediaExtractor):
                 "warnings": [[f"PDF analysis failed: {str(e)}"]],
                 "model_used": self.vision_model
             }
-

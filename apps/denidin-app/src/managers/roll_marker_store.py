@@ -29,7 +29,7 @@ closed, ``row_factory = sqlite3.Row``, idempotent ``executescript`` schema,
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from src.utils.logger import get_logger
 from src.utils.time_utils import now_local, to_local
@@ -56,9 +56,16 @@ CREATE TABLE IF NOT EXISTS roll_markers (
 class RollMarkerStore:
     """See module docstring."""
 
-    def __init__(self, storage_dir: str, stale_claim_minutes: int = _DEFAULT_STALE_CLAIM_MINUTES) -> None:
-        self._stale_claim_minutes = stale_claim_minutes
-        storage_path = Path(storage_dir)
+    def __init__(self, denidin: Any) -> None:
+        """`denidin`: the DeniDin object (REQ-063-08). The store lives under its
+        config's {data_root}/memory_rolls/ - deliberately NOT under
+        {data_root}/memory/, which ChromaDB owns; the stale-claim window is its
+        config's memory.roll.stale_claim_minutes."""
+        self.denidin = denidin
+        config = denidin.config
+        roll_config = (config.memory or {}).get('roll', {}) or {}
+        self._stale_claim_minutes = int(roll_config.get('stale_claim_minutes', _DEFAULT_STALE_CLAIM_MINUTES))
+        storage_path = Path(config.data_root) / "memory_rolls"
         storage_path.mkdir(parents=True, exist_ok=True)
         self._db_path = storage_path / "roll_markers.db"
         self._conn = sqlite3.connect(str(self._db_path), check_same_thread=False)

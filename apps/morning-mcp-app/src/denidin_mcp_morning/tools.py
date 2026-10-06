@@ -511,13 +511,9 @@ def _build_transaction_account_payload(
                 "vatType": vat_type,
             }
         ],
-        "payment": [
-            {
-                "type": _PAYMENT_TYPE_CASH,
-                "price": amount,
-                "date": today,
-            }
-        ],
+        # No "payment" line (Feature 063): a transaction account requests
+        # payment, it never records one. It used to carry a cash line dated
+        # today.
     }
     if due_date:
         payload["dueDate"] = due_date
@@ -1275,7 +1271,15 @@ def create_credit_note(
 _CLOSED_STATUS_CODES = {1, 2}  # closed (via payment) / manually closed — see models._MORNING_STATUS_CODES
 
 
-def _build_payment_receipt_payload(original: dict, payment_date: str, amount: Optional[float] = None) -> dict:
+def _build_payment_receipt_payload(
+    original: dict,
+    payment_date: str,
+    amount: Optional[float] = None,
+    payment_method: str = _DEFAULT_PAYMENT_METHOD,
+    bank_number: Optional[str] = None,
+    bank_branch: Optional[str] = None,
+    bank_account: Optional[str] = None,
+) -> dict:
     """Build a Morning receipt (type 400) payload that marks `original` paid
     (fully by default, or partially via `amount`).
 
@@ -1301,8 +1305,13 @@ def _build_payment_receipt_payload(original: dict, payment_date: str, amount: Op
     rebuilding a bare-name client object - callers (create_receipt) MUST
     check `_extract_linked_client_id(original)` and refuse before calling
     this if it's None (a pre-feature, bare-name-only original).
+
+    Feature 063: the payment line is built by `_build_payment_line`, the same
+    builder the 320 tools use - bank transfer by default, with bank details
+    when given. It used to be a hard-coded cash line (type 1), which booked
+    every receipt as cash and dropped any bank details (bugfix-028's bug,
+    left unfixed on the 400 path).
     """
-    validated_payment_date = _validate_payment_date(payment_date)
     today = now_local().date().isoformat()
     original_id = str(original.get("id") or original.get("documentId") or "")
     original_number = original.get("number")
@@ -1321,7 +1330,12 @@ def _build_payment_receipt_payload(original: dict, payment_date: str, amount: Op
         "description": f"תשלום עבור חשבונית מספר {original_number or original_id}",
         "linkedDocumentIds": [original_id] if original_id else [],
         "client": {"self": False, "id": _extract_linked_client_id(original)},
-        "payment": [{"type": 1, "price": receipt_amount, "date": validated_payment_date}],
+        "payment": [
+            _build_payment_line(
+                receipt_amount, payment_date, payment_method, bank_number, bank_branch, bank_account,
+                currency=original.get("currency", "ILS"),
+            )
+        ],
     }
 
 
@@ -1330,6 +1344,10 @@ def _build_standalone_receipt_payload(
     amount: float,
     description: str,
     payment_date: str,
+    payment_method: str = _DEFAULT_PAYMENT_METHOD,
+    bank_number: Optional[str] = None,
+    bank_branch: Optional[str] = None,
+    bank_account: Optional[str] = None,
 ) -> dict:
     """Build a Morning receipt (type 400) payload for a standalone receipt -
     one with no prior document to reference at all (feature 056).
@@ -1356,8 +1374,11 @@ def _build_standalone_receipt_payload(
     money has already moved, so its real date is a fact to carry, never a
     silent "today". The document's own top-level `date` (issue date, set
     below) stays today regardless.
+
+    Feature 063: the payment line comes from `_build_payment_line` (bank
+    transfer by default), not a hard-coded cash line - see
+    `_build_payment_receipt_payload`.
     """
-    validated_payment_date = _validate_payment_date(payment_date)
     today = now_local().date().isoformat()
 
     return {
@@ -1369,7 +1390,9 @@ def _build_standalone_receipt_payload(
         "signed": True,
         "description": description,
         "client": {"self": False, "id": client_id},
-        "payment": [{"type": 1, "price": amount, "date": validated_payment_date}],
+        "payment": [
+            _build_payment_line(amount, payment_date, payment_method, bank_number, bank_branch, bank_account)
+        ],
     }
 
 
@@ -1699,6 +1722,10 @@ def create_receipt(
     client_name: Optional[str] = None,
     description: Optional[str] = None,
     name_resolved: bool = False,
+    payment_method: str = _DEFAULT_PAYMENT_METHOD,
+    bank_number: Optional[str] = None,
+    bank_branch: Optional[str] = None,
+    bank_account: Optional[str] = None,
 ) -> str:
     """Create a receipt ("קבלה", type 400) and return a Hebrew confirmation -
     either linked to an existing document being paid, or standalone (feature
@@ -1761,6 +1788,10 @@ def create_receipt(
         name_resolved: Standalone branch only - must be True (asserting
             `resolve_client_name` was already called with `client_name`) or
             this refuses immediately, attempting no Morning lookup at all.
+        payment_method: How the money arrived, both branches - "bank_transfer"
+            (default) or "cash" (any method `_build_payment_line` accepts).
+        bank_number / bank_branch / bank_account: Stored only on a bank
+            transfer. `bank_number` is the bank's NUMBER (e.g. "31").
 
     Returns:
         A Hebrew confirmation string with the new receipt's number, or (on
@@ -1790,7 +1821,8 @@ def create_receipt(
                 resolved_client = _require_resolved_client(client, client_name, name_resolved, "create_receipt")
 
         payload = _build_standalone_receipt_payload(
-            resolved_client.id, amount, description, payment_date
+            resolved_client.id, amount, description, payment_date,
+            payment_method, bank_number, bank_branch, bank_account,
         )
         response = client.create_invoice(payload)
         log_mutation(
@@ -1831,7 +1863,10 @@ def create_receipt(
         )
         return format_original_not_linked_to_client()
 
-    payload = _build_payment_receipt_payload(original, payment_date=payment_date, amount=amount)
+    payload = _build_payment_receipt_payload(
+        original, payment_date=payment_date, amount=amount, payment_method=payment_method,
+        bank_number=bank_number, bank_branch=bank_branch, bank_account=bank_account,
+    )
     receipt_response = client.create_invoice(payload)
     log_mutation(
         "create_receipt",

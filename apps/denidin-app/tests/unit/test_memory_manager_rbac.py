@@ -4,6 +4,7 @@ import pytest
 from unittest.mock import Mock, MagicMock, patch
 from src.managers.memory_manager import MemoryManager
 from src.models.user import MemoryScope
+from tests.denidin_test_support import make_memory_manager
 
 
 class TestMemoryManagerRBACFiltering:
@@ -22,7 +23,7 @@ class TestMemoryManagerRBACFiltering:
     @pytest.fixture
     def memory_manager(self, mock_ai_client, tmp_path):
         """Create MemoryManager with mock AI client."""
-        return MemoryManager(
+        return make_memory_manager(
             storage_dir=str(tmp_path / "memory"),
             ai_client=mock_ai_client
         )
@@ -280,7 +281,7 @@ class TestMemoryManagerRBACHelpers:
     @pytest.fixture
     def memory_manager(self, mock_ai_client, tmp_path):
         """Create MemoryManager with mock AI client."""
-        return MemoryManager(
+        return make_memory_manager(
             storage_dir=str(tmp_path / "memory"),
             ai_client=mock_ai_client
         )

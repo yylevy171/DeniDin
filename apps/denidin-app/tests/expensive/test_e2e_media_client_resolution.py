@@ -130,7 +130,7 @@ class TestMediaClientResolutionE2E:
         }
         denidin.denidin_app = denidin.initialize_app(config_dict)
 
-        events_dir = Path(denidin.denidin_app.ai_handler.ledger_event_manager.storage_dir).resolve()
+        events_dir = Path(denidin.denidin_app.ledger_event_manager.storage_dir).resolve()
         assert events_dir.is_relative_to(Path(config.data_root).resolve()), (
             f"LedgerEventManager.storage_dir={events_dir} not under test data_root — refusing"
         )
@@ -138,17 +138,17 @@ class TestMediaClientResolutionE2E:
 
     @pytest.fixture(autouse=True)
     def _clean_ledger(self, denidin_app):
-        events_dir = Path(denidin_app.ai_handler.ledger_event_manager.storage_dir)
+        events_dir = Path(denidin_app.ledger_event_manager.storage_dir)
 
         def _wipe():
             if events_dir.exists():
                 for f in events_dir.glob("*.json"):
                     f.unlink()
-            mgr = denidin_app.ai_handler.ledger_event_manager
+            mgr = denidin_app.ledger_event_manager
             if hasattr(mgr, "_index"):
                 mgr._index = []  # keep the in-memory index consistent with disk
             wipe_chat_messages_on_disk(
-                denidin_app.ai_handler.session_manager.storage_dir, GODFATHER_CHAT_ID)
+                denidin_app.session_manager.storage_dir, GODFATHER_CHAT_ID)
 
         _wipe()
         yield

@@ -439,6 +439,10 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         client_name: Optional[str] = None,
         description: Optional[str] = None,
         name_resolved: bool = False,
+        payment_method: str = "bank_transfer",
+        bank_number: Optional[str] = None,
+        bank_branch: Optional[str] = None,
+        bank_account: Optional[str] = None,
     ) -> str:
         """Create a receipt ("קבלה", document type 400) - either linked to an
         existing document being paid, or STANDALONE, with no invoice at all
@@ -469,7 +473,13 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         ISO YYYY-MM-DD. "Today" is a genuinely fine answer for a verbal
         "mark as paid"/"received a deposit" request, but only once asked and
         confirmed - never silently assumed. Ask the user if it isn't already
-        stated in the conversation."""
+        stated in the conversation.
+
+        `payment_method` records how the money arrived, on both paths:
+        "bank_transfer" (default) or "cash". Bank details (`bank_number`,
+        `bank_branch`, `bank_account`) are stored only on a bank transfer.
+        `bank_number` is the bank's NUMBER (e.g. "31"), not its name - never
+        invent a bank's name when only its number is known."""
         return _call_with_error_boundary(
             tools.create_receipt,
             morning_client,
@@ -479,6 +489,10 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
             client_name,
             description,
             name_resolved,
+            payment_method,
+            bank_number,
+            bank_branch,
+            bank_account,
         )
 
     @mcp.tool(structured_output=False)

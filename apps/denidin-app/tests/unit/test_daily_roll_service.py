@@ -19,6 +19,7 @@ from src.managers.session_manager import SessionManager
 from src.services import daily_summary_roll_service as svc
 from src.utils.time_utils import local_calendar_date, now_local
 from tests.helpers.seed import seed_message
+from tests.denidin_test_support import make_memory_manager, make_roll_marker_store, make_session_manager
 
 GROUP = "120363210094632983@g.us"
 SOLO = "972522968679@c.us"
@@ -61,19 +62,18 @@ class _Client:
 
 @pytest.fixture
 def ctx(tmp_path):
-    sm = SessionManager(storage_dir=str(tmp_path / "sessions"))
+    sm = make_session_manager(storage_dir=str(tmp_path / "sessions"))
     client = _Client()
-    mm = MemoryManager(storage_dir=str(tmp_path / "memory"), embedding_model="x", ai_client=client)
-    store = RollMarkerStore(str(tmp_path / "memory_rolls"))
-    ai_handler = SimpleNamespace(
-        roll_marker_store=store, memory_manager=mm, client=client,
+    mm = make_memory_manager(storage_dir=str(tmp_path / "memory"), embedding_model="x", ai_client=client)
+    store = make_roll_marker_store(str(tmp_path / "memory_rolls"))
+    # The fields the roll reads off the DeniDin object (REQ-063-08).
+    return SimpleNamespace(
+        session_manager=sm, roll_marker_store=store, memory_manager=mm, ai_client=client,
         config=SimpleNamespace(ai_model="gpt-5.6-luna",
                                memory={"session": {"window_days": 14},
                                        "roll": {"hour": 2, "catchup_lookback_days": 21}}),
         memory_enabled=True,
     )
-    return SimpleNamespace(session_manager=sm, ai_handler=ai_handler,
-                           config=ai_handler.config)
 
 
 def _summary_count(mm, chat, date_str):
@@ -90,15 +90,15 @@ class TestBasicRoll:
         seed_message(ctx.session_manager, SOLO, "user", "שלום", 1)
         svc._sweep_daily_roll(ctx, now=now_local(), lookback_days=2)
         y = (local_calendar_date(now_local()) - timedelta(days=1)).isoformat()
-        assert _summary_count(ctx.ai_handler.memory_manager, GROUP, y) == 1
-        assert _summary_count(ctx.ai_handler.memory_manager, SOLO, y) == 1
-        assert ctx.ai_handler.client.responses.calls  # real summariser calls made
+        assert _summary_count(ctx.memory_manager, GROUP, y) == 1
+        assert _summary_count(ctx.memory_manager, SOLO, y) == 1
+        assert ctx.ai_client.responses.calls  # real summariser calls made
 
     def test_daily_summary_is_recallable_with_correct_metadata(self, ctx):
         seed_message(ctx.session_manager, GROUP, "user", "פגישה חשובה מחר בבוקר", 1, sender_name="Dana")
         svc._sweep_daily_roll(ctx, now=now_local(), lookback_days=2)
         y = (local_calendar_date(now_local()) - timedelta(days=1)).isoformat()
-        results = ctx.ai_handler.memory_manager.recall(
+        results = ctx.memory_manager.recall(
             query="פגישה", collection_names=[svc.collection_name_for_chat(GROUP)],
             top_k=10, min_similarity=0.0,
         )
@@ -130,24 +130,24 @@ class TestBasicRoll:
         finally:
             chromadb.api.client.Client.get_collection = real
         y = (local_calendar_date(now_local()) - timedelta(days=1)).isoformat()
-        assert _summary_count(ctx.ai_handler.memory_manager, GROUP, y) == 1
+        assert _summary_count(ctx.memory_manager, GROUP, y) == 1
         assert called["raw"] == 0  # only get_or_create_collection is used
 
     def test_empty_day_marker_no_openai_call(self, ctx):
         seed_message(ctx.session_manager, SOLO, "user", "today only", 0)  # nothing yesterday
         svc._sweep_daily_roll(ctx, now=now_local(), lookback_days=2)
         y = (local_calendar_date(now_local()) - timedelta(days=1)).isoformat()
-        assert ctx.ai_handler.roll_marker_store.is_rolled(SOLO, y) is True
-        assert ctx.ai_handler.client.responses.calls == []
+        assert ctx.roll_marker_store.is_rolled(SOLO, y) is True
+        assert ctx.ai_client.responses.calls == []
 
     def test_rerun_over_committed_range_is_a_noop(self, ctx):
         seed_message(ctx.session_manager, SOLO, "user", "hi", 1)
         svc._sweep_daily_roll(ctx, now=now_local(), lookback_days=2)
-        n = len(ctx.ai_handler.client.responses.calls)
+        n = len(ctx.ai_client.responses.calls)
         svc._sweep_daily_roll(ctx, now=now_local(), lookback_days=2)
-        assert len(ctx.ai_handler.client.responses.calls) == n  # 0 new calls
+        assert len(ctx.ai_client.responses.calls) == n  # 0 new calls
         y = (local_calendar_date(now_local()) - timedelta(days=1)).isoformat()
-        assert _summary_count(ctx.ai_handler.memory_manager, SOLO, y) == 1  # 0 dupes
+        assert _summary_count(ctx.memory_manager, SOLO, y) == 1  # 0 dupes
 
 
 class TestCatchUpAndResilience:
@@ -158,31 +158,31 @@ class TestCatchUpAndResilience:
         today = local_calendar_date(now_local())
         for d in (1, 2, 3):
             ds = (today - timedelta(days=d)).isoformat()
-            assert _summary_count(ctx.ai_handler.memory_manager, SOLO, ds) == 1
+            assert _summary_count(ctx.memory_manager, SOLO, ds) == 1
 
     def test_one_poison_chat_never_aborts_the_sweep(self, ctx):
         # An embedding failure (remember() raises) leaves that day un-committed;
         # a summariser failure alone would fall back to a transcript and commit.
-        ctx.ai_handler.client.embeddings.fail_for = {"POISON"}
+        ctx.ai_client.embeddings.fail_for = {"POISON"}
         seed_message(ctx.session_manager, GROUP, "user", "POISON content", 1)
         seed_message(ctx.session_manager, SOLO, "user", "good content", 1)
         svc._sweep_daily_roll(ctx, now=now_local(), lookback_days=2)
         y = (local_calendar_date(now_local()) - timedelta(days=1)).isoformat()
-        assert ctx.ai_handler.roll_marker_store.is_rolled(GROUP, y) is False
-        assert ctx.ai_handler.roll_marker_store.is_rolled(SOLO, y) is True
+        assert ctx.roll_marker_store.is_rolled(GROUP, y) is False
+        assert ctx.roll_marker_store.is_rolled(SOLO, y) is True
 
     def test_failed_day_retried_on_a_later_sweep(self, ctx):
-        ctx.ai_handler.client.embeddings.fail_for = {"flaky"}
+        ctx.ai_client.embeddings.fail_for = {"flaky"}
         seed_message(ctx.session_manager, SOLO, "user", "flaky day", 1)
         svc._sweep_daily_roll(ctx, now=now_local(), lookback_days=2)
         y = (local_calendar_date(now_local()) - timedelta(days=1)).isoformat()
-        assert ctx.ai_handler.roll_marker_store.is_rolled(SOLO, y) is False
+        assert ctx.roll_marker_store.is_rolled(SOLO, y) is False
         # The next nightly tick is >stale_claim_minutes later - age the claim.
-        store = ctx.ai_handler.roll_marker_store
+        store = ctx.roll_marker_store
         stale = (now_local() - timedelta(minutes=200)).isoformat()
         store._conn.execute("UPDATE roll_markers SET claimed_at=? WHERE chat=? AND date=?", (stale, SOLO, y))
         store._conn.commit()
-        ctx.ai_handler.client.embeddings.fail_for = set()  # embedding service recovers
+        ctx.ai_client.embeddings.fail_for = set()  # embedding service recovers
         svc._sweep_daily_roll(ctx, now=now_local(), lookback_days=2)
         assert store.is_rolled(SOLO, y) is True
 
@@ -190,7 +190,7 @@ class TestCatchUpAndResilience:
         seed_message(ctx.session_manager, SOLO, "user", "way back", 30)
         svc._sweep_daily_roll(ctx, now=now_local(), lookback_days=21)
         old = (local_calendar_date(now_local()) - timedelta(days=30)).isoformat()
-        assert ctx.ai_handler.roll_marker_store.is_rolled(SOLO, old) is False
+        assert ctx.roll_marker_store.is_rolled(SOLO, old) is False
 
 
 class TestArchiveStep:
@@ -210,4 +210,4 @@ class TestArchiveStep:
         day = (local_calendar_date(now_local()) - timedelta(days=40)).isoformat()
         svc._roll_one_chat_day(ctx, SOLO, local_calendar_date(now_local()) - timedelta(days=40),
                                source="migration", log_prefix="")
-        assert _summary_count(ctx.ai_handler.memory_manager, SOLO, day) == 1
+        assert _summary_count(ctx.memory_manager, SOLO, day) == 1

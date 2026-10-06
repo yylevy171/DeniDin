@@ -4,7 +4,7 @@ Supports loading from JSON/YAML files and validation.
 """
 import json
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from typing import Any, Optional, Dict
 
 
@@ -53,6 +53,11 @@ class AppConfiguration:
     feature_flags: Dict[str, bool] = field(default_factory=dict)
     memory: Dict = field(default_factory=dict)
     constitution_config: Dict = field(default_factory=dict)
+    # Feature 063 (Dynamic Capability Backbone) - parallel to constitution_config, only ever
+    # read by the new src/backbone when feature_flags['enable_capability_backbone']
+    # is true. AIHandler never reads this; a config that never sets the flag needs no
+    # backbone_config block at all (data-model.md's Config additions).
+    backbone_config: Dict = field(default_factory=dict)
     user_roles: Dict = field(default_factory=dict)
 
     # Morning MCP integration (Feature 018)
@@ -68,6 +73,14 @@ class AppConfiguration:
     # record-shape side of this feature is gated by CURRENT_SCHEMA_VERSION instead)
     # - this field only controls whether the background poller runs.
     accounting_ledger_update_freq: int = 0
+
+    # Backbone capability idle reset (Feature 063, 2026-09-24): minutes of chat
+    # inactivity (no message sent or received - Session.last_active) after
+    # which a background sweep clears that chat's loaded capabilities
+    # (Session.active_capabilities), returning it to the plain backbone. 0 =
+    # inactive (no scheduler started). Top-level like
+    # accounting_ledger_update_freq; deliberately NOT a feature flag.
+    capabilities_reset_minutes: int = 0
 
     # Feature 069: how many hours of chat history the post-turn ledger-recognition
     # call sees as its context window (float; DI only, never an env var). Older
@@ -157,10 +170,12 @@ class AppConfiguration:
             'feature_flags': {},
             'memory': {},
             'constitution_config': {},
+            'backbone_config': {},
             'user_roles': {},
             'mcp': {},
             'reminders': {},
             'accounting_ledger_update_freq': 0,
+            'capabilities_reset_minutes': 0,
             'ledger_recognition_context_window_hours': 1.0,
             'allocation_threshold_nis': 5000,
             'logging': {}
@@ -223,16 +238,16 @@ class AppConfiguration:
             for section in ['session', 'longterm']:
                 if section in config_data['memory'] and 'storage_dir' in config_data['memory'][section]:
                     storage_dir = config_data['memory'][section]['storage_dir']
-                    
+
                     # Skip absolute paths (start with / or drive letter on Windows)
                     if storage_dir.startswith('/') or (len(storage_dir) > 1 and storage_dir[1] == ':'):
                         continue
-                    
+
                     # Backward compatibility: strip data_root prefix if present
                     # Old configs have "data/sessions", new configs have "sessions"
                     if storage_dir.startswith(f'{data_root}/'):
                         storage_dir = storage_dir[len(data_root)+1:]  # Strip "data/" prefix
-                    
+
                     # Combine data_root with relative storage_dir
                     config_data['memory'][section]['storage_dir'] = f'{data_root}/{storage_dir}'
 
@@ -269,7 +284,7 @@ class AppConfiguration:
                 config_data['logging'][key] = value
 
         # Filter out unknown keys (backward compatibility for removed config fields)
-        valid_fields = {f.name for f in cls.__dataclass_fields__.values()}
+        valid_fields = {f.name for f in fields(cls)}
         filtered_config = {k: v for k, v in config_data.items() if k in valid_fields}
 
         return cls(**filtered_config)

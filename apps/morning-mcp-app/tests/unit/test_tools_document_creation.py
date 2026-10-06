@@ -145,6 +145,15 @@ def test_build_transaction_account_payload_states_its_vat_treatment():
     assert exclusive["vatType"] == 0
 
 
+def test_build_transaction_account_payload_carries_no_payment_line():
+    """Feature 063: a transaction account requests payment, it never records
+    one - no payment line (it used to carry a cash line dated today)."""
+    payload = tools._build_transaction_account_payload(
+        client_id="client-1", amount=45.0, description="שירות", vat_included=True
+    )
+    assert "payment" not in payload
+
+
 def test_build_transaction_account_payload_includes_due_date_when_given():
     with_due_date = tools._build_transaction_account_payload(
         client_id="client-1", amount=45.0, description="שירות", vat_included=True,
@@ -225,9 +234,30 @@ def test_build_receipt_payload_defaults_and_override():
     assert override_payload["payment"][0]["price"] == 35.0
 
 
+def test_build_receipt_payload_defaults_to_bank_transfer_with_bank_details():
+    """Feature 063: a linked receipt's payment line is a bank transfer by
+    default, carrying the bank details when given - never a hard-coded cash
+    line (type 1), which drops them."""
+    payload = tools._build_payment_receipt_payload(
+        _original_invoice(), payment_date="2026-07-12",
+        bank_number="31", bank_branch="049", bank_account="123456",
+    )
+    line = payload["payment"][0]
+    assert line["type"] == 4
+    assert (line["bankName"], line["bankBranch"], line["bankAccount"]) == ("31", "049", "123456")
+
+
+def test_build_receipt_payload_records_cash_when_stated():
+    payload = tools._build_payment_receipt_payload(
+        _original_invoice(), payment_date="2026-07-12", payment_method="cash", bank_number="31",
+    )
+    line = payload["payment"][0]
+    assert line["type"] == 1 and "bankName" not in line
+
+
 def test_build_standalone_receipt_payload_shape():
     """Feature 056 (REQ-INV-017): a standalone receipt has no prior document
-    to reference - it records a pure cash movement (deposit, loan repayment,
+    to reference - it records a pure money movement (deposit, loan repayment,
     or advance payment), so unlike every other document type this app
     creates, it must carry no VAT/income line at all, and no
     linkedDocumentIds (there's nothing to link to). Client attachment uses
@@ -245,7 +275,22 @@ def test_build_standalone_receipt_payload_shape():
     assert "vatType" not in payload
     assert "linkedDocumentIds" not in payload or payload["linkedDocumentIds"] == []
     assert payload["client"] == {"self": False, "id": "client-9"}
-    assert payload["payment"] == [{"type": 1, "price": 250.0, "date": "2026-08-01"}]
+    assert payload["payment"] == [
+        {"type": 4, "price": 250.0, "date": "2026-08-01", "currency": "ILS", "currencyRate": 1}
+    ]
+
+    with_bank = tools._build_standalone_receipt_payload(
+        client_id="client-9", amount=250.0, description="פיקדון מלקוח", payment_date="2026-08-01",
+        bank_number="12", bank_branch="600", bank_account="98765",
+    )
+    line = with_bank["payment"][0]
+    assert (line["type"], line["bankName"], line["bankBranch"], line["bankAccount"]) == (4, "12", "600", "98765")
+
+    cash = tools._build_standalone_receipt_payload(
+        client_id="client-9", amount=250.0, description="פיקדון מלקוח", payment_date="2026-08-01",
+        payment_method="cash",
+    )
+    assert cash["payment"][0]["type"] == 1
 
 
 # --- Regression guards: functionality formerly reached via the removed
