@@ -1,6 +1,6 @@
 # Bugfix 071: Morning Documents Created with VAT = 0 Instead of VAT Included
 
-**Status**: Done (2026-10-06) — fix merged via PR #TBD; verified by 27/27 billed/expensive tests on the Feature 063 backbone (§7). Not yet released or deployed (human decision). Production remediation of the already-issued documents (§3, §5) is a separate accounting task.
+**Status**: Done (2026-10-06) — fix merged via PR #700; verified by 27/27 billed/expensive tests on the Feature 063 backbone (§7). Not yet released or deployed (human decision). Production remediation of the already-issued documents (§3, §5) is a separate accounting task.
 **Priority**: P0
 **Severity**: P0 / Critical (Compliance & Tax Under-reporting)
 **Branch**: `bugfix/071-morning-vat-zero-defect`
