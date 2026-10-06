@@ -1151,12 +1151,12 @@ def handle_button_tap(notification: Notification) -> None:
 
     sent_id_message = denidin_app.whatsapp_handler.send_response(notification, ai_response)
     if sent_id_message is not None:
-        # A resolution reply is always plain text (never offer_approval_buttons)
-        # per contracts/button-tap-resolution.md, so this should never actually
-        # fire - kept only for symmetry with _process_conversational_message's
-        # identical wiring (now both managers, Feature 054 - see the comment
-        # there), in case a future change ever chains a fresh pending approval
-        # directly off a button resolution.
+        # A resolution reply is usually plain text, but it carries buttons when the
+        # approved action's own response proposes a NEW approval - Feature 098's
+        # "save the ID, then issue the document" chain (covered by
+        # tests/integration/test_allocation_tax_id_approval_routing.py). Bind that
+        # new message's idMessage so a tap on its buttons resolves it (both
+        # managers, Feature 054 - same wiring as _process_conversational_message).
         denidin_app.ai_handler.pending_approval_manager.attach_sent_message_id(
             message.chat_id, sent_id_message
         )
