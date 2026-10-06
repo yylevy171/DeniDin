@@ -26,12 +26,14 @@ from typing import List, Optional
 import pytest
 
 from src.managers.pending_approval_manager import BUTTON_ID_APPROVE
+from tests.e2e_helpers import assert_no_errors_sent_to_user
 
 from .denidin_mcp_e2e_helpers import (
     GODFATHER_CHAT_ID,
     _calls_for,
     _is_genuine_document_creation,
     _is_real_approval_prompt,
+    approval_buttons_on_screen,
     _random_seed_email,
     _seed_client,
     _send_button_tap,
@@ -58,9 +60,9 @@ def _digits(text: Optional[str]) -> str:
 
 
 def _pending():
-    import denidin
-
-    return denidin.denidin_app.ai_handler.pending_approval_manager.get(CHAT)
+    """The approval-buttons message on the chat's screen (063: the Backbone keeps no
+    pending-approval record, so this is what a real user sees)."""
+    return approval_buttons_on_screen(CHAT)
 
 
 def _assert_nothing_issued(ai_response) -> None:
@@ -153,11 +155,9 @@ def _ask_until_approval(text: str, id_prefix: str, tool_name: str):
 
 
 def _assert_buttons_for(tool_name: str) -> None:
-    pending = _pending()
-    assert pending is not None and pending.tool_name == tool_name, (
-        f"expected a pending {tool_name} approval, got {pending!r}"
-    )
-    assert pending.sent_message_id, "the approval was not sent with yes/no buttons"
+    """An approval with yes/no buttons is on screen. Which write it approves is proven
+    on the tap turn, which must run `tool_name` (the Backbone records no pending tool)."""
+    assert _pending() is not None, f"expected an approval with buttons for {tool_name}, none on screen"
 
 
 def _combo_request(client_name: str, amount: str = "12,000") -> str:
@@ -180,6 +180,7 @@ def _assert_document_issued_on_tap(tool_name: str, id_prefix: str):
         f"{tool_name} did not create a document: {ai_response.mcp_calls if ai_response else None!r}"
     )
     assert response, "no confirmation sent"
+    assert_no_errors_sent_to_user(CHAT)
     return json.loads(calls[0]["output"])
 
 
@@ -380,7 +381,8 @@ def test_edge_id_saved_but_document_declined(denidin_app):
     client_name = _ask_combo_for_id_less_client("E2E_098_EDGE_DECLINE")
     _send_turn(CHAT, VALID_ID, id_prefix="E2E_098_EDGE_DECLINE_ID")
     _assert_buttons_for("update_client")
-    _send_button_tap(CHAT, BUTTON_ID_APPROVE, id_prefix="E2E_098_EDGE_DECLINE_TAP_ID")
+    _, ai_response = _send_button_tap(CHAT, BUTTON_ID_APPROVE, id_prefix="E2E_098_EDGE_DECLINE_TAP_ID")
+    assert _calls_for(ai_response, "update_client"), "the ID-save tap did not run update_client"
     _assert_buttons_for("create_combo_document")
 
     _, ai_response = _send_button_tap(CHAT, BUTTON_ID_DECLINE, id_prefix="E2E_098_EDGE_DECLINE_TAP_DOC")

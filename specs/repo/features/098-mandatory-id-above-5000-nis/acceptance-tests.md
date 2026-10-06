@@ -11,9 +11,9 @@ through `scripts/run_multiple_billed_tests.sh`.
 - **Morning-MCP (UAT 4.1):** the dev Morning-MCP container must be rebuilt with Feature 098
   (`stop_all.sh dev` then `run_all.sh dev`, after a build). This needs explicit approval,
   like every environment start. Runnable as soon as that's done.
-- **DeniDin (UATs 1.1–3.5 and the edge cases):** deferred, per PM D-3. Run after Feature 063
-  merges, on the backbone, with the 063 adoption checklist in `plan.md` applied. Needs the
-  same rebuilt dev environment.
+- **DeniDin (UATs 1.1–3.5 and the edge cases):** run on the backbone (063 merged; plan.md
+  Phase 5 applied). `config.test.json` has `enable_capability_backbone: true`, so no
+  override is needed. Needs the same rebuilt dev environment.
 
 ## T1 - new tests (written for this feature)
 

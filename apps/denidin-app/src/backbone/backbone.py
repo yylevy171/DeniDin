@@ -47,6 +47,7 @@ from src.tool_actions.messaging_actions import (
 from src.core.ai_manager import AIManager
 from src.utils.wire_log import audit_wire, debug_wire
 from src.utils.time_utils import now_local, local_from_timestamp
+from src.utils.allocation_threshold import fill_allocation_threshold
 
 logger = logging.getLogger(__name__)
 
@@ -335,7 +336,11 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
             f"YOUR CURRENT VERSION IS {self._app_version}. If asked what version you are "
             f"running (in any language), state this exact value."
         )
-        return "\n\n".join(part for part in parts if part)
+        # Feature 098: {{ALLOCATION_THRESHOLD_NIS}} may appear in any capability or
+        # flow prompt, so it is filled once here, on the assembled text.
+        return fill_allocation_threshold(
+            "\n\n".join(part for part in parts if part), self.config.allocation_threshold_nis
+        )
 
     # ------------------------------------------------------------------
     # MCP call extraction

@@ -17,6 +17,7 @@ from src.models.message import (
     NO_REPLY_SENTINEL as _NO_REPLY_SENTINEL, should_reply_for,
 )
 from src.utils.logger import get_logger, read_version, DEFAULT_VERSION_FILE
+from src.utils.allocation_threshold import fill_allocation_threshold
 from src.utils.time_utils import now_local, local_from_timestamp
 from src.utils.wire_log import audit_wire, debug_wire
 from src.core.ai_manager import AIManager, MORNING_READ_MCP_TOOLS, MORNING_WRITE_MCP_TOOLS
@@ -106,15 +107,6 @@ REMINDER_AUTHORIZED_ROLES = (Role.GODFATHER, Role.ADMIN)
 # NO_REPLY_SENTINEL` keeps working.
 NO_REPLY_SENTINEL = _NO_REPLY_SENTINEL
 
-# Feature 098: filled from config.allocation_threshold_nis in _load_constitution.
-ALLOCATION_THRESHOLD_PLACEHOLDER = "{{ALLOCATION_THRESHOLD_NIS}}"
-
-
-def format_nis_amount(value: float) -> str:
-    """5000 -> '5,000'; 12500 -> '12,500'; 5000.5 -> '5,000.5'."""
-    if float(value).is_integer():
-        return f"{int(value):,}"
-    return f"{value:,.2f}".rstrip("0").rstrip(".")
 
 # Feature 080 (REQ-080-04, research.md R3 as revised during implementation): the active
 # turn's TelemetryBuilder, if any. Set once at the top of single_turn() (try/finally around
@@ -699,10 +691,7 @@ class AIHandler(AIManager):
         in the mtime cache, so a config change needs only a restart. The value is
         the same on every call, so the constitution stays a byte-identical prefix
         and OpenAI's prompt caching is unaffected."""
-        return content.replace(
-            ALLOCATION_THRESHOLD_PLACEHOLDER,
-            format_nis_amount(self.config.allocation_threshold_nis),
-        )
+        return fill_allocation_threshold(content, self.config.allocation_threshold_nis)
 
     def _apply_feature_080_constitution_gate(self, content: str) -> str:
         """Feature 080: the "Proactive Progress Updates" section is wrapped in

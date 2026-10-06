@@ -177,7 +177,12 @@ adopts the backbone itself. Master was merged into this branch (504c3a5).
 5. Docs: CLAUDE.md's Feature 098 paragraph names the backbone prompt files; acceptance-tests.md
    records the backbone as the target.
 
-**Open questions (PM)**
+**PM decisions (2026-10-06)**: Q1 (a) reuse `flow_modify_client`; Q2 keep the legacy
+section, untested (its unit tests and legacy integration test removed); Q3 flag on in
+`config.example.json` and the local `config.test.json` (copied from teammate1); dev/prod set
+by hand.
+
+**Open questions (PM, as asked)**
 
 1. ID-save mechanism on the backbone: (a) the issuing flow loads `flow_modify_client` for the
    save, then continues - reuses the existing flow and approval wording; or (b) a new small

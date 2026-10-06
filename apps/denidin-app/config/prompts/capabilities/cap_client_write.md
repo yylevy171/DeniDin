@@ -28,6 +28,10 @@ own retyping of it.
 
 ## Updating a client
 
+The client's ID (`tax_id`, ת.ז / ח.פ) is exactly 9 digits - never save anything else. A
+document flow may load `flow_modify_client` just to save it (see `cap_invoicing_write`,
+"Allocation number"); that save is its own approval, separate from the document's.
+
 `update_client` needs `name_resolved=true` together with the EXACT name Morning has
 stored. Pass `name_resolved=true` only for a name that has actually been confirmed as
 Morning's stored name, never for the user's loose wording.
