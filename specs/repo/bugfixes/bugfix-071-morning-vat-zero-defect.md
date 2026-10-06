@@ -1,6 +1,6 @@
 # Bugfix 071: Morning Documents Created with VAT = 0 Instead of VAT Included
 
-**Status**: In progress — BDD: bug reproduced (VAT matrix, 2026-10-05), root cause APPROVED (2026-10-05, see §2a), sandbox research done (§2b), fix proposal awaiting approval.
+**Status**: Done (2026-10-06) — fix merged via PR #TBD; verified by 27/27 billed/expensive tests on the Feature 063 backbone (§7). Not yet released or deployed (human decision). Production remediation of the already-issued documents (§3, §5) is a separate accounting task.
 **Priority**: P0
 **Severity**: P0 / Critical (Compliance & Tax Under-reporting)
 **Branch**: `bugfix/071-morning-vat-zero-defect`
@@ -201,6 +201,8 @@ amounts, and existing amount tests are left as they are and are not used as evid
 
 ## 4. Required Engineering Fix
 
+> Superseded by the approved VAT matrix (§2c) and the fix as built (§7). Kept as originally written.
+
 1. In `apps/morning-mcp-app/src/denidin_mcp_morning/tools.py`:
    - Adjust `_build_combo_document_payload` and `_build_create_invoice_payload`.
    - When `vat_included=True`, pass the proper taxable VAT parameters required by Morning:
@@ -294,5 +296,74 @@ of the code-defect total and track them separately.
 
 ### 6.6 Rollout
 
-The fix is in `morning-mcp-app` only. It reaches dev/prod only via a new cut release + deploy
-(human decisions, every time); merging alone changes nothing on running containers.
+The fix touches both `morning-mcp-app` (payloads, conflict refusal) and `denidin-app` (prompts and
+approval text, §7). It reaches dev/prod only via a new cut release + deploy of both apps (human
+decisions, every time); merging alone changes nothing on running containers.
+
+---
+
+## 7. Resolution (2026-10-06)
+
+Implements the approved matrix (§2c). Amounts relative to the original stay out of scope (§2c).
+
+### 7.1 `morning-mcp-app` (`tools.py`, `server.py`, `errors.py`)
+
+- **Payloads:** document-level and row-level `vatType` are now separate values, the root cause (§6.2).
+  - Document `vatType` is always 0 (Default). A 330 mirrors its original's document `vatType`.
+  - Row `vatType` is 1 (VAT inside) for every VAT-inside amount, and 0 (VAT added) only for an
+    explicit "not included" on a 305/300.
+  - `vatRate` is never sent.
+- **305/300:** `vat_included` is required, with no default.
+- **320, 400 and 330:** `vat_included` is optional.
+- **Conflicts are refused:** a "not included" that contradicts the document type raises
+  `VatConflictError` before anything reaches Morning. That covers a 320 or 400 (money already
+  paid), any referencing document, and any VAT statement on a credit note against an exempt
+  original. The error surfaces as an MCP `isError`, so nothing is created.
+- **Bank details:** `create_receipt` keeps Feature 063's bank fields alongside `vat_included`.
+
+### 7.2 `denidin-app`
+
+- **Backbone prompts** (Feature 063; the flag is on for this work):
+  - `cap_invoicing_write.md` has a "VAT — one rule per document type" section.
+  - Every document approval must carry two lines, `סוג מסמך: <type>` and `מע״מ: <label>`.
+  - The label is one of `כולל מע״מ`, `לא כולל מע״מ` (305/300 only) or `לפי המסמך המקורי`.
+  - `cap_approval_with_buttons.md` and `flow_issue_invoice_receipt_combo.md` point to the same
+    lines.
+- **Legacy path** (flag off): `runtime_constitution.md` follows the same rules, and the code-built
+  approval in `ai_handler.py` states the VAT label.
+
+### 7.3 Tests (closing the gap from §6.5)
+
+- **Approvals:** every billed/expensive conversation that reaches a document approval asserts it
+  states VAT (`tests/e2e_helpers.py::assert_document_approval_states_vat`).
+  - A missing line fails.
+  - An unknown label fails.
+  - So does "not included" on anything but a 305/300.
+- **Stored figures:** created documents are checked against Morning's stored split
+  (`assert_stored_vat` / `assert_stored_receipt`), not only the totals.
+- **New tests:**
+  - `apps/morning-mcp-app/tests/integration/test_morning_sandbox_vat_matrix.py` — the matrix,
+    against the real sandbox.
+  - `apps/denidin-app/tests/unit/test_ai_handler_approval_vat_label_071.py`.
+  - `apps/denidin-app/tests/billed/test_bugfix_071_vat_rules_billed.py` — the 9 approved
+    scenarios.
+- **Rewritten, approved 2026-10-06:**
+  - The old `test_receipt_request_with_exact_invoice_amount_resolves_correctly` became
+    `test_receipt_for_the_net_amount_of_a_vat_added_invoice_is_flagged`.
+  - Paying the net amount against a VAT-added 305 must be flagged: no receipt, no approval, and
+    the reply states the gross total or the VAT gap.
+- **Run on the backbone, 2026-10-06** (tracker:
+  `apps/denidin-app/logs/test_logs/bugfix-071-test-tracker.md`, gitignored):
+
+| Batch | Result |
+|---|---|
+| P1: sanity | 8/8 (7 billed + 1 expensive) |
+| P2: other affected tests | 10/10 (9 billed + 1 expensive) |
+| P3: new scenarios | 9/9 |
+
+  - Two P3 tests first failed because of a test bug: a Hebrew prefix letter was glued onto a random
+    client name (`מ`/`ל` + name), so the bot asked which client was meant. Fixed with
+    `ללקוח`/`מהלקוח`, and both passed on re-run.
+  - The production defect itself is reproduced: a ₪554 bank-transfer slip now becomes a 320
+    stored as 469.49 + VAT 84.51.
+

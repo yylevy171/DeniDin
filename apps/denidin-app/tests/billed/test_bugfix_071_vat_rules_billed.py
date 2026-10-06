@@ -72,7 +72,7 @@ def _seed_document(kind: str, vat_words: str, id_prefix: str) -> Tuple[str, str]
     tool = {"חשבונית מס": "create_invoice", "חשבון עסקה": "create_transaction_account"}[kind]
     _, (_, ai_response) = _send_turn_and_approve(
         GODFATHER_CHAT_ID,
-        f"תפיק {kind} ל{client_name} על סך {AMOUNT} ₪ {vat_words}, עבור {_random_description()}",
+        f"תפיק {kind} ללקוח {client_name} על סך {AMOUNT} ₪ {vat_words}, עבור {_random_description()}",
         id_prefix=id_prefix,
     )
     calls = _calls_for(ai_response, tool)
@@ -133,7 +133,7 @@ def test_305_vat_included_is_stored_with_vat_inside(denidin_app):
     client_name = pick_existing_client()["name"]
     (ask_reply, _), (_, ai_response) = _send_turn_and_approve(
         GODFATHER_CHAT_ID,
-        f"תפיק חשבונית מס ל{client_name} על סך {AMOUNT} ₪ כולל מע״מ, עבור {_random_description()}",
+        f"תפיק חשבונית מס ללקוח {client_name} על סך {AMOUNT} ₪ כולל מע״מ, עבור {_random_description()}",
         id_prefix="BF071_S1",
     )
     assert not _asks_about_vat(ask_reply), f"VAT was stated; the bot asked anyway: {ask_reply!r}"
@@ -147,7 +147,7 @@ def test_305_vat_not_included_is_stored_with_vat_added(denidin_app):
     client_name = pick_existing_client()["name"]
     (ask_reply, _), (_, ai_response) = _send_turn_and_approve(
         GODFATHER_CHAT_ID,
-        f"תפיק חשבונית מס ל{client_name} על סך {AMOUNT} ₪ לא כולל מע״מ, עבור {_random_description()}",
+        f"תפיק חשבונית מס ללקוח {client_name} על סך {AMOUNT} ₪ לא כולל מע״מ, עבור {_random_description()}",
         id_prefix="BF071_S2",
     )
     assert not _asks_about_vat(ask_reply), f"VAT was stated; the bot asked anyway: {ask_reply!r}"
@@ -183,7 +183,7 @@ def test_400_standalone_not_included_is_asked(denidin_app):
     approval; the bot asks what was meant."""
     client_name = pick_existing_client()["name"]
     _assert_conflict_is_asked(
-        f"קיבלתי היום מ{client_name} פיקדון של {AMOUNT} ₪ במזומן, לא כולל מע״מ. תפיק קבלה",
+        f"קיבלתי היום מהלקוח {client_name} פיקדון של {AMOUNT} ₪ במזומן, לא כולל מע״מ. תפיק קבלה",
         ("create_receipt", "create_combo_document"), id_prefix="BF071_S4",
     )
 
