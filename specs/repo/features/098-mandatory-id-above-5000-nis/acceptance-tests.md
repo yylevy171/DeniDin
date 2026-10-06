@@ -28,8 +28,10 @@ Every approved UAT (1.1-4.1) and both edge cases have a test. Feature 086's edge
 
 ### DeniDin (`apps/denidin-app`)
 
-All in `tests/billed/test_allocation_tax_id_billed.py`, all `billed`, all **deferred
-until 063 merges**.
+All in `tests/billed/test_allocation_tax_id_billed.py`, all `billed`, run on the backbone
+(063 merged; Phase 5 applied). Adapted to 063's helpers: approvals are checked as "buttons
+on screen" (`approval_buttons_on_screen`), and which write an approval was for is proven on
+the tap turn, by the tool that actually runs.
 
 | Test | UAT |
 |---|---|
@@ -59,12 +61,15 @@ Not adjusted: changing an approved test needs PM sign-off. Each adds coverage T1
 
 ## T3 - existing tests to run as is (regression)
 
-They exercise code or constitution text this feature changed. All their amounts are below
+They exercise code or prompts this feature changed. On the backbone that is
+`cap_invoicing_write`, `cap_client_write`, the three 305/320 issuing flows and
+`flow_modify_client`; in Morning-MCP, the three create tools. All their amounts are below
 5,000 ₪, or the document type is out of scope, so all are expected to pass unchanged. Same
-prerequisites as T1 (rebuilt dev environment; DeniDin after 063 merges).
+prerequisites as T1 (rebuilt dev environment).
 
 **Morning-MCP, billed**
 - `tests/billed/test_openai_invokes_mcp_e2e.py` (whole file; the sanity gate)
+- `tests/billed/test_create_returns_full_document_e2e.py::test_create_combo_document_result_carries_the_full_document` - a 120 ₪ 320 (new on master, 2026-10-06)
 
 **DeniDin, billed** (whole files unless named)
 - `tests/billed/test_denidin_morning_invoice_creation_e2e.py` (10) - 305/320 creation
@@ -77,7 +82,7 @@ prerequisites as T1 (rebuilt dev environment; DeniDin after 063 merges).
 - `tests/billed/test_denidin_morning_client_management_e2e.py` (10) - `update_client` / `add_client` (constitution `tax_id` text changed)
 - `tests/billed/test_small_bugfixes_027_032_054_058_061_billed.py::test_bugfix_027_client_stored_with_ascii_apostrophe_can_get_a_document` - a 320
 - `tests/billed/test_denidin_morning_list_invoices_e2e.py::test_godfather_searches_invoice_by_number_finds_it` - seeds a 305
-- `tests/billed/test_reminder_lifecycle_billed.py`, `tests/billed/test_ledger_query_billed.py` - a cross-reference to the new section was added to their constitution sections
+- `tests/billed/test_reminder_lifecycle_billed.py`, `tests/billed/test_ledger_query_billed.py` - listed because of a cross-reference added to their *legacy* constitution sections. 098 changed none of their backbone prompts, so on the backbone they are no longer affected (open question: keep or drop).
 
 **DeniDin, expensive** (one at a time, each needs its own approval)
 - `tests/expensive/test_group_b_reference_approval_e2e.py::TestGroupBReferenceApprovalE2E::test_given_a_deposit_matching_an_existing_tax_invoice_then_a_receipt_closes_it` - seeds a 305 (1,500 ₪)
@@ -85,9 +90,12 @@ prerequisites as T1 (rebuilt dev environment; DeniDin after 063 merges).
 
 ## Integration coverage added alongside (not billed)
 
-`apps/denidin-app/tests/integration/test_allocation_tax_id_approval_routing.py` (3 tests,
-passing): the ID-save approval leads into a separate, pending document approval, offered as
-buttons. Covers a typed "כן", a button tap, and declining the document after the ID is saved.
+- **Backbone:** `apps/denidin-app/tests/integration/test_backbone_allocation_tax_id_chain.py`
+  (3 tests, passing): the "yes" that saves the ID runs `update_client` and offers the
+  document's approval in the same turn, with buttons and no write-guard note; the next "yes"
+  is again an approved write. A typed "כן", a button tap, and declining the document.
+- **Legacy (flag off):** `apps/denidin-app/tests/integration/test_allocation_tax_id_approval_routing.py`
+  (3 tests, passing): the same chain through the pending-approval manager.
 
 ## Where the tests differ from the UAT wording
 
