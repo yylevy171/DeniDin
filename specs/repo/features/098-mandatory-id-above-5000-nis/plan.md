@@ -178,7 +178,7 @@ adopts the backbone itself. Master was merged into this branch (504c3a5).
    records the backbone as the target.
 
 **PM decisions (2026-10-06)**: Q1 (a) reuse `flow_modify_client`; Q2 keep the legacy
-section, untested (its unit tests and legacy integration test removed); Q3 flag on in
+section and its existing tests (not newly tested); Q3 flag on in
 `config.example.json` and the local `config.test.json` (copied from teammate1); dev/prod set
 by hand.
 
