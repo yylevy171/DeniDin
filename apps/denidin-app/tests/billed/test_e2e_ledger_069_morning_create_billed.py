@@ -79,3 +79,43 @@ class TestLedgerPostTurnCaptureMorningCreate:
         assert_ledger_event_matches_manifest(
             denidin_app, invoice_events, "morning_create_us2", trigger_epoch,
         )
+
+    def test_us2_above_threshold_with_client_id_is_captured_synchronously(self, denidin_app):
+        """Feature 098 variant of the test above: 11,800 ₪ including VAT (10,000
+        before VAT, above the allocation threshold) for a client whose ID is on
+        file. The 320 is created without asking for the ID, and its ledger event
+        is still captured that turn."""
+        manifest = seed_scenario(denidin_app, "morning_create_us2_above_threshold")
+        name = manifest["resolution"]["name"]
+        trigger_epoch = int(time.time())
+        _, transcript, _ = drive_capture(
+            denidin_app, "morning_create_us2_above_threshold", id_prefix="F069_US2_098",
+            base_ts=trigger_epoch, max_turns=6,
+            first_text=(
+                f"תפיק ל{name} חשבונית מס-קבלה על סך 11,800 ש\"ח עבור ייעוץ משפטי. "
+                f"שולם היום בהעברה בנקאית."
+            ),
+        )
+
+        last_ai = denidin_app.last_response
+        create_calls = [
+            c for c in (last_ai.mcp_calls if last_ai else [])
+            if c["name"] in _CREATE_TOOLS and c.get("error") is None
+        ]
+        assert create_calls, (
+            f"no successful Morning create call. "
+            f"last_calls={last_ai.mcp_calls if last_ai else None!r}"
+        )
+        joined = " ".join(t.get("reply") or "" for t in transcript)
+        assert "הקצאה" not in joined and "ח.פ" not in joined, (
+            f"DeniDin asked about the ID although the client has one: {joined!r}"
+        )
+
+        events = persisted_ledger_events_for_chat(denidin_app, GODFATHER_CHAT_ID)
+        invoice_events = [e for e in events if e["source_type"] == "חשבונית"]
+        assert len(invoice_events) == 1, (
+            f"exactly one חשבונית ledger event expected, got {len(invoice_events)}: {events!r}"
+        )
+        assert_ledger_event_matches_manifest(
+            denidin_app, invoice_events, "morning_create_us2_above_threshold", trigger_epoch,
+        )

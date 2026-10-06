@@ -39,12 +39,14 @@ from __future__ import annotations
 import json
 import logging
 import re
+from typing import Optional
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 import pytest
 
 from tests.billed.denidin_mcp_e2e_helpers import (  # noqa: F401
+    seed_client_with_tax_id,
     GODFATHER_CHAT_ID,
     _calls_for,
     _is_real_approval_prompt,
@@ -94,12 +96,14 @@ def _seed_invoice_305(amount: int, description: str) -> tuple[str, str]:
     return client_name, str(invoice_number)
 
 
-def _seed_transaction_account_300(amount: int, description: str) -> tuple[str, str]:
+def _seed_transaction_account_300(amount: int, description: str,
+                                  client_name: Optional[str] = None) -> tuple[str, str]:
     """Seed a fresh type-300 חשבון עסקה for a brand-new client, VAT-inclusion
     stated explicitly up front (sidesteps the model's own mandatory VAT
     question - this test is about the approval's reference-data content, not
-    that separate flow). Returns (client_name, document_number)."""
-    client_name = pick_existing_client()["name"]  # Feature 059 item 5: any valid client works here
+    that separate flow). `client_name`: an already-seeded client to use instead
+    (Feature 098: one whose ID is on file). Returns (client_name, document_number)."""
+    client_name = client_name or pick_existing_client()["name"]  # Feature 059 item 5: any valid client works here
     _, ai_response = _send_turn(
         GODFATHER_CHAT_ID,
         f"תפתח חשבון עסקה עבור {client_name} על סך {amount} ₪ כולל מע״מ, עבור {description}",
@@ -262,6 +266,35 @@ class TestGroupBReferenceApprovalBilled:
 
         _assert_reference_data_present(
             approval_text, client_name=client_name, doc_number=doc_number, amount=amount
+        )
+        close_calls = _calls_for(approve_ai_response, "create_combo_document_as_reference")
+        assert close_calls and close_calls[0]["error"] is None, (
+            f"create_combo_document_as_reference did not fire/succeed after approval: "
+            f"{approve_ai_response.mcp_calls if approve_ai_response else None!r}"
+        )
+        _assert_internal_id_never_leaked(approval_text, approve_ai_response)
+
+    def test_closing_a_transaction_account_above_the_threshold_for_a_client_with_an_id(self, denidin_app):
+        """Feature 098 variant of the test above: the transaction account is 11,800 ₪
+        including VAT (10,000 before VAT, above the allocation threshold), for a
+        client whose ID is on file. Closing it creates the 320 - Morning-MCP reads
+        the client's current record and lets it through - and the approval still
+        shows the reference data."""
+        amount = 11800
+        client_name = seed_client_with_tax_id(GODFATHER_CHAT_ID, "B038_BILLED_098_SEED")
+        client_name, doc_number = _seed_transaction_account_300(
+            amount, _random_description(), client_name=client_name)
+
+        approval_text, approve_ai_response = _send_turn_and_approve_capturing_approval(
+            GODFATHER_CHAT_ID,
+            f"סמן את חשבון העסקה של {client_name} כשולם, כולל מע״מ, התשלום התקבל היום",
+            id_prefix="B038_BILLED_098_COMBOREF",
+            tool_name="create_combo_document_as_reference",
+        )
+
+        assert "הקצאה" not in approval_text, f"asked about the ID although it is on file: {approval_text!r}"
+        _assert_reference_data_present(
+            approval_text.replace(",", ""), client_name=client_name, doc_number=doc_number, amount=amount
         )
         close_calls = _calls_for(approve_ai_response, "create_combo_document_as_reference")
         assert close_calls and close_calls[0]["error"] is None, (

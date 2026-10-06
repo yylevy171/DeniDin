@@ -1296,3 +1296,21 @@ def _send_turn_and_decline(
 # approval turn before they execute. Tests exercising any of these tools use
 # `_send_turn_and_approve`/`_send_turn_and_decline` instead of a bare
 # `_send_turn`, and are genuinely two-turn.
+
+# Feature 098: a 9-digit ID Morning accepts (valid check digit). A 305/320 above
+# the allocation threshold needs the client to carry one.
+VALID_TAX_ID = "308253681"
+
+
+def seed_client_with_tax_id(chat_id: str, id_prefix: str, *, tax_id: str = VALID_TAX_ID,
+                            name: Optional[str] = None) -> str:
+    """Seed a fresh client whose Morning record carries `tax_id` (ת.ז / ח.פ),
+    through the same conversational add_client flow as `_seed_client`.
+    Returns the client's name."""
+    name = name or _unique_client_name()
+    email = _random_seed_email()
+    _seed_client(
+        chat_id, id_prefix, name=name, email=email,
+        text=f"תוסיף לקוח חדש בשם {name}, מייל {email}, טלפון {_SEED_PHONE}, ח.פ {tax_id}",
+    )
+    return name

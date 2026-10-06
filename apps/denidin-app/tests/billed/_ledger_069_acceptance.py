@@ -70,6 +70,7 @@ from tests.billed.denidin_mcp_e2e_helpers import (
     _strip_invisible_marks,
     _random_seed_email,
     _seed_client,
+    seed_client_with_tax_id,
     _unique_client_name,
 )
 
@@ -274,6 +275,12 @@ def seed_scenario(denidin_app, manifest_name: str) -> Dict[str, Any]:
     (sentinel-bound) manifest so the test can read `source_file` etc."""
     manifest = load_manifest(manifest_name)
     for seed in manifest.get("seed_clients", []):
+        if seed.get("tax_id"):
+            # Feature 098: a client whose record carries an ID (ת.ז / ח.פ).
+            seed_client_with_tax_id(GODFATHER_CHAT_ID, seed["id_prefix"], tax_id=seed["tax_id"],
+                                    name=seed["name"])
+            time.sleep(2)  # Morning search-index settle
+            continue
         kwargs = {"name": seed["name"], "ensure_exists": bool(seed.get("ensure_exists"))}
         if seed.get("phone"):
             kwargs["phone"] = seed["phone"]

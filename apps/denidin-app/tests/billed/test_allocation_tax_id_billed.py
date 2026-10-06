@@ -33,7 +33,9 @@ from .denidin_mcp_e2e_helpers import (
     _calls_for,
     _is_genuine_document_creation,
     _is_real_approval_prompt,
+    VALID_TAX_ID,
     approval_buttons_on_screen,
+    seed_client_with_tax_id,
     _random_seed_email,
     _seed_client,
     _send_button_tap,
@@ -45,7 +47,7 @@ from .denidin_mcp_e2e_helpers import (
 logger = logging.getLogger(__name__)
 
 CHAT = GODFATHER_CHAT_ID
-VALID_ID = "308253681"
+VALID_ID = VALID_TAX_ID
 QUALIFYING_TOOLS = ("create_invoice", "create_combo_document", "create_combo_document_as_reference")
 
 
@@ -99,13 +101,7 @@ def _seed_id_less_client(id_prefix: str) -> str:
 
 
 def _seed_client_with_id(id_prefix: str) -> str:
-    name = _unique_client_name()
-    email = _random_seed_email()
-    _seed_client(
-        CHAT, id_prefix, name=name, email=email,
-        text=f"תוסיף לקוח חדש בשם {name}, מייל {email}, טלפון 050-1234567, ח.פ {VALID_ID}",
-    )
-    return name
+    return seed_client_with_tax_id(CHAT, id_prefix, tax_id=VALID_ID)
 
 
 def _morning_tax_id(client_name: str, id_prefix: str) -> Optional[str]:
