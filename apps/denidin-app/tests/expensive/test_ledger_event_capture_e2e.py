@@ -97,6 +97,7 @@ from tests.e2e_helpers import (
     get_response,
     assert_response_exists,
     assert_image_path_persisted,
+    same_txn_date,
 )
 
 logger = logging.getLogger(__name__)
@@ -640,7 +641,7 @@ class TestLedgerEventCaptureE2E:
             assert captured.get("vat_status") == "כולל", (
                 f"vat_status is unconditionally כולל for בנק, got {captured.get('vat_status')!r}"
             )
-            assert captured.get("txn_date") == "05/08/2026", (
+            assert same_txn_date(captured.get("txn_date"), "05/08/2026"), (
                 f"the transaction date on the screenshot (05/08/2026) must be captured, "
                 f"got {captured.get('txn_date')!r}"
             )
@@ -719,8 +720,10 @@ class TestLedgerEventCaptureE2E:
                 f"the exchange never names the payer the screenshot shows "
                 f"(surname {BANK_IMAGE_PAYER_SURNAME!r}). Turns seen: {seen_texts!r}"
             )
-            for element, needle in (("transaction date", "05/08"), ("bank details", "בנק"), ("VAT treatment", "מע")):
-                assert needle in approval_text, (
+            # the transaction date in either accepted format (DD/MM or ISO MM-DD)
+            for element, needles in (("transaction date", ("05/08", "08-05")), ("bank details", ("בנק",)),
+                                     ("VAT treatment", ("מע",))):
+                assert any(needle in approval_text for needle in needles), (
                     f"B3/A2: the exchange omits the {element} even though the screenshot "
                     f"supplied it. Turns seen: {seen_texts!r}"
                 )

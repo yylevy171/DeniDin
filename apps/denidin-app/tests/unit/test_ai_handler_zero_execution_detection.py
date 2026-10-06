@@ -87,6 +87,9 @@ def _mcp_call(name, output=None, error=None):
     call = Mock()
     call.type = "mcp_call"
     call.name = name
+    # The approved call's own arguments - a duplicate is the same arguments run twice
+    # (2026-10-04, AIManager.tally_write_executions).
+    call.arguments = '{"client_name": "הסתדרות כללית חדשה", "amount": 40000}'
     call.output = output
     call.error = error
     return call

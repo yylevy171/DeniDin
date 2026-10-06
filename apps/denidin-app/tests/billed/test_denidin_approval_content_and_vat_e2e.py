@@ -218,6 +218,9 @@ def test_a_client_qualified_by_its_tax_id_still_resolves(denidin_app):
         f"the client this app itself listed was not resolvable when fed back to "
         f"the create tool: arguments={calls[0]['arguments']!r} output={calls[0]['output']!r}"
     )
-    assert "כללית חדשה" in (calls[0]["output"] or reply or ""), (
-        "the document must be attached to the client that was actually asked for"
+    # The tool output is JSON whose Hebrew arrives \u-escaped (OpenAI re-serializes
+    # mcp_call output), so read the parsed field, never a raw substring.
+    created = json.loads(calls[0]["output"])
+    assert "כללית חדשה" in (created.get("client_name") or ""), (
+        f"the document must be attached to the client that was actually asked for: {created!r}"
     )

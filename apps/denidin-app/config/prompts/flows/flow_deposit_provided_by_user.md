@@ -7,10 +7,9 @@ Flows it may load: `flow_add_client`, `flow_morning_document_write`.
 
 Follow these steps in order, to the letter.
 
-1. If the deposit came as an image or document (a bank slip, a payment screenshot), it must have been read with `cap_media_analysis`'s `analyze_media` (load it and read it now if it was not). Use `cap_send_to_user` to report what it contains so the user can see what you understood. If it is not a bank slip or payment confirmation, stop using this flow and decide what it is from its content.
-2. Load `cap_client_read` and resolve the client by the client name the user gave, or, failing that, the name on the slip - even if it looks exact.
-   Handle what you find:
-   - An exact stored name: use it verbatim from here on.
+1. If the deposit came as an image or document (a bank slip, a payment screenshot), it must have been read with `cap_media_analysis`'s `analyze_media` (load it and read it now if it was not). If it is not a bank slip or payment confirmation, stop using this flow and decide what it is from its content.
+2. 🚨 **Resolve the client in this same turn, before you reply at all - mandatory, even for a slip sent with no caption or request.** Load `cap_client_read` and call `resolve_client_name` with the client name the user gave for this deposit. If the user gave none, use the payer name `analyze_media` extracted from the slip, **copied verbatim, character for character, letter for letter, exactly as extracted**: never corrected, completed, shortened, or swapped for a similar name or a client from earlier in the conversation. A client resolved for an earlier request does not count for this deposit: resolve it now, even if the name looks exact. Then send one reply (`cap_send_to_user`) that reports what the slip contains and handles what you found:
+   - An exact stored name: copy it character for character from the `resolve_client_name` result from here on - in the approval text and in every tool call, never retyped (see `cap_client_read`).
    - A confirmation question (a single close match): use `cap_send_to_user` to put it to the user as-is, and also offer, as its own explicit choice, to create a new client under the exact name the user gave. Proceed with whichever they choose.
    - Several candidates: use `cap_send_to_user` to list each of them by name and ask the user to specify, and also offer, as its own explicit choice, to create a new client under the exact name the user gave. Never pick one yourself.
    - No such client, or the user chose to create a new one: Load `flow_add_client` to create it, then continue with the exact name that was created. If the user declines to add the client, the flow is complete.

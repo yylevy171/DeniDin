@@ -146,3 +146,83 @@ When DeniDin explicitly passed `"vatRate": 0` in the `income` dictionary, Mornin
    * **Remediation Option A:** Generating cancellation credit notes (`חשבונית זיכוי` 330) for the 37 documents and reissuing proper 320 documents.
    * **Remediation Option B:** Reporting the ₪42,851.92 VAT discrepancy directly as an adjustment on the upcoming periodic VAT return (`דו״ח מע״מ תקופתי`).
 2. **Client Communications:** Institutional clients (הסתדרות, מקורות, עיריית רמת השרון) should be re-issued valid tax invoices to allow input VAT recovery.
+
+---
+
+## 6. Addendum (2026-10-05) - sandbox trace evidence; root cause narrowed
+
+Found independently on 2026-10-04 while auditing Feature 063 E2E traces
+(`apps/denidin-app/debug_traces/031026/`, Morning **sandbox**, 26 `create_*` calls, 2026-10-03/04).
+
+### 6.1 Every VAT-included document type is affected, not only 305/320
+
+What the model sent vs. what Morning stored (the `create_*` tool result):
+
+| `vat_included` sent | Calls | Document types | Morning stored |
+|---|---|---|---|
+| `true` | 15 | 305, 300, 320, 320-by-reference | **`vat_rate: 0.0`, `vat_amount: 0`, `amount_excl_vat` = full amount** - 15 of 15 |
+| `false` | 4 | 305 | `vat_rate: 0.18`, VAT added on top - correct, 4 of 4 |
+
+Example (`ST12.md`, invoice 52580): `create_invoice {"amount": 16, "vat_included": true, ...}` ->
+`{"amount": 16.0, "amount_excl_vat": 16.0, "vat_amount": 0.0, "vat_rate": 0.0}`. Expected 13.56 + 2.44.
+
+The model passed the right flag every time; the defect is entirely in `morning-mcp-app`'s payloads.
+
+### 6.2 `"vatRate": 0` alone does not explain it - the document-level `vatType: 1` does
+
+§2 attributes the defect to the income line's `"vatRate": 0`. The **type-300 builder
+(`_build_transaction_account_payload`, `tools.py:357-415`) sends no `vatRate` at all**, yet all four
+VAT-included 300s in the traces were stored at 0% too. What every defective payload shares is
+`"vatType": 1` at **document** level whenever `vat_included=True` - and §2's own production
+comparison shows exactly that: valid #112346 has document `vatType: 0` + line `vatType: 1`;
+defective #112347 has document `vatType: 1` (+ Morning rewrote the line to `vatType: 2`, exempt).
+
+Working hypothesis (to verify with a sandbox probe **before** fixing): document-level `vatType`
+means 0 = regular / 1 = exempt / 2 = mixed, while line-level `vatType` means 0 = price excludes VAT /
+1 = price includes VAT / 2 = exempt. DeniDin reuses one `vat_type` value (1 when included) at **both**
+levels, so a VAT-included document is declared exempt. The `vat_included=false` path is correct only
+by coincidence (0 means "regular" at document level and "excludes" at line level).
+
+The misreading is recorded in `_build_transaction_account_payload`'s docstring (`tools.py:376-383`):
+the 2026-08-09 live probe checked only that "`vatType: 1` stores 11 as 11" - the total - never the
+VAT split. That comment must be corrected with the fix.
+
+### 6.3 Every site that needs the fix (`apps/morning-mcp-app/src/denidin_mcp_morning/tools.py`)
+
+| Builder | Document type(s) | Document-level `vatType` | Line-level `vatType` / `vatRate` |
+|---|---|---|---|
+| `_build_create_invoice_payload` | 305 | :112 | :130 / `vatRate: 0` :129 |
+| `_build_transaction_account_payload` | 300 | :392 | :409 / (none) |
+| `_build_combo_document_core_payload` (used by `create_combo_document` and the by-reference closing path) | 320 | :540 | :558 / `vatRate: 0` :557 |
+| `_build_cancellation_payload` | 330 credit note | :1073 `original.get("vatType", 1)` | :1092 same / `vatRate: 0` :1091 |
+
+The 330 builder copies the original document's `vatType` and **defaults to 1** - so a credit note
+against a correct (VAT-bearing) document can also come out exempt; its mapping needs the same
+document/line split. (A credit note cancelling one of the defective 0%-VAT documents should reverse it
+exactly as issued - relevant to remediation Option A.)
+
+### 6.4 Section 3.B (type 400 receipts) is a separate question, not this code defect
+
+A receipt (`קבלה`, 400) never carries VAT in Morning by design - VAT belongs on the tax invoice.
+The 16 standalone receipts come from Feature 056's standalone-receipt path (deposits / refunds,
+`create_receipt` with no linked invoice). Whether those payments also needed a tax invoice is an
+accounting decision for the CPA, not something the `vatType` fix changes; keep their ₪2,117.44 out
+of the code-defect total and track them separately.
+
+### 6.5 Test gap and required tests
+
+- **Why nothing caught it:** no test asserts the stored VAT split. The billed E2E tests check only
+  that `create_*` ran without error and that the reply/approval text says `כולל מע"מ`; the sandbox
+  integration tests check totals. The VAT-zero result is visible in every trace and was never asserted.
+- **Integration (morning-mcp-app, real sandbox):** one test per builder - 305, 300, 320, 320
+  by-reference, 330 against a VAT-bearing 305 - creating 118 ₪ with `vat_included=True` and asserting
+  Morning stores `vatRate 0.18`, VAT 18.00, before-VAT 100.00; plus the `vat_included=False` case
+  (100 ₪ -> VAT 18.00 on top, total 118.00), unchanged.
+- **Billed E2E (denidin-app):** at least one VAT-included creation test should assert the
+  `create_*` result's `vat_rate == 0.18` and `vat_amount > 0` (operator sign-off needed - billed test
+  change).
+
+### 6.6 Rollout
+
+The fix is in `morning-mcp-app` only. It reaches dev/prod only via a new cut release + deploy
+(human decisions, every time); merging alone changes nothing on running containers.

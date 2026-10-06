@@ -7,11 +7,13 @@ Flows it may load: `flow_add_client`.
 
 Follow these steps in order, to the letter.
 
-1. If the agreement came as an image or document, it must have been read with `cap_media_analysis`'s `analyze_media` (load it and read it now if it was not). Use `cap_send_to_user` to report what it contains so the user can see what you understood. If its `missing_required_fields` is not empty, ask the user for exactly those details and wait for them.
-2. The client must be resolved by its exact stored name before moving to the next step - either
-   from the recent conversation history if it was already resolved there, or, if not, by loading
-   `cap_client_read` and resolving it now. Handle what you find:
-   - An exact stored name: use it verbatim from here on.
+1. If the agreement came as an image or document, it must have been read with `cap_media_analysis`'s `analyze_media` (load it and read it now if it was not). If its `missing_required_fields` is not empty, ask the user for exactly those details in the same reply as step 2.
+2. The client must be resolved by its exact stored name before moving to the next step.
+   - **Agreement given as an image or document:** 🚨 resolve it in this same turn, before you reply at all. Load `cap_client_read` and call `resolve_client_name` with the client name the user gave. If the user gave none, use the client name `analyze_media` extracted from the agreement, **copied verbatim, character for character, letter for letter, exactly as extracted**: never corrected, completed, or swapped for a similar name or a client from earlier in the conversation. Then send one reply (`cap_send_to_user`) that reports what the agreement contains and handles what you found.
+   - **Agreement or logged hours given as text:** resolve it from the recent conversation history if it was already resolved there for this same client, or else load `cap_client_read` and resolve it now.
+
+   Handle what you find:
+   - An exact stored name: copy it character for character from the `resolve_client_name` result from here on - in the approval text and in every tool call, never retyped (see `cap_client_read`).
    - A confirmation question (a single close match): use `cap_send_to_user` to put it to the user as-is, and also offer, as its own explicit choice, to create a new client under the exact name the user gave. Proceed with whichever they choose.
    - Several candidates: use `cap_send_to_user` to list each of them by name and ask the user to specify, and also offer, as its own explicit choice, to create a new client under the exact name the user gave. Never pick one yourself.
    - No such client, or the user chose to create a new one: Load `flow_add_client` to create it, then continue with the exact name that was created. If the user declines to add the client, the flow is complete.

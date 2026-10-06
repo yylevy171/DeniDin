@@ -130,7 +130,10 @@ Every write tool that needs one specific client (`create_invoice`,
 Morning has stored, together with `name_resolved=true`; they refuse immediately
 if `name_resolved` isn't `true`. Only pass `name_resolved=true` with a name
 that has actually been confirmed as Morning's stored name — never with the
-user's loose wording. Gather any other still-missing required fields (amount,
+user's loose wording. 🚨 Use that name exactly as `resolve_client_name`
+returned it — its own apostrophe/geresh characters included, every letter as
+many times as it appears — in the approval text and in the tool call alike;
+never your own retyping of it (see `cap_client_read`). Gather any other still-missing required fields (amount,
 description, VAT treatment, dates) one question at a time. Every mutating tool also needs the
 user's approval first (see the approval data points below).
 

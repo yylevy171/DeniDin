@@ -36,7 +36,7 @@ incidentally exercised by this file.
 """
 
 import logging
-import shutil
+import sqlite3
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -46,7 +46,9 @@ import pytest
 
 import src.services.reminder_delivery_service as delivery_service
 from src.models.config import AppConfiguration
-from tests.e2e_helpers import create_real_notification, get_response, sanity_worker_data_root
+from tests.e2e_helpers import (
+    create_real_notification, get_response, sanity_worker_data_root, wipe_chat_messages_on_disk,
+)
 from tests.billed.denidin_mcp_e2e_helpers import get_button_send
 from src.utils.time_utils import now_local, to_local
 from src.constants.error_messages import REMINDER_CAP_EXCEEDED
@@ -96,11 +98,28 @@ class TestReminderLifecycleBilled:
         wipe conftest.py's own autouse fixtures already do directory-wide.
         """
         sessions_dir = Path(config.memory['session']['storage_dir'])
-        if sessions_dir.exists():
-            shutil.rmtree(sessions_dir)
+        self._wipe_every_chat(sessions_dir)
         yield
-        if sessions_dir.exists():
-            shutil.rmtree(sessions_dir)
+        self._wipe_every_chat(sessions_dir)
+
+    @staticmethod
+    def _wipe_every_chat(sessions_dir):
+        """Empties every chat's history but leaves the store itself - chat_index.db
+        included - in place (2026-10-03). Deleting the whole folder broke every
+        later test in the same process: the shared app keeps one SQLite connection
+        to chat_index.db open, and after the file was deleted under it every turn
+        failed with "disk I/O error" (seen running these tests in parallel, where
+        one worker runs several tests in a row on one app)."""
+        index_db = sessions_dir / "chat_index.db"
+        if not index_db.exists():
+            return
+        con = sqlite3.connect(str(index_db))
+        try:
+            chats = [row[0] for row in con.execute("SELECT chat FROM chat_sessions")]
+        finally:
+            con.close()
+        for chat in chats:
+            wipe_chat_messages_on_disk(sessions_dir, chat)
 
     @pytest.fixture
     def denidin_app(self, config):

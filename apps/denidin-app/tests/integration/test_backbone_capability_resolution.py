@@ -335,7 +335,9 @@ def _app_config(tmp_path, flag, reset_minutes):
         "log_level": "INFO", "data_root": str(tmp_path / "data"),
         "feature_flags": {"enable_capability_backbone": flag},
         "capabilities_reset_minutes": reset_minutes,
-        "memory": {}, "constitution_config": {}, "backbone_config": {}, "user_roles": {},
+        # longterm storage_dir does not follow data_root - keep ChromaDB in tmp too
+        "memory": {"longterm": {"storage_dir": str(tmp_path / "data" / "memory")}},
+        "constitution_config": {}, "backbone_config": {}, "user_roles": {},
     }
 
 

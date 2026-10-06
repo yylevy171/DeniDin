@@ -25,14 +25,17 @@ from src.backbone.prompt_cache import MtimePromptCache
 from src.backbone.resolution_tools import RESOLUTION_TOOLS, extract_resolution_tool_calls
 from src.capabilities.toolsets import (
     WRITE_TOOL_NAMES,
-    WRITE_TOOLS_BY_TAG,
     build_capability_tools,
     dispatch_local_tool,
     extract_local_calls,
     local_tool_owners,
 )
+from openai import APIError, APITimeoutError, RateLimitError
+
 from src.constants.error_messages import (
-    APPROVAL_POSSIBLY_DUPLICATED, BACKBONE_UNEXPECTED_ERROR, LEDGER_FOLLOWUP_FAILED_TRY_AGAIN,
+    APPROVED_WRITE_NOT_PERFORMED_NOTE, APPROVED_WRITE_POSSIBLY_DUPLICATED_NOTE, BACKBONE_AI_API_ERROR,
+    BACKBONE_AI_RATE_LIMITED, BACKBONE_AI_TIMEOUT, BACKBONE_UNEXPECTED_ERROR,
+    LEDGER_FOLLOWUP_FAILED_TRY_AGAIN,
 )
 from src.models.message import AIRequest, AIResponse, WhatsAppMessage, should_reply_for
 from src.models.user import Role
@@ -189,9 +192,6 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
         # local write ({name, output, error}); only writes are counted.
         self._turn_is_approved_write: bool = False
         self._turn_write_calls: List[Any] = []
-        # Every capability loaded at any round of this turn - names what a never-ran
-        # approved write was about (a reminder, a document, a client).
-        self._turn_seen_tags: set = set()
 
         # The inbound WhatsAppMessage this turn answers (request.original_message) -
         # the addressing for internal notes stored mid-turn (see record_planning_status).
@@ -459,6 +459,9 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
                 # The stored inbound message this turn answers - analyze_media fills
                 # its extracted text into it (2026-09-30).
                 "message_id": request.message_id,
+                # The inbound message itself - analyze_media stores the read document's
+                # stash in the conversation addressed like it (M1/M2, 2026-10-04).
+                "original_message": request.original_message,
                 "caption": request.user_prompt if request.media is not None else "",
                 # Group chats get the group etiquette section (Item14).
                 "is_group": is_group,
@@ -484,7 +487,6 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
             # turn (Item4). Any new turn supersedes whatever approval buttons were
             # outstanding.
             self._turn_write_calls = []
-            self._turn_seen_tags = set()
             self._turn_is_approved_write = False
             if effective_chat_id:
                 approval_was_pending = bool(
@@ -501,6 +503,20 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
                 logger.info("MCP calls for request %s: %s", request.request_id, self._turn_mcp_calls)
             self.record_mcp_tool_calls(self._turn_telemetry_builder, self._turn_mcp_calls)
             return self._finalize_response(request, final_text)
+        # Legacy's per-error replies (AIHandler._get_response_impl), checked in its order:
+        # APITimeoutError and RateLimitError are both APIErrors (C8, 2026-10-04).
+        except APITimeoutError as exc:
+            logger.error("OpenAI API timeout for request %s after retries: %s",
+                         request.request_id, exc, exc_info=True)
+            return self._create_fallback_response(request.request_id, BACKBONE_AI_TIMEOUT)
+        except RateLimitError as exc:
+            logger.error("OpenAI rate limit exceeded for request %s after retries: %s",
+                         request.request_id, exc, exc_info=True)
+            return self._create_fallback_response(request.request_id, BACKBONE_AI_RATE_LIMITED)
+        except APIError as exc:
+            logger.error("OpenAI API error for request %s after retries: %s",
+                         request.request_id, exc, exc_info=True)
+            return self._create_fallback_response(request.request_id, BACKBONE_AI_API_ERROR)
         except Exception as exc:  # pylint: disable=broad-except
             logger.error(
                 "Unexpected error in Backbone.single_turn for request %s: %s",
@@ -562,7 +578,6 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
         previous_response_id chaining - which retains neither - never loses
         either. Returns (tags, instructions, tools)."""
         tags = self._get_active_tags(chat_id)
-        self._turn_seen_tags.update(tags)
         tools = list(RESOLUTION_TOOLS) + list(BACKBONE_TOOLS) + build_capability_tools(self, tags, turn_context)
         instructions = self.build_instructions(
             tags, "", request.timestamp, active_flows=self._get_active_flows(chat_id),
@@ -668,19 +683,48 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
     def _execute_round_calls(self, request: AIRequest, turn_context: Dict[str, Any], *, chat_id: str,
                               tags: List[CapabilityTag], response: Any
                               ) -> Optional[Tuple[List[Dict[str, Any]], Optional[str]]]:
-        """Executes every tool call in one round's `response`: returns None when
+        """Executes every tool call in one round's `response` - each function_call gets
+        an output, an error one when it could not run: returns None when
         it carries no calls at all (plain text - the loop ends), else
         (function_call_output items for the next round, the reply text if the
         model called send_to_user/approval_with_yes_no_buttons this round)."""
         resolution_calls = extract_resolution_tool_calls(response)
         backbone_calls = extract_backbone_tool_calls(response)
         domain_calls = extract_local_calls(response, local_tool_owners(self, tags, turn_context))
-        if not resolution_calls and not backbone_calls and not domain_calls:
-            return None
         outputs, final_text = self._run_resolution_calls(resolution_calls, chat_id)
         outputs += self._run_domain_calls(domain_calls, turn_context)
         outputs += self._run_backbone_calls(backbone_calls, request)
+        outputs += self._unanswered_call_outputs(response, {o["call_id"] for o in outputs})
+        if not outputs:
+            return None
         return outputs, final_text
+
+    @staticmethod
+    def _unanswered_call_outputs(response: Any, answered_call_ids: set) -> List[Dict[str, Any]]:
+        """An error output for every function_call in `response` that got none - its
+        arguments didn't parse (e.g. cut off at the output limit) or it names no attached
+        tool. Legacy answered each such call with its own isolated error
+        (ai_handler.py's _compute_query_ledger_events_outputs/_compute_react_to_message_outputs);
+        left unanswered, OpenAI rejects the next round ("No tool output found") and the
+        turn ends in an error (M3, 2026-10-04)."""
+        outputs: List[Dict[str, Any]] = []
+        for item in (getattr(response, "output", None) or []):
+            if getattr(item, "type", None) != "function_call":
+                continue
+            call_id = getattr(item, "call_id", None)
+            if not call_id or call_id in answered_call_ids:
+                continue
+            name = getattr(item, "name", None)
+            try:
+                json.loads(getattr(item, "arguments", None) or "")
+                reason = f"Tool {name!r} is not available right now - this call was not executed."
+            except (json.JSONDecodeError, TypeError):
+                reason = ("Arguments could not be parsed (likely truncated) - this call was not "
+                          "executed. Do not resubmit this exact call.")
+            logger.warning("Unanswered %r function_call %r answered with an error: %s", name, call_id, reason)
+            outputs.append({"type": "function_call_output", "call_id": call_id,
+                            "output": json.dumps({"status": "error", "reason": reason}, ensure_ascii=False)})
+        return outputs
 
     def _run_resolution_calls(self, calls: List[Tuple[str, str, Dict[str, Any]]], chat_id: str
                                   ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
@@ -712,7 +756,8 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
                 result_text, outcome = f"error: {tool_name} failed: {exc}", "exception"
             log_capability_action(owner_tag.value, f"{tool_name}({args})", outcome, result_text)
             if tool_name in WRITE_TOOL_NAMES:
-                self._turn_write_calls.append({"name": tool_name, "output": result_text, "error": None})
+                self._turn_write_calls.append({"name": tool_name, "arguments": args,
+                                               "output": result_text, "error": None})
             outputs.append({"type": "function_call_output", "call_id": call_id, "output": result_text})
         return outputs
 
@@ -838,28 +883,31 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
                                 flows_now=flows_now, capabilities_now=capabilities_now)
 
     def _apply_write_guards(self, request: AIRequest, final_text: str) -> str:
-        """Item4 (2026-10-01): the legacy approval-resolution checks, on the turn that
-        answers approval buttons with a yes (shared AIManager). A write that
-        ran more than once, or no write at all, replaces the reply - the user is never
-        told an approved action succeeded when it ran twice or not at all. Any other
-        turn, or an approved turn that ran each write exactly once, keeps its reply."""
+        """Item4 (2026-10-01, revised 2026-10-04): the approved-write checks, on the turn
+        that answers approval buttons with a yes (shared AIManager). The model's reply
+        is ALWAYS sent as is - the app only ever appends a short factual note after it:
+        - the same write succeeded twice with identical arguments (the approved call run
+          twice): APPROVED_WRITE_POSSIBLY_DUPLICATED_NOTE;
+        - no write was even attempted: APPROVED_WRITE_NOT_PERFORMED_NOTE.
+        Failed attempts append nothing - the model saw each error and reports it itself
+        (ST14, 2026-10-03: three failed creates were once replaced with a "may have run
+        twice" message although nothing was created)."""
         if not self._turn_is_approved_write:
             return final_text
         executions = self.tally_write_executions(self._turn_write_calls, WRITE_TOOL_NAMES)
         if executions.duplicated:
             logger.error(
                 "[022] DUPLICATE EXECUTION DETECTED: approved turn for chat=%r request=%s ran %s "
-                "more than once (expected exactly 1). All write calls: %r",
+                "successfully more than once with identical arguments. All write calls: %r",
                 self._turn_chat_id, request.request_id, executions.duplicated, self._turn_write_calls)
             self._turn_offered_approval = False
-            return APPROVAL_POSSIBLY_DUPLICATED
+            return f"{final_text}\n\n{APPROVED_WRITE_POSSIBLY_DUPLICATED_NOTE}"
         if not executions.ran_any:
             logger.error(
-                "[022] APPROVED TOOL NEVER RAN: approved turn for chat=%r request=%s executed no write. "
-                "Reply that was replaced: %r", self._turn_chat_id, request.request_id, final_text)
+                "[022] APPROVED TOOL NEVER RAN: approved turn for chat=%r request=%s attempted no write. "
+                "Reply sent with a note appended: %r", self._turn_chat_id, request.request_id, final_text)
             self._turn_offered_approval = False
-            possible_writes = [name for tag in self._turn_seen_tags for name in WRITE_TOOLS_BY_TAG.get(tag, ())]
-            return self.approved_write_not_run_message(executions.failure_detail, self.write_subject(possible_writes))
+            return f"{final_text}\n\n{APPROVED_WRITE_NOT_PERFORMED_NOTE}"
         return final_text
 
     def _finalize_response(self, request: AIRequest, final_text: str) -> AIResponse:

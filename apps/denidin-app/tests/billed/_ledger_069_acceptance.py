@@ -27,8 +27,13 @@ fields as exactly one of:
                                 ``event_datetime`` must equal the triggering
                                 message's Green API timestamp).
   - ``{"null": true}``        — assert absent / empty.
-  - ``{"free_text": true}``   — (``description`` only) assert present, a
-                                non-empty string, and not a bare number/date.
+  - ``{"free_text": true}``   — assert present, a non-empty string, and not a
+                                bare number/date.
+  - ``{"free_text": true, "optional": true}`` — empty is also fine; if present,
+                                the same prose check. (``payer_name`` on a deposit
+                                slip: the ledger leaves it null when the slip's
+                                name and the client are the same person, and fills
+                                it when they differ, e.g. an OCR misread - 2026-10-04.)
 
 A roster field no manifest rule covers ⇒ **fail** (the manifest is incomplete).
 A persisted field outside the roster ⇒ **fail**. There are **no** ignore lists,
@@ -53,13 +58,13 @@ from __future__ import annotations
 import json
 import re
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
 from src.managers.ledger_event_manager import LEDGER_EVENT_FIELDS
-from tests.e2e_helpers import ClarificationAnswerBank, persisted_ledger_events_for_chat
+from tests.e2e_helpers import ClarificationAnswerBank, persisted_ledger_events_for_chat, txn_date_forms
 from tests.billed.denidin_mcp_e2e_helpers import (
     GODFATHER_CHAT_ID,
     _strip_invisible_marks,
@@ -70,6 +75,8 @@ from tests.billed.denidin_mcp_e2e_helpers import (
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures" / "ledger_069"
 ISRAEL_TZ = ZoneInfo("Asia/Jerusalem")
+# How much later than the user's completing message event_datetime may be (2026-10-04).
+EVENT_DATETIME_TOLERANCE_MINUTES = 2
 
 # Fields that legitimately differ file-to-file for a `הסכם` — the ledgerer
 # persists one JSON file per fee component, so these belong under a manifest's
@@ -320,6 +327,8 @@ def _check_field(field: str, value: Any, rule: Dict, ev: Dict, *,
         )
         return
     if "free_text" in rule:
+        if rule.get("optional") and value in (None, "", [], {}):
+            return
         assert isinstance(value, str) and value.strip(), (
             f"{field}: expected a non-empty free-text string, got {value!r}"
         )
@@ -353,11 +362,23 @@ def _check_field(field: str, value: Any, rule: Dict, ev: Dict, *,
             f"event_id malformed (want letter + DDMMYY + HHMM + seq): {value!r}"
         )
     elif kind == "event_datetime":
-        want = datetime.fromtimestamp(trigger_epoch, ISRAEL_TZ).strftime("%d/%m/%Y %H:%M")
-        assert str(value) == want, (
-            f"event_datetime must equal the completing message's Green API timestamp "
-            f"{want!r} (epoch {trigger_epoch}), got {value!r} — the 'hard pointer' must "
-            f"survive the whole detour"
+        # 2026-10-04 (user decision): the ledgerer dates the event from the session's
+        # last message (session.message_ids[-1]) - DeniDin's own reply, stored once
+        # the turn ends - not the user's completing message. Tolerate it being up to
+        # EVENT_DATETIME_TOLERANCE_MINUTES later (never earlier) than the user's
+        # message, so a turn that crosses a minute boundary still passes (ST36).
+        want_dt = datetime.fromtimestamp(trigger_epoch, ISRAEL_TZ).replace(second=0, microsecond=0)
+        want = want_dt.strftime("%d/%m/%Y %H:%M")
+        try:
+            got_dt = datetime.strptime(str(value), "%d/%m/%Y %H:%M").replace(tzinfo=ISRAEL_TZ)
+        except ValueError:
+            got_dt = None
+        late_by = (got_dt - want_dt) if got_dt else None
+        assert late_by is not None and timedelta(0) <= late_by <= timedelta(
+            minutes=EVENT_DATETIME_TOLERANCE_MINUTES), (
+            f"event_datetime must be the completing message's Green API timestamp "
+            f"{want!r} (epoch {trigger_epoch}) or up to {EVENT_DATETIME_TOLERANCE_MINUTES} "
+            f"minutes later, got {value!r} — the 'hard pointer' must survive the whole detour"
         )
     elif kind == "session_id":
         assert str(value) == str(session_id), (
@@ -551,6 +572,9 @@ def _assert_extractor_carried_tested_values(
         if s is None or s == "$client":
             return True
         if s in text_blob or s in flat:
+            return True
+        # a date in either accepted format (DD/MM/YYYY or ISO YYYY-MM-DD)
+        if any(form in text_blob or form in flat for form in txn_date_forms(s)):
             return True
         # a bare number in the manifest ("18000") vs the source's own grouping
         # ("18,000") — compare digit-runs with separators stripped from both sides

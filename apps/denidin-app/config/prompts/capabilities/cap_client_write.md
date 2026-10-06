@@ -19,9 +19,12 @@ may be guessed or omitted. `tax_id` is the only optional field. If Morning rejec
 tax id as invalid, relay that and ask for a corrected one.
 
 **Never alter the spelling of a name you are creating.** Use it exactly as the user
-wrote it, character for character; never "correct" it, even if you are confident
-which spelling was meant. Morning stores it verbatim, and a silently altered name
-means every later search for the real name fails.
+wrote it, character for character; never "correct" it, and never normalize it to a
+form you consider more standard, even if you are confident which spelling was meant. Morning stores it verbatim, and a silently altered name
+means every later search for the real name fails. Use the EXACT name the user
+gave - the user's own apostrophe/geresh characters included, every letter as many
+times as it appears - in the approval text and in `add_client` alike; never your
+own retyping of it.
 
 ## Updating a client
 

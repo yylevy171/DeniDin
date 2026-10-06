@@ -7,7 +7,7 @@ Capabilities: `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons`
 Follow these steps in order, to the letter.
 
 1. Load `cap_client_read` and resolve the client by the name the user gave, even if it looks exact.
-   - An exact stored name: use it verbatim.
+   - An exact stored name: copy it character for character from the `resolve_client_name` result, never retyped (see `cap_client_read`).
    - A confirmation question: use `cap_send_to_user` to put it to the user as-is, and proceed once they confirm.
    - Several candidates: use `cap_send_to_user` to list them and ask the user to specify. Never pick one yourself.
    - No such client: use `cap_send_to_user` to say so. The flow is complete. Creating a new client is a different request, so only offer it.

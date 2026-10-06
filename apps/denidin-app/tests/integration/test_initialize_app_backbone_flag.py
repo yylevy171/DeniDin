@@ -31,7 +31,8 @@ def _config_dict(tmp_path, enable_backbone: bool) -> dict:
         "log_level": "INFO",
         "data_root": str(tmp_path / "data"),
         "feature_flags": {"enable_capability_backbone": enable_backbone},
-        "memory": {},
+        # longterm storage_dir does not follow data_root - keep ChromaDB in tmp too
+        "memory": {"longterm": {"storage_dir": str(tmp_path / "data" / "memory")}},
         "constitution_config": {},
         "backbone_config": {},
         "user_roles": {},

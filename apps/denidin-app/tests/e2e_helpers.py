@@ -31,6 +31,25 @@ def event_datetime_for_message_ts(message_ts: str) -> str:
     epoch = int(datetime.fromisoformat(message_ts).timestamp())
     return local_from_timestamp(epoch).strftime("%d/%m/%Y %H:%M")
 
+
+def txn_date_forms(value) -> set:
+    """A deposit's txn_date in both accepted formats - DD/MM/YYYY (what the image
+    extractor reads, and the preferred one) and ISO YYYY-MM-DD - so a check passes
+    whichever format the value arrives in (2026-10-04)."""
+    s = str(value or "").strip()
+    iso = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", s)
+    if iso:
+        return {s, f"{iso.group(3)}/{iso.group(2)}/{iso.group(1)}"}
+    dmy = re.fullmatch(r"(\d{2})/(\d{2})/(\d{4})", s)
+    if dmy:
+        return {s, f"{dmy.group(3)}-{dmy.group(2)}-{dmy.group(1)}"}
+    return {s}
+
+
+def same_txn_date(actual, expected) -> bool:
+    """True when two txn_date values name the same day, in either accepted format."""
+    return bool(txn_date_forms(actual) & txn_date_forms(expected))
+
 logger = logging.getLogger(__name__)
 
 _DENIDIN_APP_DIR = Path(__file__).resolve().parents[1]

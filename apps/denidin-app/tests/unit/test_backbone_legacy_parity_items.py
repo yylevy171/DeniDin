@@ -16,7 +16,8 @@ from src.capabilities.media_analysis.handler import (
     _build_extractor, _format_result,
 )
 from src.constants.error_messages import (
-    APPROVAL_POSSIBLY_DUPLICATED, BACKBONE_UNEXPECTED_ERROR, LEDGER_FOLLOWUP_FAILED_TRY_AGAIN,
+    APPROVED_WRITE_NOT_PERFORMED_NOTE, APPROVED_WRITE_POSSIBLY_DUPLICATED_NOTE,
+    BACKBONE_UNEXPECTED_ERROR, LEDGER_FOLLOWUP_FAILED_TRY_AGAIN,
 )
 from src.core.ai_manager import AIManager
 approved_write_not_run_message = AIManager.approved_write_not_run_message
@@ -50,8 +51,8 @@ def _call(name, arguments, call_id):
     return SimpleNamespace(type="function_call", name=name, arguments=json.dumps(arguments), call_id=call_id)
 
 
-def _mcp(name, output="ok", error=None):
-    return SimpleNamespace(type="mcp_call", name=name, arguments="{}", output=output, error=error)
+def _mcp(name, output="ok", error=None, arguments="{}"):
+    return SimpleNamespace(type="mcp_call", name=name, arguments=arguments, output=output, error=error)
 
 
 def _send(text, call_id="s1"):
@@ -89,25 +90,64 @@ def test_approved_turn_that_ran_the_write_once_keeps_its_reply_sdk_retries_off(p
     client.responses.create.assert_not_called()
 
 
-def test_approved_write_that_ran_twice_is_reported_as_possibly_duplicated(prompts_root):
+def test_approved_write_that_ran_twice_identically_keeps_the_reply_and_appends_the_warning(prompts_root):
+    """2026-10-04: the model's reply is always sent as is; a write that succeeded twice
+    with identical arguments (OpenAI re-dispatching the approved call) only appends."""
     _, response = _approved_turn(prompts_root, [
         _response([_mcp("create_invoice"), _mcp("create_invoice"), _send("הופקה")]),
     ])
-    assert response.response_text == APPROVAL_POSSIBLY_DUPLICATED
+    assert response.response_text == f"הופקה\n\n{APPROVED_WRITE_POSSIBLY_DUPLICATED_NOTE}"
     assert response.offer_approval_buttons is False
 
 
-def test_approved_turn_where_no_write_ran_tells_the_user_nothing_was_done(prompts_root):
+def test_failed_write_attempts_keep_the_models_reply_untouched(prompts_root):
+    """ST14 (2026-10-03): three failed create calls are not executions - the model's own
+    report of the failure goes out unchanged, nothing appended."""
+    not_found = {"type": "mcp_tool_execution_error",
+                 "content": [{"type": "text", "text": "לא נמצא לקוח בשם \"עמינדב אנדריין\""}]}
+    _, response = _approved_turn(prompts_root, [
+        _response([_mcp("create_transaction_account", output=None, error=not_found),
+                   _mcp("create_transaction_account", output=None, error=not_found),
+                   _mcp("create_transaction_account", output=None, error=not_found),
+                   _send("לא הצלחתי להפיק את חשבון העסקה. לא נוצר מסמך.")]),
+    ])
+    assert response.response_text == "לא הצלחתי להפיק את חשבון העסקה. לא נוצר מסמך."
+
+
+def test_a_failed_attempt_then_one_success_is_not_a_duplicate(prompts_root):
+    _, response = _approved_turn(prompts_root, [
+        _response([_mcp("create_invoice", output=None, error="timeout"), _mcp("create_invoice"),
+                   _send("החשבונית הופקה")]),
+    ])
+    assert response.response_text == "החשבונית הופקה"
+
+
+def test_two_successful_writes_with_different_arguments_are_not_a_duplicate(prompts_root):
+    _, response = _approved_turn(prompts_root, [
+        _response([_mcp("create_reminder", arguments='{"text": "א"}'),
+                   _mcp("create_reminder", arguments='{"text": "ב"}'), _send("נוצרו שתי תזכורות")]),
+    ])
+    assert response.response_text == "נוצרו שתי תזכורות"
+
+
+def test_a_client_and_an_invoice_in_one_approved_turn_are_not_a_duplicate(prompts_root):
+    _, response = _approved_turn(prompts_root, [
+        _response([_mcp("add_client"), _mcp("create_invoice"), _send("הלקוח נוסף והחשבונית הופקה")]),
+    ])
+    assert response.response_text == "הלקוח נוסף והחשבונית הופקה"
+
+
+def test_approved_turn_where_no_write_was_attempted_keeps_the_reply_and_appends_the_note(prompts_root):
     _, response = _approved_turn(prompts_root, [
         _response([_mcp("get_invoice_details", output=None,
                         error={"content": [{"type": "text", "text": "המסמך לא נמצא"}]}),
                    _send("הופקה בהצלחה")]),
     ])
-    assert response.response_text == approved_write_not_run_message(" (המסמך לא נמצא)")
-    assert "המסמך לא נמצא" in response.response_text
+    assert response.response_text == f"הופקה בהצלחה\n\n{APPROVED_WRITE_NOT_PERFORMED_NOTE}"
+    assert response.offer_approval_buttons is False
 
 
-def test_never_ran_message_names_a_reminder_when_the_approval_was_about_a_reminder(prompts_root):
+def test_no_write_note_is_appended_after_a_reminder_reply_too(prompts_root):
     client = MagicMock()
     client.with_options.return_value.responses.create.side_effect = [
         _response([_call("load_capabilities", {"capabilities": ["cap_reminders_write"]}, "c1")], "r1"),
@@ -116,8 +156,7 @@ def test_never_ran_message_names_a_reminder_when_the_approval_was_about_a_remind
     backbone = _backbone(prompts_root, client)
     backbone.session_manager.set_approval_message_id("chat1", "approval-msg")
     response = backbone.single_turn(_request("כן"), chat_id="chat1")
-    assert "לא נוצרה, לא שונתה ולא נמחקה שום תזכורת" in response.response_text
-    assert "מסמך" not in response.response_text
+    assert response.response_text == f"נוצרה\n\n{APPROVED_WRITE_NOT_PERFORMED_NOTE}"
 
 
 def test_never_ran_message_is_hebrew_only():
@@ -143,6 +182,14 @@ def test_shared_tally_counts_local_writes_and_takes_the_first_failure_text():
         {"create_reminder"})
     assert executions.counts == {"create_reminder": 1}
     assert executions.failure_detail == " (boom)"
+    # Only successful calls with identical arguments are a duplicate; a failed local
+    # write (its output starting "⚠️"/"error:") or a failed mcp_call never is.
+    twice = [{"name": "create_reminder", "arguments": {"a": 1, "b": 2}, "output": "נוצרה", "error": None},
+             {"name": "create_reminder", "arguments": '{"b": 2, "a": 1}', "output": "נוצרה", "error": None}]
+    assert tally_write_executions(twice, {"create_reminder"}).duplicated == ["create_reminder"]
+    failed = [{"name": "create_reminder", "arguments": {}, "output": "⚠️ נכשל", "error": None},
+              {"name": "create_reminder", "arguments": {}, "output": "נוצרה", "error": None}]
+    assert tally_write_executions(failed, {"create_reminder"}).duplicated == []
     assert is_affirmative_reply("‏כן") and not is_affirmative_reply("לא נכון, אל תפיק")
 
 
@@ -182,6 +229,67 @@ def test_hitting_the_round_limit_replies_with_an_error(prompts_root):
         [_call("record_planning_status", {"where_i_was": "x"}, "c1")])
     response = _backbone(prompts_root, client).single_turn(_request(), chat_id="chat1")
     assert response.response_text == BACKBONE_UNEXPECTED_ERROR
+
+
+def _malformed_call(name, call_id):
+    return SimpleNamespace(type="function_call", name=name, arguments='{"text": "קטו', call_id=call_id)
+
+
+def test_a_malformed_tool_call_gets_an_error_output_and_the_turn_continues(prompts_root):
+    """M3 (2026-10-04): a call whose arguments don't parse (cut off at the output limit)
+    is answered with its own error, as legacy did - never left without an output, which
+    OpenAI rejects on the next round."""
+    client = MagicMock()
+    client.responses.create.side_effect = [
+        _response([_malformed_call("send_to_user", "bad1")], response_id="r1"),
+        _response([_send("תשובה מלאה")], response_id="r2"),
+    ]
+    response = _backbone(prompts_root, client).single_turn(_request(), chat_id="chat1")
+
+    assert response.response_text == "תשובה מלאה"
+    follow_up_input = client.responses.create.call_args_list[1].kwargs["input"]
+    [error_output] = [o for o in follow_up_input if o.get("call_id") == "bad1"]
+    assert json.loads(error_output["output"])["status"] == "error"
+
+
+def test_a_call_to_an_unattached_tool_gets_an_error_output(prompts_root):
+    client = MagicMock()
+    client.responses.create.side_effect = [
+        _response([_call("create_reminder", {"message_text": "x"}, "c1"),
+                   _call("react_to_message", {"emoji": "👍"}, "c2")], response_id="r1"),
+        _response([_send("בסדר")], response_id="r2"),
+    ]
+    _backbone(prompts_root, client).single_turn(_request(), chat_id="chat1")
+
+    follow_up_input = client.responses.create.call_args_list[1].kwargs["input"]
+    assert {o["call_id"] for o in follow_up_input} == {"c1", "c2"}
+    [error_output] = [o for o in follow_up_input if o["call_id"] == "c1"]
+    assert "not available" in json.loads(error_output["output"])["reason"]
+
+
+def _http_request():
+    import httpx
+    return httpx.Request("POST", "https://api.openai.com/v1/responses")
+
+
+@pytest.mark.parametrize("make_error, expected", [
+    (lambda: __import__("openai").APITimeoutError(request=_http_request()), "BACKBONE_AI_TIMEOUT"),
+    (lambda: __import__("openai").RateLimitError(
+        "rate", response=__import__("httpx").Response(429, request=_http_request()), body={}),
+     "BACKBONE_AI_RATE_LIMITED"),
+    (lambda: __import__("openai").APIStatusError(
+        "boom", response=__import__("httpx").Response(500, request=_http_request()), body={}),
+     "BACKBONE_AI_API_ERROR"),
+    (lambda: RuntimeError("bug"), "BACKBONE_UNEXPECTED_ERROR"),
+])
+def test_each_kind_of_model_call_failure_gets_its_own_reply(prompts_root, make_error, expected):
+    """C8 (2026-10-04): legacy's per-error replies are kept - timeout, rate limit, any
+    other API error, anything else."""
+    from src.constants import error_messages
+    client = MagicMock()
+    client.responses.create.side_effect = make_error()
+    response = _backbone(prompts_root, client).single_turn(_request(), chat_id="chat1")
+    assert response.response_text == getattr(error_messages, expected)
 
 
 def test_a_deliberate_no_reply_stays_silent(prompts_root):

@@ -290,7 +290,7 @@ def test_create_document_for_new_client_full_flow_happy_path(denidin_app):
     description = _random_description()
     request_text = f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח כולל מע\"מ עבור {description}"
 
-    # Turn 1/2: ask + approve create_invoice - the client doesn't exist yet.
+    # Turn 1: ask for the invoice - the client doesn't exist yet.
     # The model may discover this either of two legitimate ways: by actually
     # calling create_invoice and reading its own "not found" refusal once
     # approved, OR by proactively checking existence first via the read-only
@@ -298,10 +298,11 @@ def test_create_document_for_new_client_full_flow_happy_path(denidin_app):
     # ever proposing create_invoice at all - both correctly result in zero
     # documents created and the user being asked for phone/email; this test
     # doesn't prescribe which path the model takes, only the outcome.
-    _, (not_found_response, not_found_ai_response) = _send_turn_and_approve(
-        chat_id=GODFATHER_CHAT_ID,
-        text=request_text,
-        id_prefix="E2E_027_FULLFLOW_ASK",
+    # 2026-10-04 (bugfix-065): the request turn only - the blind "כן" that used to follow
+    # it answered a VAT question the request now settles itself ("כולל מע\"מ"); with similar
+    # clients it just got the same question asked again (ST12 trace, event 78).
+    not_found_response, not_found_ai_response = _send_turn(
+        GODFATHER_CHAT_ID, request_text, id_prefix="E2E_027_FULLFLOW_ASK"
     )
     first_attempt_calls = _calls_for(not_found_ai_response, "create_invoice")
     if first_attempt_calls:
@@ -315,7 +316,10 @@ def test_create_document_for_new_client_full_flow_happy_path(denidin_app):
     # Turn 3: godfather provides the client's phone+email up front.
     _, (add_response, add_ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
-        text=f"כן, תוסיף אותו. מייל {seed_email}, טלפון {_SEED_PHONE}",
+        text=(
+            f"אני מבקש להוסיף לקוח חדש עם מייל {seed_email} וטלפון {_SEED_PHONE}. "
+            f"בבקשה תבצע ואל תשאל אותי עוד שאלות על זה."
+        ),
         id_prefix="E2E_027_FULLFLOW_CREATE_CLIENT",
     )
     add_calls = _calls_for(add_ai_response, "add_client")
@@ -412,13 +416,19 @@ def test_create_document_for_new_client_declines_client_creation(denidin_app):
     description = _random_description()
     request_text = f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח כולל מע\"מ עבור {description}"
 
-    _send_turn_and_approve(chat_id=GODFATHER_CHAT_ID, text=request_text, id_prefix="E2E_027_DECLINE_ASK")
+    # 2026-10-04 (bugfix-065): the request turn only - the blind "כן" that used to follow
+    # it answered a VAT question the request now settles itself ("כולל מע\"מ"); with similar
+    # clients it just got the same question asked again (IMP09 trace, event 110).
+    _send_turn(GODFATHER_CHAT_ID, request_text, id_prefix="E2E_027_DECLINE_ASK")
 
-    # Godfather is asked for details; provides them, triggering add_client's
+    # Godfather asks plainly to add the client with its details, triggering add_client's
     # own pending approval - then explicitly declines it.
     decline_response, decline_ai_response = _send_turn_and_decline(
         chat_id=GODFATHER_CHAT_ID,
-        text=f"כן, תוסיף אותו. מייל {_random_seed_email()}, טלפון {_SEED_PHONE}",
+        text=(
+            f"אני מבקש להוסיף לקוח חדש עם מייל {_random_seed_email()} וטלפון {_SEED_PHONE}. "
+            f"בבקשה תבצע ואל תשאל אותי עוד שאלות על זה."
+        ),
         id_prefix="E2E_027_DECLINE_CLIENT",
     )
 
@@ -462,11 +472,18 @@ def test_create_document_for_new_client_creates_client_but_declines_document(den
     description = _random_description()
     request_text = f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח כולל מע\"מ עבור {description}"
 
-    _send_turn_and_approve(chat_id=GODFATHER_CHAT_ID, text=request_text, id_prefix="E2E_027_SEMINEG_ASK")
+    # The request turn only; the blind "כן" that used to follow it answered a VAT question
+    # the request now settles itself ("כולל מע\"מ"). The next turn says plainly to add the
+    # client, whatever the bot answered (not found / one similar client / several)
+    # (bugfix-065, 2026-10-04).
+    _send_turn(GODFATHER_CHAT_ID, request_text, id_prefix="E2E_027_SEMINEG_ASK")
 
     _, (add_response, add_ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
-        text=f"כן, תוסיף אותו. מייל {seed_email}, טלפון {_SEED_PHONE}",
+        text=(
+            f"אני מבקש להוסיף לקוח חדש עם מייל {seed_email} וטלפון {_SEED_PHONE}. "
+            f"בבקשה תבצע ואל תשאל אותי עוד שאלות על זה."
+        ),
         id_prefix="E2E_027_SEMINEG_CREATE_CLIENT",
     )
     add_calls = _calls_for(add_ai_response, "add_client")
@@ -539,12 +556,15 @@ def test_create_document_for_new_client_asked_for_missing_info_then_provided(den
     description = _random_description()
     request_text = f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח כולל מע\"מ עבור {description}"
 
-    _send_turn_and_approve(chat_id=GODFATHER_CHAT_ID, text=request_text, id_prefix="E2E_027_ASKINFO_ASK")
+    # 2026-10-04 (bugfix-065): the request turn only - the blind "כן" that used to follow
+    # it answered a VAT question the request now settles itself ("כולל מע\"מ"); with similar
+    # clients it just got the same question asked again (ST13 trace, event 76).
+    _send_turn(GODFATHER_CHAT_ID, request_text, id_prefix="E2E_027_ASKINFO_ASK")
 
-    # Bare "yes, add them" - no phone/email given yet.
+    # Plainly asks to add the client - but no phone/email given yet.
     bare_yes_response, bare_yes_ai_response = _send_turn(
         chat_id=GODFATHER_CHAT_ID,
-        text="כן, תוסיף אותו",
+        text=f"אני מבקש להוסיף לקוח חדש בשם {client_name}.",
         id_prefix="E2E_027_ASKINFO_BAREYES",
     )
     assert not _calls_for(bare_yes_ai_response, "add_client"), (
@@ -603,11 +623,12 @@ def test_create_document_for_new_client_missing_info_not_provided_stops_flow(den
     description = _random_description()
     request_text = f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח כולל מע\"מ עבור {description}"
 
-    _send_turn_and_approve(chat_id=GODFATHER_CHAT_ID, text=request_text, id_prefix="E2E_027_NOINFO_ASK")
+    # Turn 1: ask for the invoice - the client doesn't exist yet.
+    _send_turn(GODFATHER_CHAT_ID, request_text, id_prefix="E2E_027_NOINFO_ASK")
 
     bare_yes_response, bare_yes_ai_response = _send_turn(
         chat_id=GODFATHER_CHAT_ID,
-        text="כן, תוסיף אותו",
+        text=f"אני מבקש להוסיף לקוח חדש בשם {client_name}.",
         id_prefix="E2E_027_NOINFO_BAREYES",
     )
     assert not _calls_for(bare_yes_ai_response, "add_client"), (
@@ -622,15 +643,32 @@ def test_create_document_for_new_client_missing_info_not_provided_stops_flow(den
         id_prefix="E2E_027_NOINFO_REFUSE",
     )
 
-    assert response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
-    assert not _calls_for(ai_response, "add_client"), (
-        f"add_client must never be called without phone/email, even after "
-        f"the user says they don't have it: "
-        f"{ai_response.mcp_calls if ai_response else None!r}"
-    )
-    assert "http" not in response, (
-        f"No document should have been created without a real client: {response!r}"
-    )
+    turns = [(response, ai_response)]
+    # The bot may not know add_client's required fields yet and offer to check
+    # them first (backbone.md rule 6) - accept that offer once.
+    if response is not None and "בדוק" in response:
+        turns.append(_send_turn(
+            chat_id=GODFATHER_CHAT_ID,
+            text="כן, תבדוק",
+            id_prefix="E2E_027_NOINFO_CHECK",
+        ))
+
+    for response, ai_response in turns:
+        assert response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
+        assert not _calls_for(ai_response, "add_client"), (
+            f"add_client must never be called without phone/email, even after "
+            f"the user says they don't have it: "
+            f"{ai_response.mcp_calls if ai_response else None!r}"
+        )
+        assert not (ai_response and ai_response.offer_approval_buttons), (
+            f"No approval should be offered without phone/email: {response!r}"
+        )
+        assert "גם בלי" not in response, (
+            f"The bot claimed the client can be created without phone/email: {response!r}"
+        )
+        assert "http" not in response, (
+            f"No document should have been created without a real client: {response!r}"
+        )
 
     # Verified via Morning: the client genuinely doesn't exist.
     details_response, details_ai_response = _send_turn(

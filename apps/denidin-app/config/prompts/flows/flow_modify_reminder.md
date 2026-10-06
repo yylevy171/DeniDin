@@ -7,7 +7,7 @@ Capabilities: `cap_reminders_read`, `cap_reminders_write`, `cap_approval_with_bu
 Follow these steps in order, to the letter.
 
 1. Load `cap_reminders_read` and list the user's active reminders. Work out which one the user's wording points to (its text, or its time). Never guess a reminder.
-   - Exactly one plausible match: use `cap_send_to_user` to confirm it with the user if there is any doubt.
+   - Exactly one plausible match: do not ask about it separately. Carry it straight into the approval, which shows the reminder; the user's yes or no there is the confirmation.
    - Several: use `cap_send_to_user` to show the candidates and ask which one.
    - None: use `cap_send_to_user` to say so. The flow is complete.
 2. If the reminder repeats, find out whether the user means the whole series or a single occurrence; ask with `cap_send_to_user` if it is not clear.

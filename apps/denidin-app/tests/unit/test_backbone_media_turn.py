@@ -103,6 +103,83 @@ class TestAnalyzeMediaFillsExtractedTextIntoTheStoredMessage:
         assert self._analyze(backbone, "")["extracted_text"] is None
 
 
+class TestAnalyzeMediaStoresTheReadDocumentInTheConversation:
+    """M1/M2 (2026-10-04): what analyze_media read is stored as its own internal user
+    message - the legacy ledger-stash block - so later turns (the rolling window) and the
+    post-turn ledger recognition see it, as on the legacy media path."""
+
+    def _analyze(self, backbone, extraction, media_type="image"):
+        backbone.denidin.store_inbound(_inbound(""))
+        ctx = {"chat_id": CHAT_ID, "message_id": "msg-media-1", "media": _media(media_type),
+               "original_message": _inbound("")}
+        extractor = {"image": "image_extractor.ImageExtractor", "pdf": "pdf_extractor.PDFExtractor",
+                     "docx": "docx_extractor.DOCXExtractor"}[media_type]
+        with patch(f"src.handlers.extractors.{extractor}") as mock_extractor_cls:
+            mock_extractor_cls.return_value.analyze_media.return_value = extraction
+            dispatch_direct_tool_call(backbone, "analyze_media", {}, ctx)
+        return _stored_messages(backbone)
+
+    def test_bank_confirmation_stash_is_stored_after_the_media_message(self, backbone):
+        media_msg, stash = self._analyze(backbone, {
+            "extracted_text": "העברה מאסולין אסתר 554", "doc_type": "bank",
+            "fields": {"payer_name": "אסולין אסתר", "amount": 554, "txn_date": "05/08/2026",
+                       "bank_number": "12", "bank_branch": "345", "bank_account": "678901"},
+            "missing_required_fields": []})
+
+        assert media_msg["message_id"] == "msg-media-1"
+        assert stash["ai_required_role"] == "user"
+        assert stash["whatsapp_id_message"] is None
+        assert stash["content"].splitlines() == [
+            "📸 התקבלה תמונה של אסמכתת העברה/הפקדה בנקאית.",
+            "פעולה: הפקדה",
+            "סכום: 554",
+            "תאריך הפקדה: 05/08/2026",
+            "מספר בנק: 12",
+            "מספר סניף: 345",
+            "מספר חשבון: 678901",
+            "לקוח משלם: אסולין אסתר",
+            "",
+            "--- טקסט שחולץ מהתמונה (מילה במילה) ---",
+            "העברה מאסולין אסתר 554",
+        ]
+
+    def test_agreement_stash_lists_each_component(self, backbone):
+        _media_msg, stash = self._analyze(backbone, {
+            "extracted_text": "הסכם שכר טרחה", "doc_type": "agreement",
+            "fields": {"client_name": "דנה כהן", "components": [
+                {"amount": 5000, "description": "מקדמה", "vat_status": "לא כולל"},
+                {"amount": 3000, "description": "סיום", "vat_status": "לא כולל"}]},
+            "missing_required_fields": []})
+
+        lines = stash["content"].splitlines()
+        assert lines[0] == "📸 התקבלה תמונה של הסכם שכר טרחה."
+        assert "שם הלקוח בהסכם: דנה כהן" in lines
+        assert "סכום קבוע: 5000 שקל — מקדמה" in lines
+        assert "סכום קבוע: 3000 שקל — סיום" in lines
+        assert 'מע"מ: לא כולל' in lines
+
+    def test_docx_agreement_stash_is_the_legacy_document_stash(self, backbone):
+        _media_msg, stash = self._analyze(backbone, {
+            "extracted_text": "גוף ההסכם", "document_analysis": {"document_type": "הסכם"}}, "docx")
+        lines = stash["content"].splitlines()
+        assert lines[0] == "📄 התקבל קובץ מסמך (DOCX) של הסכם שכר טרחה."
+        assert lines[-2:] == ["--- טקסט שחולץ מהמסמך (מילה במילה) ---", "גוף ההסכם"]
+
+    def test_other_document_stores_its_verbatim_text(self, backbone):
+        _media_msg, stash = self._analyze(backbone, {
+            "extracted_text": "חשבון חשמל 300", "doc_type": "unknown", "fields": {}})
+        assert stash["content"].splitlines() == [
+            "📸 התקבלה תמונה.", "", "--- טקסט שחולץ מהתמונה (מילה במילה) ---", "חשבון חשמל 300"]
+
+    def test_nothing_read_stores_nothing_more(self, backbone):
+        assert len(self._analyze(backbone, {"extracted_text": "", "doc_type": "unknown"})) == 1
+
+    def test_the_stash_is_in_the_next_turns_rolling_window(self, backbone):
+        self._analyze(backbone, {"extracted_text": "חשבון חשמל 300", "doc_type": "unknown"})
+        window = backbone._load_conversation_history(CHAT_ID)
+        assert any("חשבון חשמל 300" in item["content"] for item in window)
+
+
 class TestPlanningNoteStoredImmediately:
     def test_note_stored_the_moment_it_is_recorded(self, backbone):
         backbone._turn_original_message = _inbound("שלום")

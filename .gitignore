@@ -158,3 +158,6 @@ scripts/backup_prod/config.json
 # root clone's scripts/ (machine-local, not tied to any teammate clone), copied from
 # scripts/windows_prod/mount_data_foreground.sh - never committed.
 /scripts/mount_data_foreground.sh
+
+# Debug traces are local-only (large, regenerated per run)
+apps/denidin-app/debug_traces/

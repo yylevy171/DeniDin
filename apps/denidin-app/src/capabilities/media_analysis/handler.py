@@ -10,13 +10,25 @@ prefix is empty and its inline ledger capture a no-op (real capture happens thro
 DeniDin's shared post-turn recognition once the turn is persisted).
 This capability's own job is extraction only.
 """
+import dataclasses
 import json
 import logging
-from typing import Any, Dict, Tuple
+import uuid
+from typing import Any, Dict, Optional, Tuple
 
 from src.constants.error_messages import BACKBONE_NO_MEDIA_ATTACHED
+from src.managers.ledger_event_recognizer import build_ledger_stash_text
 
 logger = logging.getLogger(__name__)
+
+# The legacy stash's "not recognised" token and verbatim-text frames
+# (ledger_event_recognizer.build_ledger_stash_text), for a document of no ledger type.
+_STASH_MISSING = "לא זוהה"
+_UNKNOWN_HEADERS = {
+    "image": "📸 התקבלה תמונה.",
+    "pdf": "📄 התקבל קובץ PDF.",
+    "docx": "📄 התקבל קובץ מסמך (DOCX).",
+}
 
 
 def _build_extractor(media_type: str, extractor_context: Any):
@@ -61,6 +73,67 @@ def _format_result(result: Dict[str, Any]) -> Tuple[str, str]:
     return json.dumps(payload, ensure_ascii=False, indent=2), extracted_text
 
 
+def _shared_vat_status(components: Any) -> Optional[str]:
+    """The agreement's VAT status when every component states the same one, else None
+    (the extractor reads VAT per component; the stash shows one line)."""
+    statuses = {c.get("vat_status") for c in components if isinstance(c, dict)} if isinstance(components, list) else set()
+    return statuses.pop() if len(statuses) == 1 else None
+
+
+def build_media_stash_text(result: Dict[str, Any], media_type: str) -> Optional[str]:
+    """The structured block legacy stored in the conversation for a read document
+    (Feature 069's ledger stash, denidin.py's synthetic turn): a bank confirmation or a
+    fee agreement is rendered by the same build_ledger_stash_text, its fields mapped
+    from the extractor's `fields`; any other document gets the same verbatim-text frame
+    (legacy sent that text as the reply, so it was in the conversation too). None when
+    nothing was read."""
+    extracted_text = (result.get("extracted_text") or result.get("raw_response") or "").strip()
+    fields = result.get("fields") or {}
+    doc_type = result.get("doc_type")
+    if doc_type is None and (result.get("document_analysis") or {}).get("document_type") == "הסכם":
+        doc_type = "agreement"
+    medium = "document" if media_type == "docx" else "image"
+
+    if doc_type == "bank":
+        analysis = {
+            "client_name": fields.get("payer_name"),
+            "bank_number": fields.get("bank_number"),
+            "bank_branch": fields.get("bank_branch"),
+            "bank_account": fields.get("bank_account"),
+            "components": [{"amount": fields.get("amount"), "txn_date": fields.get("txn_date")}],
+        }
+        return build_ledger_stash_text(extracted_text, analysis, "בנק", source_medium=medium)
+    if doc_type == "agreement":
+        if media_type == "docx":
+            # As legacy: a DOCX agreement carries only its parsed body text.
+            return build_ledger_stash_text(extracted_text, None, "הסכם", source_medium="document")
+        components = fields.get("components") or []
+        analysis = {
+            "client_name": fields.get("client_name"),
+            "components": components if isinstance(components, list) else [],
+            "vat_status": _shared_vat_status(components),
+        }
+        return build_ledger_stash_text(extracted_text, analysis, "הסכם", source_medium=medium)
+    if not extracted_text:
+        return None
+    frame = ("--- טקסט שחולץ מהתמונה (מילה במילה) ---" if media_type == "image"
+             else "--- טקסט שחולץ מהמסמך (מילה במילה) ---")
+    header = _UNKNOWN_HEADERS.get(media_type, "📄 התקבל קובץ.")
+    return "\n".join([header, "", frame, extracted_text or _STASH_MISSING])
+
+
+def _store_extraction_message(backbone, turn_context: Dict[str, Any], stash_text: Optional[str]) -> None:
+    """Stores the read document's stash as its own internal user message, the way legacy
+    stored its synthetic ledger-stash turn (denidin.py's _process_media_message): later
+    turns see it in the rolling window, and the post-turn ledger recognition sees its
+    structured fields. Never raises (DeniDin.store_inbound logs and swallows)."""
+    original = turn_context.get("original_message")
+    if not stash_text or original is None:
+        return
+    backbone.denidin.store_inbound(
+        dataclasses.replace(original, message_id=str(uuid.uuid4())), content=stash_text, internal=True)
+
+
 def dispatch_direct_tool_call(backbone, tool_name: str, args: Dict[str, Any],
                                turn_context: Dict[str, Any]) -> str:
     """Executes one `analyze_media` call directly on the ongoing chain
@@ -80,4 +153,5 @@ def dispatch_direct_tool_call(backbone, tool_name: str, args: Dict[str, Any],
 
     output, extracted_text = _format_result(result)
     _record_extracted_text(backbone, turn_context, extracted_text)
+    _store_extraction_message(backbone, turn_context, build_media_stash_text(result, media.media_type))
     return output

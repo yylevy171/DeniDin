@@ -78,12 +78,30 @@ def _default_mock_config_fields(config: Any) -> None:
         setattr(config, name, value.default_factory())  # type: ignore[misc]
 
 
+def _keep_storage_out_of_real_data(config: Any) -> None:
+    """build_denidin_objects builds every manager, including the ones a test never set
+    a location for: TelemetryManager under {data_root}/telemetry, MemoryManager under
+    memory.longterm.storage_dir (default data/memory, not relative to data_root). Left
+    as is, a test config with the default data_root ("data") or no longterm storage_dir
+    writes into the app's real data/ folder - so point both at a throwaway dir."""
+    if str(config.data_root) in ("data", "data/"):
+        config.data_root = tempfile.mkdtemp(prefix="denidin_test_")
+    memory = config.memory if isinstance(config.memory, dict) else {}
+    longterm = memory.get("longterm")
+    if not isinstance(longterm, dict):
+        longterm = {}
+    if "storage_dir" not in longterm:
+        memory = {**memory, "longterm": {**longterm, "storage_dir": str(Path(config.data_root) / "memory")}}
+        config.memory = memory
+
+
 def make_app_denidin(ai_client: Any, config: AppConfiguration, **objects: Any) -> Any:
     """A DeniDin with every object initialize_app builds except the AI implementation
     (denidin.build_denidin_objects), on `config` as given; `objects` then replace any
     of them."""
     import denidin  # pylint: disable=import-outside-toplevel
     _default_mock_config_fields(config)
+    _keep_storage_out_of_real_data(config)
     app = denidin.DeniDin(config, ai_client=ai_client)
     denidin.build_denidin_objects(app)
     for name, value in objects.items():

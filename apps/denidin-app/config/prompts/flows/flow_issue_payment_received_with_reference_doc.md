@@ -8,7 +8,7 @@ Flows it may load: `flow_invoicing_query`.
 Follow these steps in order, to the letter.
 
 1. Load `flow_invoicing_query` and find the ONE real document the user means. Reuse an id and exact name you already have from earlier in this conversation. Otherwise search using only what the current request gives you (a client name, an amount, a date), and add a filter only if this request itself states one.
-   - Exactly one plausible match: use `cap_send_to_user` to confirm it with the user rather than asking a generic question.
+   - Exactly one plausible match: do not ask about it separately. Carry it straight into the approval, which shows its details; the user's yes or no there is the confirmation.
    - Several, or none: use `cap_send_to_user` to say what you found and ask what identifies the right one. Never guess and never ask the user for an internal id.
    A wrong match is a real, incorrect payment or cancellation, so be certain.
    Then fetch that document's own current details in this same turn. The approval must show real, fresh data, never memory from an earlier turn.

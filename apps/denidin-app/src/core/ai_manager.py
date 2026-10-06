@@ -15,6 +15,7 @@ own turn (`single_turn`), button-tap resolution, sent-approval bookkeeping, and 
 hooks the media extractors call.
 """
 import contextlib
+import json
 import logging
 import re
 import time
@@ -130,17 +131,46 @@ def _field(item: Any, name: str) -> Any:
     return item.get(name) if isinstance(item, dict) else getattr(item, name, None)
 
 
+def _arguments_signature(call: Any) -> str:
+    """A call's arguments as one comparable string: a JSON string or dict both become
+    sorted-key JSON, so the same arguments compare equal however they were carried."""
+    arguments = _field(call, "arguments")
+    if isinstance(arguments, str):
+        try:
+            arguments = json.loads(arguments)
+        except ValueError:
+            return arguments
+    try:
+        return json.dumps(arguments, sort_keys=True, ensure_ascii=False)
+    except TypeError:
+        return repr(arguments)
+
+
+def _call_succeeded(call: Any) -> bool:
+    """A call carrying an error, or a local tool whose output starts with "⚠️"/"error:",
+    failed - it is an attempt, never an execution."""
+    if _field(call, "error"):
+        return False
+    output = _field(call, "output")
+    return not (isinstance(output, str) and output.startswith(("⚠️", "error:")))
+
+
 @dataclass
 class WriteExecutions:
-    """What an approved turn executed: how many times each write tool ran, and the
+    """What an approved turn executed: how many times each write tool was called
+    (attempts, failed ones included), the arguments of each SUCCESSFUL call, and the
     first failure text any call carried (for telling the user why nothing ran)."""
     counts: Dict[str, int] = field(default_factory=dict)
     failure_detail: str = ""
+    successful_arguments: Dict[str, List[str]] = field(default_factory=dict)
 
     @property
     def duplicated(self) -> List[str]:
-        """Write tools that ran more than once."""
-        return [name for name, count in self.counts.items() if count > 1]
+        """Write tools that SUCCEEDED more than once with identical arguments - the
+        signature of the same approved call being run twice (2026-10-04). Failed
+        attempts, and deliberate writes with different arguments, never count."""
+        return [name for name, signatures in self.successful_arguments.items()
+                if len(signatures) != len(set(signatures))]
 
     @property
     def ran_any(self) -> bool:
@@ -693,7 +723,8 @@ class AIManager(ABC):  # pylint: disable=too-many-instance-attributes,too-many-p
     def tally_write_executions(cls, calls: Iterable[Any], write_tool_names: Iterable[str]
                                ) -> WriteExecutions:
         """Counts executions of each tool in `write_tool_names` among `calls` (raw
-        `mcp_call` items or {name, output, error} dicts). The failure detail is taken
+        `mcp_call` items or {name, arguments, output, error} dicts), and records the
+        arguments of each successful one (WriteExecutions.duplicated). The failure detail is taken
         from the first call of ANY name that carries output or error text, cut to 200
         characters."""
         names = set(write_tool_names)
@@ -702,6 +733,8 @@ class AIManager(ABC):  # pylint: disable=too-many-instance-attributes,too-many-p
             name = _field(call, "name")
             if name in names:
                 result.counts[name] = result.counts.get(name, 0) + 1
+                if _call_succeeded(call):
+                    result.successful_arguments.setdefault(name, []).append(_arguments_signature(call))
             if not result.failure_detail:
                 output = _field(call, "output")
                 if output:

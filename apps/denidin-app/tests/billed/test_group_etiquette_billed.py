@@ -80,7 +80,7 @@ class TestGroupEtiquetteBilled:
 
     @pytest.fixture
     def denidin_app(self, config):
-        # Feature 059 item 7: case7 needs ai_handler.own_whatsapp_number, which
+        # Feature 059 item 7: case7 needs whatsapp_handler.own_whatsapp_number, which
         # is only resolved when initialize_app() gets a real green_api client
         # (a live getWaSettings() call - denidin.py:388). Feature 043 made that
         # client constructor-injected; nothing updated the billed fixtures, so
@@ -98,7 +98,7 @@ class TestGroupEtiquetteBilled:
         from whatsapp_api_client_python.API import GreenAPI
 
         app = denidin.denidin_app
-        if app is None or not getattr(app, "own_whatsapp_number", ""):
+        if app is None or not getattr(getattr(app, "whatsapp_handler", None), "own_whatsapp_number", ""):
             config_dict = {
                 'green_api_instance_id': config.green_api_instance_id,
                 'green_api_token': config.green_api_token,
@@ -240,8 +240,8 @@ class TestGroupEtiquetteBilled:
         exact real shape - "@<own bare-digit number>" - using denidin_app's own,
         actually-resolved own_whatsapp_number (never a hardcoded guess), and must get
         a substantive reply, same as case6's manually-typed "@DeniDin" - proving
-        AIHandler.create_request's self-mention normalization (_normalize_self_mentions)
-        correctly rewrites it before the model ever sees the raw digits."""
+        WhatsAppHandler's self-mention normalization (normalize_self_mentions) correctly
+        rewrites it before the model ever sees the raw digits."""
         from denidin import handle_text_message
 
         # Feature 059 item 7: the denidin_app fixture now injects a real Green
@@ -249,7 +249,7 @@ class TestGroupEtiquetteBilled:
         # A miss here means the live getWaSettings call genuinely failed - a
         # real problem to surface, not silently skip past (the whole point of
         # item 7 was that this test skipped on literally every run).
-        own_number = denidin_app.own_whatsapp_number
+        own_number = denidin_app.whatsapp_handler.own_whatsapp_number
         assert own_number, (
             "own_whatsapp_number was not resolved - the fixture's real Green API "
             "getWaSettings() call failed or returned no 'phone' field. Check "

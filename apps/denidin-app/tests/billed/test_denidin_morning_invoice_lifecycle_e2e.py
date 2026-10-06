@@ -149,7 +149,7 @@ def _seed_fresh_invoice(amount: int, description: str) -> str:
     client_name = pick_existing_client()["name"]
     _, (response, ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
-        text=f"צור חשבונית ל-{client_name} על {amount} ₪ עבור {description}",
+        text=f"צור חשבונית ל-{client_name} על {amount} ₪ כולל מע\"מ עבור {description}",
         id_prefix="E2E_SEED",
     )
     create_calls = _calls_for(ai_response, "create_invoice")
@@ -249,7 +249,9 @@ def test_godfather_marks_invoice_paid_via_whatsapp(denidin_app):
     # The resulting status, not just call success, is what this flow proves:
     # create_receipt's confirmation names the new receipt against the
     # original invoice - a follow-up status check confirms it actually paid.
-    assert any("קבלה" in (c["output"] or "") for c in receipt_calls), (
+    # Tool output is JSON with \u-escaped Hebrew (OpenAI re-serializes mcp_call
+    # output) - check the parsed document type, never a raw Hebrew substring.
+    assert any(json.loads(c["output"]).get("type") == 400 for c in receipt_calls if c["output"]), (
         f"create_receipt output did not reflect a new receipt: {receipt_calls!r}"
     )
     # Accept either the masculine "שולם" or feminine "שולמה" — the model may
@@ -322,7 +324,9 @@ def test_godfather_cancels_invoice_via_whatsapp(denidin_app):
 
     # The resulting status, not just call success: the confirmation message
     # explicitly names the new credit invoice issued to offset the amount.
-    assert any("זיכוי" in (c["output"] or "") for c in credit_calls), (
+    # Tool output is JSON with \u-escaped Hebrew (OpenAI re-serializes mcp_call
+    # output) - check the parsed document type, never a raw Hebrew substring.
+    assert any(json.loads(c["output"]).get("type") == 330 for c in credit_calls if c["output"]), (
         f"create_credit_note output did not reflect a new credit note: {credit_calls!r}"
     )
     assert "בוטל" in response or "זיכוי" in response, (
@@ -377,7 +381,6 @@ def test_godfather_declines_invoice_cancellation(denidin_app):
 # distinguish which closing document type actually got linked, since these
 # are the exact strings a get_invoice_details reply/tool-output surfaces.
 _COMBO_DOCUMENT_LABEL_HE = "חשבונית מס / קבלה"  # type 320
-_RECEIPT_DOCUMENT_LABEL_HE = "קבלה"  # type 400 - deliberately NOT a substring of the 320 label above
 
 
 def _seed_transaction_account_invoice(amount: int, description: str) -> str:
@@ -529,23 +532,39 @@ def test_godfather_marks_transaction_account_invoice_paid_via_whatsapp(denidin_a
         text=f"תראה לי את כל הפרטים והמסמכים המקושרים של חשבון העסקה של {client_name}",
         id_prefix="E2E_020_DETAILS_300",
     )
-    details_calls = _calls_for(details_ai_response, "get_invoice_details")
+    # Either read tool may answer "show me the linked documents":
+    # get_invoice_details returns the 300 (linked_document -> its 320);
+    # list_invoices returns {"documents": [...]} with the 320 itself
+    # (linked_document -> the 300). Accept the link from either side.
+    details_calls = _calls_for(details_ai_response, "get_invoice_details") + _calls_for(
+        details_ai_response, "list_invoices"
+    )
     combined_output = "\n".join(c["output"] or "" for c in details_calls)
 
-    docs = [json.loads(c["output"]) for c in details_calls if c["output"]]
-    assert any(d.get("linked_document") for d in docs), (
+    docs = []
+    for c in details_calls:
+        if c["output"]:
+            parsed = json.loads(c["output"])
+            docs.extend(parsed.get("documents", [parsed]))
+    account_numbers = {d.get("display_number") for d in docs if d.get("type") == 300}
+    # Tool output is JSON with \u-escaped Hebrew (OpenAI re-serializes mcp_call
+    # output) - check parsed document types, never a raw label.
+    linked_types = [
+        (d.get("linked_document") or {}).get("type") for d in docs if d.get("type") == 300
+    ] + [
+        d.get("type") for d in docs
+        if (d.get("linked_document") or {}).get("number") in account_numbers
+    ]
+    linked_types = [t for t in linked_types if t is not None]
+    assert linked_types, (
         f"Expected a linked document in the invoice details reply, "
         f"got tool output: {combined_output!r}"
     )
-    assert _COMBO_DOCUMENT_LABEL_HE in combined_output, (
+    assert 320 in linked_types, (
         f"Expected a linked type-320 combo document ({_COMBO_DOCUMENT_LABEL_HE!r}) "
         f"for a חשבון עסקה marked paid, got tool output: {combined_output!r}"
     )
-    # The bare receipt label ("קבלה") is a substring of the combo label
-    # ("חשבונית מס / קבלה"), so strip every combo-label occurrence out first -
-    # what remains must not still contain a standalone receipt label.
-    without_combo_labels = combined_output.replace(_COMBO_DOCUMENT_LABEL_HE, "")
-    assert _RECEIPT_DOCUMENT_LABEL_HE not in without_combo_labels, (
+    assert 400 not in linked_types, (
         f"A type-300 document must not be closed by a bare type-400 receipt: {combined_output!r}"
     )
 
@@ -564,7 +583,7 @@ def test_godfather_declines_marking_transaction_account_invoice_paid(denidin_app
         # comment above - states VAT-inclusion explicitly so there's a real
         # create_combo_document_as_reference pending approval to decline, rather than
         # the model asking a VAT-clarifying question with nothing yet pending.
-        text=f"סמן את חשבון העסקה של {client_name} כשולם, כולל מע״מ",
+        text=f"סמן את חשבון העסקה של {client_name} כשולם היום, כולל מע״מ",
         id_prefix="E2E_020_PAID_300_DECLINE",
     )
 
@@ -583,8 +602,14 @@ def test_godfather_declines_marking_transaction_account_invoice_paid(denidin_app
         details_ai_response, "list_invoices"
     )
     combined_output = "\n".join(c["output"] or "" for c in details_calls)
-    docs = [json.loads(c["output"]) for c in details_calls if c["output"]]
-    assert any(d.get("status_code") == 0 for d in docs), (
+    # get_invoice_details returns one document; list_invoices wraps them in
+    # {"documents": [...]} - check each actual type-300 document.
+    docs = []
+    for c in details_calls:
+        if c["output"]:
+            parsed = json.loads(c["output"])
+            docs.extend(parsed.get("documents", [parsed]))
+    assert any(d.get("type") == 300 and d.get("status_code") == 0 for d in docs), (
         f"Expected the חשבון עסקה to still be unpaid after the decline: "
         f"{combined_output!r}. Bot reply: {details_response!r}"
     )
@@ -646,8 +671,9 @@ def test_godfather_marks_already_paid_credit_invoice_as_paid_is_rejected(denidin
     # all), the user-facing reply must not claim success. Hebrew can express
     # this refusal via several negation forms - "לא"/"לא ניתן", or
     # "אינה"/"אינו"/"אין" (e.g. "חשבונית זיכוי אינה מסמך שמסמנים כשולם") - so
-    # check for any of them rather than assuming one specific phrasing.
-    negation_markers = ("לא", "אינה", "אינו", "אין")
+    # check for any of them rather than assuming one specific phrasing. "אי אפשר"
+    # added 2026-10-04 (a correct refusal, "אי אפשר לסמן אותו כשולם", failed this).
+    negation_markers = ("לא", "אינה", "אינו", "אין", "אי אפשר")
     assert "שולם" not in response or any(marker in response for marker in negation_markers), (
         f"Bot reply appears to falsely confirm payment for an unsupported "
         f"document type. Full reply: {response!r}"

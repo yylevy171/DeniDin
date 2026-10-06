@@ -26,6 +26,14 @@ CONTACT_CARD_ONE_AT_A_TIME = "אני יכול לטפל באיש קשר אחד ב
 # the approval-resolution call was observed to re-execute the already-
 # approved MCP tool server-side, creating two invoices for one approval.
 APPROVAL_FAILED_TRY_AGAIN = "לא הצלחתי לבצע את הפעולה כרגע. אנא נסה לאשר שוב בעוד רגע."
+# Backbone (2026-10-04): appended AFTER the model's own reply on an approved-write
+# turn - never replacing it. Duplicated: the same write succeeded twice with identical
+# arguments. Not performed: the user approved and no write was even attempted.
+APPROVED_WRITE_POSSIBLY_DUPLICATED_NOTE = (
+    "⚠️ שים לב: המערכת רשמה שאותה פעולה בוצעה פעמיים עם אותם פרטים. "
+    "כדאי לבדוק במורנינג שלא נוצר מסמך כפול."
+)
+APPROVED_WRITE_NOT_PERFORMED_NOTE = "⚠️ לא בוצעה בפועל אף פעולה במערכת."
 APPROVAL_POSSIBLY_DUPLICATED = (
     "אירעה שגיאה באישור הפעולה וייתכן שהיא בוצעה יותר מפעם אחת. "
     "אנא בדוק ידנית במערכת לפני שתנסה שוב, ואל תאשר שוב בינתיים."
@@ -61,3 +69,8 @@ REMINDER_CAP_EXCEEDED = "כבר יש 20 תזכורות פעילות - המספר
 BACKBONE_CAPABILITY_NOT_CONFIGURED = "היכולת הזו לא זמינה כרגע. אנא נסה שוב מאוחר יותר."
 BACKBONE_NO_MEDIA_ATTACHED = "לא זוהה קובץ מצורף להודעה הזו, אין מה לחלץ."
 BACKBONE_UNEXPECTED_ERROR = "אני נתקלתי בשגיאה בעיבוד הודעתך. אנא נסה שוב."
+# The legacy single_turn's per-error fallbacks (AIHandler._get_response_impl's
+# APITimeoutError / RateLimitError / APIError replies), in Hebrew (C8, 2026-10-04).
+BACKBONE_AI_TIMEOUT = "יש לי בעיה להתחבר לשירות ה-AI כרגע. אנא נסה שוב מאוחר יותר."
+BACKBONE_AI_RATE_LIMITED = "אני עמוס כרגע. אנא נסה שוב בעוד דקה."
+BACKBONE_AI_API_ERROR = "נתקלתי בשגיאה בעיבוד הבקשה שלך. אנא נסה שוב."

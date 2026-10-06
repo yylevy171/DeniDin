@@ -265,7 +265,6 @@ def test_bugfix_058_error_reply_sent_to_user_is_persisted_in_session(
         denidin.denidin_app = broken_app
         if broken_app.green_api_bot is None:
             broken_app.green_api_bot = object()
-        broken_app.ai_manager.green_api_bot = broken_app.green_api_bot
 
         notification = create_real_notification(build_text_webhook(
             chat_id=GODFATHER_CHAT_ID,

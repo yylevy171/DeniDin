@@ -142,7 +142,7 @@ def denidin_app(denidin_config, live_morning_tunnel):
     # - must assign it here, matching tests/billed/test_simple_text_e2e.py's
     # existing pattern, or the router handler treats the app as uninitialized.
     denidin.denidin_app = denidin.initialize_app(config_dict)
-    # initialize_app() alone leaves ai_handler.green_api_bot unset (only __main__ wires
+    # initialize_app() alone leaves DeniDin.green_api_bot unset (only __main__ wires
     # a real one) - react_to_message's dispatch bails out early with "nothing to react
     # through" (green_api_bot_set=False) without this, silently producing zero real
     # send_reaction calls regardless of what the model/constitution/tool schema say.
@@ -157,7 +157,6 @@ def denidin_app(denidin_config, live_morning_tunnel):
     # scripts/run_reaction_scenario.py's manual driver.
     if denidin.denidin_app.green_api_bot is None:
         denidin.denidin_app.green_api_bot = object()
-    denidin.denidin_app.ai_manager.green_api_bot = denidin.denidin_app.green_api_bot
     return denidin.denidin_app
 
 
@@ -202,7 +201,7 @@ def _clear_reminder_tables() -> None:
     import denidin
 
     app = getattr(denidin, "denidin_app", None)
-    reminder_manager = getattr(getattr(app, "ai_handler", None), "reminder_manager", None)
+    reminder_manager = getattr(app, "reminder_manager", None)
     if reminder_manager is None:
         reminders_dir = sanity_worker_data_root() / "reminders"
         if reminders_dir.exists():
@@ -266,7 +265,7 @@ def _clear_ledger_events() -> None:
             f.unlink()
 
     app = getattr(denidin, "denidin_app", None)
-    ledger_event_manager = getattr(getattr(app, "ai_handler", None), "ledger_event_manager", None)
+    ledger_event_manager = getattr(app, "ledger_event_manager", None)
     if ledger_event_manager is not None:
         # pylint: disable=protected-access - test-only reach into the
         # manager's in-memory index for cleanup, same convention as

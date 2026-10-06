@@ -35,6 +35,7 @@ from src.handlers.extractors.image_extractor import (
     DOC_TYPE_BANK,
     DOC_TYPE_UNKNOWN,
 )
+from tests.e2e_helpers import same_txn_date
 
 logger = logging.getLogger(__name__)
 
@@ -158,7 +159,7 @@ def test_bank_test_image_is_classified_as_a_bank_deposit(image_extractor):
     )
     fields = result["fields"]
     assert float(fields.get("amount")) == 554, f"amount: {fields.get('amount')!r}"
-    assert fields.get("txn_date") == "05/08/2026", f"txn_date: {fields.get('txn_date')!r}"
+    assert same_txn_date(fields.get("txn_date"), "05/08/2026"), f"txn_date: {fields.get('txn_date')!r}"
     payer_tokens = set(str(fields.get("payer_name") or "").split())
     assert {"אסתר", "אסולין"} <= payer_tokens, (
         f"payer_name: {fields.get('payer_name')!r} - the name is printed twice in "
@@ -202,7 +203,7 @@ def test_kehunai_deposit_is_classified_as_a_bank_deposit(image_extractor):
     )
     fields = result["fields"]
     assert float(fields.get("amount")) == 1888, f"amount: {fields.get('amount')!r}"
-    assert fields.get("txn_date") == "02/08/2026", f"txn_date: {fields.get('txn_date')!r}"
+    assert same_txn_date(fields.get("txn_date"), "02/08/2026"), f"txn_date: {fields.get('txn_date')!r}"
     assert str(fields.get("bank_number")) == "11", f"bank_number: {fields.get('bank_number')!r}"
     assert str(fields.get("bank_branch")) == "303", f"bank_branch: {fields.get('bank_branch')!r}"
     assert str(fields.get("bank_account")) == "13008082", f"bank_account: {fields.get('bank_account')!r}"

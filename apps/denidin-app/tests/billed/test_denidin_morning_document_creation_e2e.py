@@ -152,10 +152,12 @@ def test_godfather_creates_transaction_account_via_whatsapp(denidin_app):
         f"was given: {ask_ai_response.mcp_calls if ask_ai_response else None!r}"
     )
 
-    # First "כן" answers the mandatory VAT-inclusion question - this produces
-    # the real pending approval, not an execution yet.
+    # This turn answers the mandatory VAT-inclusion question - this produces
+    # the real pending approval, not an execution yet. Answered explicitly
+    # (2026-10-04): the question is "included or not?", which a bare "כן"
+    # doesn't answer.
     _, vat_ai_response = _send_turn(
-        chat_id=GODFATHER_CHAT_ID, text="כן", id_prefix="E2E_TXN_ACCT_VAT"
+        chat_id=GODFATHER_CHAT_ID, text="כולל מע\"מ", id_prefix="E2E_TXN_ACCT_VAT"
     )
     assert not _calls_for(vat_ai_response, "create_transaction_account"), (
         f"create_transaction_account executed before the actual approval turn: "

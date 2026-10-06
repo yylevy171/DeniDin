@@ -134,7 +134,7 @@ def test_godfather_creates_invoice_via_whatsapp(denidin_app):
 
     (ask_response, ask_ai_response), (response, ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
-        text=f"{client_name} שילם {amount} שח היום עבור {description}. תפיק חשבונית מס קבלה",
+        text=f"{client_name} שילם {amount} שח היום במזומן עבור {description}. תפיק חשבונית מס קבלה",
         id_prefix="E2E_CREATE",
     )
 
@@ -292,7 +292,7 @@ def test_godfather_declines_invoice_creation(denidin_app):
 
     response, ai_response = _send_turn_and_decline(
         chat_id=GODFATHER_CHAT_ID,
-        text=f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח עבור {description}",
+        text=f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח כולל מע\"מ עבור {description}",
         id_prefix="E2E_CREATE_DECLINE",
     )
 
@@ -320,7 +320,7 @@ def test_godfather_ignores_pending_approval_with_unrelated_message(denidin_app):
 
     _send_turn(
         chat_id=GODFATHER_CHAT_ID,
-        text=f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח עבור {description}",
+        text=f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח כולל מע\"מ עבור {description}",
         id_prefix="E2E_CREATE_UNRELATED_ASK",
     )
     response, ai_response = _send_turn(
@@ -344,7 +344,7 @@ def test_godfather_approval_survives_intervening_small_talk(denidin_app):
     amount = _random_amount()
     description = _random_description()
     client_name = pick_existing_client()["name"]  # Feature 059 item 5: any existing client works
-    request_text = f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח עבור {description}"
+    request_text = f"תפיק חשבונית חדשה עבור {client_name} על סך {amount} שח כולל מע\"מ עבור {description}"
 
     _send_turn(
         chat_id=GODFATHER_CHAT_ID,

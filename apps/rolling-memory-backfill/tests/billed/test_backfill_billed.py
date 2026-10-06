@@ -29,14 +29,13 @@ import pytest
 
 import backfill_daily_summaries as cli
 from _denidin_loader import (
-    RollMarkerStore,
     collection_name_for_chat,
     local_calendar_date,
     now_local,
     roll_service,
 )
 from src.managers.message_integrity import assert_message_integrity
-from src.managers.session_manager import SessionManager
+from tests.backfill_test_support import make_roll_context, make_roll_marker_store, make_session_manager
 
 pytestmark = pytest.mark.billed
 
@@ -103,7 +102,7 @@ def test_backfill_ac4_end_to_end_billed(tmp_path, capsys):
     today = local_calendar_date(now_local())
     # Three distinct out-of-window days with content + one fully-empty day between,
     # for two chats (a group and a 1:1). Days: 20, 18, 17 ago have messages; 19 is empty.
-    sm = SessionManager(storage_dir=str(data_root / "sessions"))
+    sm = make_session_manager(data_root / "sessions")
     _seed(sm, GROUP, "user", "דנה: צריך להכין הצעת מחיר ללקוח החדש עד סוף השבוע.", 20, sender_name="דנה")
     _seed(sm, GROUP, "assistant", "אשלח טיוטה מחר בבוקר.", 20)
     _seed(sm, GROUP, "user", "יוסי: הפגישה עם רואה החשבון נדחתה ליום שלישי.", 18, sender_name="יוסי")
@@ -119,7 +118,7 @@ def test_backfill_ac4_end_to_end_billed(tmp_path, capsys):
             "--since", since.isoformat(), "--until", until.isoformat(), "--yes"]
 
     # digest the raw message tree up front (backfill must not touch a single byte)
-    sm0 = SessionManager(storage_dir=str(data_root / "sessions"))
+    sm0 = make_session_manager(data_root / "sessions")
     before_digests = {
         c: _tree_digest(Path(sm0.storage_dir) / (getattr(s, "storage_path", None) or s.session_id))
         for c in chats for s in [sm0.get_session(c)]
@@ -131,7 +130,7 @@ def test_backfill_ac4_end_to_end_billed(tmp_path, capsys):
     report = capsys.readouterr().out
     print(report)  # surfaced for the human operator review (T090a requirement)
 
-    store = RollMarkerStore(str(data_root / "memory_rolls"))
+    store = make_roll_marker_store(data_root / "memory_rolls")
     # every (chat, date) in range has a committed marker — including the empty day
     for c in chats:
         for d in days:
@@ -165,7 +164,7 @@ def test_backfill_ac4_end_to_end_billed(tmp_path, capsys):
         assert set(_summary_ids(data_root, c, ds)["ids"]) == ids  # identical, no dupes
 
     # --- backfill is read-only: integrity holds + raw bytes untouched ----
-    sm1 = SessionManager(storage_dir=str(data_root / "sessions"))
+    sm1 = make_session_manager(data_root / "sessions")
     for c in chats:
         s = sm1.get_session(c)
         sdir = Path(sm1.storage_dir) / (getattr(s, "storage_path", None) or s.session_id)
@@ -177,21 +176,16 @@ def test_backfill_ac4_end_to_end_billed(tmp_path, capsys):
     # --- a following real nightly sweep skips every migrated day ----------
     # (the sweep's own archive step DOES move these out-of-window files into
     # archived/, so we assert on the roll — no re-summarise — not on file paths.)
-    from src.managers.memory_manager import MemoryManager
     from openai import OpenAI
 
-    session_manager = SessionManager(storage_dir=str(data_root / "sessions"))
-    roll_marker_store = RollMarkerStore(str(data_root / "memory_rolls"))
-    mem = MemoryManager(
-        storage_dir=str(data_root / "memory"),
-        embedding_model=ai_cfg["ai_embedding_model"],
+    # The global context the nightly roll reads (REQ-063-08), built exactly as
+    # backfill_daily_summaries.py builds it.
+    ctx = make_roll_context(
+        data_root, memory=ai_cfg["memory"], ai_model=ai_cfg["ai_model"],
+        ai_embedding_model=ai_cfg["ai_embedding_model"],
         ai_client=OpenAI(api_key=ai_cfg["ai_api_key"]),
     )
-    ctx = cli.RollContext(
-        session_manager=session_manager, roll_marker_store=roll_marker_store, memory_manager=mem,
-        ai_client=OpenAI(api_key=ai_cfg["ai_api_key"]),
-        config=cli.RollConfig(ai_model=ai_cfg["ai_model"], memory=ai_cfg["memory"]),
-    )
+    session_manager = ctx.session_manager
     roll_service._sweep_daily_roll(ctx, now=now_local(), lookback_days=21, log_prefix="[TEST] ")
     for c in chats:
         for ds in nonempty[c]:

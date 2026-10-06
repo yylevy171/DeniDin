@@ -38,7 +38,8 @@
       "tested": "$client"
     },
     "payer_name": {
-      "null": true
+      "free_text": true,
+      "optional": true
     },
     "description": {
       "free_text": true
