@@ -5,6 +5,7 @@ No mocks: drives denidin_mcp_morning.tools.update_client (and, for the
 gatekeeper test below, the lower-level MorningClient.update_client directly)
 against the live sandbox, per CONSTITUTION §V and this app's testing policy.
 """
+import json
 import time
 import uuid
 from pathlib import Path
@@ -334,5 +335,9 @@ def test_update_client_tool_exact_match_uses_standard_phrasing(morning_client):
 
     result = update_client(morning_client, name=name, tax_id="308253681", name_resolved=True)
 
-    assert result.startswith("עודכנו פרטי הלקוח:")
+    # JSON-only contract (2026-09-04): update_client returns JSON, not prose.
+    payload = json.loads(result)
+    assert payload["status"] == "updated"
+    assert payload["client"]["name"] == name
+    assert payload["client"]["tax_id"] == "308253681"
     assert "מצאתי ועדכנתי" not in result

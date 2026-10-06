@@ -30,7 +30,7 @@ def test_load_config_applies_defaults_when_optional_fields_missing():
     config = load_config(TEST_CONFIG_PATH)
 
     assert config.default_currency == "ILS"
-    assert config.default_vat_rate == 0.17
+    assert config.default_vat_rate == 0.18  # Feature 098: Israel VAT is 18% since 2025-01-01
     assert config.refresh_before_seconds == 300
     assert config.rate_limit_per_second == 3
     assert config.enable_mcp_server is False

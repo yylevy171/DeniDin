@@ -299,7 +299,11 @@ def test_full_payment_still_works_via_create_receipt():
 
 
 def test_create_invoice_returns_hebrew_confirmation():
-    client = _FakeMorningClient(create_invoice_response={"id": "inv-1", "number": "900", "status": None})
+    client = _FakeMorningClient(
+        create_invoice_response={"id": "inv-1", "number": "900", "status": None},
+        # 1a14644 (Feature 069): create_* re-fetches the created document.
+        get_invoice_responses={"inv-1": _original_invoice(doc_id="inv-1", number="900", amount=120.0)},
+    )
 
     result = tools.create_invoice(client, "לקוח בדיקה", 120.0, "ייעוץ", name_resolved=True)
 
@@ -337,7 +341,11 @@ def test_create_invoice_not_resolved_refuses_without_any_lookup():
 
 
 def test_create_transaction_account_returns_hebrew_confirmation():
-    client = _FakeMorningClient(create_invoice_response={"id": "ta-1", "number": "800", "status": None})
+    client = _FakeMorningClient(
+        create_invoice_response={"id": "ta-1", "number": "800", "status": None},
+        # 1a14644 (Feature 069): create_* re-fetches the created document.
+        get_invoice_responses={"ta-1": _original_invoice(doc_id="ta-1", number="800", amount=45.0, doc_type=300)},
+    )
 
     result = tools.create_transaction_account(
         client, "לקוח בדיקה", 45.0, "שירות ייעוץ", vat_included=True, name_resolved=True
@@ -404,7 +412,11 @@ def test_create_combo_document_not_resolved_refuses_without_any_lookup():
 
 
 def test_create_combo_document_returns_hebrew_confirmation():
-    client = _FakeMorningClient(create_invoice_response={"id": "combo-1", "number": "801", "status": 1})
+    client = _FakeMorningClient(
+        create_invoice_response={"id": "combo-1", "number": "801", "status": 1},
+        # 1a14644 (Feature 069): create_* re-fetches the created document.
+        get_invoice_responses={"combo-1": _original_invoice(doc_id="combo-1", number="801", amount=65.0, doc_type=320)},
+    )
 
     result = tools.create_combo_document(
         client, "לקוח בדיקה", 65.0, "מכירה מיידית",

@@ -27,11 +27,13 @@
 ## Phase 1: Setup
 
 - [x] T001 Green baseline: run `M/scripts/run_unit_integration_tests.sh tests/unit/` and `D/scripts/run_unit_integration_tests.sh tests/unit/` on the untouched branch; record pass counts here.
-  **Baseline (2026-10-05, before any change)**: morning-mcp-app unit 371 passed / 4 failed, all
-  pre-existing - `test_logger_retention::test_concurrent_emit_across_rotations_loses_nothing`
-  (intermittent; passed on later runs) and three `test_tools_document_creation::*_returns_hebrew_confirmation`
-  (their fake client's `get_invoice` can't serve the post-create re-fetch). denidin-app unit
-  1587 passed.
+  **Baseline (2026-10-05)**: denidin-app unit 1587 passed. morning-mcp-app: three
+  `test_tools_document_creation::*_returns_hebrew_confirmation` tests and
+  `test_update_client_tool_exact_match_uses_standard_phrasing` (integration) failed on
+  master's own code (a486c94). Their stand-ins/assertions predate 1a14644's post-create
+  re-fetch and the 2026-09-04 JSON-only contract. PM approved fixing them (2026-10-06),
+  together with `test_load_config_applies_defaults_when_optional_fields_missing`'s VAT
+  default 0.17 -> 0.18. All five pass.
 
 ## Phase 2: Foundational - live verification (research R1)
 
@@ -78,7 +80,7 @@ above the threshold refuses and creates nothing; everything else is unchanged.
 - [x] T013 [US4] Wire the check into `create_invoice`, `create_combo_document` (client from `_require_resolved_client`) and `create_combo_document_as_reference` (client via `get_client`, after the idempotent no-op and not-linked checks), right before `client.create_invoice(payload)`. New keyword-only `rules: InvoicingRules = DEFAULT_INVOICING_RULES` parameter.
 - [x] T014 [US4] `M/src/denidin_mcp_morning/server.py`: build `InvoicingRules` from config in `create_server`, pass it to the three tools.
 - [x] T015 [US4] `M/src/denidin_mcp_morning/errors.py`: verbatim branch for `ClientTaxIdRequiredError`.
-- [ ] T016 [US4] Run `M` unit + integration suites → GREEN (new and existing).
+- [x] T016 [US4] Run `M` unit + integration suites → GREEN (new and existing).
 
 ---
 
