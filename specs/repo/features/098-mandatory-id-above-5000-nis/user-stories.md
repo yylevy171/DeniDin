@@ -167,6 +167,12 @@ matrix, cheaper than billed:
 - The User gives the ID in the original request ("... ח.פ 308253681") → DeniDin goes
   straight to Story 2's Step 5 (approve saving the ID).
 - The User approves saving the ID but declines the document → ID saved, no document.
+- The User gives an ID in the request that differs from the one on file → a conflict:
+  DeniDin shows both and asks which is right. A confirmed new ID is saved on the client (its
+  own approval) before the document; otherwise the one on file is used. (PM, 2026-10-07)
+- A 9-digit reply to the ID question is the client's ID. A phone number is normally 10 digits
+  starting with 0; 9 digits count as a phone number only when the User says so. Spaces or
+  dashes between the digits are accepted. (PM, 2026-10-07)
 - Feature 086 (one 320 closing several transaction accounts), if it lands, is in scope:
   the combined 320 amount is what's compared.
 

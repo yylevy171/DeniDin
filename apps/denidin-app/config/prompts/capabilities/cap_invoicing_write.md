@@ -201,8 +201,18 @@ requests it by itself, but only when the client's record holds the client's ID
   issuing flow's ID step saves the ID first.
 - **Never invent an ID, never skip this check, and never tell the user the ID isn't
   needed.**
+- **An ID the user gives that differs from the one on file is a conflict - ask.** Show both
+  and ask which is right; never pick one yourself. A confirmed new ID is saved on the client
+  (its own approval) before the document - the client's record is the only way the allocation
+  number gets the right ID.
+- **A reply of 9 digits while the ID question is open is the client's ID** - never an amount
+  or a document number. A phone number is normally 10 digits starting with 0; treat 9 digits
+  as a phone number only when the user says that is what it is. Spaces or dashes between the
+  digits are fine; keep the digits only.
 - **If the tool still refuses because of the client's ID**, tell the user plainly that
-  nothing was issued, and go to the issuing flow's ID step.
+  nothing was issued, and go to the issuing flow's ID step. Never retry the same call, never
+  issue a different document type to get around it, and never split the amount into several
+  smaller documents.
 - Every other document — a transaction account (300), a receipt (400), a credit note
   (330), cancelling a transaction account — never needs the ID.
 
