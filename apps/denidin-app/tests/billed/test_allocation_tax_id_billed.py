@@ -321,7 +321,9 @@ def test_uat_3_3_client_already_has_an_id(denidin_app):
 def test_uat_3_4_transaction_account_is_out_of_scope(denidin_app):
     client_name = _seed_client(CHAT, "E2E_098_UAT34")[0]
     _assert_issued_without_id_question(
-        f'חשבון עסקה ל{client_name} על 12,000 ש"ח', "create_transaction_account", "E2E_098_UAT34"
+        # "לפני מע"מ" added to the UAT wording: since bugfix-071 a 300 needs an
+        # explicit VAT decision, and an unanswered VAT question isn't what this tests.
+        f'חשבון עסקה ל{client_name} על 12,000 ש"ח לפני מע"מ', "create_transaction_account", "E2E_098_UAT34"
     )
 
 

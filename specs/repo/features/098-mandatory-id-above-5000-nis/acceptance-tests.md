@@ -80,9 +80,9 @@ approval would fail it.
 - **UAT 1.3's open transaction account** is created through DeniDin (an approved
   `create_transaction_account` turn), not "directly in the sandbox by the test". Same
   app-wall reason.
-- **UAT 4.1's prompt** tells the model to call `create_combo_document` directly, without
-  checking the client first. Without that, the model may read the tool description, check
-  the client, and never make the call the scenario is about.
+- **UAT 3.4's request** adds "לפני מע"מ": since bugfix-071 a transaction account (300)
+  needs an explicit VAT decision, so without it DeniDin asks about VAT first, which is not
+  what this scenario tests.
 
 ## Residual risk (analyze finding A2) - closed
 
