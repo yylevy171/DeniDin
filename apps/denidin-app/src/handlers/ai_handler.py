@@ -371,6 +371,28 @@ def _format_referenced_document_for_approval(details_json: str) -> Optional[str]
     return "\n".join(lines) if lines else None
 
 
+# bugfix-071: the approval's VAT line, per the per-document-type VAT rule
+# (runtime_constitution.md, "VAT - one rule per document type"). Only a 305/300
+# is ever "not stated"; a 320/400 records money already paid (VAT inside it),
+# and a document acting on an existing one takes its VAT from that original.
+# An explicit "not included" is shown as-is - the tool refuses it as a conflict.
+_VAT_INSIDE_AMOUNT_PAID_TOOLS = frozenset({"create_combo_document"})
+_VAT_FROM_ORIGINAL_TOOLS = frozenset({"create_credit_note", "create_combo_document_as_reference"})
+
+
+def _approval_vat_label(tool_name: str, args: Dict[str, Any]) -> str:
+    vat_included = args.get("vat_included")
+    if vat_included is False:
+        return "לא כולל מע״מ"
+    if tool_name in _VAT_FROM_ORIGINAL_TOOLS or (
+        tool_name == "create_receipt" and args.get("original_internal_morning_id")
+    ):
+        return "לפי המסמך המקורי"
+    if vat_included is True or tool_name in _VAT_INSIDE_AMOUNT_PAID_TOOLS or tool_name == "create_receipt":
+        return "כולל מע״מ"
+    return "(לא צוין — יש להבהיר לפני ההפקה)"
+
+
 def _build_pending_approval_details(
     tool_name: str, arguments_json: str, mcp_calls: Optional[List[Dict[str, Any]]] = None
 ) -> str:
@@ -458,13 +480,7 @@ def _build_pending_approval_details(
 
     today = now_local().date().strftime("%d/%m/%Y")
     amount = args.get("amount")
-    vat_included = args.get("vat_included")
-    if vat_included is True:
-        vat_label = "כולל מע״מ"
-    elif vat_included is False:
-        vat_label = "לא כולל מע״מ"
-    else:
-        vat_label = "(לא צוין — יש להבהיר לפני ההפקה)"
+    vat_label = _approval_vat_label(tool_name, args)
 
     lines = [
         "📋 לאישור:",

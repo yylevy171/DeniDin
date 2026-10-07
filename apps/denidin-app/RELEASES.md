@@ -131,3 +131,7 @@ Fixes: client search now matches geresh-containing names when the geresh is type
 ## denidin-app v0.7.9 — 2026-10-03
 
 no change
+
+## denidin-app v0.8.0 — 2026-10-06
+
+bugfix-071: VAT is stated and enforced per Morning document type - VAT-included documents are no longer stored as exempt/VAT 0, and every document approval states its VAT. Feature 063: dynamic capability backbone (flag-gated), with its prompts baked into the image. bugfix-069: WhatsApp link state (whatsapp_authorized) reported in /health.

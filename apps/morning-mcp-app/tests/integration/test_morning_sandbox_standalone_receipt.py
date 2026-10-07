@@ -109,6 +109,7 @@ def test_standalone_receipt_does_not_require_a_later_invoice_to_link_back(mornin
         100.0,
         f"עבודה שהושלמה - {marker}",
         name_resolved=True,
+        vat_included=True,
     )
     invoice_payload = json.loads(invoice_result)
     assert invoice_payload["internal_morning_id"]

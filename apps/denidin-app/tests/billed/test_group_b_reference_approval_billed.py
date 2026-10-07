@@ -49,7 +49,11 @@ from tests.billed.denidin_mcp_e2e_helpers import (  # noqa: F401
     VALID_TAX_ID,
     _seed_client,
     GODFATHER_CHAT_ID,
+    VAT_FROM_ORIGINAL,
     _calls_for,
+    assert_document_approval_states_vat,
+    assert_stored_receipt,
+    assert_stored_vat,
     _is_real_approval_prompt,
     _random_amount,
     _random_description,
@@ -158,6 +162,8 @@ def _assert_reference_data_present(approval_text: str, *, client_name: str, doc_
     reference document. Document number is this test suite's own proxy for
     "which document" (the constitution forbids ever showing the internal
     Morning id - see this file's module docstring)."""
+    # bugfix-071: a document made against an existing one takes its VAT from it.
+    assert_document_approval_states_vat(approval_text, VAT_FROM_ORIGINAL)
     missing = []
     if client_name.split()[0] not in approval_text:
         missing.append(f"client name ({client_name})")
@@ -226,6 +232,8 @@ class TestGroupBReferenceApprovalBilled:
             f"create_receipt did not fire/succeed after approval: "
             f"{approve_ai_response.mcp_calls if approve_ai_response else None!r}"
         )
+        # bugfix-071: the receipt records the original's full total, no VAT of its own
+        assert_stored_receipt(receipt_calls[0], amount)
         _assert_internal_id_never_leaked(approval_text, approve_ai_response)
 
     def test_credit_note_against_existing_invoice_shows_reference_data(self, denidin_app):
@@ -248,6 +256,8 @@ class TestGroupBReferenceApprovalBilled:
             f"create_credit_note did not fire/succeed after approval: "
             f"{approve_ai_response.mcp_calls if approve_ai_response else None!r}"
         )
+        # bugfix-071: full total of the "כולל מע״מ" seed, VAT inside it
+        assert_stored_vat(credit_calls[0], amount)
         _assert_internal_id_never_leaked(approval_text, approve_ai_response)
 
     @pytest.mark.sanity
@@ -280,6 +290,8 @@ class TestGroupBReferenceApprovalBilled:
             f"create_combo_document_as_reference did not fire/succeed after approval: "
             f"{approve_ai_response.mcp_calls if approve_ai_response else None!r}"
         )
+        # bugfix-071: full total of the "כולל מע״מ" seed, VAT inside it
+        assert_stored_vat(close_calls[0], amount)
         _assert_internal_id_never_leaked(approval_text, approve_ai_response)
 
     def test_multi_turn_clarification_uses_the_real_internal_id_not_the_display_number(self, denidin_app):

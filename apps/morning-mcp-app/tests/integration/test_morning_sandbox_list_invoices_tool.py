@@ -48,6 +48,7 @@ def seeded_invoice(morning_client):
         amount=75.0,
         description=f"List-invoices seed {unique_marker}",
         name_resolved=True,
+        vat_included=True,
     )
     return {"client_name": client_name}
 
@@ -95,6 +96,7 @@ def test_list_invoices_tool_finds_seeded_invoice_by_non_prefix_substring(morning
         amount=42.0,
         description=f"Substring-match seed {unique_marker}",
         name_resolved=True,
+        vat_included=True,
     )
 
     # Middle word of client_name - not a prefix of the whole stored name.
@@ -140,6 +142,7 @@ def test_list_invoices_tool_non_exact_multi_word_with_name_resolved_raises_not_f
         amount=63.0,
         description=f"Name-variant seed {unique_marker}",
         name_resolved=True,
+        vat_included=True,
     )
 
     query = f"{queried_first_name} {unique_marker}"  # two words; first is a prefix variant

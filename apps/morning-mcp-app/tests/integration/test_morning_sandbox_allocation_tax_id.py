@@ -266,7 +266,9 @@ def test_credit_note_above_threshold_without_id_is_created(morning_client):
     is created directly through the API (the tool would now refuse it)."""
     client_id, _ = _seed_client(morning_client, "330NOID")
     original = morning_client.create_invoice(
-        _build_create_invoice_payload(client_id=client_id, amount=8000.0, description=_marker("305SEED"))
+        _build_create_invoice_payload(
+            client_id=client_id, amount=8000.0, description=_marker("305SEED"), vat_included=False
+        )
     )
     original_id = str(original.get("id") or original.get("documentId"))
 

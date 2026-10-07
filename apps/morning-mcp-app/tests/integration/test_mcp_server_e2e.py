@@ -126,6 +126,7 @@ def test_mcp_client_can_invoke_create_invoice_tool_end_to_end(server_url):
                         "amount": 33.0,
                         "description": unique_marker,
                         "name_resolved": True,
+                        "vat_included": True,
                     },
                 )
 
@@ -189,6 +190,7 @@ def test_mcp_tool_call_without_name_resolved_is_a_real_protocol_error(server_url
                         "client_name": "Some Client Never Resolved",
                         "amount": 10.0,
                         "description": "should never execute",
+                        "vat_included": True,
                     },
                 )
 

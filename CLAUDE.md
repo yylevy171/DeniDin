@@ -575,6 +575,29 @@ Godfather/admin users manage invoices in natural Hebrew: `AIHandler` calls OpenA
 ### `apps/morning-mcp-app/` (separate app, own package/tests/config/Docker)
 Standalone `MorningClient`/`MorningAuth` for the Morning (Green Invoice) sandbox API — token-managed HTTP client with retry/backoff (`requests` + urllib3 `Retry`). Own package at `apps/morning-mcp-app/src/denidin_mcp_morning/`, imported as `from denidin_mcp_morning.morning_client import MorningClient` (its `conftest.py` puts its own `src/` on `sys.path` — no cross-app imports, no `sys.path` reach-through into `apps/denidin-app/`). `server.py` builds a FastMCP server exposing 16 tools (`create_invoice`, `create_transaction_account`, `create_combo_document`, `create_credit_note`, `create_receipt`, `create_combo_document_as_reference`, `cancel_transaction_account`, `list_invoices`, `get_invoice_details`, `add_client`, `list_clients`, `resolve_client_name`, `get_client_details`, `update_client`, `get_financial_summary`, `download_invoice_pdf` — the 4 `create_*` document-type-specific tools added by Feature 021, alongside `create_invoice`; `cancel_transaction_account` added by Feature 056, alongside extending `create_receipt` itself with a standalone branch — see "Standalone Receipts & Transaction Account Cancellation (Feature 056)" below) over streamable-HTTP, wrapped in `BearerTokenMiddleware` (single shared secret, not OAuth) plus an unauthenticated `/health` liveness route. Every tool call is audit-logged (bugfix-037's sibling, bugfix-036, 2026-08-10): `server.py`'s `_call_with_error_boundary` mints a correlation id and logs the tool name/arguments/outcome, and `audit.py` logs one line per Morning mutation — resolved client id and name, the payload sent, and the response received (document number and Morning's own computed total) — plus every *refusal* (client not found/ambiguous, original not linked to a client), which used to be entirely silent because a refusal is not an exception. Read tools log at the boundary only, without their response bodies. `./run_morning_mcp.sh dev|prod` / `./stop_morning_mcp.sh dev|prod` run it as a Docker container per environment (019-env-separation — no host-level PID-file process anymore; Docker itself prevents duplicate starts), with ngrok running *inside* the container, writing that environment's status file (`shared/mcp-status-<env>/`) for `apps/denidin-app` (and its own expensive tests, via `discover_running_server()` in `tests/expensive/e2e_helpers.py`) to discover the live URL — reusing an already-warm tunnel instead of spinning up a fresh one avoids an ngrok cold-start flake (`424 Failed Dependency` on the first request). Exercised by `apps/morning-mcp-app/tests/integration/test_morning_sandbox_*.py`, which hit the real Morning sandbox (constitution: no mocking). Config lives in its own `config/{config.example.json,config.test.json,config.dev.json,config.prod.json}` (flat shape: `api_key_id`/`api_key_secret`/`api_url`, plus an `mcp` block: `auth_token`/`ngrok_authtoken`/`status_file`) — no longer shares config files with `apps/denidin-app/`. `config.test.json` holds real sandbox secrets (plus `openai_api_key`/`mcp.ngrok_authtoken` for the OpenAI/ngrok-driven tests) and, like `config.dev.json`/`config.prod.json`, is gitignored rather than committed (only `config.example.json` is tracked). `denidin_mcp_morning/models.py`'s `Invoice.amount`/`Payment.amount`/`LinkedDocument.amount` accept negative values (2026-09-01, Feature 062) — real prod type-400 receipt-cancellation documents ("ביטול חשבונית מס / קבלה...") carry genuinely negative amounts by Morning's own reversal convention; the old `Field(ge=0)` lower bound rejected them.
 
+**VAT per document type (bugfix-071, 2026-10-06)**:
+- **Root cause.** Morning's `vatType` means different things at the two levels where it's set:
+  - document level: 0 = default, 1 = exempt, 2 = mixed;
+  - income-row level: 0 = VAT added, 1 = VAT included, 2 = exempt.
+
+  Sending 1 at both levels stored VAT-included documents as exempt (VAT 0).
+- **Payloads now.**
+  - Document `vatType` is always 0; a 330 mirrors its original's.
+  - Row `vatType` is 1 for VAT inside, and 0 only for an explicit "not included" on a 305/300.
+  - `vatRate` is never sent.
+- **Rules.**
+  - 305/300 require `vat_included`.
+  - A standalone 320/400 never asks about VAT.
+  - Referencing documents take VAT from the original: a 400 against a 305, a 320 closing a 300,
+    a 330.
+  - "Not included" on a 320/400/330 raises `VatConflictError`, an MCP error: nothing is created
+    and the model asks the user.
+- **Approvals.** Every document approval states `סוג מסמך:` and `מע״מ: <כולל מע״מ | לא כולל מע״מ |
+  לפי המסמך המקורי>`. Billed/expensive tests assert this
+  (`tests/e2e_helpers.py::assert_document_approval_states_vat`), and check Morning's stored VAT
+  split, not just totals.
+- **Spec:** `specs/repo/bugfixes/bugfix-071-morning-vat-zero-defect.md`.
+
 ### `apps/webapp/` (separate app, own backend/frontend/e2e/config/Docker)
 A standalone, read-only web UI (Feature 068) for browsing `denidin-app`'s ledger data — no
 write path of any kind. `backend/` is a Starlette BFF (`src/webapp_backend/`: `server.py` the

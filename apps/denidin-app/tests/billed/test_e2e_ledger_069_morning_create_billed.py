@@ -24,14 +24,14 @@ import time
 
 import pytest
 
-from tests.billed.denidin_mcp_e2e_helpers import GODFATHER_CHAT_ID
+from tests.billed.denidin_mcp_e2e_helpers import GODFATHER_CHAT_ID, VAT_INCLUDED, assert_stored_vat
 from tests.billed._ledger_069_acceptance import assert_ledger_event_matches_manifest
 from tests.billed._ledger_069_post_turn_base import (
     drive_capture,
     seed_scenario,
     clean_069_chat_history,  # noqa: F401 - autouse fixture, registers in this module
 )
-from tests.e2e_helpers import persisted_ledger_events_for_chat
+from tests.e2e_helpers import approval_vat_label, persisted_ledger_events_for_chat
 
 _CREATE_TOOLS = (
     "create_combo_document", "create_invoice", "create_transaction_account",
@@ -73,6 +73,19 @@ class TestLedgerPostTurnCaptureMorningCreate:
         assert not any(
             k in joined for k in ("כולל מע\"מ או לא", "עם מע\"מ או בלי", "האם המחיר כולל")
         ), f"DeniDin must NOT ask a VAT clarifying question for a type-320 combo document"
+
+        # bugfix-071: the 320's approval states VAT as included, and Morning
+        # stores the 11,800 with the VAT inside it (it was stored VAT-exempt).
+        approval_labels = [
+            approval_vat_label(t.get("reply")) for t in transcript
+            if approval_vat_label(t.get("reply")) is not None
+        ]
+        assert approval_labels and approval_labels[-1] == VAT_INCLUDED, (
+            f"expected the 320 approval to state {VAT_INCLUDED!r}, got {approval_labels!r}"
+        )
+        combo_calls = [c for c in create_calls if c["name"] == "create_combo_document"]
+        assert combo_calls, f"expected a create_combo_document (320), got {create_calls!r}"
+        assert_stored_vat(combo_calls[0], 11800)
 
         events = persisted_ledger_events_for_chat(denidin_app, GODFATHER_CHAT_ID)
         invoice_events = [e for e in events if e["source_type"] == "חשבונית"]

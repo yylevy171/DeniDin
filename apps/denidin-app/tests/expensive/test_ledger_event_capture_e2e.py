@@ -705,6 +705,16 @@ class TestLedgerEventCaptureE2E:
                 f"Last calls: {last_ai.mcp_calls if last_ai else None!r}"
             )
             assert combo_calls[0]["error"] is None, f"creation failed: {combo_calls[0]!r}"
+            # bugfix-071: money already in the bank -> a 320 whose approval states
+            # VAT as included, stored by Morning with the VAT inside the 554 (the
+            # defect stored it VAT-exempt: 554, VAT 0).
+            from tests.e2e_helpers import VAT_INCLUDED, approval_vat_label
+            from tests.billed.denidin_mcp_e2e_helpers import assert_stored_vat
+            labels = [approval_vat_label(t) for t in seen_texts if approval_vat_label(t) is not None]
+            assert labels and labels[-1] == VAT_INCLUDED, (
+                f"expected the 320 approval to state {VAT_INCLUDED!r}, got {labels!r}"
+            )
+            assert_stored_vat(combo_calls[0], 554)
 
             # diff3 (2026-09-07): remember the 320 this run issued so the finally
             # block can credit-note it and leave Morning net-clean. Only ever
@@ -749,6 +759,9 @@ class TestLedgerEventCaptureE2E:
                 "לא ידוע", "לא צוין", "?",
             )
             all_bot_texts = [t["reply"] for t in detour_transcript] + seen_texts
+            from tests.e2e_helpers import assert_document_approval_states_vat
+            for text in all_bot_texts:
+                assert_document_approval_states_vat(text)  # bugfix-071: incl. the image turn's own replies
             for text in all_bot_texts:
                 if not text:
                     continue

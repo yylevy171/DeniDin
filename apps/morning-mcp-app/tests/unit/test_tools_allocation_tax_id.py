@@ -254,7 +254,9 @@ def test_create_combo_document_respects_a_custom_threshold():
     client = _FakeMorningClient(tax_id=None)
     rules = InvoicingRules(allocation_threshold_nis=10000.0, vat_rate=0.18)
     tools.create_combo_document(
-        client, CLIENT_NAME, 7000.0, "שירות", vat_included=False,
+        # 8,260 including VAT = 7,000 before VAT: above the default 5,000, below 10,000.
+        # (A 320 always includes VAT - bugfix-071.)
+        client, CLIENT_NAME, 8260.0, "שירות", vat_included=True,
         payment_date="2026-10-01", name_resolved=True, rules=rules,
     )
     assert len(client.create_invoice_calls) == 1
