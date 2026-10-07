@@ -1,6 +1,6 @@
 # Bugfix 073: Client Resolution Robustness (Levenshtein Rescue Hatch)
 
-**Status:** Done - implemented and tested, merging to master
+**Status:** Done - Merged to master (PR #704)
 
 ## Problem Description
 In the current client resolution mechanism (`resolve_client_by_name`), perfectly viable and highly relevant candidates are occasionally dropped due to a hardcoded threshold (`_COMMON_WORD_DISCOVERY_CAP = 10`) combined with strict exact-match intersection rules.
