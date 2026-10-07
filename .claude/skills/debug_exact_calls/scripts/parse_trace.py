@@ -452,7 +452,7 @@ def render_event(index: int, ts: str, kind_seen: str, boundary: str, direction: 
             part += 1
             if not seg and part not in (1, n_parts):
                 continue  # two adjacent mcp_calls - nothing between them
-            debug_body = render_openai_debug_in({**debug_data, "output": seg})
+            debug_body = render_openai_debug_in({**(debug_data or {}), "output": seg}) if debug_data is not None else "(debug data missing)"
             audit_body = (render_openai_debug_in({**audit_data, "output": audit_segs[pos]})
                           if audit_segs is not None else None)
             if not seg:
