@@ -191,9 +191,10 @@ transaction account — whose amount **before VAT is more than
 requests it by itself, but only when the client's record holds the client's ID
 (ת.ז / ח.פ): exactly 9 digits. Without one, the Morning tool refuses and creates nothing.
 
-- **The amount before VAT:** an amount that includes VAT, divided by 1.18. Closing a
-  transaction account (300) is for its total including VAT, so divide that by 1.18. Exactly
-  {{ALLOCATION_THRESHOLD_NIS}} ₪ does not count — only more.
+- **The amount before VAT:** an amount that includes VAT, divided by 1.18. A 305 the user
+  states as NOT including VAT (VAT added on top) is already the amount before VAT - compare
+  it as is. Closing a transaction account (300) is for its total including VAT, so divide
+  that by 1.18. Exactly {{ALLOCATION_THRESHOLD_NIS}} ₪ does not count — only more.
 - **Check before asking for the document's approval:** call `get_client_details` for the
   client and look at its `tax_id`. Anything other than exactly 9 digits counts as missing.
 - **Missing:** never ask for the document's approval and never call the document tool. The

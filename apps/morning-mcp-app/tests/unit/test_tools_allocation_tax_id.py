@@ -289,3 +289,18 @@ def test_closing_a_transaction_account_below_threshold_makes_no_client_lookup():
     tools.create_combo_document_as_reference(client, "ta-1", payment_date="2026-10-01")
     assert len(client.create_invoice_calls) == 1
     assert client.get_client_calls == []
+
+
+def test_tax_invoice_vat_not_included_exactly_the_threshold_is_created():
+    """A 305 may be VAT-not-included (bugfix-071): its amount is already the
+    pre-VAT amount, so exactly 5,000 is not above the threshold."""
+    client = _FakeMorningClient(tax_id=None)
+    tools.create_invoice(client, CLIENT_NAME, 5000.0, "שירות", vat_included=False, name_resolved=True)
+    assert len(client.create_invoice_calls) == 1
+
+
+def test_tax_invoice_vat_not_included_just_above_the_threshold_is_refused():
+    client = _FakeMorningClient(tax_id=None)
+    with pytest.raises(ClientTaxIdRequiredError):
+        tools.create_invoice(client, CLIENT_NAME, 5000.5, "שירות", vat_included=False, name_resolved=True)
+    assert client.create_invoice_calls == []
