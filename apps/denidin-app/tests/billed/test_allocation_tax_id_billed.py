@@ -52,6 +52,21 @@ QUALIFYING_TOOLS = ("create_invoice", "create_combo_document", "create_combo_doc
 # ---------------------------------------------------------------------------
 
 
+# Wording varies run to run, so the ID question is recognised by meaning, not
+# by one exact phrase: any common way of naming a client's ID, and the
+# allocation number as the reason.
+_ID_WORDS = ("ת.ז", 'ת"ז', "ת״ז", "ח.פ", 'ח"פ', "ח״פ", "ע.מ", 'ע"מ', "ע״מ",
+             "זהות", "מספר חברה", "מספר החברה", "מספר מזהה", "מספר עוסק")
+
+
+def _asks_for_an_id(text: Optional[str]) -> bool:
+    return any(word in (text or "") for word in _ID_WORDS)
+
+
+def _gives_the_allocation_reason(text: Optional[str]) -> bool:
+    return "הקצאה" in (text or "")
+
+
 def _digits(text: Optional[str]) -> str:
     """Reply text with thousands separators removed, for amount checks."""
     return (text or "").replace(",", "")
@@ -79,16 +94,16 @@ def _assert_plain_text_no_buttons(response: Optional[str]) -> None:
 def _assert_asks_for_the_id(response, ai_response, client_name: str, amount: str) -> None:
     """UAT 1.1 Step 3: one plain-text reply naming the client and amount,
     saying the ID is needed for the allocation number above 5,000 ₪ before
-    VAT, asking for it - and nothing created."""
+    VAT, asking for it - and nothing created. The threshold figure itself is a
+    detail and not checked (PM, 2026-10-08)."""
     _assert_nothing_issued(ai_response)
     _assert_plain_text_no_buttons(response)
     assert client_name.split()[0] in response, f"client not named: {response!r}"
     assert amount in _digits(response), f"amount {amount} not stated: {response!r}"
-    assert "ת.ז" in response or "ח.פ" in response or "תעודת זהות" in response, (
-        f"does not ask for the client's ID: {response!r}"
+    assert _asks_for_an_id(response), f"does not ask for the client's ID: {response!r}"
+    assert _gives_the_allocation_reason(response), (
+        f"does not give the allocation number as the reason: {response!r}"
     )
-    assert "הקצאה" in response, f"does not mention the allocation number: {response!r}"
-    assert "5000" in _digits(response), f"does not mention the 5,000 threshold: {response!r}"
 
 
 def _morning_tax_id(client_name: str, id_prefix: str) -> Optional[str]:
@@ -212,8 +227,8 @@ def test_uat_1_3_closing_transaction_account_above_threshold_asks_for_id(denidin
     _assert_nothing_issued(ai_response)
     _assert_plain_text_no_buttons(response)
     assert client_name.split()[0] in response, f"client not named: {response!r}"
-    assert "ת.ז" in response or "ח.פ" in response or "תעודת זהות" in response, response
-    assert "הקצאה" in response, response
+    assert _asks_for_an_id(response), response
+    assert _gives_the_allocation_reason(response), response
     docs = _morning_documents(client_name, "E2E_098_UAT13")
     assert _of_type(docs, 320) == [], f"a 320 exists: {docs!r}"
     open_accounts = [d for d in _of_type(docs, 300) if d.get("status_code") == 0]
