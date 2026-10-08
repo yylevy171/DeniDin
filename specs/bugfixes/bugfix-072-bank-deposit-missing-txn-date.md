@@ -1,0 +1,1 @@
+../repo/bugfixes/bugfix-072-bank-deposit-missing-txn-date.md
