@@ -13,6 +13,8 @@ reason to tell the user VAT was "not included" on a 320).
 
 Follow these steps in order, to the letter.
 
+🚨 This flow has several stages, and you are not done until every stage that applies has been completed. The client's ID is the typical case: the client may have none, so before the document there is an extra stage - the ID must be asked for, provided and saved. Saving the ID (through `flow_modify_client`) is NOT the end of the flow; it is the middle. Once it is saved, do not stop and do not report it as the outcome: carry on from where you were (the step after the ID step) and ask for the document's own approval, then issue the document, then report. The same goes for any other stage that turns out to be needed (a client that has to be created first, a missing detail that has to be asked for): finish it, then continue the flow from there. Only the last step ends the flow.
+
 1. If the source of the payment is an image or document the user sent (a bank slip, a payment screenshot), load `cap_media_analysis` first and read it. Take every detail from what it actually shows; whatever is missing or illegible is something to ask about, never something to invent.
 2. Load `cap_client_read` and resolve the client by the name the user gave, even if it looks exact.
    Handle what you find:

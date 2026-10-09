@@ -159,7 +159,7 @@ def _assert_buttons_for(tool_name: str) -> None:
 
 
 def _combo_request(client_name: str, amount: str = "12,000") -> str:
-    return f'תוציא חשבונית מס קבלה ל{client_name} על {amount} ש"ח כולל מע"מ, שולם בהעברה בנקאית היום'
+    return f'תוציא חשבונית מס קבלה ל{client_name} על {amount} ש"ח כולל מע"מ, שולם בהעברה בנקאית היום עבור ייעוץ משפטי'
 
 
 def _ask_combo_for_id_less_client(id_prefix: str):
@@ -213,7 +213,7 @@ def test_uat_1_3_closing_transaction_account_above_threshold_asks_for_id(denidin
     client_name = _seed_client(CHAT, "E2E_098_UAT13")[0]
     # Given: an open 10,000 ₪ transaction account (created through DeniDin - app-wall).
     _, (_, ta_ai) = _send_turn_and_approve(
-        CHAT, f'תפתח חשבון עסקה ל{client_name} על 10,000 ש"ח לפני מע"מ', id_prefix="E2E_098_UAT13_TA"
+        CHAT, f'תפתח חשבון עסקה ל{client_name} על 10,000 ש"ח לפני מע"מ עבור ייעוץ משפטי', id_prefix="E2E_098_UAT13_TA"
     )
     ta_calls = _calls_for(ta_ai, "create_transaction_account")
     assert ta_calls and _is_genuine_document_creation(ta_calls[0]), (
@@ -307,7 +307,7 @@ def _assert_issued_without_id_question(text: str, tool_name: str, id_prefix: str
 def test_uat_3_1_below_threshold(denidin_app):
     client_name = _seed_client(CHAT, "E2E_098_UAT31")[0]
     document = _assert_issued_without_id_question(
-        f'חשבונית מס קבלה ל{client_name} על 4,500 ש"ח כולל מע"מ, שולם בהעברה היום',
+        f'חשבונית מס קבלה ל{client_name} על 4,500 ש"ח כולל מע"מ, שולם בהעברה היום עבור ייעוץ משפטי',
         "create_combo_document", "E2E_098_UAT31",
     )
     assert document.get("amount") == 4500
@@ -338,7 +338,7 @@ def test_uat_3_4_transaction_account_is_out_of_scope(denidin_app):
     _assert_issued_without_id_question(
         # "לפני מע"מ" added to the UAT wording: since bugfix-071 a 300 needs an
         # explicit VAT decision, and an unanswered VAT question isn't what this tests.
-        f'חשבון עסקה ל{client_name} על 12,000 ש"ח לפני מע"מ', "create_transaction_account", "E2E_098_UAT34"
+        f'חשבון עסקה ל{client_name} על 12,000 ש"ח לפני מע"מ עבור ייעוץ משפטי', "create_transaction_account", "E2E_098_UAT34"
     )
 
 

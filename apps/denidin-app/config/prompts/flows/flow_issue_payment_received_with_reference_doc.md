@@ -7,6 +7,8 @@ Flows it may load: `flow_invoicing_query`, `flow_modify_client`.
 
 Follow these steps in order, to the letter.
 
+🚨 This flow has several stages, and you are not done until every stage that applies has been completed. The client's ID is the typical case: the client may have none, so before the document there is an extra stage - the ID must be asked for, provided and saved. Saving the ID (through `flow_modify_client`) is NOT the end of the flow; it is the middle. Once it is saved, do not stop and do not report it as the outcome: carry on from where you were (the step after the ID step) and ask for the document's own approval, then issue the document, then report. The same goes for any other stage that turns out to be needed (a client that has to be created first, a missing detail that has to be asked for): finish it, then continue the flow from there. Only the last step ends the flow.
+
 1. Load `flow_invoicing_query` and find the ONE real document the user means. Reuse an id and exact name you already have from earlier in this conversation. Otherwise search using only what the current request gives you (a client name, an amount, a date), and add a filter only if this request itself states one.
    - Exactly one plausible match: do not ask about it separately. Carry it straight into the approval, which shows its details; the user's yes or no there is the confirmation.
    - Several, or none: use `cap_send_to_user` to say what you found and ask what identifies the right one. Never guess and never ask the user for an internal id.
