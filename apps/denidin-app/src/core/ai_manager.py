@@ -33,6 +33,7 @@ if TYPE_CHECKING:  # annotations only - the managers never import this module ba
     from src.handlers.fee_agreement_tools import FeeAgreementToolHandler
     from src.handlers.morning_mcp_locator import MorningMcpLocator
     from src.managers.doc_template_engine import DocTemplateEngine
+    from src.managers.agreements_manager import AgreementsManager
     from src.managers.ledger_event_manager import LedgerEventManager
     from src.managers.memory_manager import MemoryManager
     from src.managers.reminder_manager import ReminderManager
@@ -229,6 +230,10 @@ class AIManager(ABC):  # pylint: disable=too-many-instance-attributes,too-many-p
     @property
     def ledger_event_manager(self) -> "LedgerEventManager":
         return cast("LedgerEventManager", getattr(self.denidin, "ledger_event_manager", None))
+
+    @property
+    def agreements_manager(self) -> "AgreementsManager":
+        return cast("AgreementsManager", getattr(self.denidin, "agreements_manager", None))
 
     @property
     def reminder_manager(self) -> "ReminderManager":

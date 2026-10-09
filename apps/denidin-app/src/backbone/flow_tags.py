@@ -34,6 +34,7 @@ class FlowTag(str, Enum):
     GENERATE_FEE_AGREEMENT_DOCX = "flow_generate_fee_agreement_docx"
     CREATE_REMINDER = "flow_create_reminder"
     MODIFY_REMINDER = "flow_modify_reminder"
+    AGREEMENT_MANAGEMENT = "flow_agreement_management"
 
 
 @dataclass(frozen=True)
@@ -159,6 +160,16 @@ FLOW_INFO: tuple = (
         "up the user's real reminders to identify the exact one before modifying or deleting it, "
         "with approval. Adding a brand-new reminder belongs to flow_create_reminder. "
         "Use the reminder flows, not cap_reminders_write directly."
+    ),
+    FlowInfo(
+        FlowTag.AGREEMENT_MANAGEMENT,
+        "Asking about, or changing, an EXISTING fee agreement with a client in the Agreements database "
+        "(\"מה ההסכם שלנו עם X\", \"תעלה את הריטיינר ל-6,000\", \"X שילם את הריטיינר\", "
+        "\"תסגור את ההסכם\"). Identifies the exact client and the exact agreement (asking when "
+        "more than one fits), shows the current terms, and changes them only with approval. Not for "
+        "recording a NEW agreement the user reports signing (flow_fee_agreement_provided_by_user), "
+        "not for creating a fee agreement document, not for payments owed/received "
+        "(flow_user_question), and not for invoices, clients or reminders."
     ),
 )
 

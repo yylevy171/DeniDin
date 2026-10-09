@@ -88,3 +88,9 @@ actually responding to something else — a bare "כן"/"לא" answers whatever
 you most recently asked; re-ask in that same context instead. Never call this for a message REPORTING a new agreement or deposit; this capability only reads.
 Never call with an empty `criteria` list — ask the user for the missing
 identifying detail first.
+
+## Not for the current terms of an agreement
+
+For what an agreement CURRENTLY says (its components, amounts, percents,
+triggers, statuses), use `cap_agreements_read` — the ledger holds events
+(what was recorded or paid over time), not the living agreement.

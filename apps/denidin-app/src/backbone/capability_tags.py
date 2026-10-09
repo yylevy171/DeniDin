@@ -28,6 +28,8 @@ class CapabilityTag(str, Enum):
     LEDGER_QUERY = "cap_ledger_query"
     REMINDERS_WRITE = "cap_reminders_write"
     REMINDERS_READ = "cap_reminders_read"
+    AGREEMENTS_WRITE = "cap_agreements_write"
+    AGREEMENTS_READ = "cap_agreements_read"
     MEDIA_ANALYSIS = "cap_media_analysis"
     DOCX_WRITE = "cap_docx_write"
     APPROVAL_WITH_BUTTONS = "cap_approval_with_buttons"
@@ -108,6 +110,23 @@ CAPABILITY_INFO: tuple = (
     CapabilityInfo(
         CapabilityTag.REMINDERS_READ,
         "Looking up the user's own existing reminders - what's scheduled, for when.",
+    ),
+    CapabilityInfo(
+        CapabilityTag.AGREEMENTS_WRITE,
+        "Changing an EXISTING fee agreement in the Agreements database: its payer or partner, "
+        "one of its components (amount, percent, wording, trigger, VAT, date), adding a "
+        "component, moving a component through Pending/Active/Completed/Cancelled, or "
+        "completing/cancelling/reopening a whole agreement. Writes only: load it only through "
+        "flow_agreement_management, never directly. Not for recording a NEW agreement the user "
+        "reports having signed (that is flow_fee_agreement_provided_by_user), not for "
+        "generating a fee agreement document (flow_generate_fee_agreement_docx), and never for "
+        "invoices, clients or reminders.",
+    ),
+    CapabilityInfo(
+        CapabilityTag.AGREEMENTS_READ,
+        "Reading the CURRENT state of a client's fee agreements and their components "
+        "(amounts, percents, triggers, statuses, payer, partner) from the Agreements "
+        "database. Not for payment history or amounts owed/received - see cap_ledger_query.",
     ),
     CapabilityInfo(
         CapabilityTag.MEDIA_ANALYSIS,
