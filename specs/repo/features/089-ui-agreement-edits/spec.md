@@ -43,6 +43,7 @@ The Webapp UI will integrate this into the existing "Clients" tab, allowing user
 
 ### Session 2026-10-05
 
+- Note (2026-10-09): the original input said the ledger "becomes documentation of initial creation". The later human decisions supersede that: every component write, agreement-level edit, close and reopen also writes ledger events (REQ-089-07), so the ledger mirrors the DB's history while the DB stays the source of truth for current state.
 - Q: Ledger schema version bump (REQ-089-10)? → A: **Approved by the human, 2026-10-04; the target version was set to 4 (not 3) on 2026-10-09**, covering the new fields `original_client_name`, `component_status`, `agreement_status` and populating `split_partner`/`split_percent`. The same commit that changes `CURRENT_SCHEMA_VERSION` must add the matching `SCHEMA_VERSION_HISTORY` entry.
 - Q: Rewriting historical prod ledger events (REQ-089-10)? → A: **Approved by the human, 2026-10-04**, as a one-time exception to ledger immutability, limited to the scope in REQ-089-10.
 - Q: Who owns the Agreements DB? → A: denidin-app owns it. The webapp writes to it through an HTTP API on denidin-app, and its read-only mount of denidin-app's data stays read-only.

@@ -109,6 +109,9 @@ class TestLedgerClientResolutionRouting:
             manager._accounting_document_cache = None
             for path in manager.storage_dir.glob("*.json"):
                 path.unlink()
+            with denidin_app.agreements_manager._connect() as db:
+                for table in ("revisions", "components", "agreements"):
+                    db.execute(f"DELETE FROM {table}")
             wipe_chat_messages_on_disk(denidin_app.session_manager.storage_dir, GODFATHER_CHAT_ID)
             denidin_app.ai_manager.pending_approval_manager._pending.clear()
         _wipe()

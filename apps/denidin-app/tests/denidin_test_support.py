@@ -11,6 +11,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
+from src.managers.agreements_manager import AgreementsManager
 from src.managers.doc_template_engine import DocTemplateEngine
 from src.managers.ledger_event_manager import LedgerEventManager
 from src.managers.memory_manager import MemoryManager
@@ -137,6 +138,16 @@ def make_ledger_event_manager(storage_dir: PathLike, session_manager: Any = None
     app = make_denidin(make_config(data_root=_data_root_for(storage_dir, "events")),
                        session_manager=session_manager)
     return LedgerEventManager(app)
+
+
+def make_agreements_manager(data_root: PathLike) -> AgreementsManager:
+    """An AgreementsManager (Feature 089) on a real LedgerEventManager, both storing under
+    `data_root` ({data_root}/agreements/, {data_root}/events/). The manager's DeniDin is
+    reachable as `.denidin` (e.g. `.denidin.ledger_event_manager`)."""
+    app = make_denidin(make_config(data_root=str(data_root)))
+    app.ledger_event_manager = LedgerEventManager(app)
+    app.agreements_manager = AgreementsManager(app)
+    return app.agreements_manager
 
 
 def make_reminder_manager(storage_dir: PathLike, max_active_reminders: int = 20) -> ReminderManager:

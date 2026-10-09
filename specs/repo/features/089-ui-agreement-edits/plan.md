@@ -42,11 +42,12 @@ events to ledger schema v4.
 | Feature flag | None, by human decision REQ-089-17; rollback = previous release |
 | Zero mocking; integration tests via a real entry point | OK: API tests use Starlette `TestClient` against a real manager + real `LedgerEventManager` on a tmp data root; no `unittest.mock` in `tests/integration/` |
 | Config is baked or mounted correctly (bugfix-066) | OK: prompts and `runtime_constitution.md` baked, only `config.<env>.json` mounted |
-| Tool-bearing feature needs constitution boundaries | PLANNED (Phase 5): new section + two-way cross-references |
+| Tool-bearing feature needs constitution boundaries | PLANNED (Phase E, T030-T032): new section + two-way cross-references |
 | Ledger schema bump is human-only | APPROVED 2026-10-09: bump to v4 with the full field list (R5) |
 | Startup handshakes must retry (section XVIII) | N/A for denidin-app (API is a server, not a client). Webapp -> API is request-time, fails closed with an explicit error |
 | No bare `pytest` | OK: wrappers only |
 | Test sound-off per test | OK: `conftest.py` default |
+| Other apps in scope (checked 2026-10-09) | `morning-mcp-app`: no change. Feature 025 reconciliation: writes `חשבונית` events only, unaffected (verified by the T050 regression run). WhatsApp-export player: goes through `initialize_app` and the shared recognizer, so it inherits the capture rewiring. `apps/prod-ledger-backfill` and `apps/rolling-memory-backfill`: write no `הסכם` events; only a smoke check that v4 stays compatible |
 | Migration against prod | Gated: its own explicit human go-ahead, never during development |
 
 **Human decisions taken (2026-10-09)**, all three resolved:
@@ -154,7 +155,7 @@ callers of it.
 | UATs | Tier | Home |
 |---|---|---|
 | 1.1-1.4, 2.1-2.6, 3.1-3.6, 4.1, 6.1 | [UI] Playwright | `apps/webapp/e2e/tests/agreements.spec.ts` |
-| 4.2, 4.3 | [UI+WA] | one Playwright step + one billed step; split into a billed test fed by a pre-edited DB plus the UI edit asserted in Playwright |
+| 4.2, 4.3 | [UI+WA] | split in two: the UI edit and its ledger effect are asserted in Playwright (T041); the bot's answer from a DB pre-edited through the API is a billed test (T042) |
 | 5.1-5.6 | [WA] billed | `apps/denidin-app/tests/billed/test_agreements_whatsapp.py` |
 | 7.1-7.5 | [MIG] integration | `apps/denidin-app/tests/integration/test_migrate_agreements_089.py` |
 

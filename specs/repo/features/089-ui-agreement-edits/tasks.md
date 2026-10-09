@@ -170,3 +170,7 @@ Phase 10 needs every story done; Phase 11 after Phase 10.
 ## Totals
 
 49 tasks: Setup 4, Foundational 9, US1 3, US2 3, US3 3, US4 3, US5 7, US6 2, US7 5, Acceptance 6, Polish 4.
+
+## Addendum (analysis 2026-10-09)
+
+- [ ] T050 Regression sweep for the other apps in scope: run the Feature 025 reconciliation unit/integration tests, the player's tests, and `apps/prod-ledger-backfill` and `apps/rolling-memory-backfill` tests through their wrapper scripts, to prove the v4 ledger fields and the recognizer rewiring broke nothing. `apps/morning-mcp-app` is out of scope (no change).

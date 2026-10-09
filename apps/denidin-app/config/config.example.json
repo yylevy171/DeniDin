@@ -25,6 +25,7 @@
   "green_api_instance_id": "YOUR_GREEN_API_INSTANCE_ID",
   "green_api_token": "YOUR_GREEN_API_TOKEN",
   "health_check_port": 0,
+  "agreements_api": {"port": 0, "auth_token": "CHANGE_ME"},
   "log_level": "DEBUG_for_dev_or_INFO_for_prod",
   "logging": {
     "backup_count": 0,

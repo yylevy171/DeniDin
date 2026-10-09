@@ -265,7 +265,13 @@ _STATUS_HE = {"paid": "שולם", "unpaid": "לא שולם", "cancelled": "בו�
 # Both reverts land on the same value (2); Feature 061's contribution kept on
 # merge is the lasting enforcement mechanism below (SCHEMA_VERSION_HISTORY +
 # _verify_schema_version_history()), which neither branch had before.
-CURRENT_SCHEMA_VERSION = 2
+#
+# Feature 089 (2026-10-09): 2 -> 4, a HUMAN decision ("bump to v4"; 3 is skipped on
+# purpose - a 3 was once stamped by the since-reverted change described above, so
+# 4 can never be confused with those events). Adds original_client_name,
+# component_status and agreement_status to the persisted record and populates the
+# previously reserved split_partner/split_percent for agreement-component events.
+CURRENT_SCHEMA_VERSION = 4
 
 # Every entry here is a human-approved decision, added in the SAME commit that
 # changes CURRENT_SCHEMA_VERSION above it - never after the fact.
@@ -311,6 +317,17 @@ SCHEMA_VERSION_HISTORY = [
             "added SCHEMA_VERSION_HISTORY/_verify_schema_version_history() itself, plus "
             "CLAUDE.md's 'LEDGER SCHEMA VERSION BUMPS ARE HUMAN-ONLY' rule - the lasting "
             "enforcement Feature 044's fix didn't add."
+        ),
+    },
+    {
+        "version": 4,
+        "date": "2026-10-09",
+        "feature": "089",
+        "decision": (
+            "Bumped 2->4 by explicit human decision (\"bump to v4\"; 3 skipped on purpose so it "
+            "cannot be confused with the since-reverted 3). Adds original_client_name, "
+            "component_status, agreement_status; split_partner/split_percent now populated for "
+            "agreement-component events. No config.feature_flags gate (REQ-089-17)."
         ),
     },
 ]
@@ -360,6 +377,9 @@ LEDGER_EVENT_FIELDS: Tuple[str, ...] = (
     "vat_status",
     "split_partner",
     "split_percent",
+    "original_client_name",
+    "component_status",
+    "agreement_status",
     "accounting_document_display_number",
     "accounting_document_status",
     "accounting_document_status_code",
@@ -798,6 +818,20 @@ class LedgerEventManager:
                 return seq
         return None
 
+    def free_event_slots(self, source_type: str, message_timestamp: Optional[int] = None) -> int:
+        """How many more events of `source_type` can still be persisted in the minute of
+        `message_timestamp` (default: now) - event ids hold one sequence digit, so a minute
+        has 10 slots per source letter (REQ-ID-003). Feature 089: AgreementsManager checks
+        this up front so a write that needs N events is refused whole instead of silently
+        losing some."""
+        local_dt = local_from_timestamp(message_timestamp) if message_timestamp is not None else now_local()
+        prefix = f"{_LETTER_BY_SOURCE_TYPE[source_type]}{local_dt.strftime('%d%m%y')}{local_dt.strftime('%H%M')}"
+        used = {
+            int(existing.stem[-1]) for existing in self.storage_dir.glob(f"{prefix}*.json")
+            if len(existing.stem) == len(prefix) + 1 and existing.stem[-1].isdigit()
+        }
+        return 10 - len(used)
+
     def scan_accounting_documents(self) -> Dict[str, List["AccountingDocumentCacheEntry"]]:
         """Feature 025 (round 3): one-time disk-scan bootstrap for the
         in-memory accounting-document cache (_ensure_accounting_document_cache)
@@ -1210,8 +1244,16 @@ class LedgerEventManager:
             "hourly_rate": None if is_accounting_document else event.get("hourly_rate"),
             "txn_date": txn_date,  # REQ-DATA-005/007 - hours-worked date (הסכם) or transaction date (בנק)
             "vat_status": vat_status,
-            "split_partner": None,  # reserved - nuances feature
-            "split_percent": None,  # reserved - nuances feature
+            # Feature 089 (schema v4): populated for agreement-component events written by
+            # AgreementsManager (partner name / partner %); null for every other event.
+            "split_partner": event.get("split_partner") if source_type == "הסכם" else None,
+            "split_percent": event.get("split_percent") if source_type == "הסכם" else None,
+            # Feature 089 (schema v4): raw client name preserved by the one-time migration
+            # (empty on new events); lifecycle state of the component / its agreement at the
+            # moment this event was written. הסכם only.
+            "original_client_name": event.get("original_client_name") if source_type == "הסכם" else None,
+            "component_status": event.get("component_status") if source_type == "הסכם" else None,
+            "agreement_status": event.get("agreement_status") if source_type == "הסכם" else None,
             # Feature 025 (round 3, 2026-08-21): 4 fields, not 5 - the originally
             # reserved invoice_id/invoice_number/invoice_type/invoice_status/
             # invoice_actual_creation_date/morning_document_id names are gone;
@@ -1707,13 +1749,23 @@ class LedgerEventManager:
                 f"(missing: {gaps}) - persisting flagged with {marker!r}"
             )
 
-        created = self.add_ledger_events_from_call(
-            session_id=session.session_id,
-            call_arguments=event,
-            message_id=completing_message_id,
-            message_timestamp=epoch,
-            reference_override=event.get("reference"),
-        )
+        # Feature 089: an agreement capture goes to the Agreements DB first; the DB write
+        # produces the ledger events (REQ-089-01/07). A capture that carries a `reference`
+        # (it points at an earlier event) keeps today's ledger-only path - the DB has no
+        # concept of that link.
+        agreements = getattr(self.denidin, "agreements_manager", None)
+        if source_type == "הסכם" and agreements is not None and not event.get("reference"):
+            created = agreements.create_from_capture(
+                event, session.session_id, completing_message_id, epoch
+            )
+        else:
+            created = self.add_ledger_events_from_call(
+                session_id=session.session_id,
+                call_arguments=event,
+                message_id=completing_message_id,
+                message_timestamp=epoch,
+                reference_override=event.get("reference"),
+            )
 
         for event_id in created:
             logger.info(

@@ -71,6 +71,8 @@ CSV_MAPPED_FIELDS = {
     # Feature 025 Phase 9 (2026-08-23)
     "accounting_document_status_code", "accounting_document_status_label",
     "accounting_document_payment_method",
+    # Feature 089 (schema v4, 2026-10-09)
+    "original_client_name", "component_status", "agreement_status",
     # due_date removed 2026-08-25 (user directive): dead, always-null reserved
     # field with no populating code path - dropped from the schema entirely.
     # accounting_document_creation_date removed 2026-08-25 (user directive): was
@@ -2467,3 +2469,52 @@ class TestAccountingDocumentSubtypeIsTheMorningDocType:
             message_id="m2", message_timestamp=FIXED_TS)
         assert _read(temp_events_dir, a)["event_subtype"] == "יצירה"
         assert _read(temp_events_dir, b)["event_subtype"] == "הפקדה"
+
+
+class TestSchemaV4AgreementFields:
+    """Feature 089 (T005): the three new fields exist on every record, are populated only for
+    הסכם events that supply them, and split_partner/split_percent are no longer reserved.
+    Deliberately never asserts on the schema_version value (CLAUDE.md ledger rule)."""
+
+    def test_agreement_event_carries_the_new_fields(self, manager, temp_events_dir):
+        event = dict(SAMPLE_EVENT)
+        event.update({
+            "original_client_name": "ישראל ישראלי (גולמי)",
+            "component_status": "Pending",
+            "agreement_status": "Active",
+            "split_partner": "עו״ד כהן",
+            "split_percent": 25,
+        })
+        event_id = manager.add_ledger_event(
+            session_id="sess-1", event=event, message_id=None, message_timestamp=FIXED_TS,
+        )
+        data = _read(temp_events_dir, event_id)
+        assert data["original_client_name"] == "ישראל ישראלי (גולמי)"
+        assert data["component_status"] == "Pending"
+        assert data["agreement_status"] == "Active"
+        assert data["split_partner"] == "עו״ד כהן"
+        assert data["split_percent"] == 25
+
+    def test_new_fields_default_to_null_for_agreement_event_without_them(self, manager, temp_events_dir):
+        event_id = manager.add_ledger_event(
+            session_id="sess-1", event=dict(SAMPLE_EVENT), message_id="m", message_timestamp=FIXED_TS,
+        )
+        data = _read(temp_events_dir, event_id)
+        for key in ("original_client_name", "component_status", "agreement_status",
+                    "split_partner", "split_percent"):
+            assert key in data and data[key] is None
+
+    def test_new_fields_forced_null_for_bank_events(self, manager, temp_events_dir):
+        bank = {
+            "source_type": "בנק", "event_subtype": "יצירה", "client_name": "ישראל ישראלי",
+            "amount": "1000", "txn_date": "2026-07-01",
+            "original_client_name": "x", "component_status": "Active",
+            "agreement_status": "Active", "split_partner": "y", "split_percent": 5,
+        }
+        event_id = manager.add_ledger_event(
+            session_id="sess-1", event=bank, message_id="m", message_timestamp=FIXED_TS,
+        )
+        data = _read(temp_events_dir, event_id)
+        for key in ("original_client_name", "component_status", "agreement_status",
+                    "split_partner", "split_percent"):
+            assert data[key] is None

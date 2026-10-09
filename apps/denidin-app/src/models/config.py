@@ -94,6 +94,11 @@ class AppConfiguration:
     # accidentally starts a new listener.
     health_check_port: int = 0
 
+    # Agreements API (Feature 089) - the HTTP surface the webapp BACKEND (never the browser)
+    # uses to read/write the Agreements DB. Shape: {"port": 0, "auth_token": ""}.
+    # port 0 = off (no listener started), same convention as health_check_port.
+    agreements_api: Dict = field(default_factory=dict)
+
     # Log retention (Feature 070, US5). Top-level (not under `memory`) - this is an
     # operational concern, not part of the memory model. `rotation_when` feeds
     # logging.handlers.TimedRotatingFileHandler(when=...); `backup_count` 0 = keep
