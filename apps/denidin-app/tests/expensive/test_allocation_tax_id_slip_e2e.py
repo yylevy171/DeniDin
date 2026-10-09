@@ -112,49 +112,64 @@ class TestAllocationTaxIdSlipE2E:
         handle_image_message(notification)
         return get_response(notification), denidin.denidin_app.last_response
 
+    @staticmethod
+    def _retire_client(client_name: str) -> None:
+        """update_client cannot clear an ID, so rename the client instead: the payer's name is then
+        free, and the next run seeds a fresh client with no ID."""
+        retired = f'{client_name} (בדיקה {int(time.time())})'
+        _send_turn(CHAT, f'שנה את שם הלקוח {client_name} ל{retired}', id_prefix="E2E_098_T37_RETIRE")
+        _send_button_tap(CHAT, BUTTON_ID_APPROVE, id_prefix="E2E_098_T37_RETIRE_TAP")
+
     def test_slip_above_threshold_asks_for_id_then_issues_320(self, denidin_app, http_server):
         """T3.7 - slip (7,000 ₪) + "issue a tax invoice/receipt" for a client with no ID:
         the slip is read, the ID is asked for (plain text, nothing issued), saved on its
         own approval, then the 320 for 7,000 ₪ is issued on its own approval."""
         # The slip's own payer is the client, so DeniDin has no payer/client mismatch to ask
-        # about. A fixed name that must still have no ID: a re-run after the ID was saved fails here.
+        # about. A fixed name that must have no ID: a client left with one by an earlier run is renamed away first.
         client_name = _seed_client(CHAT, "E2E_098_T37", name=_SLIP_PAYER, ensure_exists=True)[0]
-        assert _morning_tax_id(client_name, "E2E_098_T37_PRE") is None, (
-            f"{client_name} already has an ID (saved by an earlier run) - the scenario needs a client with none"
-        )
+        if _morning_tax_id(client_name, "E2E_098_T37_PRE") is not None:  # left by an earlier run
+            self._retire_client(client_name)
+            client_name = _seed_client(CHAT, "E2E_098_T37B", name=_SLIP_PAYER, ensure_exists=True)[0]
+            assert _morning_tax_id(client_name, "E2E_098_T37_PRE2") is None, "no fresh client without an ID"
 
-        # The slip arrives with no caption; the request comes as the next message.
-        self._send_slip(http_server, "", "E2E_098_T37")
-        response, ai_response = _send_turn(
-            CHAT, 'תפיק חשבונית מס קבלה על ההפקדה הזו, עבור ייעוץ משפטי',
-            id_prefix="E2E_098_T37_ASK",
-        )
+        id_saved = False
+        try:
+            # The slip arrives with no caption; the request comes as the next message.
+            self._send_slip(http_server, "", "E2E_098_T37")
+            response, ai_response = _send_turn(
+                CHAT, 'תפיק חשבונית מס קבלה על ההפקדה הזו, עבור ייעוץ משפטי',
+                id_prefix="E2E_098_T37_ASK",
+            )
 
-        # The slip's amount was read and the ID asked for, with the allocation number as the reason.
-        _assert_nothing_issued(ai_response)
-        _assert_plain_text_no_buttons(response)
-        assert _asks_for_an_id(response), f"does not ask for the client's ID: {response!r}"
-        assert _gives_the_allocation_reason(response), f"no allocation-number reason: {response!r}"
-        assert str(_SLIP_AMOUNT) in _digits(response), f"slip amount not stated: {response!r}"
+            # The slip's amount was read and the ID asked for, with the allocation number as the reason.
+            _assert_nothing_issued(ai_response)
+            _assert_plain_text_no_buttons(response)
+            assert _asks_for_an_id(response), f"does not ask for the client's ID: {response!r}"
+            assert _gives_the_allocation_reason(response), f"no allocation-number reason: {response!r}"
+            assert str(_SLIP_AMOUNT) in _digits(response), f"slip amount not stated: {response!r}"
 
-        # The ID -> approval to save it; tap -> saved, and the 320's own approval follows.
-        response, ai_response = _send_turn(CHAT, VALID_TAX_ID, id_prefix="E2E_098_T37_ID")
-        _assert_nothing_issued(ai_response)
-        _assert_buttons_for("update_client")
-        response, ai_response = _send_button_tap(CHAT, BUTTON_ID_APPROVE, id_prefix="E2E_098_T37_TAP_ID")
-        update_calls = _calls_for(ai_response, "update_client")
-        assert update_calls and update_calls[0]["error"] is None, (
-            f"update_client did not run cleanly: {ai_response.mcp_calls if ai_response else None!r}"
-        )
-        assert not any(_calls_for(ai_response, t) for t in QUALIFYING_TOOLS), (
-            "document issued without its own approval"
-        )
+            # The ID -> approval to save it; tap -> saved, and the 320's own approval follows.
+            response, ai_response = _send_turn(CHAT, VALID_TAX_ID, id_prefix="E2E_098_T37_ID")
+            _assert_nothing_issued(ai_response)
+            _assert_buttons_for("update_client")
+            response, ai_response = _send_button_tap(CHAT, BUTTON_ID_APPROVE, id_prefix="E2E_098_T37_TAP_ID")
+            update_calls = _calls_for(ai_response, "update_client")
+            assert update_calls and update_calls[0]["error"] is None, (
+                f"update_client did not run cleanly: {ai_response.mcp_calls if ai_response else None!r}"
+            )
+            id_saved = True
+            assert not any(_calls_for(ai_response, t) for t in QUALIFYING_TOOLS), (
+                "document issued without its own approval"
+            )
 
-        document = _assert_document_issued_on_tap("create_combo_document", "E2E_098_T37_DOC")
-        assert document.get("amount") == _SLIP_AMOUNT, f"wrong amount: {document!r}"
+            document = _assert_document_issued_on_tap("create_combo_document", "E2E_098_T37_DOC")
+            assert document.get("amount") == _SLIP_AMOUNT, f"wrong amount: {document!r}"
 
-        assert _morning_tax_id(client_name, "E2E_098_T37") == VALID_TAX_ID
-        combos = _of_type(_morning_documents(client_name, "E2E_098_T37"), 320)
-        assert len(combos) == 1 and combos[0].get("amount") == _SLIP_AMOUNT, (
-            f"expected one {_SLIP_AMOUNT} ₪ 320: {combos!r}"
-        )
+            assert _morning_tax_id(client_name, "E2E_098_T37") == VALID_TAX_ID
+            combos = _of_type(_morning_documents(client_name, "E2E_098_T37"), 320)
+            assert len(combos) == 1 and combos[0].get("amount") == _SLIP_AMOUNT, (
+                f"expected one {_SLIP_AMOUNT} ₪ 320: {combos!r}"
+            )
+        finally:
+            if id_saved:
+                self._retire_client(client_name)
