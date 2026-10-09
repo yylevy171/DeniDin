@@ -60,6 +60,7 @@ logger = logging.getLogger(__name__)
 _MEDIA_DIR = Path(__file__).parent.parent / "fixtures" / "media"
 _SLIP = "bank_deposit_7k.jpeg"
 _SLIP_AMOUNT = 7000
+_SLIP_PAYER = 'לוקס קלין בע"מ'  # the payer named on the slip: the client the 320 is for
 CHAT = GODFATHER_CHAT_ID
 
 
@@ -115,12 +116,18 @@ class TestAllocationTaxIdSlipE2E:
         """T3.7 - slip (7,000 ₪) + "issue a tax invoice/receipt" for a client with no ID:
         the slip is read, the ID is asked for (plain text, nothing issued), saved on its
         own approval, then the 320 for 7,000 ₪ is issued on its own approval."""
-        client_name = _seed_client(CHAT, "E2E_098_T37")[0]
+        # The slip's own payer is the client, so DeniDin has no payer/client mismatch to ask
+        # about. A fixed name that must still have no ID: a re-run after the ID was saved fails here.
+        client_name = _seed_client(CHAT, "E2E_098_T37", name=_SLIP_PAYER, ensure_exists=True)[0]
+        assert _morning_tax_id(client_name, "E2E_098_T37_PRE") is None, (
+            f"{client_name} already has an ID (saved by an earlier run) - the scenario needs a client with none"
+        )
 
-        response, ai_response = self._send_slip(
-            http_server,
-            f'תפיק חשבונית מס קבלה על ההפקדה הזו ל{client_name}, כולל מע"מ, עבור ייעוץ משפטי',
-            "E2E_098_T37",
+        # The slip arrives with no caption; the request comes as the next message.
+        self._send_slip(http_server, "", "E2E_098_T37")
+        response, ai_response = _send_turn(
+            CHAT, 'תפיק חשבונית מס קבלה על ההפקדה הזו, עבור ייעוץ משפטי',
+            id_prefix="E2E_098_T37_ASK",
         )
 
         # The slip's amount was read and the ID asked for, with the allocation number as the reason.
