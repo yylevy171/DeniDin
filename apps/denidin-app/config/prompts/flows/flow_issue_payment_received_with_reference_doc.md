@@ -2,7 +2,7 @@
 
 Goal: record a payment against a Morning document that already exists: a receipt on an invoice (305), or a combo document that closes a transaction account (300).
 
-Capabilities: `cap_invoicing_write`, `cap_approval_with_buttons`, and `cap_client_read` when the allocation-number step needs it.
+Capabilities: `cap_client_read`, `cap_invoicing_write`, `cap_approval_with_buttons`.
 Flows it may load: `flow_invoicing_query`, `flow_modify_client`.
 
 Follow these steps in order, to the letter.
@@ -15,7 +15,7 @@ Follow these steps in order, to the letter.
    A wrong match is a real, incorrect payment or cancellation, so be certain.
    Then fetch that document's own current details in this same turn. The approval must show real, fresh data, never memory from an earlier turn.
 2. Load `cap_invoicing_write`. Gather what is still missing. Anything you don't have from the user or the source, use `cap_send_to_user` to ask for, one question at a time; never guess or invent a value.
-3. **The allocation number** (see `cap_invoicing_write`): if this is a 320 closing a transaction account that needs the client's ID (a receipt on an invoice never does), check it with `get_client_details` (load `cap_client_read` if it isn't loaded). If the document doesn't need one, or the client has a 9-digit ID and the user gave no other ID, go on to step 4. Otherwise:
+3. **The allocation number** (see `cap_invoicing_write`). A receipt on an invoice never needs the client's ID. A 320 closing a transaction account does when the amount before VAT is above {{ALLOCATION_THRESHOLD_NIS}} ₪ - the transaction account's total including VAT, divided by 1.18. For a 320 closing a transaction account, always load `cap_client_read` now and check the client's ID with `get_client_details` BEFORE raising any approval: never ask for the document's approval before this check has been made. If the document doesn't need an ID, or the client has a 9-digit ID and the user gave no other ID, go on to step 4. Otherwise:
    - **The user gave an ID in this request and the client already has a different one:** this is a conflict - maybe a typo, maybe a misunderstanding. Never pick one yourself. Use `cap_send_to_user` to show both (the ID on file and the one the user gave) and ask which is right. If the user confirms the new one, save it on the client (below) before issuing - the client's record is the only way the allocation number gets the right ID. If they keep the one on file, go on to step 4.
    - **The user gave a 9-digit ID in this request and the client has none:** go straight to saving it (below).
    - **Otherwise ask for it:** use `cap_send_to_user`, as a plain question with no approval buttons: name the client and the amount, and say the client's ת.ז / ח.פ (9 digits) is needed for the allocation number (מספר הקצאה), because the amount is above {{ALLOCATION_THRESHOLD_NIS}} ₪ before VAT. Then wait.
