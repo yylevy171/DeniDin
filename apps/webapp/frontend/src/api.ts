@@ -235,3 +235,93 @@ export async function fetchMediaObjectUrl(path: string): Promise<string> {
   const blob = await resp.blob();
   return URL.createObjectURL(blob);
 }
+
+// ---- Feature 089: Agreements (proxied by the webapp backend to denidin-app's Agreements API) ----
+export type ComponentStatus = "Pending" | "Active" | "Completed" | "Cancelled";
+export type AgreementStatus = "Active" | "Completed" | "Cancelled";
+export interface AgreementComponent {
+  component_key: string;
+  component_id: string;
+  label: string;
+  description: string | null;
+  amount: number | null;
+  percent: number | null;
+  percent_base: string | null;
+  trigger_condition: string | null;
+  vat_status: string | null;
+  txn_date: string | null;
+  status: ComponentStatus;
+  locked: boolean;
+}
+export interface Agreement {
+  agreement_id: string;
+  client_name: string;
+  title: string;
+  payer_name: string | null;
+  partner_name: string | null;
+  partner_percent: number | null;
+  status: AgreementStatus;
+  components: AgreementComponent[];
+}
+export interface AgreementRevision {
+  revision_id: number;
+  created_at: string;
+  actor: "webapp" | "whatsapp";
+  action: string;
+  component_key: string | null;
+  snapshot: Record<string, any>;
+  changed: Record<string, any>;
+}
+export class AgreementsApiError extends Error {
+  code: string;
+  fields: Record<string, string>;
+  constructor(code: string, message: string, fields: Record<string, string> = {}) {
+    super(message);
+    this.code = code;
+    this.fields = fields;
+  }
+}
+
+async function agreementsCall(method: string, path: string, body?: Record<string, unknown>): Promise<any> {
+  const resp = await request(path, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    const err = data.error || {};
+    throw new AgreementsApiError(err.code || `request_failed_${resp.status}`, err.message || "הפעולה נכשלה.", err.fields || {});
+  }
+  return data;
+}
+
+export async function fetchClientAgreements(clientId: string): Promise<Agreement[]> {
+  return (await agreementsCall("GET", `/api/clients/${encodeURIComponent(clientId)}/agreements`)).agreements;
+}
+export async function fetchAgreementRevisions(agreementId: string): Promise<AgreementRevision[]> {
+  return (await agreementsCall("GET", `/api/agreements/${encodeURIComponent(agreementId)}/revisions`)).revisions;
+}
+export async function createAgreement(body: Record<string, unknown>): Promise<Agreement> {
+  return (await agreementsCall("POST", "/api/agreements", body)).agreement;
+}
+export async function editAgreement(agreementId: string, fields: Record<string, unknown>): Promise<Agreement> {
+  return (await agreementsCall("PATCH", `/api/agreements/${encodeURIComponent(agreementId)}`, fields)).agreement;
+}
+export async function setAgreementStatus(agreementId: string, action: "complete" | "cancel" | "reopen"): Promise<Agreement> {
+  return (await agreementsCall("POST", `/api/agreements/${encodeURIComponent(agreementId)}/status`, { action })).agreement;
+}
+export async function addComponent(agreementId: string, fields: Record<string, unknown>): Promise<Agreement> {
+  return (await agreementsCall("POST", `/api/agreements/${encodeURIComponent(agreementId)}/components`, fields)).agreement;
+}
+export async function editComponent(agreementId: string, key: string, fields: Record<string, unknown>): Promise<Agreement> {
+  return (await agreementsCall("PATCH", `/api/agreements/${encodeURIComponent(agreementId)}/components/${encodeURIComponent(key)}`, fields)).agreement;
+}
+export async function setComponentStatus(
+  agreementId: string, key: string, action: "activate" | "complete" | "cancel" | "reopen"
+): Promise<Agreement> {
+  return (await agreementsCall("POST", `/api/agreements/${encodeURIComponent(agreementId)}/components/${encodeURIComponent(key)}/status`, { action })).agreement;
+}
+export async function deleteComponent(agreementId: string, key: string): Promise<Agreement> {
+  return (await agreementsCall("DELETE", `/api/agreements/${encodeURIComponent(agreementId)}/components/${encodeURIComponent(key)}`)).agreement;
+}

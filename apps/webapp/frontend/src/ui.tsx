@@ -30,6 +30,8 @@ export function Button({
     <Pressable
       onPress={disabled ? undefined : onPress}
       testID={testID}
+      disabled={!!disabled}
+      accessibilityState={{ disabled: !!disabled }}
       {...({ title } as any)}
       style={{
         paddingVertical: iconSize ? 6 : 8,

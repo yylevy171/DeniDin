@@ -49,6 +49,11 @@ services:
       # Moved to 8200, verified genuinely free on both dev's Mac and prod's
       # Windows box before choosing it.
       - "8200:8100"
+      # Feature 089: the Agreements API (config.agreements_api.port = 8300). Published on
+      # 127.0.0.1 ONLY, for `run_webapp.sh host` (the webapp backend on this machine); inside
+      # compose the webapp backend reaches it by service name (http://denidin-app-dev:8300).
+      # Never published on a routable interface - the browser must not reach it.
+      - "127.0.0.1:8300:8300"
     volumes:
       - ./apps/denidin-app/config/config.dev.json:/app/config/config.json:ro
       # Only config.dev.json is mounted from the host. Everything else under /app/config

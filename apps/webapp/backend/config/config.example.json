@@ -10,6 +10,8 @@
   "morning_api_key_secret": "PASTE_YOUR_WEBAPP_MORNING_API_KEY_SECRET_HERE",
   "morning_auth_url": "https://api.sandbox.morning.dev",
   "morning_api_url": "https://sandbox.d.greeninvoice.co.il/api/v1/",
+  "denidin_agreements_url": "http://127.0.0.1:8300",
+  "denidin_agreements_token": "PASTE_THE_SAME_TOKEN_AS_denidin-app_agreements_api.auth_token",
   "http": {
     "host": "0.0.0.0",
     "port": 8100,

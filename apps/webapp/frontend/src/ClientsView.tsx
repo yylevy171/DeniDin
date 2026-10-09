@@ -16,6 +16,7 @@ import {
   unlinkClientMapping,
 } from "./api";
 import { Field, IconButton } from "./ui";
+import AgreementsSection from "./AgreementsSection";
 
 const SECTION_ORDER: ClientRow["status"][] = ["check", "active", "debt", "missing_agreement", "settled", "past"];
 
@@ -91,12 +92,16 @@ function ClientRowCard({
   onSaveComment,
   onLineAction,
   onUnlink,
+  onAgreementsChanged,
+  onAuthErr,
 }: {
   row: ClientRow;
   theme: Theme;
   onSaveComment: (clientId: string, comment: string) => Promise<void>;
   onLineAction: (clientId: string, action: LineAction) => Promise<void>;
   onUnlink: (rawName: string) => Promise<void>;
+  onAgreementsChanged: () => void;
+  onAuthErr: (e: unknown) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -210,6 +215,7 @@ function ClientRowCard({
               ))}
             </View>
           ) : null}
+          <AgreementsSection clientId={row.official_name} theme={theme} onAuthErr={onAuthErr} onTotalsChanged={onAgreementsChanged} />
           {row.events.length ? (
             <View style={{ gap: 4 }}>
               {row.events.map((ev, i) => (
@@ -566,6 +572,8 @@ function Section({
   onSaveComment,
   onLineAction,
   onUnlink,
+  onAgreementsChanged,
+  onAuthErr,
 }: {
   status: ClientRow["status"];
   rows: ClientRow[];
@@ -573,6 +581,8 @@ function Section({
   onSaveComment: (clientId: string, comment: string) => Promise<void>;
   onLineAction: (clientId: string, action: LineAction) => Promise<void>;
   onUnlink: (rawName: string) => Promise<void>;
+  onAgreementsChanged: () => void;
+  onAuthErr: (e: unknown) => void;
 }) {
   const [open, setOpen] = useState(false);
   if (!rows.length) return null;
@@ -625,6 +635,8 @@ function Section({
               onSaveComment={onSaveComment}
               onLineAction={onLineAction}
               onUnlink={onUnlink}
+              onAgreementsChanged={onAgreementsChanged}
+              onAuthErr={onAuthErr}
             />
           ))}
         </View>
@@ -865,6 +877,8 @@ export default function ClientsView({ theme, onAuthErr }: { theme: Theme; onAuth
                 onSaveComment={saveComment}
                 onLineAction={lineAction}
                 onUnlink={unlink}
+                onAgreementsChanged={() => { load("refresh"); }}
+                onAuthErr={onAuthErr}
               />
             ))}
 
