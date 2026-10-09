@@ -8,7 +8,7 @@ a live ``SessionStore`` rather than one fixed config value. ``/health`` and
 import logging
 import mimetypes
 from pathlib import Path
-from typing import Any, Awaitable, Callable, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from starlette.applications import Starlette
 from starlette.concurrency import run_in_threadpool
@@ -18,6 +18,7 @@ from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse, Response
 from starlette.routing import Route
 
+from webapp_backend.agreements_client import AgreementsClient, AgreementsUnavailable
 from webapp_backend.auth import PasswordVerifier, SessionStore
 from webapp_backend.clients_reader import (
     LINE_ACTIONS,
@@ -78,6 +79,7 @@ def build_app(
     config: AppConfig,
     log_path: Optional[Path] = None,
     official_clients_fn: Optional[Callable[[], List[str]]] = None,
+    agreements_totals_fn: Optional[Callable[[], Dict[str, float]]] = None,
 ) -> Starlette:
     verifier = PasswordVerifier(Path(config.password_hash_file))
     sessions = SessionStore(config.session_expiry_hours)
@@ -89,6 +91,7 @@ def build_app(
         auth_url=config.morning_auth_url,
         api_url=config.morning_api_url,
     )
+    agreements_client = AgreementsClient(config.denidin_agreements_url, config.denidin_agreements_token)
     clients_reader = ClientsReader(
         config.denidin_data_root,
         config.clients_data_root,
@@ -97,6 +100,8 @@ def build_app(
         official_clients_fn or morning_source.list_active_client_names,
         events_fn=reader.events,
         generation_fn=lambda: reader.generation,
+        # Injectable like official_clients_fn, so tests can supply totals without an API.
+        agreements_totals_fn=agreements_totals_fn or agreements_client.totals,
     )
     version = read_version()
     if not verifier.usable:
@@ -204,6 +209,8 @@ def build_app(
                 MORNING_UNAVAILABLE_MSG,
                 503,
             )
+        except AgreementsUnavailable:
+            return _agreements_unavailable_response()
 
     async def client_comment(request: Request) -> JSONResponse:
         try:
@@ -261,6 +268,8 @@ def build_app(
         except MorningClientSourceError as exc:
             logger.warning("Morning client-list fetch failed: %s", exc)
             return _error("morning_unavailable", MORNING_UNAVAILABLE_MSG, 503)
+        except AgreementsUnavailable:
+            return _agreements_unavailable_response()
         return JSONResponse(result)
 
     async def client_mapping_unlink(request: Request) -> JSONResponse:
@@ -280,6 +289,67 @@ def build_app(
         if not isinstance(raw_name, str) or not raw_name:
             return _error("bad_request", "raw_name is required.", 400)
         return JSONResponse(await run_in_threadpool(clients_reader.hide_unmatched, raw_name))
+
+    # ---- Feature 089: Agreements facade (proxy to denidin-app's Agreements API) ----
+    def _agreements_unavailable_response() -> JSONResponse:
+        return JSONResponse(
+            {"error": {"code": "agreements_unavailable",
+                       "message": "שירות ההסכמים אינו זמין כעת. נסו שוב מאוחר יותר."}},
+            status_code=502,
+        )
+
+    async def _agreements_call(
+        method: str, path: str, *, params: Optional[dict] = None, body: Optional[dict] = None
+    ) -> JSONResponse:
+        try:
+            status, data = await run_in_threadpool(
+                lambda: agreements_client.request(method, path, params=params, body=body)
+            )
+        except AgreementsUnavailable:
+            return _agreements_unavailable_response()
+        if method != "GET" and status == 200:
+            clients_reader.invalidate_report()  # agreed totals changed
+        return JSONResponse(data, status_code=status)
+
+    async def client_agreements(request: Request) -> JSONResponse:
+        return await _agreements_call(
+            "GET", "/agreements", params={"client_name": request.path_params["client_id"]}
+        )
+
+    async def agreement_revisions(request: Request) -> JSONResponse:
+        return await _agreements_call("GET", f"/agreements/{request.path_params['agreement_id']}/revisions")
+
+    async def agreement_create(request: Request) -> JSONResponse:
+        return await _agreements_call("POST", "/agreements", body=await _json_body(request))
+
+    async def agreement_edit(request: Request) -> JSONResponse:
+        return await _agreements_call(
+            "PATCH", f"/agreements/{request.path_params['agreement_id']}", body=await _json_body(request))
+
+    async def agreement_status(request: Request) -> JSONResponse:
+        return await _agreements_call(
+            "POST", f"/agreements/{request.path_params['agreement_id']}/status", body=await _json_body(request))
+
+    async def component_add(request: Request) -> JSONResponse:
+        return await _agreements_call(
+            "POST", f"/agreements/{request.path_params['agreement_id']}/components",
+            body=await _json_body(request))
+
+    async def component_edit(request: Request) -> JSONResponse:
+        p = request.path_params
+        return await _agreements_call(
+            "PATCH", f"/agreements/{p['agreement_id']}/components/{p['component_key']}",
+            body=await _json_body(request))
+
+    async def component_delete(request: Request) -> JSONResponse:
+        p = request.path_params
+        return await _agreements_call("DELETE", f"/agreements/{p['agreement_id']}/components/{p['component_key']}")
+
+    async def component_status(request: Request) -> JSONResponse:
+        p = request.path_params
+        return await _agreements_call(
+            "POST", f"/agreements/{p['agreement_id']}/components/{p['component_key']}/status",
+            body=await _json_body(request))
 
     def media(request: Request) -> Response:
         path = context_reader.resolve_media(request.path_params["token"])
@@ -303,6 +373,16 @@ def build_app(
             Route("/api/clients/mapping/unlink", client_mapping_unlink, methods=["POST"]),
             Route("/api/clients/unmatched/hide", unmatched_hide, methods=["POST"]),
             Route("/api/clients/{client_id}/status", client_line_status, methods=["POST"]),
+            Route("/api/clients/{client_id}/agreements", client_agreements, methods=["GET"]),
+            Route("/api/agreements", agreement_create, methods=["POST"]),
+            Route("/api/agreements/{agreement_id}", agreement_edit, methods=["PATCH"]),
+            Route("/api/agreements/{agreement_id}/revisions", agreement_revisions, methods=["GET"]),
+            Route("/api/agreements/{agreement_id}/status", agreement_status, methods=["POST"]),
+            Route("/api/agreements/{agreement_id}/components", component_add, methods=["POST"]),
+            Route("/api/agreements/{agreement_id}/components/{component_key}", component_edit, methods=["PATCH"]),
+            Route("/api/agreements/{agreement_id}/components/{component_key}", component_delete, methods=["DELETE"]),
+            Route("/api/agreements/{agreement_id}/components/{component_key}/status",
+                  component_status, methods=["POST"]),
             Route("/api/media/{token}", media, methods=["GET"]),
         ]
     )

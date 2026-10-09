@@ -47,7 +47,12 @@ def api(tmp_path, password_hash_file, known_password, clients_dir):
         denidin_data_root=str(data_root),
         webapp_data_root=str(tmp_path / "webapp_data"),
     )
-    with TestClient(build_app(config, official_clients_fn=lambda: list(OFFICIAL))) as c:
+    # Feature 089: the agreed total now comes from the Agreements DB; the totals are injected
+    # here (dependency injection, like the official client list) - the fixture's ledger
+    # `הסכם` events only mirror them and are no longer summed.
+    totals = {DEBT: 10000.0, PAID: 3000.0, PAST: 4000.0}
+    with TestClient(build_app(config, official_clients_fn=lambda: list(OFFICIAL),
+                              agreements_totals_fn=lambda: dict(totals))) as c:
         token = c.post("/api/auth/login", json={"password": known_password}).json()["token"]
         c.headers.update({"Authorization": f"Bearer {token}"})
         yield c

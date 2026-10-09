@@ -30,6 +30,7 @@ for _p in (_BACKEND / "src", _BACKEND.parents[1] / "denidin-app" / "src"):
 
 from webapp_backend.clients_reader import MIGRATION_092_KEY, ClientsReader  # noqa: E402  pylint: disable=wrong-import-position
 from webapp_backend.ledger_reader import LedgerEventManager  # noqa: E402  pylint: disable=wrong-import-position
+from webapp_backend.webapp_denidin import WebappDeniDin  # noqa: E402  pylint: disable=wrong-import-position
 
 
 def _legacy_flags(comment: str) -> Dict[str, bool]:
@@ -43,7 +44,8 @@ def _legacy_flags(comment: str) -> Dict[str, bool]:
 
 def preview(clients_dir: Path, events_dir: Path, official_clients: List[str]) -> Dict[str, Any]:
     clients_dir, events_dir = Path(clients_dir), Path(events_dir)
-    events = LedgerEventManager(str(events_dir)).list_events()
+    # The manager reads {data_root}/events, so the events dir's parent is the data root.
+    events = LedgerEventManager(WebappDeniDin(str(events_dir.parent))).list_events()
     with tempfile.TemporaryDirectory() as tmp:
         work = Path(tmp) / "clients"
         if clients_dir.exists():

@@ -130,9 +130,20 @@ def _raw_client_name(data: Dict[str, Any]) -> str:
     return "Unknown"
 
 
+def _is_hours_line(data: Dict[str, Any]) -> bool:
+    hours = data.get("hours")
+    return hours is not None and str(hours).strip() != ""
+
+
 def _aggregate_events(
-    all_events: List[Dict[str, Any]], official_clients: List[str], manual_mapping: Dict[str, str]
+    all_events: List[Dict[str, Any]], official_clients: List[str], manual_mapping: Dict[str, str],
+    agreements_totals: Optional[Dict[str, float]] = None,
 ) -> Tuple[Dict[str, Dict[str, Any]], Dict[str, Dict[str, Any]], Dict[float, set]]:
+    """`agreements_totals` (Feature 089, REQ-089-14): per-client sum of non-Cancelled
+    Agreements-DB components. When given, the agreed total is that sum plus the hours-worked
+    `הסכם` lines (which never become components); every other `הסכם` ledger event only mirrors a
+    component, so adding its amount too would double count. None = the pre-089 behaviour
+    (every `הסכם` event's amount is summed)."""
     stats = {c: _new_stat() for c in official_clients}
     unmatched: Dict[str, Dict[str, Any]] = collections.defaultdict(
         lambda: {"agreements": 0.0, "deposits": 0.0, "raw_text": set()}
@@ -185,7 +196,8 @@ def _aggregate_events(
 
         prefix = f"[{event_date_obj.strftime('%d.%m.%y')}] " if event_date_obj else ""
         if src_type == "הסכם":
-            target["agreements"] += amount
+            if agreements_totals is None or _is_hours_line(data):
+                target["agreements"] += amount
             if not matched_client:
                 text = data.get("description") or data.get("trigger_condition") or "הסכם ללא פירוט"
                 unmatched[original_name]["raw_text"].add(f"{prefix}הסכם (₪{amount:,.2f}): {text}")
@@ -200,6 +212,13 @@ def _aggregate_events(
             else:
                 text = data.get("description") or data.get("trigger_condition") or subtype or "מסמך מורנינג"
                 unmatched[original_name]["raw_text"].add(f"{prefix}חשבונית/מסמך (₪{amount:,.2f}): {text}")
+
+    for total_name, total in (agreements_totals or {}).items():
+        matched_total, original_total = _fuzzy_match(total_name, official_clients, manual_mapping)
+        if matched_total:
+            stats[matched_total]["agreements"] += float(total)
+        else:
+            unmatched[original_total]["agreements"] += float(total)
 
     return stats, unmatched, amount_to_clients
 
@@ -614,6 +633,7 @@ class ClientsReader:
         official_clients_fn: Callable[[], List[str]],
         events_fn: Optional[Callable[[], List[Dict[str, Any]]]] = None,
         generation_fn: Callable[[], int] = lambda: 0,
+        agreements_totals_fn: Optional[Callable[[], Dict[str, float]]] = None,
     ) -> None:
         self._denidin = WebappDeniDin(data_root)
         self._clients_dir = Path(clients_data_root)
@@ -622,6 +642,10 @@ class ClientsReader:
         # instead of a fresh per-call re-read of every event file from disk.
         self._events_fn = events_fn
         self._generation_fn = generation_fn
+        # Feature 089: per-client Agreements-DB totals (one bulk call per report build).
+        # Raises when the Agreements API is down - the report then fails loudly rather than
+        # showing zeros. None = pre-089 behaviour (ledger-summed agreements).
+        self._agreements_totals_fn = agreements_totals_fn
         # The Morning client list and the computed report are kept until a refresh (or, for
         # the report, a save / a ledger reload) - recomputing them costs a Morning round-trip
         # per page plus the full aggregation.
@@ -658,6 +682,12 @@ class ClientsReader:
         self._report_cache = (generation, report)
         return report
 
+    def invalidate_report(self) -> None:
+        """Drop the cached report so the next read recomputes (called after an Agreements
+        write, which changes the agreed totals without touching the ledger generation)."""
+        with self._lock:
+            self._report_cache = None
+
     def warm(self) -> None:
         try:
             self.get_report()
@@ -682,7 +712,9 @@ class ClientsReader:
         else:
             all_events = LedgerEventManager(self._denidin).list_events()
 
-        stats, unmatched, amount_to_clients = _aggregate_events(all_events, official_clients, manual_mapping)
+        agreements_totals = self._agreements_totals_fn() if self._agreements_totals_fn is not None else None
+        stats, unmatched, amount_to_clients = _aggregate_events(
+            all_events, official_clients, manual_mapping, agreements_totals)
         _apply_comment_rules(stats, client_comments)
         _apply_merge_directives(stats, official_clients, client_comments)
         self._migrate_comment_status_once(stats, client_comments)
