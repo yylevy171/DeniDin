@@ -80,6 +80,9 @@ approval would fail it.
 - **UAT 1.3's open transaction account** is created through DeniDin (an approved
   `create_transaction_account` turn), not "directly in the sandbox by the test". Same
   app-wall reason.
+- **UAT 1.2's and 3.5's requests** add "עבור ייעוץ משפטי": a 305 can't be issued without a
+  description, so without it DeniDin asks for the description first and the ID question comes
+  one message later - which is not what these scenarios test.
 - **UAT 3.4's request** adds "לפני מע"מ": since bugfix-071 a transaction account (300)
   needs an explicit VAT decision, so without it DeniDin asks about VAT first, which is not
   what this scenario tests.

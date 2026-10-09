@@ -200,7 +200,7 @@ def test_uat_1_2_tax_invoice_above_threshold_asks_for_id(denidin_app):
     client_name = _seed_client(CHAT, "E2E_098_UAT12")[0]
 
     response, ai_response = _send_turn(
-        CHAT, f'תוציא חשבונית מס ל{client_name} על 8,000 ש"ח לפני מע"מ', id_prefix="E2E_098_UAT12_ASK"
+        CHAT, f'תוציא חשבונית מס ל{client_name} על 8,000 ש"ח לפני מע"מ עבור ייעוץ משפטי', id_prefix="E2E_098_UAT12_ASK"
     )
 
     _assert_asks_for_the_id(response, ai_response, client_name, "8000")
@@ -347,7 +347,7 @@ def test_uat_3_5_just_above_the_threshold_asks_for_id(denidin_app):
     client_name = _seed_client(CHAT, "E2E_098_UAT35")[0]
 
     response, ai_response = _send_turn(
-        CHAT, f'חשבונית מס ל{client_name} על 5,001 ש"ח לפני מע"מ', id_prefix="E2E_098_UAT35_ASK"
+        CHAT, f'חשבונית מס ל{client_name} על 5,001 ש"ח לפני מע"מ עבור ייעוץ משפטי', id_prefix="E2E_098_UAT35_ASK"
     )
 
     _assert_asks_for_the_id(response, ai_response, client_name, "5001")
