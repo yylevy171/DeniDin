@@ -793,6 +793,46 @@ class AgreementsManager:
     # Capture (WhatsApp / documents) and migration entry points
     # ------------------------------------------------------------------ #
 
+    def import_migrated_agreement(
+        self, *, agreement_id: str, title: str, client_name: str, payer_name: Optional[str],
+        partner_name: Optional[str], partner_percent: Any, status: str, components: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """One-time migration entry (REQ-089-09): stores an agreement and its components exactly
+        as given - explicit statuses and `origin_event_id`s, the ledger events already exist
+        (the script rewrites them in place) so NONE are written here. Revision actor is
+        `migration`. Raises ValidationError on a bad value or a duplicate agreement/label."""
+        if status not in AGREEMENT_STATUSES:
+            raise ValidationError("invalid agreement", {"status": f"must be one of {list(AGREEMENT_STATUSES)}"})
+        percent = _to_percent(partner_percent, "partner_percent")
+        with self._lock, self._connect() as conn:
+            if conn.execute("SELECT 1 FROM agreements WHERE agreement_id = ?", (agreement_id,)).fetchone():
+                raise ValidationError(f"agreement {agreement_id!r} already exists", {"agreement_id": "duplicate"})
+            now = local_isoformat()
+            conn.execute(
+                "INSERT INTO agreements (agreement_id, title, client_name, payer_name, partner_name, "
+                "partner_percent, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                (agreement_id, title, client_name, _clean_text(payer_name), _clean_text(partner_name),
+                 percent, status, now, now),
+            )
+            for order, data in enumerate(components):
+                if data.get("status") not in COMPONENT_STATUSES:
+                    raise ValidationError("invalid component", {"status": f"must be one of {list(COMPONENT_STATUSES)}"})
+                fields = self._normalize_component_input(data, require_value=True)
+                component_id = self._assert_label_free(conn, agreement_id, fields["label"])
+                conn.execute(
+                    "INSERT INTO components (component_key, component_id, agreement_id, label, description, "
+                    "amount, percent, percent_base, trigger_condition, vat_status, txn_date, status, "
+                    "origin_event_id, sort_order) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (uuid.uuid4().hex, component_id, agreement_id, fields["label"], fields.get("description"),
+                     fields.get("amount"), fields.get("percent"), fields.get("percent_base"),
+                     fields.get("trigger_condition"), fields.get("vat_status"), fields.get("txn_date"),
+                     data["status"], data.get("origin_event_id"), order),
+                )
+            snapshot = self._agreement_dict(conn, agreement_id)
+            self._add_revision(conn, agreement_id, None, "migration", "migrate_agreement",
+                               snapshot, {"migrated": True}, [])
+            return snapshot
+
     def create_from_capture(
         self, event: Dict[str, Any], session_id: Optional[str], message_id: Optional[str],
         message_timestamp: Optional[int],
