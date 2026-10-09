@@ -1,7 +1,7 @@
 # Acceptance Tests: Feature 098
 
 Every new `billed` / `expensive` test written for this feature. **None has been run yet.**
-There are no `expensive` tests: every scenario is text-only.
+One `expensive` test (T3.7): a bank slip for 7,000 ₪ (`bank_deposit_7k.jpeg`) -> 320 above the threshold -> the ID chain. All others are text-only.
 
 Run each one through `scripts/run_single_test.sh <node id>` (in that app), or a sequence
 through `scripts/run_multiple_billed_tests.sh`.
@@ -61,7 +61,7 @@ approval would fail it.
 | T3.4 | billed | `tests/billed/test_group_b_reference_approval_billed.py::TestGroupBReferenceApprovalBilled::test_receipt_against_existing_invoice_shows_reference_data` | Reference-doc flow, receipt: never asks for an ID | - |
 | T3.5 | billed | `tests/billed/test_reminder_lifecycle_billed.py::TestReminderLifecycleBilled::test_godfather_creates_one_time_reminder_button_approval` | Sanity spot check: reminders | - |
 | T3.6 | billed | `tests/billed/test_ledger_query_billed.py::TestLedgerQueryBilled::test_explicit_date_lookup` | Sanity spot check: ledger queries | - |
-| T3.7 | expensive | **Blocked: no bank-slip fixture above 5,000 ₪ exists** (current slips: 554, 800, 1,500, 1,888 ₪) | Slip → 320 above 5,000 → ID chain | - |
+| T3.7 | expensive | `tests/expensive/test_allocation_tax_id_slip_e2e.py::TestAllocationTaxIdSlipE2E::test_slip_above_threshold_asks_for_id_then_issues_320` (slip `bank_deposit_7k.jpeg`, 7,000 ₪) | Slip → 320 above 5,000 → ID chain | - |
 
 ## Integration coverage added alongside (not billed)
 
