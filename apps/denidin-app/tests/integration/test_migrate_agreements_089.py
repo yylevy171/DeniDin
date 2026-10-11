@@ -148,12 +148,16 @@ def test_dry_run_writes_nothing(script, world):
     assert not (world.root / "agreements" / "migration_089.json").exists()
 
 
-def test_duplicate_labels_block_the_migration_and_write_nothing(script, world):
-    dup = _component("A010726010", "מיכל בר", "0726-מיכל-חוזה", "בסיס", 700)
-    (world.events / "A010726010.json").write_text(json.dumps(dup, ensure_ascii=False), encoding="utf-8")
-    originals = {p.name: p.read_bytes() for p in world.events.glob("*.json")}
+def test_duplicate_labels_are_merged_latest_wins_and_every_event_is_rewritten(script, world):
+    later = _component("A010726010", "מיכל בר", "0726-מיכל-חוזה", "בסיס", 700,
+                       event_datetime="2099-01-01T00:00:00+02:00")
+    (world.events / "A010726010.json").write_text(json.dumps(later, ensure_ascii=False), encoding="utf-8")
     report = script.migrate(world.root, world.resolution)
-    assert report["status"] == "blocked_duplicate_labels"
-    assert report["duplicate_labels"] == [{"agreement_id": "0726-מיכל-חוזה", "labels": ["בסיס"]}]
-    assert {p.name: p.read_bytes() for p in world.events.glob("*.json")} == originals
-    assert not (world.root / "agreements" / "migration_089.json").exists()
+    assert report["status"] == "migrated"
+    assert report["merged_duplicates"] == [{"agreement_id": "0726-מיכל-חוזה", "labels": ["בסיס"]}]
+    merged = [c for c in _manager(world.root).get_agreement("0726-מיכל-חוזה")["components"] if c["label"] == "בסיס"]
+    assert len(merged) == 1                                  # one component, not two
+    assert merged[0]["amount"] == 700                        # the latest event's value wins
+    assert merged[0]["origin_event_id"] == "A010726003"      # the earliest event stays the origin
+    assert _read(world, "A010726003")["component_status"] == _read(world, "A010726010")["component_status"] \
+        == merged[0]["status"]

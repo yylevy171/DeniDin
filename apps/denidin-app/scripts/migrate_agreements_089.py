@@ -22,8 +22,11 @@ What it does, in order:
   7. writes the marker.
 
 `--dry-run` prints the same counts and writes nothing. Duplicate component labels inside one
-agreement are not allowed by the DB; the script LISTS them and refuses to migrate until a
-human decides how they are handled (it never merges or renames on its own).
+agreement are not allowed by the DB, so events sharing a label are MERGED into one component
+(human decision 2026-10-11): the latest event's values win, a field the latest leaves empty is
+filled from earlier ones, `origin_event_id` is the earliest event, the latest event's status
+stands. Every merge is listed in the report (`merged_duplicates`); every contributing event is
+still rewritten in place and carries the merged component's status.
 
 Usage (from apps/denidin-app, this clone's venv):
   venv/bin/python3 scripts/migrate_agreements_089.py --data-root <data root> \
@@ -91,7 +94,7 @@ def plan(events: List[Tuple[Path, Dict[str, Any]]], resolution: Dict[str, Any]) 
     agreements: Dict[str, Dict[str, Any]] = {}
     cancellations: List[Dict[str, Any]] = []
     rewrite: Dict[Path, Dict[str, Any]] = {}
-    for path, event in events:
+    for path, event in sorted(events, key=lambda pe: (str(pe[1].get("event_datetime") or ""), pe[0].name)):
         if event.get("source_type") != "הסכם" or not _is_blank(event.get("hours")):
             continue
         raw = _raw_name(event)
@@ -128,12 +131,9 @@ def plan(events: List[Tuple[Path, Dict[str, Any]]], resolution: Dict[str, Any]) 
         if not group["components"]:
             del agreements[key]  # only cancellation events: nothing to create
             continue
-        labels = defaultdict(int)
-        for component in group["components"]:
-            labels[_slugify(component["label"])] += 1
-        dup = sorted(label for label, count in labels.items() if count > 1)
-        if dup:
-            duplicates.append({"agreement_id": key, "labels": dup})
+        merged = _merge_duplicate_labels(group)
+        if merged:
+            duplicates.append({"agreement_id": key, "labels": sorted(merged)})
         if group["line"].get("line_closed"):
             closed = _closed_status(group["line"])
             group["status"] = closed
@@ -145,6 +145,43 @@ def plan(events: List[Tuple[Path, Dict[str, Any]]], resolution: Dict[str, Any]) 
     return {"agreements": agreements, "rewrite": rewrite, "duplicates": duplicates,
             "unresolved": sorted({r for g in agreements.values() for r in g["raw_names"]
                                   if not _client_line(resolution, r).get("official_name")})}
+
+
+_MERGE_FIELDS = ("description", "amount", "percent", "percent_base", "trigger_condition", "vat_status", "txn_date")
+
+
+def _merge_duplicate_labels(group: Dict[str, Any]) -> List[str]:
+    """Collapses components that share a label (slug) into one; returns the merged slugs.
+    Components arrive in event order (oldest first by `event_datetime`, then event id)."""
+    by_slug: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for component in group["components"]:
+        by_slug[_slugify(component["label"])].append(component)
+    merged_slugs = sorted(slug for slug, comps in by_slug.items() if len(comps) > 1)
+    if not merged_slugs:
+        return []
+    group["merged_events"] = {}
+    result: List[Dict[str, Any]] = []
+    for component in group["components"]:
+        slug = _slugify(component["label"])
+        comps = by_slug[slug]
+        if len(comps) == 1:
+            result.append(component)
+            continue
+        if component is not comps[-1]:
+            continue  # emitted once, at the position of the latest event
+        survivor = dict(comps[-1])
+        for field in _MERGE_FIELDS:
+            if _is_blank(survivor.get(field)):
+                for earlier in reversed(comps[:-1]):
+                    if not _is_blank(earlier.get(field)):
+                        survivor[field] = earlier[field]
+                        break
+        survivor["origin_event_id"] = comps[0]["origin_event_id"]
+        for member in comps:
+            group["merged_events"][member["origin_event_id"]] = slug
+        result.append(survivor)
+    group["components"] = result
+    return merged_slugs
 
 
 def _title_of(group: Dict[str, Any]) -> str:
@@ -165,12 +202,9 @@ def migrate(data_root: Path, resolution_path: Path, dry_run: bool = False) -> Di
         "events_rewritten": len(result["rewrite"]),
         "status_counts": _counts(result["agreements"]),
         "unresolved_names": result["unresolved"],
-        "duplicate_labels": result["duplicates"],
+        "merged_duplicates": result["duplicates"],
         "dry_run": dry_run,
     }
-    if result["duplicates"]:
-        report["status"] = "blocked_duplicate_labels"
-        return report
     if dry_run:
         report["status"] = "dry_run"
         return report
@@ -211,8 +245,10 @@ def migrate(data_root: Path, resolution_path: Path, dry_run: bool = False) -> Di
 def _component_status_of(group: Optional[Dict[str, Any]], event: Dict[str, Any]) -> Optional[str]:
     if group is None:
         return None
+    merged_slug = group.get("merged_events", {}).get(event.get("event_id"))
     for component in group["components"]:
-        if component["origin_event_id"] == event.get("event_id"):
+        if component["origin_event_id"] == event.get("event_id") or (
+                merged_slug is not None and _slugify(component["label"]) == merged_slug):
             return component["status"]
     return CANCELLED if event.get("event_subtype") in _CANCEL_SUBTYPES else None
 
@@ -233,7 +269,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = ap.parse_args(argv)
     report = migrate(Path(args.data_root), Path(args.resolution), args.dry_run)
     print(json.dumps(report, ensure_ascii=False, indent=2))
-    return 2 if report["status"] == "blocked_duplicate_labels" else 0
+    return 0
 
 
 if __name__ == "__main__":

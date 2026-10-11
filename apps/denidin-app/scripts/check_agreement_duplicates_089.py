@@ -30,10 +30,10 @@ def main(argv):
     agreements = result["agreements"]
     print(f"agreement events scanned : {sum(1 for _, e in events if e.get('source_type') == 'הסכם')}")
     print(f"agreements the migration would create : {len(agreements)}")
-    print(f"agreements with duplicate labels      : {len(result['duplicates'])}")
+    print(f"agreements with merged duplicate labels : {len(result['duplicates'])}")
     for dup in result["duplicates"]:
         group = agreements[dup["agreement_id"]]
-        print(f"\n== {dup['agreement_id']}  client={group['client_name']!r}")
+        print(f"\n== {dup['agreement_id']}  client={group['client_name']!r}  (merged into one component per label)")
         by_label = defaultdict(list)
         for comp in group["components"]:
             by_label[mig._slugify(comp["label"])].append(comp)
