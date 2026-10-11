@@ -13,6 +13,16 @@ really sending a separate msg2. This can easily happen as replies can take many 
 grow impatient. So this feature is basically to support treating followup msgs before a reply to
 be treated as a single message."
 
+**Absorbs Feature 090** ("Removing the Concept of a Turn", folded into 067 on 2026-10-04 — see
+`specs/repo/features/090-remove-turn-concept/spec.md`, now obsolete). Re-architecting away from a
+strict "1 inbound message = 1 turn" boundary is part of this feature's scope. 090's three open
+questions are **not yet answered by this spec** and are pending human clarification before
+`speckit.tasks`: (1) what exactly is wrong with "turn" as the outer unit; (2) what replaces it as
+the boundary that `Session.active_capabilities`, `capability_reset_service`'s idle timeout and
+`resolve_button_tap`'s stale-tap guard key off of; (3) whether the legacy `AIHandler` path is
+affected or only the backbone. The plan (written 2026-08-30) predates Feature 063's backbone and
+must be re-checked against it.
+
 ---
 
 **IMPORTANT**: This spec complies with:
