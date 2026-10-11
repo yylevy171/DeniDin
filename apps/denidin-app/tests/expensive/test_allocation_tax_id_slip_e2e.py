@@ -115,8 +115,9 @@ class TestAllocationTaxIdSlipE2E:
     @staticmethod
     def _retire_client(client_name: str) -> None:
         """update_client cannot clear an ID, so rename the client instead: the payer's name is then
-        free, and the next run seeds a fresh client with no ID."""
-        retired = f'{client_name} (בדיקה {int(time.time())})'
+        free, and the next run seeds a fresh client with no ID. The new name must not contain the old
+        one, or a lookup of the payer's name would find both and come back ambiguous."""
+        retired = f'ארכיון בדיקה {int(time.time())}'  # must not contain the payer's name: resolving it would turn ambiguous
         _send_turn(CHAT, f'שנה את שם הלקוח {client_name} ל{retired}', id_prefix="E2E_098_T37_RETIRE")
         _send_button_tap(CHAT, BUTTON_ID_APPROVE, id_prefix="E2E_098_T37_RETIRE_TAP")
 
