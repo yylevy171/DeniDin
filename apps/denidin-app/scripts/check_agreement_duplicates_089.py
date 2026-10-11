@@ -19,7 +19,13 @@ def main(argv):
     if len(argv) != 2:
         print(__doc__)
         return 1
-    events = mig._load_events(Path(argv[1]).expanduser())
+    events_dir = Path(argv[1]).expanduser()
+    try:
+        next(events_dir.iterdir())
+    except (OSError, StopIteration) as exc:
+        print(f"ERROR: cannot read any file in {events_dir} ({exc!r}) - refusing to report a false zero")
+        return 2
+    events = mig._load_events(events_dir)
     result = mig.plan(events, {})
     agreements = result["agreements"]
     print(f"agreement events scanned : {sum(1 for _, e in events if e.get('source_type') == 'הסכם')}")
