@@ -1,3 +1,5 @@
+> **⛔ SUPERSEDED (2026-10-11):** written for the turn-based discard-and-merge design (with a feature flag). `spec.md` was revised when Feature 090 was folded in — no turns, hand-back merging, no flag. Redo with `speckit.plan` against the Feature 063 backbone; reuse only what still applies (e.g. research D4's finding that a running model call cannot be safely aborted).
+
 # Quickstart: Realistic Message Handling — Multiple Interfering Messages
 
 **Feature**: `feature/067-realistic-message-handling` · **Date**: 2026-08-30
