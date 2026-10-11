@@ -167,9 +167,12 @@ class TestAllocationTaxIdSlipE2E:
             assert document.get("amount") == _SLIP_AMOUNT, f"wrong amount: {document!r}"
 
             assert _morning_tax_id(client_name, "E2E_098_T37") == VALID_TAX_ID
-            combos = _of_type(_morning_documents(client_name, "E2E_098_T37"), 320)
+            # The client keeps its documents from earlier runs, so look for this run's own 320 by number.
+            number = str(document.get("display_number"))
+            combos = [d for d in _of_type(_morning_documents(client_name, "E2E_098_T37"), 320)
+                      if str(d.get("display_number")) == number]
             assert len(combos) == 1 and combos[0].get("amount") == _SLIP_AMOUNT, (
-                f"expected one {_SLIP_AMOUNT} ₪ 320: {combos!r}"
+                f"expected the issued 320 #{number} for {_SLIP_AMOUNT} ₪ in Morning: {combos!r}"
             )
         finally:
             if id_saved:
