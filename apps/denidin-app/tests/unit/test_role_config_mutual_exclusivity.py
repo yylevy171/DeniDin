@@ -9,11 +9,12 @@ GODFATHER. This is existing behavior (not new), captured as a regression test.
 """
 from src.managers.user_manager import UserManager
 from src.models.user import Role
+from tests.denidin_test_support import make_user_manager
 
 
 def test_phone_in_both_admin_and_godfather_resolves_to_admin():
     phone = "972522968679"
-    manager = UserManager(godfather_phone=phone, admin_phones=[phone])
+    manager = make_user_manager(godfather_phone=phone, admin_phones=[phone])
 
     user = manager.get_user(phone)
 
@@ -22,7 +23,7 @@ def test_phone_in_both_admin_and_godfather_resolves_to_admin():
 
 def test_phone_in_godfather_only_resolves_to_godfather():
     phone = "972522968679"
-    manager = UserManager(godfather_phone=phone, admin_phones=[])
+    manager = make_user_manager(godfather_phone=phone, admin_phones=[])
 
     user = manager.get_user(phone)
 
@@ -31,7 +32,7 @@ def test_phone_in_godfather_only_resolves_to_godfather():
 
 def test_phone_in_admin_only_resolves_to_admin():
     phone = "972522968679"
-    manager = UserManager(godfather_phone=None, admin_phones=[phone])
+    manager = make_user_manager(godfather_phone=None, admin_phones=[phone])
 
     user = manager.get_user(phone)
 

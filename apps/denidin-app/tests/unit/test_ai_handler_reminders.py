@@ -21,9 +21,10 @@ from unittest.mock import Mock, MagicMock
 import pytest
 
 from src.handlers.ai_handler import (
-    AIHandler, CREATE_REMINDER_TOOL, REMINDER_AUTHORIZED_ROLES,
-    _build_reminder_approval_details, _format_reminder_schedule,
+    AIHandler, REMINDER_AUTHORIZED_ROLES, _build_reminder_approval_details,
 )
+from src.tool_actions.reminder_actions import format_reminder_schedule as _format_reminder_schedule
+from src.tool_actions.tool_schemas import CREATE_REMINDER_TOOL
 from src.managers.pending_local_tool_approval_manager import PendingLocalToolApproval
 from src.models.config import AppConfiguration
 from src.models.message import AIRequest
@@ -33,6 +34,7 @@ from src.constants.error_messages import (
 )
 from src.utils.time_utils import now_local
 from datetime import timedelta
+from tests.ai_handler_test_support import make_ai_handler
 
 
 def _function_call_item(name, arguments, call_id="call_reminder_1"):
@@ -95,7 +97,7 @@ def mock_ai_client():
 
 @pytest.fixture
 def ai_handler(mock_config, mock_ai_client):
-    return AIHandler(mock_ai_client, mock_config)
+    return make_ai_handler(mock_ai_client, mock_config)
 
 
 GODFATHER_PHONE = '972500000002'
@@ -369,7 +371,7 @@ class TestDualCheckDispatch:
 
         request = AIRequest(user_prompt="כן", constitution="", max_tokens=500,
                              model="gpt-5.6-luna", chat_id=GODFATHER_PHONE, message_id="m2")
-        result = ai_handler.get_response(
+        result = ai_handler.single_turn(
             request, chat_id=GODFATHER_PHONE, user_role="GODFATHER",
             sender=GODFATHER_PHONE, recipient=None, user_phone=GODFATHER_PHONE,
         )
@@ -402,7 +404,7 @@ class TestDualCheckDispatch:
                              model="gpt-5.6-luna", chat_id=GODFATHER_PHONE, message_id="m2")
         mock_ai_client.responses.create.return_value = _response([], text="")
 
-        ai_handler.get_response(
+        ai_handler.single_turn(
             request, chat_id=GODFATHER_PHONE, user_role="GODFATHER",
             sender=GODFATHER_PHONE, recipient=None, user_phone=GODFATHER_PHONE,
         )

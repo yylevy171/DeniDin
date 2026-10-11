@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any, List
 import uuid
 
+from src.models.media import Media
 from src.utils.time_utils import now_local
 
 # Feature 039's "send nothing this turn" signal. Defined here rather than in
@@ -15,6 +16,12 @@ from src.utils.time_utils import now_local
 # `ai_handler.NO_REPLY_SENTINEL` re-exports this, so existing imports of it
 # (src and tests alike) keep working unchanged.
 NO_REPLY_SENTINEL = "[[NO_REPLY]]"
+
+
+def should_reply_for(text: str) -> bool:
+    """False iff the model's final text is exactly the [[NO_REPLY]] sentinel
+    (Feature 039) - the one check both the legacy AIHandler and the Backbone use."""
+    return (text or "").strip() != NO_REPLY_SENTINEL
 
 
 def _frame_contact_message_text(contact_message_data: Dict[str, Any]) -> str:
@@ -59,6 +66,19 @@ class WhatsAppMessage:
     # Used for Message.recipient_name when this message's chat is the
     # recipient (a group message is addressed to the whole group).
     chat_name: str = ""
+    # Feature 069: True when this notification was synthesized by the
+    # WhatsApp-export player (player/notification_synth.py sets event["replay"]),
+    # not received live from Green API. The player injects each message's
+    # ORIGINAL conversation timestamp into event["timestamp"]; downstream
+    # (AIHandler._finalize_response) uses this flag to date the bot's own reply
+    # as "just after" that original moment (+10s) rather than at wall-clock now.
+    is_replay: bool = False
+    # Feature 084 (WhatsApp reactions): the real Green API `idMessage` for this inbound
+    # message, distinct from `message_id` above (DeniDin's own internally-generated UUID,
+    # untouched - Feature 033's identity constraint). Reacting to a message requires this
+    # real wire id, which was previously only captured ad hoc, at SEND time, for outbound
+    # messages.
+    whatsapp_id_message: Optional[str] = None
 
     @classmethod
     def from_notification(cls, notification) -> 'WhatsAppMessage':
@@ -101,9 +121,13 @@ class WhatsAppMessage:
         # Detect if it's a group chat (group chats have @g.us in chat_id)
         is_group = '@g.us' in chat_id
         timestamp = event.get('timestamp', int(now_local().timestamp()))
+        is_replay = bool(event.get('replay', False))
 
         # Generate unique message ID (UUID) for tracking throughout lifecycle
         message_id = str(uuid.uuid4())
+
+        # Feature 084: the real Green API wire id, for reactions.
+        whatsapp_id_message = event.get('idMessage')
 
         # Track when message was received by application (UTC)
         received_timestamp = now_local()
@@ -119,7 +143,9 @@ class WhatsAppMessage:
             is_group=is_group,
             received_timestamp=received_timestamp,
             sender_display_name=sender_display_name,
-            chat_name=chat_name
+            chat_name=chat_name,
+            is_replay=is_replay,
+            whatsapp_id_message=whatsapp_id_message,
         )
 
 
@@ -149,9 +175,13 @@ class AIRequest:
     # message through AIRequest (already threaded everywhere downstream
     # needs it) rather than threading yet another individual scalar
     # (sender/user_phone/etc. already exist as separate params on
-    # get_response/create_request and this was exactly the pattern that
+    # single_turn/create_request and this was exactly the pattern that
     # caused the conflation in the first place).
     original_message: Optional["WhatsAppMessage"] = None
+    # The file attached to this turn (its bytes, MIME type, filename and media_type), or
+    # None for a text turn (Feature 063). Only the Backbone's media turns carry one - the
+    # legacy path processes media in MediaHandler, never through single_turn.
+    media: Optional[Media] = None
 
     def __post_init__(self):
         """Auto-generate fields if not provided"""

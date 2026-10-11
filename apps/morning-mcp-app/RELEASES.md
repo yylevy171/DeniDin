@@ -63,3 +63,75 @@ get_invoice_details/list_invoices expose Morning's raw creation_timestamp and ga
 ## morning-mcp-app v0.5.3 — 2026-08-27
 
 Version sync with denidin-app v0.5.3 - no functional changes to morning-mcp-app in this release.
+
+## morning-mcp-app v0.5.4 — 2026-09-04
+
+Parse negative-amount documents: Invoice / Payment / LinkedDocument .amount drop their Field(ge=0) lower bound, so real production type-400 receipt-cancellation documents ("ביטול חשבונית מס / קבלה ...", genuinely negative by Morning's own reversal convention) parse instead of raising a validation error - found and confirmed against 15 real prod documents during Feature 062's ledger backfill. Plus: get_invoice_details / format_invoice_details now shows each payment line's method and bank name / branch / account when Morning returns them.
+
+## morning-mcp-app v0.5.4-70 — 2026-09-06
+
+Lockstep version bump for the both-apps 0.5.4-70 deploy — no code change from v0.5.4.
+
+## morning-mcp-app v0.5.4-b43 — 2026-09-06
+
+bugfix-043: admin stop/start owns the prober; deploy_release.sh no longer races it
+
+## morning-mcp-app v0.5.4-b43v2 — 2026-09-06
+
+bugfix-043: no code change, re-cut to keep both apps' versions aligned with denidin-app 0.5.4-b43v2 for this dev test round
+
+## morning-mcp-app v0.5.4-b43v4 — 2026-09-07
+
+Version bump to align with denidin-app (v3 skipped for denidin-app; both apps now carry matching version strings). No app source changes since v0.5.4-b43v2; the bugfix-043 restart-loop/health-check fix lives entirely in scripts/ (ops-level, not part of either app's Docker build).
+
+## morning-mcp-app v0.5.4-b43v5 — 2026-09-07
+
+bugfix-043: fix prober restart-loop (run_all_and_verify_healthy.sh blocks until real health confirmed), real JSON-body health checks (verify.py), full per-attempt verify logging; split cut/deploy release scripts into single-app and all-apps variants
+
+## morning-mcp-app v0.6.0 — 2026-09-07
+
+Feature 070: rolling 14-day short-term memory window with a nightly daily-summary roll, replacing 24h session expiry and the hourly cleanup thread. bugfix-043: health-monitoring + auto-restart (prober + escalation ladder, real OS scheduler wiring for dev and prod, admin-owned stop/start, deploy/prober race fix, shared ops-scripts bundling); live prod incidents found and fixed - the restart-loop itself (run_all_and_verify_healthy.sh blocks until real JSON-body health is confirmed, closing a race where a still-booting container got killed mid-start) and a ~41-minute prod outage caused by interrupted single-app deploys, fixed by splitting cut_release.sh/deploy_release.sh into single-app and all-apps variants (one shared stop/start cycle for every app instead of one per app).
+
+## morning-mcp-app v0.7.0 — 2026-09-12
+
+Ledger web UI, mandatory client resolution for ledger events, edited/deleted WhatsApp message handling
+
+## morning-mcp-app v0.7.1 — 2026-09-13
+
+Feature 080: always-on progress updates, typing keep-alive, telemetry plumbing; fixes multi-tool dispatch collision, typing-indicator gap, and rogue-language leak.
+
+## morning-mcp-app v0.7.2 — 2026-09-14
+
+supporting daily backups
+
+## morning-mcp-app v0.7.3 — 2026-09-14
+
+supporting daily backups
+
+## morning-mcp-app v0.7.4 — 2026-09-15
+
+Feature 083: Fee agreement document generation over WhatsApp (RBAC-gated get/render/verify/send tools, DocTemplateEngine, Word templates), with RBAC-only gating (no separate feature flag) and no automated page-count check (LibreOffice unavailable in the runtime container - one-page discipline is the model's own judgment).
+
+## morning-mcp-app v0.7.5 — 2026-09-15
+
+Reconciliation release: combines Feature 083 (fee agreement document generation) with Feature 078 (prod daily backups) and the v0.7.4 fee-agreement-docs cut, which was mistakenly cut from a stale pre-078 branch base and is being superseded.
+
+## morning-mcp-app v0.7.6 — 2026-09-25
+
+Webapp: new Clients tab (Morning client status dashboard, operator comments, aliasing unmatched ledger names), in-memory caching with refresh-only reloads, correct WhatsApp conversation ordering, no refetch on tab switch (Feature 087). DeniDin: fee-agreement DOCX date/title order and bold party lines (bugfix-063).
+
+## morning-mcp-app v0.7.7 — 2026-09-26
+
+bugfix-066: config baked into the image is now used as shipped (compose files mount only config.<env>.json; no host copies of the constitution, ledger prompt or fee templates override the release); .dockerignore no longer bakes stray config/log/preview files; launch failures are reported with Docker's error; webapp /health adds Morning connectivity and ledger completeness; webapp index.html is served no-cache.
+
+## morning-mcp-app v0.7.8 — 2026-09-28
+
+Fixes: client search now matches geresh-containing names when the geresh is typed omitted; Israeli phone numbers are normalised before validation; queued WhatsApp messages are processed on startup instead of dropped; user-facing error messages are persisted in session history; and the constitution's VAT-included default for deposit screenshots/bank transfers no longer triggers a redundant VAT prompt. Also includes a chore fix: dev deploy/ops scripts now refuse to run from a nested teammate clone and always target the canonical DeniDin root, closing a gap that caused a dev deployment crash on 2026-09-27.
+
+## morning-mcp-app v0.7.9 — 2026-10-03
+
+no change
+
+## morning-mcp-app v0.8.0 — 2026-10-06
+
+bugfix-071: VAT is stated and enforced per Morning document type - VAT-included documents are no longer stored as exempt/VAT 0, and every document approval states its VAT. Feature 063: dynamic capability backbone (flag-gated), with its prompts baked into the image. bugfix-069: WhatsApp link state (whatsapp_authorized) reported in /health.

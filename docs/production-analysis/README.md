@@ -49,7 +49,7 @@ Layout:
 ### 2. ⚠️ Use an explicit interpreter
 
 Bare `python3` on this machine can resolve to **another clone's venv**
-(observed: `coder2/apps/morning-mcp-app/venv/bin/python3`). That is a
+(observed: `teammate2/apps/morning-mcp-app/venv/bin/python3`). That is a
 cross-clone violation. Always check and pin:
 
 ```bash

@@ -5,6 +5,12 @@
 # Process ID file
 denidin.pid
 
+# Session handoff notes - ephemeral, agent/session-local working notes that
+# should never have been committed (2026-09-12 cleanup: 8 tracked HANDOFF*.md
+# files removed repo-wide). Never re-add one to git.
+HANDOFF*.md
+**/HANDOFF*.md
+
 # Python
 __pycache__/
 *.py[cod]
@@ -18,6 +24,8 @@ downloads/
 eggs/
 .eggs/
 lib/
+!scripts/lib/
+!scripts/backup_prod/lib/
 lib64/
 parts/
 sdist/
@@ -112,3 +120,44 @@ specs/in-progress/025-morning-sourced-ledger-events/scripts/*.disabled
 # Local-only audit input, same rule as Events.csv above. The committed
 # derived artifacts in that folder carry only client names + amounts.
 specs/backlog/065-august-ledger-audit-apply/august_morning.csv
+
+# Temporary backfill data, staging datasets, and merge bundles (local-only, keep on disk)
+reports/tmp_data/
+reports/staging_prod_data/
+reports/staging_prod_data.tar.gz
+reports/merge_staging/
+reports/merge_prod.sh
+reports/prod_merge_bundle.tar.gz
+
+# Local customer data exports, WhatsApp source agreements, and mapping state files (never commit PII)
+reports/data_exports/
+reports/19.8.26 whatsapp export/
+reports/archive/
+reports/*.csv
+reports/*.html
+reports/*.md
+reports/docs/final_client_status.*
+!reports/docs/*.md
+reports/docs/final_client_status.md
+reports/new_morning_clients.json
+reports/mapping_tool/*.json
+reports/mapping_tool/*.csv
+reports/mapping_tool/*.html
+reports/mapping_tool/*.md
+!reports/mapping_tool/README.md
+!reports/mapping_tool/*.template.json
+
+.agents/
+
+# Feature 078: per-host backup config (real paths, no secrets, but per-host per
+# config/shared_state.local.json's own precedent — not shared across clones/hosts)
+scripts/backup_prod/config.json
+
+
+# Windows-prod data mount script run by the com.denidin.winprod-mount LaunchAgent. Lives at the
+# root clone's scripts/ (machine-local, not tied to any teammate clone), copied from
+# scripts/windows_prod/mount_data_foreground.sh - never committed.
+/scripts/mount_data_foreground.sh
+
+# Debug traces are local-only (large, regenerated per run)
+apps/denidin-app/debug_traces/

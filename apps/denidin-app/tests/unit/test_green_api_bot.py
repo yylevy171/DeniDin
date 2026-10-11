@@ -12,7 +12,12 @@ from unittest.mock import Mock, patch, call
 
 from whatsapp_chatbot_python import GreenAPIBot
 
-from src.utils.green_api_bot import DeniDinGreenAPIBot, _notification_data_or_none, send_proactive_message
+from src.utils.green_api_bot import (
+    DeniDinGreenAPIBot,
+    _notification_data_or_none,
+    send_proactive_message,
+    send_reaction,
+)
 
 
 def _fake_response(data):
@@ -48,39 +53,6 @@ def _make_bot(**overrides):
     bot.router = Mock()
     bot.raise_errors = overrides.get("raise_errors", False)
     return bot
-
-
-class TestDrainStartupNotifications:
-    def test_stops_immediately_on_empty_body_fallback_string(self):
-        """The exact bugfix-020 scenario: a fresh/drained instance whose backend returns the
-        empty-body fallback "[]" right away must not crash and must not call deleteNotification."""
-        bot = _make_bot()
-        bot.api.receiving.receiveNotification.return_value = _fake_response("[]")
-
-        bot._drain_startup_notifications()
-
-        bot.api.receiving.deleteNotification.assert_not_called()
-
-    def test_stops_on_null_body(self):
-        bot = _make_bot()
-        bot.api.receiving.receiveNotification.return_value = _fake_response(None)
-
-        bot._drain_startup_notifications()
-
-        bot.api.receiving.deleteNotification.assert_not_called()
-
-    def test_drains_real_backlog_then_stops(self):
-        bot = _make_bot()
-        bot.api.receiving.receiveNotification.side_effect = [
-            _fake_response({"receiptId": 1, "body": {}}),
-            _fake_response({"receiptId": 2, "body": {}}),
-            _fake_response("[]"),
-        ]
-
-        bot._drain_startup_notifications()
-
-        bot.api.receiving.deleteNotification.assert_has_calls([call(1), call(2)])
-        assert bot.api.receiving.deleteNotification.call_count == 2
 
 
 class TestRunForever:
@@ -148,22 +120,22 @@ class TestRunForever:
 
 
 class TestInit:
-    def test_forces_library_drain_off_and_runs_own_drain_by_default(self):
-        with patch("src.utils.green_api_bot.GreenAPIBot.__init__", return_value=None) as mock_init, \
-             patch.object(DeniDinGreenAPIBot, "_drain_startup_notifications") as mock_drain:
-            DeniDinGreenAPIBot("id123", "token123")
+    def test_forces_library_drain_off_and_never_drains(self):
+        """bugfix-054: startup must not delete the queued backlog - the library's drain is forced
+        off and there is no drain of our own; run_forever() routes the backlog instead."""
+        with patch("src.utils.green_api_bot.GreenAPIBot.__init__", return_value=None) as mock_init:
+            bot = DeniDinGreenAPIBot("id123", "token123")
 
         mock_init.assert_called_once()
         assert mock_init.call_args.kwargs["delete_notifications_at_startup"] is False
-        mock_drain.assert_called_once()
+        assert not hasattr(bot, "_drain_startup_notifications")
+        assert bot.on_notification_received is None
 
-    def test_delete_notifications_at_startup_false_skips_our_drain_too(self):
-        with patch("src.utils.green_api_bot.GreenAPIBot.__init__", return_value=None) as mock_init, \
-             patch.object(DeniDinGreenAPIBot, "_drain_startup_notifications") as mock_drain:
-            DeniDinGreenAPIBot("id123", "token123", delete_notifications_at_startup=False)
+    def test_a_caller_cannot_switch_the_library_drain_back_on(self):
+        with patch("src.utils.green_api_bot.GreenAPIBot.__init__", return_value=None) as mock_init:
+            DeniDinGreenAPIBot("id123", "token123", delete_notifications_at_startup=True)
 
         assert mock_init.call_args.kwargs["delete_notifications_at_startup"] is False
-        mock_drain.assert_not_called()
 
     def test_is_a_real_green_api_bot(self):
         assert issubclass(DeniDinGreenAPIBot, GreenAPIBot)
@@ -221,3 +193,78 @@ class TestSendProactiveMessage:
         source = inspect.getsource(send_proactive_message)
         assert "GreenAPIBot(" not in source
         assert "GreenAPI(" not in source
+
+
+class TestSendReaction:
+    """Feature 084 (T001): send_reaction() against the live-confirmed Green API
+    sendReaction endpoint (research.md R1, Gate Zero closed 2026-09-12). All calls go
+    through a stubbed bot.api.request - permitted at the unit tier (CONSTITUTION §V)."""
+
+    def _bot_with_request_results(self, *results):
+        """results: a sequence of Mock(code=...) objects or Exception instances, one per
+        successive bot.api.request() call."""
+        bot = Mock()
+        bot.api.request.side_effect = list(results)
+        return bot
+
+    def test_success_returns_true_with_correct_payload_shape(self):
+        bot = self._bot_with_request_results(Mock(code=200))
+        result = send_reaction(bot, "972501234567@c.us", "wamid.123", "👍")
+        assert result is True
+        bot.api.request.assert_called_once_with(
+            "POST",
+            "{{host}}/waInstance{{idInstance}}/sendReaction/{{apiTokenInstance}}",
+            {"chatId": "972501234567@c.us", "idMessage": "wamid.123", "reaction": "👍"},
+        )
+
+    def test_clearing_reaction_with_empty_string_succeeds(self):
+        bot = self._bot_with_request_results(Mock(code=200))
+        assert send_reaction(bot, "chat1", "wamid.1", "") is True
+        _, _, payload = bot.api.request.call_args[0]
+        assert payload["reaction"] == ""
+
+    def test_5xx_is_retried_once_then_returns_false_if_still_failing(self):
+        bot = self._bot_with_request_results(Mock(code=500), Mock(code=500))
+        with patch("src.utils.green_api_bot.time.sleep") as mock_sleep:
+            result = send_reaction(bot, "chat1", "wamid.1", "👍")
+        assert result is False
+        assert bot.api.request.call_count == 2
+        mock_sleep.assert_called_once_with(1.0)
+
+    def test_5xx_then_success_on_retry_returns_true(self):
+        bot = self._bot_with_request_results(Mock(code=500), Mock(code=200))
+        with patch("src.utils.green_api_bot.time.sleep"):
+            result = send_reaction(bot, "chat1", "wamid.1", "👍")
+        assert result is True
+        assert bot.api.request.call_count == 2
+
+    def test_4xx_is_never_retried(self):
+        bot = self._bot_with_request_results(Mock(code=400))
+        with patch("src.utils.green_api_bot.time.sleep") as mock_sleep:
+            result = send_reaction(bot, "chat1", "wamid.1", "👍")
+        assert result is False
+        assert bot.api.request.call_count == 1
+        mock_sleep.assert_not_called()
+
+    def test_transport_exception_is_retried_once_then_returns_false(self):
+        bot = self._bot_with_request_results(ConnectionError("network down"), ConnectionError("still down"))
+        with patch("src.utils.green_api_bot.time.sleep") as mock_sleep:
+            result = send_reaction(bot, "chat1", "wamid.1", "👍")
+        assert result is False
+        assert bot.api.request.call_count == 2
+        mock_sleep.assert_called_once_with(1.0)
+
+    def test_transport_exception_then_success_on_retry_returns_true(self):
+        bot = self._bot_with_request_results(ConnectionError("network down"), Mock(code=200))
+        with patch("src.utils.green_api_bot.time.sleep"):
+            result = send_reaction(bot, "chat1", "wamid.1", "👍")
+        assert result is True
+
+    def test_never_raises_on_persistent_transport_failure(self):
+        bot = self._bot_with_request_results(
+            ConnectionError("network down"), ConnectionError("still down")
+        )
+        with patch("src.utils.green_api_bot.time.sleep"):
+            # Must not raise - reactions are cosmetic and must never break the turn (REQ-084-007).
+            result = send_reaction(bot, "chat1", "wamid.1", "👍")
+        assert result is False

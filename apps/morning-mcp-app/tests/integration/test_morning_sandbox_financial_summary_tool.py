@@ -4,6 +4,7 @@ No mocks: seeds real invoices via create_invoice (US1) and drives
 denidin_mcp_morning.tools.get_financial_summary against the live sandbox.
 Per CONSTITUTION §V and this app's testing policy (spec.md §Testing Strategy).
 """
+import json
 import time
 from pathlib import Path
 
@@ -44,6 +45,7 @@ def seeded_invoice(morning_client):
         amount=55.0,
         description=f"Summary seed {unique_marker}",
         name_resolved=True,
+        vat_included=True,
     )
     # Give the sandbox's search index a moment (see the widened-retry fix in
     # test_morning_sandbox_list_invoices_tool.py for the same class of delay).
@@ -57,7 +59,8 @@ def test_get_financial_summary_for_this_month_includes_seeded_invoice(morning_cl
     result = get_financial_summary(morning_client, period="month")
 
     assert isinstance(result, str)
-    assert "₪" in result
+    payload = json.loads(result)
+    assert payload["total_invoiced"] >= 55.0
 
 
 def test_get_financial_summary_custom_period_requires_dates(morning_client):
@@ -77,8 +80,8 @@ def test_get_financial_summary_rejects_unknown_period(morning_client):
 def test_get_financial_summary_custom_period_with_no_documents_is_zero(morning_client):
     from denidin_mcp_morning.tools import get_financial_summary
 
-    result = get_financial_summary(
+    payload = json.loads(get_financial_summary(
         morning_client, period="custom", from_date="1900-01-01", to_date="1900-01-02"
-    )
+    ))
 
-    assert "₪0.00" in result
+    assert payload["total_invoiced"] == 0.0

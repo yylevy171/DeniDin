@@ -11,7 +11,12 @@ from __future__ import annotations
 
 import requests
 
-from .tools import ClientNameNotResolvedError, ClientNotFoundError
+from .tools import (
+    ClientNameNotResolvedError,
+    ClientNotFoundError,
+    ClientTaxIdRequiredError,
+    VatConflictError,
+)
 from .utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -23,6 +28,14 @@ _NETWORK_ERROR = "❌ לא ניתן להתחבר ל-Morning כרגע. נסו ש�
 _REQUEST_REJECTED = "❌ הבקשה נדחתה על ידי Morning. בדקו את הפרטים ונסו שוב."
 _UNEXPECTED = "❌ משהו השתבש. נסו שוב."
 _INVALID_REQUEST = "❌ הבקשה אינה תקינה. בדקו את הפרטים שסיפקתם."
+# bugfix-071: a stated VAT treatment that contradicts the document type.
+# Public - tests compare against it rather than its wording.
+VAT_CONFLICT = (
+    "❌ לא נוצר מסמך: ציון המע״מ סותר את סוג המסמך. קבלה וחשבונית מס/קבלה "
+    "רושמות סכום ששולם בפועל, והמע״מ כלול בו תמיד; מסמך שנוצר מול מסמך קיים "
+    "(קבלה על חשבונית, סגירת חשבון עסקה, חשבונית זיכוי) לוקח את המע״מ מהמסמך "
+    "המקורי. בררו עם המשתמש למה התכוון ונסו שוב."
+)
 
 
 def mask_secret(value: str, keep: int = 4) -> str:
@@ -77,6 +90,13 @@ def friendly_error_message(exc: Exception, correlation_id: str) -> str:
         logger.warning("[corr_id=%s] Client name not resolved: %s", correlation_id, exc)
         return str(exc)
 
+    if isinstance(exc, VatConflictError):
+        # bugfix-071: like the two client errors below, a ValueError that
+        # must not collapse into the generic "invalid request" text - the
+        # caller needs to know it was VAT, so it asks the user.
+        logger.warning("[corr_id=%s] VAT conflict: %s", correlation_id, exc)
+        return VAT_CONFLICT
+
     if isinstance(exc, ClientNotFoundError):
         # bugfix-028 B4(c), caught here 2026-08-12 during a post-merge sweep:
         # ClientNotFoundError IS a ValueError, so without this check it fell
@@ -88,6 +108,14 @@ def friendly_error_message(exc: Exception, correlation_id: str) -> str:
         # This message is already user-facing Hebrew (format_client_not_found()
         # + the searched name), unlike the generic ValueError case below.
         logger.warning("[corr_id=%s] Client not found: %s", correlation_id, exc)
+        return str(exc)
+
+    if isinstance(exc, ClientTaxIdRequiredError):
+        # Feature 098: a 305/320 above the allocation threshold for a client
+        # with no ID. Also a ValueError, so it must be caught before the
+        # generic branch below - its message is already user-facing Hebrew
+        # telling the caller to ask for the ID, which is the whole point.
+        logger.warning("[corr_id=%s] Client tax id required: %s", correlation_id, exc)
         return str(exc)
 
     if isinstance(exc, ValueError):

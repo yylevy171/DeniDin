@@ -1,0 +1,1 @@
+../../../repo/bugfixes/bugfix-044-chat-context-lost-after-app-restart.md

@@ -22,10 +22,12 @@ from unittest.mock import Mock, MagicMock
 
 import pytest
 
-from src.handlers.ai_handler import AIHandler, LEDGER_QUERY_AUTHORIZED_ROLES
+from src.handlers.ai_handler import AIHandler
+from src.managers.ledger_event_recognizer import LEDGER_QUERY_AUTHORIZED_ROLES
 from src.models.config import AppConfiguration
 from src.models.message import AIRequest
 from src.models.user import Role
+from tests.ai_handler_test_support import make_ai_handler
 
 
 def _function_call_item(name, arguments, call_id):
@@ -84,7 +86,7 @@ def mock_ai_client():
 
 @pytest.fixture
 def ai_handler(mock_config, mock_ai_client):
-    return AIHandler(mock_ai_client, mock_config)
+    return make_ai_handler(mock_ai_client, mock_config)
 
 
 GODFATHER_PHONE = '972500000002'

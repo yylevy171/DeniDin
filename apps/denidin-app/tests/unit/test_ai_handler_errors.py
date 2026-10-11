@@ -10,6 +10,7 @@ from openai import APITimeoutError, RateLimitError
 from src.handlers.ai_handler import AIHandler
 from src.models.config import AppConfiguration
 from src.models.message import WhatsAppMessage, AIRequest
+from tests.ai_handler_test_support import make_ai_handler
 
 
 @pytest.fixture
@@ -40,7 +41,7 @@ def mock_openai_client():
 @pytest.fixture
 def ai_handler(mock_config, mock_openai_client):
     """Create AIHandler instance with mocked dependencies"""
-    return AIHandler(mock_openai_client, mock_config)
+    return make_ai_handler(mock_openai_client, mock_config)
 
 
 @pytest.fixture
@@ -73,7 +74,7 @@ class TestAIHandlerTimeoutHandling:
         )
         
         request = ai_handler.create_request(sample_whatsapp_message)
-        response = ai_handler.get_response(request)
+        response = ai_handler.single_turn(request)
         
         # Should return fallback response
         assert "trouble connecting" in response.response_text.lower()
@@ -90,7 +91,7 @@ class TestAIHandlerTimeoutHandling:
         )
         
         request = ai_handler.create_request(sample_whatsapp_message)
-        ai_handler.get_response(request)
+        ai_handler.single_turn(request)
         
         # Verify error was logged
         assert mock_logger.error.called
@@ -108,7 +109,7 @@ class TestAIHandlerTimeoutHandling:
         )
         
         request = ai_handler.create_request(sample_whatsapp_message)
-        response = ai_handler.get_response(request)
+        response = ai_handler.single_turn(request)
         
         # Verify response structure
         assert response.request_id == request.request_id
@@ -132,7 +133,7 @@ class TestAIHandlerRateLimitHandling:
         )
         
         request = ai_handler.create_request(sample_whatsapp_message)
-        response = ai_handler.get_response(request)
+        response = ai_handler.single_turn(request)
         
         # Should return rate limit fallback message
         assert "capacity" in response.response_text.lower() or "rate limit" in response.response_text.lower()
@@ -148,7 +149,7 @@ class TestAIHandlerRateLimitHandling:
         )
         
         request = ai_handler.create_request(sample_whatsapp_message)
-        ai_handler.get_response(request)
+        ai_handler.single_turn(request)
         
         # Verify error was logged
         assert mock_logger.error.called
@@ -165,7 +166,7 @@ class TestAIHandlerRateLimitHandling:
         )
         
         request = ai_handler.create_request(sample_whatsapp_message)
-        response = ai_handler.get_response(request)
+        response = ai_handler.single_turn(request)
         
         # Message should be helpful and not technical
         assert "Sorry" in response.response_text or "currently" in response.response_text

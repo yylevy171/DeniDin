@@ -5,7 +5,9 @@ covers the clarified Hebrew/English affirmative examples plus negatives.
 """
 import pytest
 
-from src.handlers.ai_handler import _is_affirmative_reply
+from src.core.ai_manager import AIManager
+
+_is_affirmative_reply = AIManager.is_affirmative_reply
 
 
 @pytest.mark.parametrize("text", [

@@ -3,8 +3,8 @@ Component-Integration Test: Media Path Stays Outside Group Etiquette (Feature 03
 
 Verifies the architectural boundary documented in HANDOFF.md and denidin.py's
 handle_image_message: media messages route straight to
-WhatsAppHandler.handle_media_message -> MediaHandler, NEVER through
-_process_conversational_message / AIHandler.get_response - so none of US1
+denidin._handle_media_message -> MediaHandler, NEVER through
+_process_conversational_message / AIHandler.single_turn - so none of US1
 (no-mention-gate), US4a (should_reply sentinel), or US5/US7 (named-addressee
 etiquette) can apply to media, regardless of what the caption says.
 
@@ -13,7 +13,7 @@ WhatsAppHandler/MediaHandler/SessionManager - only the two genuine external
 boundaries are stood in for: the Green API file download (media_file_manager)
 and the OpenAI vision call (image_extractor.analyze_media), the same two points
 tests/unit/test_media_handler.py already treats as the seam - no internal
-component (SessionManager, WhatsAppHandler, MediaHandler orchestration) is
+component (SessionManager, WhatsAppHandler, MediaHandler coordination) is
 mocked.
 """
 
@@ -57,7 +57,9 @@ class TestMediaPathBypassesGroupEtiquette:
                 'ai_reply_max_tokens': config.ai_reply_max_tokens,
                 'log_level': config.log_level,
                 'data_root': config.data_root,
-                'feature_flags': config.feature_flags,
+                # This file tests the legacy AIHandler routing; config.test.json keeps the
+                # backbone flag ON for billed runs, so pin it off here.
+                'feature_flags': {**(config.feature_flags or {}), 'enable_capability_backbone': False},
                 'godfather_phone': config.godfather_phone,
                 'memory': config.memory,
                 'constitution_config': config.constitution_config,
@@ -70,7 +72,7 @@ class TestMediaPathBypassesGroupEtiquette:
     def _stub_external_boundaries(self, denidin_app, raw_response: str, monkeypatch):
         """Stand in for the two real external calls a successful media turn makes
         (Green API file download, OpenAI vision analysis) - everything else
-        (SessionManager, WhatsAppHandler, MediaHandler orchestration) stays real.
+        (SessionManager, WhatsAppHandler, MediaHandler coordination) stays real.
 
         Uses pytest's `monkeypatch` (auto-reverted at the end of each test) rather than
         a raw attribute assignment - `denidin_app`/`media_handler` are process-global
@@ -80,7 +82,7 @@ class TestMediaPathBypassesGroupEtiquette:
         it caused tests/integration/test_media_webhook_routing.py's
         test_image_message_user_gets_response to observe this stub's canned response
         instead of its own expected download-failure error)."""
-        media_handler = denidin_app.whatsapp_handler.media_handler
+        media_handler = denidin_app.media_handler
         monkeypatch.setattr(
             media_handler.media_file_manager, 'download_file',
             lambda file_url: (b"fake_image_bytes", True)
@@ -151,7 +153,7 @@ class TestMediaPathBypassesGroupEtiquette:
             f"Expected the real analysis summary to be sent back, got: {sent}"
         )
 
-        session_manager = denidin_app.ai_handler.session_manager
+        session_manager = denidin_app.session_manager
         session = session_manager.get_session(GROUP_CHAT_ID)
         messages_dir = session_manager.storage_dir / session.session_id / "messages"
         stored = []
@@ -185,7 +187,7 @@ class TestMediaPathBypassesGroupEtiquette:
         """A caption that would trigger US5/US7's [[NO_REPLY]] path if it were plain
         text (naming someone other than DeniDin) is NOT etiquette-filtered on the
         media path - proving the scope boundary from research.md Sec 9: media never
-        reaches AIHandler.get_response / the no-reply sentinel at all."""
+        reaches AIHandler.single_turn / the no-reply sentinel at all."""
         from denidin import handle_image_message
 
         self._stub_external_boundaries(

@@ -9,7 +9,7 @@ the current (rotating, free-tier ngrok) tunnel URL for each Responses API call.
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import cast, Optional
+from typing import Any, cast, Optional
 
 from src.utils.logger import get_logger
 from src.utils.time_utils import now_local
@@ -25,12 +25,14 @@ class MorningMcpLocator:
     degrade (no MCP tools attached, normal reply) rather than crash (CONSTITUTION §VI).
     """
 
-    def __init__(self, mcp_config: dict):
+    def __init__(self, denidin: Any):
         """
         Args:
-            mcp_config: the AppConfiguration.mcp dict (morning_status_file,
-                url_max_age_seconds, ...).
+            denidin: the DeniDin object (REQ-063-08) - reads its config's mcp dict
+                (morning_status_file, url_max_age_seconds, ...).
         """
+        self.denidin = denidin
+        mcp_config = getattr(denidin.config, 'mcp', {}) or {}
         self._status_file = Path(mcp_config.get('morning_status_file', 'data/morning_mcp_status.json'))
         self._max_age_seconds = mcp_config.get('url_max_age_seconds', 0) or 0
 
@@ -68,7 +70,8 @@ class MorningMcpLocator:
         if self._max_age_seconds > 0:
             updated_at_raw = status.get('updated_at')
             if not updated_at_raw:
-                logger.warning(f"Morning MCP status file missing 'updated_at' (required for freshness check): {self._status_file}")
+                logger.warning("Morning MCP status file missing 'updated_at' (required for freshness "
+                               f"check): {self._status_file}")
                 return None
             try:
                 updated_at = datetime.fromisoformat(updated_at_raw)

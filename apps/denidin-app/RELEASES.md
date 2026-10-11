@@ -63,3 +63,75 @@ Accounting document reconciliation completes with machine-readable capture (Feat
 ## denidin-app v0.5.3 — 2026-08-27
 
 Feature 061: new standalone prod-ledger-backfill operator tool (apps/prod-ledger-backfill/) for populating prod's ledger with pre-existing Morning documents before the reconciliation scheduler is ever enabled there - a real, full dev-environment backfill (~4,067 documents, Jul-Aug 2026) completed and verified; the actual prod run itself deferred to Feature 062. Also adds SCHEMA_VERSION_HISTORY plus import-time verification to ledger_event_manager.py, closing the ungoverned schema-version-bump gap. Bugfix-045: add_client no longer re-blocks after the user explicitly confirms a new client, with a corrected scope limit so a bare 'add new client' request never silently skips the near-duplicate disclosure/ask step, plus two related tool-family misclassification fixes (ledger event capture, reminder creation) for the same confirmation reply.
+
+## denidin-app v0.5.4 — 2026-09-04
+
+Accounting-reconciliation sweep reliability: bugfix-047 gives the sweep its own 300s OpenAI timeout (was inheriting the 30s conversational-turn ceiling and timing out once the sandbox held ~13+ in-window documents), bugfix-048 switches its dedup key to (date, display_number) so already-captured Morning documents are no longer re-flagged as anomalies after every app restart. Also: prod Morning ledger backfill completed from 2025-09-01 (Feature 062), August 2026 ledger audit findings applied to prod (Feature 065), parallel sanity test sweep (Feature 075), and cross-app sanity-suite stabilization (Feature 059).
+
+## denidin-app v0.5.4-70 — 2026-09-06
+
+Rolling 14-day short-term memory window with nightly daily-summary roll; retires 24h session expiry and the hourly cleanup thread.
+
+## denidin-app v0.5.4-b43 — 2026-09-06
+
+bugfix-043: admin stop/start owns the prober; deploy_release.sh no longer races it
+
+## denidin-app v0.5.4-b43v2 — 2026-09-06
+
+bugfix-043: fix prober requests dependency, run_env.sh double-trigger race, denidin-app health reachability (compose ports + 0.0.0.0 bind), and prober host-port resolution
+
+## denidin-app v0.5.4-b43v3 — 2026-09-07
+
+bugfix-043: prober now parses /health response bodies (not just HTTP status) and calls a new blocking run_all_and_verify_healthy.sh wrapper so a restart genuinely waits for the app to report healthy before the OS scheduler's next tick can fire - closes the prod restart-loop where a still-booting container was killed mid-start. Every health-check attempt is now logged in full (logs/health_monitoring/<env>/verify.log).
+
+## denidin-app v0.5.4-b43v4 — 2026-09-07
+
+Version bump only - re-cut to align with morning-mcp-app (v3 skipped for denidin-app so both apps carry matching version strings). No app source changes since v0.5.4-b43v3; the bugfix-043 restart-loop/health-check fix lives entirely in scripts/ (ops-level, not part of either app's Docker build).
+
+## denidin-app v0.5.4-b43v5 — 2026-09-07
+
+bugfix-043: fix prober restart-loop (run_all_and_verify_healthy.sh blocks until real health confirmed), real JSON-body health checks (verify.py), full per-attempt verify logging; split cut/deploy release scripts into single-app and all-apps variants
+
+## denidin-app v0.6.0 — 2026-09-07
+
+Feature 070: rolling 14-day short-term memory window with a nightly daily-summary roll, replacing 24h session expiry and the hourly cleanup thread. bugfix-043: health-monitoring + auto-restart (prober + escalation ladder, real OS scheduler wiring for dev and prod, admin-owned stop/start, deploy/prober race fix, shared ops-scripts bundling); live prod incidents found and fixed - the restart-loop itself (run_all_and_verify_healthy.sh blocks until real JSON-body health is confirmed, closing a race where a still-booting container got killed mid-start) and a ~41-minute prod outage caused by interrupted single-app deploys, fixed by splitting cut_release.sh/deploy_release.sh into single-app and all-apps variants (one shared stop/start cycle for every app instead of one per app).
+
+## denidin-app v0.7.0 — 2026-09-12
+
+Ledger web UI, mandatory client resolution for ledger events, edited/deleted WhatsApp message handling
+
+## denidin-app v0.7.1 — 2026-09-13
+
+Feature 080: always-on progress updates, typing keep-alive, telemetry plumbing; fixes multi-tool dispatch collision, typing-indicator gap, and rogue-language leak.
+
+## denidin-app v0.7.3 — 2026-09-14
+
+supporting daily backups
+
+## denidin-app v0.7.4 — 2026-09-15
+
+Feature 083: Fee agreement document generation over WhatsApp (RBAC-gated get/render/verify/send tools, DocTemplateEngine, Word templates), with RBAC-only gating (no separate feature flag) and no automated page-count check (LibreOffice unavailable in the runtime container - one-page discipline is the model's own judgment).
+
+## denidin-app v0.7.5 — 2026-09-15
+
+Reconciliation release: combines Feature 083 (fee agreement document generation) with Feature 078 (prod daily backups) and the v0.7.4 fee-agreement-docs cut, which was mistakenly cut from a stale pre-078 branch base and is being superseded.
+
+## denidin-app v0.7.6 — 2026-09-25
+
+Webapp: new Clients tab (Morning client status dashboard, operator comments, aliasing unmatched ledger names), in-memory caching with refresh-only reloads, correct WhatsApp conversation ordering, no refetch on tab switch (Feature 087). DeniDin: fee-agreement DOCX date/title order and bold party lines (bugfix-063).
+
+## denidin-app v0.7.7 — 2026-09-26
+
+bugfix-066: config baked into the image is now used as shipped (compose files mount only config.<env>.json; no host copies of the constitution, ledger prompt or fee templates override the release); .dockerignore no longer bakes stray config/log/preview files; launch failures are reported with Docker's error; webapp /health adds Morning connectivity and ledger completeness; webapp index.html is served no-cache.
+
+## denidin-app v0.7.8 — 2026-09-28
+
+Fixes: client search now matches geresh-containing names when the geresh is typed omitted; Israeli phone numbers are normalised before validation; queued WhatsApp messages are processed on startup instead of dropped; user-facing error messages are persisted in session history; and the constitution's VAT-included default for deposit screenshots/bank transfers no longer triggers a redundant VAT prompt. Also includes a chore fix: dev deploy/ops scripts now refuse to run from a nested teammate clone and always target the canonical DeniDin root, closing a gap that caused a dev deployment crash on 2026-09-27.
+
+## denidin-app v0.7.9 — 2026-10-03
+
+no change
+
+## denidin-app v0.8.0 — 2026-10-06
+
+bugfix-071: VAT is stated and enforced per Morning document type - VAT-included documents are no longer stored as exempt/VAT 0, and every document approval states its VAT. Feature 063: dynamic capability backbone (flag-gated), with its prompts baked into the image. bugfix-069: WhatsApp link state (whatsapp_authorized) reported in /health.

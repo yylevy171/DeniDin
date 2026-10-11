@@ -36,20 +36,28 @@ Amounts stay under 100, per this suite's sandbox convention.
 """
 from __future__ import annotations
 
+import json
 import logging
 import re
+from typing import Optional
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 import pytest
 
 from tests.billed.denidin_mcp_e2e_helpers import (  # noqa: F401
+    VALID_TAX_ID,
+    _seed_client,
     GODFATHER_CHAT_ID,
+    VAT_FROM_ORIGINAL,
     _calls_for,
+    assert_document_approval_states_vat,
+    assert_stored_receipt,
+    assert_stored_vat,
     _is_real_approval_prompt,
     _random_amount,
     _random_description,
-    _seed_fresh_client,
+    pick_existing_client,
     _send_turn,
     _send_turn_and_approve_capturing_approval,
 )
@@ -67,13 +75,16 @@ def _today_il() -> str:
 
 
 def _seed_invoice_305(amount: int, description: str) -> tuple[str, str]:
-    """Seed a fresh type-305 tax invoice for a brand-new client via a real,
-    approved WhatsApp exchange. Returns (client_name, invoice_number) - the
-    real display number, extracted from create_invoice's own confirmation
-    output, never a guess."""
+    """Seed a fresh type-305 tax invoice via a real, approved WhatsApp
+    exchange. Returns (client_name, invoice_number) - the real display number,
+    extracted from create_invoice's own confirmation output, never a guess.
+
+    Feature 059 item 5: only the invoice must be fresh - the client just has to
+    exist, so it's drawn from the committed sandbox-client fixture rather than
+    seeded conversationally (saves 2-3 billed turns + a sleep per test)."""
     from tests.billed.denidin_mcp_e2e_helpers import _send_turn_and_approve
 
-    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="B038_BILLED_SEED")
+    client_name = pick_existing_client()["name"]
     _, (_, seed_ai) = _send_turn_and_approve(
         GODFATHER_CHAT_ID,
         f"תפיק חשבונית מס ל{client_name} על סך {amount} ₪ כולל מע״מ, עבור {description}",
@@ -85,19 +96,19 @@ def _seed_invoice_305(amount: int, description: str) -> tuple[str, str]:
         f"{seed_ai.mcp_calls if seed_ai else None!r}"
     )
     seeded_output = seed_calls[0]["output"] or ""
-    invoice_number = next(
-        (t for t in re.findall(r"\d{3,}", seeded_output) if t != str(amount)), None
-    )
+    invoice_number = json.loads(seeded_output).get("display_number") if seeded_output else None
     assert invoice_number, f"could not read the seeded invoice number from {seeded_output!r}"
-    return client_name, invoice_number
+    return client_name, str(invoice_number)
 
 
-def _seed_transaction_account_300(amount: int, description: str) -> tuple[str, str]:
+def _seed_transaction_account_300(amount: int, description: str,
+                                  client_name: Optional[str] = None) -> tuple[str, str]:
     """Seed a fresh type-300 חשבון עסקה for a brand-new client, VAT-inclusion
     stated explicitly up front (sidesteps the model's own mandatory VAT
     question - this test is about the approval's reference-data content, not
-    that separate flow). Returns (client_name, document_number)."""
-    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="B038_BILLED_SEED300")
+    that separate flow). `client_name`: an already-seeded client to use instead
+    (Feature 098: one whose ID is on file). Returns (client_name, document_number)."""
+    client_name = client_name or pick_existing_client()["name"]  # Feature 059 item 5: any valid client works here
     _, ai_response = _send_turn(
         GODFATHER_CHAT_ID,
         f"תפתח חשבון עסקה עבור {client_name} על סך {amount} ₪ כולל מע״מ, עבור {description}",
@@ -111,11 +122,9 @@ def _seed_transaction_account_300(amount: int, description: str) -> tuple[str, s
         f"{ai_response.mcp_calls if ai_response else None!r}"
     )
     seeded_output = seed_calls[0]["output"] or ""
-    doc_number = next(
-        (t for t in re.findall(r"\d{3,}", seeded_output) if t != str(amount)), None
-    )
+    doc_number = json.loads(seeded_output).get("display_number") if seeded_output else None
     assert doc_number, f"could not read the seeded document number from {seeded_output!r}"
-    return client_name, doc_number
+    return client_name, str(doc_number)
 
 
 def _seed_transaction_account_300_with_real_id(amount: int, description: str) -> tuple[str, str, str]:
@@ -124,7 +133,7 @@ def _seed_transaction_account_300_with_real_id(amount: int, description: str) ->
     confirmation output, which always includes it per format_invoice_
     confirmation) - needed to prove which id a later multi-turn call
     actually used. Returns (client_name, doc_number, real_internal_morning_id)."""
-    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="B038_BILLED_SEED300ID")
+    client_name = pick_existing_client()["name"]  # Feature 059 item 5: any valid client works here
     _, ai_response = _send_turn(
         GODFATHER_CHAT_ID,
         f"תפתח חשבון עסקה עבור {client_name} על סך {amount} ₪ כולל מע״מ, עבור {description}",
@@ -138,13 +147,12 @@ def _seed_transaction_account_300_with_real_id(amount: int, description: str) ->
         f"{ai_response.mcp_calls if ai_response else None!r}"
     )
     seeded_output = seed_calls[0]["output"] or ""
-    doc_number = next(
-        (t for t in re.findall(r"\d{3,}", seeded_output) if t != str(amount)), None
-    )
+    parsed = json.loads(seeded_output) if seeded_output else {}
+    doc_number = parsed.get("display_number")
     assert doc_number, f"could not read the seeded document number from {seeded_output!r}"
-    id_match = re.search(r"מזהה פנימי \(internal_morning_id\): (\S+)", seeded_output)
-    assert id_match, f"could not read the real internal_morning_id from {seeded_output!r}"
-    return client_name, doc_number, id_match.group(1)
+    real_internal_morning_id = parsed.get("internal_morning_id")
+    assert real_internal_morning_id, f"could not read the real internal_morning_id from {seeded_output!r}"
+    return client_name, str(doc_number), real_internal_morning_id
 
 
 def _assert_reference_data_present(approval_text: str, *, client_name: str, doc_number: str, amount: int):
@@ -154,6 +162,8 @@ def _assert_reference_data_present(approval_text: str, *, client_name: str, doc_
     reference document. Document number is this test suite's own proxy for
     "which document" (the constitution forbids ever showing the internal
     Morning id - see this file's module docstring)."""
+    # bugfix-071: a document made against an existing one takes its VAT from it.
+    assert_document_approval_states_vat(approval_text, VAT_FROM_ORIGINAL)
     missing = []
     if client_name.split()[0] not in approval_text:
         missing.append(f"client name ({client_name})")
@@ -191,14 +201,25 @@ class TestGroupBReferenceApprovalBilled:
     tool - each proves the SAME core defect (blank/placeholder reference
     data) via the cheapest possible real reproduction."""
 
+    @pytest.mark.sanity
     def test_receipt_against_existing_invoice_shows_reference_data(self, denidin_app):
         """create_receipt (400) closing an existing type-305 tax invoice."""
         amount = _random_amount()
         client_name, invoice_number = _seed_invoice_305(amount, _random_description())
 
+        # Point at the freshly-seeded invoice as "the one I just issued"
+        # (שהרגע הפקתי / האחרונה), not just "the invoice of {client}".
+        # `pick_existing_client()` can (and does) land on a client that already
+        # carries an unpaid invoice from an earlier run - then "the invoice of
+        # X" is genuinely ambiguous and the model correctly asks which one,
+        # which the one-clarifying-turn helper can't answer (seen 2026-09-04:
+        # sandbox client מרסל אלמו still holding invoice #51816 from 2026-08-11,
+        # on top of the one this test just seeded). "הרגע" is what a real user
+        # says, uniquely picks the just-created invoice regardless of dates,
+        # and doesn't leak the number.
         approval_text, approve_ai_response = _send_turn_and_approve_capturing_approval(
             GODFATHER_CHAT_ID,
-            f"סמן את החשבונית של {client_name} כשולמה, התשלום התקבל היום",
+            f"סמן את החשבונית האחרונה של {client_name}, זו שהרגע הפקתי, כשולמה - התשלום התקבל היום",
             id_prefix="B038_BILLED_RECEIPT",
             tool_name="create_receipt",
         )
@@ -211,6 +232,8 @@ class TestGroupBReferenceApprovalBilled:
             f"create_receipt did not fire/succeed after approval: "
             f"{approve_ai_response.mcp_calls if approve_ai_response else None!r}"
         )
+        # bugfix-071: the receipt records the original's full total, no VAT of its own
+        assert_stored_receipt(receipt_calls[0], amount)
         _assert_internal_id_never_leaked(approval_text, approve_ai_response)
 
     def test_credit_note_against_existing_invoice_shows_reference_data(self, denidin_app):
@@ -233,14 +256,23 @@ class TestGroupBReferenceApprovalBilled:
             f"create_credit_note did not fire/succeed after approval: "
             f"{approve_ai_response.mcp_calls if approve_ai_response else None!r}"
         )
+        # bugfix-071: full total of the "כולל מע״מ" seed, VAT inside it
+        assert_stored_vat(credit_calls[0], amount)
         _assert_internal_id_never_leaked(approval_text, approve_ai_response)
 
+    @pytest.mark.sanity
     def test_combo_document_against_existing_transaction_account_shows_reference_data(self, denidin_app):
         """create_combo_document_as_reference (320) closing an existing type-300 חשבון
         עסקה. Uses today's tool name - will be updated to
-        create_combo_document_as_reference by this bugfix's rename task."""
-        amount = _random_amount()
-        client_name, doc_number = _seed_transaction_account_300(amount, _random_description())
+        create_combo_document_as_reference by this bugfix's rename task.
+
+        Feature 098: the account is above the allocation threshold (11,8xx ₪
+        including VAT) and its client has an ID on file, so closing it asks
+        nothing about the ID."""
+        amount = 11800 + _random_amount()
+        client_name = _seed_client(GODFATHER_CHAT_ID, "B038_BILLED_COMBOREF_SEED", tax_id=VALID_TAX_ID)[0]
+        client_name, doc_number = _seed_transaction_account_300(
+            amount, _random_description(), client_name=client_name)
 
         approval_text, approve_ai_response = _send_turn_and_approve_capturing_approval(
             GODFATHER_CHAT_ID,
@@ -249,14 +281,17 @@ class TestGroupBReferenceApprovalBilled:
             tool_name="create_combo_document_as_reference",
         )
 
+        assert "הקצאה" not in approval_text, f"asked about the ID although it is on file: {approval_text!r}"
         _assert_reference_data_present(
-            approval_text, client_name=client_name, doc_number=doc_number, amount=amount
+            approval_text.replace(",", ""), client_name=client_name, doc_number=doc_number, amount=amount
         )
         close_calls = _calls_for(approve_ai_response, "create_combo_document_as_reference")
         assert close_calls and close_calls[0]["error"] is None, (
             f"create_combo_document_as_reference did not fire/succeed after approval: "
             f"{approve_ai_response.mcp_calls if approve_ai_response else None!r}"
         )
+        # bugfix-071: full total of the "כולל מע״מ" seed, VAT inside it
+        assert_stored_vat(close_calls[0], amount)
         _assert_internal_id_never_leaked(approval_text, approve_ai_response)
 
     def test_multi_turn_clarification_uses_the_real_internal_id_not_the_display_number(self, denidin_app):
@@ -284,12 +319,19 @@ class TestGroupBReferenceApprovalBilled:
         exist for every document" section stating the rule explicitly and
         unconditionally.
 
-        Deliberately does NOT state date/VAT inline in the opening message -
-        the whole point is to force the same multi-turn shape (separate
-        clarifying turns, with the model's own reply naming the display
-        number in between) that produced the real failure. Bounded to 4
-        clarifying turns so a genuine regression fails loudly rather than
-        hanging."""
+        Deliberately does NOT state the payment date inline in the opening
+        message - the whole point is to force the same multi-turn shape
+        (separate clarifying turns, with the model's own reply naming the
+        display number in between) that produced the real failure. Bounded to
+        4 clarifying turns so a genuine regression fails loudly rather than
+        hanging.
+
+        bugfix-061 (C3b): create_combo_document_as_reference here is a
+        by-reference action closing an existing type-300 - VAT was already
+        decided when that original document was created, so the bot must
+        NEVER ask about it again on this closing turn, regardless of the
+        opening message also never stating it. Only a date clarification is
+        ever expected."""
         amount = _random_amount()
         client_name, doc_number, real_id = _seed_transaction_account_300_with_real_id(
             amount, _random_description()
@@ -306,9 +348,16 @@ class TestGroupBReferenceApprovalBilled:
         for i in range(4):
             if _is_real_approval_prompt(response):
                 break
-            answer = "כן" if "מע" in (response or "") else "היום"
+            # bugfix-061 (C3b): a by-reference action must never ask about VAT -
+            # the original document already settled it. Only "מתי שולם"/missing
+            # payment-date clarifications are legitimate here.
+            assert not any(k in (response or "") for k in ('מע"מ', "מע״מ", "מעמ")), (
+                f"bugfix-061: create_combo_document_as_reference (C3b, closing an "
+                f"existing type-300) must never ask a VAT clarifying question - "
+                f"got: {response!r}"
+            )
             response, ai_response = _send_turn(
-                GODFATHER_CHAT_ID, answer, id_prefix=f"B038_MULTITURN_CLARIFY_{i}"
+                GODFATHER_CHAT_ID, "היום", id_prefix=f"B038_MULTITURN_CLARIFY_{i}"
             )
             assert not _calls_for(ai_response, "create_combo_document_as_reference"), (
                 f"executed before the actual approval turn: "
@@ -330,11 +379,25 @@ class TestGroupBReferenceApprovalBilled:
             f"{final_ai_response.mcp_calls if final_ai_response else None!r}"
         )
         for call in id_shaped_calls:
-            args = call.get("arguments") or ""
-            assert doc_number not in args, (
-                f"call used the DISPLAY number ({doc_number}) where an internal_morning_id "
-                f"was required - this is the exact bug: {call!r}"
-            )
+            try:
+                args = json.loads(call.get("arguments") or "{}")
+            except json.JSONDecodeError:
+                args = {}
+            # The bug is the DISPLAY number landing in an id-shaped field. Assert
+            # on those fields specifically - a whole-blob substring scan also
+            # trips on a legitimate mention of the display number in the
+            # free-text `description` ("...חשבון עסקה מספר 40445...", which is
+            # correct and natural), which is NOT the bug (2026-09-03, Feature 059
+            # triage: original_internal_morning_id was the correct GUID and the
+            # call succeeded). Stricter, too: the id field must be exactly the
+            # real resolved id, not merely "not the display number".
+            for id_field in ("internal_morning_id", "original_internal_morning_id"):
+                if args.get(id_field) is not None:
+                    assert args[id_field] == real_id, (
+                        f"{id_field} was {args[id_field]!r}, not the real resolved id "
+                        f"{real_id!r} (the display number is {doc_number}) - this is the "
+                        f"exact bug: {call!r}"
+                    )
             assert call["error"] is None, (
                 f"tool call failed - likely used a wrong/malformed id: {call!r}"
             )

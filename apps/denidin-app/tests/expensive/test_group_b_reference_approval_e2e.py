@@ -28,8 +28,8 @@ Run ONE test at a time, with fresh explicit approval each time:
     pytest tests/expensive/test_group_b_reference_approval_e2e.py::TestGroupBReferenceApprovalE2E::<name> -v -m expensive
 """
 
+import json
 import logging
-import re
 import threading
 import uuid
 from http.server import HTTPServer, SimpleHTTPRequestHandler
@@ -114,7 +114,7 @@ class TestGroupBReferenceApprovalE2E:
             }
             denidin.denidin_app = denidin.initialize_app(config_dict)
 
-        actual_events_dir = Path(denidin.denidin_app.ai_handler.ledger_event_manager.storage_dir).resolve()
+        actual_events_dir = Path(denidin.denidin_app.ledger_event_manager.storage_dir).resolve()
         expected_root = Path(config.data_root).resolve()
         assert actual_events_dir.is_relative_to(expected_root), (
             f"LedgerEventManager.storage_dir={actual_events_dir} is NOT under this "
@@ -137,27 +137,6 @@ class TestGroupBReferenceApprovalE2E:
     BANK_IMAGE_PAYER = "עטיה רועי מאיר"
 
     @staticmethod
-    def _ensure_client_exists(chat_id, name, id_prefix):
-        """Seed `name` as a real Morning client, but only if it isn't one already.
-        See test_ledger_event_capture_e2e.py's identical helper for the full
-        rationale (idempotent by design, decided on tool output not model prose)."""
-        from tests.billed.denidin_mcp_e2e_helpers import (
-            _calls_for,
-            _seed_client_via_conversation,
-            _send_turn,
-        )
-
-        _, ai_response = _send_turn(
-            chat_id, f"תן לי את הפרטים של הלקוח {name}", id_prefix=f"{id_prefix}_LOOKUP"
-        )
-        lookups = _calls_for(ai_response, "get_client_details")
-        already_exists = bool(lookups) and "לא נמצא" not in (lookups[0]["output"] or "")
-        if already_exists:
-            logger.info(f"client {name!r} already exists - not re-seeding")
-            return
-        _seed_client_via_conversation(chat_id, name, id_prefix=f"{id_prefix}_SEED")
-
-    @staticmethod
     def _clear_chat_test_data(denidin_app, chat_id):
         """Clear this chat's test data before AND after (user requirement,
         bugfix-028, 2026-08-09), so a shared, non-random chat_id can't collide
@@ -176,8 +155,8 @@ class TestGroupBReferenceApprovalE2E:
         applied in test_ledger_event_capture_e2e.py's identical helper."""
         import json as _json
 
-        session_id = denidin_app.ai_handler.session_manager.get_session(chat_id).session_id
-        events_dir = denidin_app.ai_handler.ledger_event_manager.storage_dir
+        session_id = denidin_app.session_manager.get_session(chat_id).session_id
+        events_dir = denidin_app.ledger_event_manager.storage_dir
         for f in list(events_dir.glob("*.json")):
             try:
                 with open(f, encoding='utf-8') as fh:
@@ -187,12 +166,10 @@ class TestGroupBReferenceApprovalE2E:
             if data.get("session_id") == session_id:
                 f.unlink()
 
-        session_manager = denidin_app.ai_handler.session_manager
+        session_manager = denidin_app.session_manager
         if session_manager is not None:
-            try:
-                session_manager.clear_session(chat_id)
-            except AttributeError:
-                logger.warning("SessionManager has no clear_session - session data not cleared")
+            from tests.e2e_helpers import wipe_chat_messages_on_disk
+            wipe_chat_messages_on_disk(session_manager.storage_dir, chat_id)
 
     def test_given_a_deposit_matching_an_existing_tax_invoice_then_a_receipt_closes_it(
         self, denidin_app, http_server, config
@@ -220,6 +197,7 @@ class TestGroupBReferenceApprovalE2E:
         from denidin import handle_image_message
         from tests.billed.denidin_mcp_e2e_helpers import (
             _calls_for,
+            _seed_client,
             _send_turn,
             _send_turn_and_approve,
         )
@@ -229,7 +207,7 @@ class TestGroupBReferenceApprovalE2E:
 
         try:
             client_name = self.BANK_IMAGE_PAYER
-            self._ensure_client_exists(chat_id, client_name, id_prefix="B038_A1T2")
+            _seed_client(chat_id, "B038_A1T2", name=client_name, ensure_exists=True)
 
             logger.info("GIVEN an existing type-305 tax invoice awaiting payment")
             _, (_, seed_ai) = _send_turn_and_approve(
@@ -243,10 +221,9 @@ class TestGroupBReferenceApprovalE2E:
                 f"{seed_ai.mcp_calls if seed_ai else None!r}"
             )
             seeded_output = seed_calls[0]["output"] or ""
-            invoice_number = next(
-                (t for t in re.findall(r"\d{3,}", seeded_output) if t != "1500"), None
-            )
+            invoice_number = json.loads(seeded_output).get("display_number") if seeded_output else None
             assert invoice_number, f"could not read the seeded invoice number from {seeded_output!r}"
+            invoice_number = str(invoice_number)
 
             logger.info("WHEN the deposit screenshot for that same payment arrives")
             notification = create_real_notification({
@@ -271,38 +248,80 @@ class TestGroupBReferenceApprovalE2E:
             })
             handle_image_message(notification)
 
-            ask_result, (_, ai_response) = _send_turn_and_approve(
-                chat_id,
-                "תפיק חשבונית עבור זה",
-                id_prefix="B038_A1T2",
-            )
-            approval_text = ask_result[0] or ""
+            # Feature 069: a recognised deposit image arrives as a synthetic
+            # conversational turn, so the model may take an extra redirect turn
+            # (invoice -> linked receipt) before it proposes the receipt. Its
+            # caution is fine; the test follows the conversation, approving each
+            # round until create_receipt actually fires (max 3 rounds).
+            ask_response, ask_ai = _send_turn(
+                chat_id, "תפיק חשבונית עבור זה", id_prefix="B038_A1T2_ASK",
+            )  # "issue an invoice for this"
 
-            assert not _calls_for(ai_response, "create_combo_document"), (
-                f"a standalone 320 was issued while a matching 305 was open - "
-                f"the same money is now recorded twice and the original stays unpaid. "
-                f"Calls: {ai_response.mcp_calls if ai_response else None!r}"
-            )
-            receipt_calls = _calls_for(ai_response, "create_receipt")
+            seen_texts = [ask_response or ""]
+            receipt_calls: list = []
+            last_ai = ask_ai
+            for round_n in range(1, 4):
+                assert not _calls_for(last_ai, "create_combo_document"), (
+                    f"a standalone 320 was issued while a matching 305 was open - "
+                    f"the same money is recorded twice and the original stays unpaid. "
+                    f"Calls: {last_ai.mcp_calls if last_ai else None!r}"
+                )
+                receipt_calls = _calls_for(last_ai, "create_receipt")
+                if receipt_calls:
+                    break
+                approve_response, last_ai = _send_turn(
+                    chat_id, "כן", id_prefix=f"B038_A1T2_APPROVE{round_n}",
+                )  # "yes"
+                seen_texts.append(approve_response or "")
+
             assert receipt_calls, (
-                f"expected a קבלה (400) closing invoice {invoice_number}. "
-                f"Calls: {ai_response.mcp_calls if ai_response else None!r}"
+                f"no קבלה (400) closing invoice {invoice_number} after 3 approval "
+                f"rounds. Last calls: {last_ai.mcp_calls if last_ai else None!r}"
             )
             assert receipt_calls[0]["error"] is None, f"creation failed: {receipt_calls[0]!r}"
 
-            # bugfix-038's core assertion: the reference invoice's DISPLAY number
-            # must appear - never the internal original_invoice_id.
-            assert invoice_number in approval_text, (
-                f"the approval never says which invoice this receipt closes "
-                f"(expected {invoice_number}). Approval was: {approval_text!r}"
+            # bugfix-071: the receipt's approval takes its VAT from the 305 it
+            # closes, and the receipt itself carries no VAT. (Its amount relative
+            # to the 305 is out of bugfix-071's scope.)
+            from tests.e2e_helpers import VAT_FROM_ORIGINAL, approval_vat_label
+            from tests.billed.denidin_mcp_e2e_helpers import stored_document
+            labels = [approval_vat_label(t) for t in seen_texts if approval_vat_label(t) is not None]
+            assert labels and labels[-1] == VAT_FROM_ORIGINAL, (
+                f"expected the receipt approval to state {VAT_FROM_ORIGINAL!r}, got {labels!r}"
             )
+            assert not stored_document(receipt_calls[0]).get("vat_amount"), (
+                f"a receipt must not carry VAT: {receipt_calls[0]['output']!r}"
+            )
+
+            # bugfix-038: the reference invoice's DISPLAY number must be visible to
+            # the operator somewhere in the exchange (the approval prompt names it
+            # as "מספר מסמך: <n>") - never only the internal original_invoice_id.
+            assert any(invoice_number in t for t in seen_texts), (
+                f"the exchange never says which invoice this receipt closes "
+                f"(expected {invoice_number}). Turns seen: {seen_texts!r}"
+            )
+
+            receipt_output = receipt_calls[0]["output"] or ""
+            receipt_number = str(json.loads(receipt_output).get("display_number")) if receipt_output else ""
 
             details, _ = _send_turn(
                 chat_id, f"תן לי את הפרטים המלאים של חשבונית {invoice_number}",
                 id_prefix="B038_A1T2_VERIFY",
             )
-            assert details and "שולם" in details, (
-                f"the original invoice must now read as paid: {details!r}"
+            # The original 305 must now report as closed/paid AND reference the
+            # receipt that closed it. NOTE (2026-09-06): the earlier `"שולם" in
+            # details` check was too literal - since the 2026-09-04 JSON-only
+            # contract get_invoice_details returns status/status_label and the
+            # model paraphrases (e.g. "סגורה ומשולמת"), so accept the paid/closed
+            # word family. The status-representation tangle (raw int vs "paid" vs
+            # status_label vs translate_status) is tracked separately.
+            assert details and any(w in details for w in ("שולם", "משולמת", "סגור")), (
+                f"the original invoice {invoice_number} does not report as "
+                f"closed/paid after the receipt: {details!r}"
+            )
+            assert receipt_number and receipt_number in details, (
+                f"invoice {invoice_number}'s details don't reference the closing "
+                f"receipt #{receipt_number}: {details!r}"
             )
         finally:
             self._clear_chat_test_data(denidin_app, chat_id)

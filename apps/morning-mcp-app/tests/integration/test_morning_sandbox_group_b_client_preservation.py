@@ -51,7 +51,7 @@ def _extract_id(response):
 def _seed_invoice_with_real_client(morning_client, marker):
     """A real type-305 original, attached to a real client (the 'preserve' shape)."""
     client_id, _ = seed_real_client(morning_client, marker)
-    payload = _build_create_invoice_payload(client_id=client_id, amount=70.0, description=marker)
+    payload = _build_create_invoice_payload(client_id=client_id, amount=70.0, description=marker, vat_included=True)
     response = morning_client.create_invoice(payload)
     return _extract_id(response), client_id
 

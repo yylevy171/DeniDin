@@ -20,6 +20,18 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Outline
 
+0. 🚨 **BLOCKING PREREQUISITE (METHODOLOGY.md §VI.a/§IV Phase -1, added 2026-09-12): verify
+   `billed`/`expensive` acceptance scenarios have been drafted AND explicitly approved by the
+   human operator before doing anything else.** Check `user-stories.md`'s Acceptance
+   Scenarios/UAT section (or an equivalent `acceptance-scenarios.md`) for the feature. If it is
+   missing, empty, or was never explicitly approved by the user in this conversation (or a
+   prior one you can verify — e.g. via conversation history or a clear approval note in the
+   file itself), **STOP** and ask the user to run `/speckit.specify`'s acceptance-scenario step
+   (or provide/approve the scenarios directly) before continuing. Do not proceed to Setup below
+   without this approval — cutting this corner is exactly what this gate exists to prevent (see
+   §VI.a's rationale: technical design must be built toward an already-agreed outcome, not the
+   other way around).
+
 1. **Setup**: Run `.specify/scripts/bash/setup-plan.sh --json` from repo root and parse JSON for FEATURE_SPEC, IMPL_PLAN, SPECS_DIR, BRANCH. For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
 
 2. **Load context**: Read FEATURE_SPEC, `.github/METHODOLOGY.md`, and `.github/CONSTITUTION.md`. Load IMPL_PLAN template (already copied).

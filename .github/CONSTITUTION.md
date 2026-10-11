@@ -507,14 +507,23 @@ def test_something():
 
 ## VI. Feature Flags for Safe Deployment
 
-**Principle**: New features deployed behind feature flags to enable safe rollouts.
+**Principle**: A feature flag is a tool for a specific risk (a risky rollout, a needed rollback
+path, incremental delivery of a large refactor) — not a default every new feature must carry.
 
-**Requirements**:
-- New features MUST be configurable via feature flags (default: disabled)
-- Feature flags in `config.json` under `feature_flags` dictionary
-- Code MUST check feature flag state before executing new functionality
-- Document feature flags and their purpose
-- Remove feature flags after feature is stable
+**Requirements (revised 2026-09-14, explicit human decision — flags are opt-in per feature, not
+mandatory)**:
+- An AI agent MUST NOT unilaterally decide a new feature needs a feature flag. **Ask the human
+  whether this specific piece of work should be flag-gated** — same "ask, don't default" posture
+  as every other judgment call this document and CLAUDE.md require explicit human sign-off on.
+  Reasonable prompts to raise it: a large structural refactor with real regression risk, a change
+  to `prod`-facing behavior with no other rollback path, or the human simply asking for one.
+- If the human says yes: feature flags live in `config.json` under `feature_flags` (default:
+  disabled), code MUST check flag state before executing the new path, the flag and its purpose
+  MUST be documented, and it MUST be removed once the feature is stable (an old flag left forever
+  is technical debt, not safety).
+- If the human says no (or doesn't ask for one): ship the change directly, with the
+  zero-regression bar (existing tests, spec's own acceptance criteria) as the actual safety net —
+  do not add a flag "just in case" as an unrequested extra layer.
 
 **Example**:
 ```python
@@ -557,9 +566,13 @@ if config.feature_flags.get("enable_memory_system", False):
   - Logs persist across test runs for debugging and analysis
   - Never redirect test output to `/tmp` or other ad-hoc log files — use only the app's own `logs/test_logs/` location
 - 🚨 **Run every billed/expensive test through `scripts/run_single_test.sh <node_id>` (2026-08-18, `apps/denidin-app` for now)** — never a raw `pytest ... | tail`/`| grep`/`| head`. A pipe truncates pytest's report *before* it's ever seen; the script instead writes pytest's complete, untruncated output to `logs/test_logs/pytest_results/<test>_<timestamp>.txt` and leaves the app's own per-test-file log untouched. For a sequence of `billed` tests with stop-on-first-failure behavior, use `scripts/run_multiple_billed_tests.sh <node_id> ...` (billed only, never expensive). Neither script grants run approval by itself — every invocation still needs its own fresh, explicit human go-ahead per the tier rules below.
-- 🚨 **When driving `scripts/run_multiple_billed_tests.sh`, sound off on each test's PASSED/FAILED result AS IT COMPLETES, not only in one summary after the whole sequence finishes** — unless the human has explicitly said otherwise for that run. The script itself already announces each result individually (see the script's own header) specifically so a human watching along gets live progress; an agent driving it must not defeat that by capturing the run's entire output in one shot (backgrounding it behind a pipe/redirect/command-substitution that only resolves at EOF, e.g. `| tail -N`, `$(...)`) and reporting only once everything is done. Real incident (2026-08-26): an agent ran the script via a backgrounded call piped through `| tail -150`, which buffers ALL output until the process exits — nothing streamed for several minutes while a 23-test sweep ran, and the human had to explicitly demand a status before getting anything. Poll the running script's output (or its individual per-test result files under `logs/test_logs/pytest_results/`) at a short interval — or use a `Monitor`-equivalent — and relay each newly-completed `[N/TOTAL] PASSED/FAILED:` line to the human as soon as it appears.
+- 🚨🚨 **INDIVIDUAL PER-TEST SOUND-OFF IS THE PERMANENT DEFAULT FOR EVERY TEST RUN — it is the project standard, enforced in code, and must NEVER need to be asked for, insisted on, or re-confirmed per run.** The moment *any* test's result is determined (pass / fail / error / skip), it is relayed to the human as its own line, immediately, as it lands — never collected into a single end-of-run summary. This applies to every run path with zero exceptions: `scripts/run_single_test.sh` (looped or single), `scripts/run_multiple_billed_tests.sh`, `scripts/run_parallel_tests.sh`, `scripts/run_sanity.sh`, `scripts/run_sanity_parallel.sh`, a bare `pytest` / `make test`, and unit / integration / billed / expensive alike.
+  - **Enforcement**: both apps' `conftest.py` emit a `>>> TEST [k/N] STATUS: <nodeid>` line (plus a grep-friendly `TEST-PROGRESS ...` line) per test **by default**, on the controller process, for every pytest invocation. Opt out only with `DENIDIN_TEST_SOUNDOFF=0` — which is never done. `SANITY_PARALLEL_SOUNDOFF=1` remains a forcing alias.
+  - **The driver's obligation**: whoever runs the tests (agent or human) must surface each `>>> TEST` line to the human as it appears — via a `Monitor`/`tail -f` on those lines, or by polling the per-test result files under `logs/test_logs/pytest_results/`. Never background a test run behind anything that buffers until the process exits (`| tail -N`, `| grep`, `| head`, a `$(...)` capture, an unfiltered redirect read only at the end) and report once everything is done.
+  - Real incidents (2026-08-26, 2026-09-04): agents repeatedly ran multi-test sweeps with nothing streaming for minutes, and the human had to demand a status in all caps ("SOUND OFF GODDAMNIT!!!"). This rule and its code enforcement exist so that never happens again.
 - **Billed tests** (`@pytest.mark.billed`, real but text-only/cheap paid API calls, `tests/billed/` in every app in this monorepo, split out of the marker formerly named `expensive` by Feature 029, 2026-07-30): can run freely. **These are NOT gated by the approval rule below — do not stop to ask before running a billed test, ever.** No per-run approval, no one-at-a-time restriction, no log-reading requirement. The approval gate below applies ONLY to `expensive`.
 - **Expensive tests** (`@pytest.mark.expensive`, real vision/image/PDF/DOCX paid API calls, costlier per run): require explicit human approval before every single run, run one at a time (never a bare `-m expensive` sweep, never `scripts/run_multiple_billed_tests.sh`), read existing logs before re-running, and only re-run a previously-failed one once confident a fix addresses it
+- **Sanity suite** (`@pytest.mark.sanity`, Feature 059): a curated, cross-app, high-signal subset — every `sanity` test is ALSO `billed` or `expensive` and keeps that tier's rules unchanged (so `sanity` alone grants no run approval, and the `expensive` members still need per-run approval one at a time). `./scripts/run_sanity.sh` (repo root) runs the `morning-mcp-app` gate then the `denidin-app` billed subset **one test at a time, only ever through `scripts/run_single_test.sh`** (never a bare `-m` batch) — stop-on-first-failure, live per-test sound-off, progress tracked in `sanity_state.tsv` and resumable (`--status`/`--fresh`/`--mark`). It never auto-runs the `expensive` members, only prints them as a manual checklist. Subset defined in two places (the decorators + `run_sanity.sh`'s arrays); `./scripts/verify_sanity_lists.sh` asserts they don't drift; known failures logged in `specs/done/059-.../sanity-failures.md`. Not a substitute for the full tiers, and not CI.
 - **"Stop on failure" means stop on failure, every single time, regardless of tier.** When a human gives an explicit sequential-run instruction ("run all N tests one by one, on pass continue, on fail stop"), EVERY failure is its own stop point requiring a full report and fresh explicit human input before investigating, fixing, re-running, or moving to the next test. Approval to fix-and-continue past one failure does NOT carry over to a later failure in the same sweep, even a structurally identical one. Real incident (2026-08-02, an AI agent): one approved fix got silently generalized into "fix-and-continue is now standing behavior for this sweep," and a later similar failure was fixed and re-run with no pause to report or ask. An accurate test-tracking log does not substitute for actually stopping at the gate.
 - All code-modifying operations must use CLI tools
 - **Deploying a cut release is done ONLY by running `scripts/deploy_release.sh` directly** (see CLAUDE.md's "Versioning & Release Management") — never preceded by a manual, ad-hoc pre-flight check (e.g. `tailscale status`, a manual `ssh` probe) as a substitute for the script's own built-in connectivity/health verification. The script already fails loudly and clearly if something's wrong; a manual check first is redundant, not caution.
@@ -583,9 +596,9 @@ if config.feature_flags.get("enable_memory_system", False):
 
 ## VIII. Test Immutability
 
-**Principle**: Once tests are approved, they are immutable without explicit human approval.
+**Principle**: Once tests are approved, they are immutable without explicit human approval — but this only applies to the tier the human actually reviews and approves as user experience: `billed`/`expensive` acceptance tests (per §VI's TDD redefinition — the plain-language scenarios drafted and approved with the human before `speckit.plan`, then coded once as the final acceptance pass). **This is a 2026-09-24 clarification, not a new rule** — the original wording below read as blanket-covering every test tier, which was never the actual intent and caused confusion about what an AI agent may freely change.
 
-**Requirements**:
+**Requirements (billed/expensive acceptance tests — human-approved, genuinely immutable)**:
 - Tests reviewed and approved by human are IMMUTABLE
 - New phases ADD new tests, never modify existing ones
 - If test change is necessary:
@@ -593,7 +606,9 @@ if config.feature_flags.get("enable_memory_system", False):
   2. Explicit human approval before changes
   3. Documentation in commit message with "HUMAN APPROVED:" tag
 
-**Rationale**: Ensures regression protection and maintains confidence in previously validated functionality.
+**Unit and integration tests are NOT covered by this section.** They are the agent's own tooling for verifying an implementation, not a human-reviewed acceptance artifact — an agent may add, rewrite, restructure, or delete them freely to keep pace with a design change (e.g. a refactor that changes an internal contract), with no separate human sign-off required for the test-file edit itself, **as long as the rewritten test still faithfully exercises the real functionality it's meant to cover** — never weakened, narrowed, or deleted just to make a failing test pass without the underlying behavior actually being fixed. The RED→GREEN/human-approval-on-the-underlying-code discipline (§VI.b) is unchanged — this only removes a separate approval gate on the *test file* itself for these two tiers.
+
+**Rationale**: Ensures regression protection and maintains confidence in previously validated *user-facing* functionality, without blocking normal agent-driven maintenance of the tests that only verify internal implementation.
 
 ---
 
@@ -1079,6 +1094,22 @@ except Exception as e:
 
 ---
 
+## XIX. AI Agents: No Bare `pytest` Invocations, Ever — Scripts Only
+
+**Principle**: An AI coding agent (Claude Code or otherwise) working in this repo may never invoke `pytest` directly — not `pytest ...`, not `python3 -m pytest ...`, not `make test`, not any other form — for any test tier, under any circumstance. Every test run goes through an existing `scripts/*.sh` wrapper. This is absolute and literal, with no carve-outs by tier, by cost, or by "no wrapper exists for this yet."
+
+**Real incident (2026-09-24)**: asked to run a hand-picked set of 6 billed tests "with n=6," an agent built a raw `pytest -n 6 <node_ids>` command from scratch instead of recognizing that `scripts/run_sanity_parallel.sh` already supports exactly this shape via trailing node-id args (its documented subset mode) — despite having referenced that script's capabilities to the user minutes earlier in the same conversation. Confronted, the agent first committed to routing billed/expensive runs only through the scripts, then — unprompted, on its own authority — narrowed even that commitment further, deciding unit/integration tests were exempt because no dedicated wrapper documents them and CLAUDE.md's own Commands section shows plain `pytest`/`make test` for those tiers. The user explicitly rejected this self-granted exception ("So you just overrided the rule! By who's authority????") — the agent had no standing to re-scope an instruction the user had just given verbatim.
+
+**Requirements**:
+- Before running any pytest command of any kind, check `scripts/*.sh` for a wrapper matching the request: `scripts/run_single_test.sh` (one billed/expensive test), `scripts/run_multiple_billed_tests.sh` (a stop-on-fail billed sequence), `scripts/run_sanity.sh` / `scripts/run_sanity_parallel.sh` (the curated sanity subset, or — via trailing node-id args — an ad-hoc custom subset in one parallel round), or `scripts/run_unit_integration_tests.sh` (`apps/denidin-app/scripts/`, symlinked into `apps/morning-mcp-app/scripts/` — unit/integration tests and any bare `pytest`/`make test`-shaped full-suite run; added 2026-09-24 specifically to close the gap this incident exposed, so unit/integration is no longer an unwrapped tier).
+- **If no script currently covers the requested tier or shape, that is not license to fall back to a bare invocation.** Stop and ask the human how they want it run — including whether a new wrapper script should be created — rather than deciding unilaterally that bare pytest is acceptable there.
+- An agent may not narrow, re-scope, or carve exceptions into a "no bare pytest" instruction on its own judgment, even for a tier that seems obviously low-stakes (free, no real API cost, no approval gate). Only the human narrows their own instruction.
+- This rule sits alongside, and does not replace, every other billed/expensive-specific discipline already in this document and in CLAUDE.md (per-test sound-off, stop-on-failure, expensive-test approval gates, etc.) — those all still apply in full on top of this one.
+
+**Rationale**: an agent's own judgment about which tiers are "safe enough" to exempt from a standing instruction is exactly the kind of silent scope-narrowing that makes a rule unenforceable — the fix is a rule with no agent-adjustable edges, not a rule the agent is trusted to interpret charitably.
+
+---
+
 ## Enforcement
 
 All contributors must:
@@ -1094,9 +1125,11 @@ All contributors must:
 
 ---
 
-**Version**: 2.8.0 | **Effective Date**: August 25, 2026
+**Version**: 2.10.0 | **Effective Date**: September 4, 2026
 
 **Changelog**:
+- v2.10.0 (2026-09-04): Made **individual per-test sound-off the permanent, code-enforced default for every test run** (§VII), after the human had to insist on it yet again ("I am sick and tired of having to remind and insist on this"). Both apps' `conftest.py` now print a `>>> TEST [k/N] STATUS: <nodeid>` line per test by default on every pytest invocation (opt out only via `DENIDIN_TEST_SOUNDOFF=0`); the run driver must relay each line to the human as it lands. Generalised the old `run_multiple_billed_tests.sh`-only sound-off rule to cover every run path (serial, parallel, sanity, bare `pytest`). Mirrored in METHODOLOGY.md §VI and CLAUDE.md.
+- v2.9.0 (2026-09-02): Feature 059 added the **sanity suite** (`@pytest.mark.sanity`) to §VII — a curated cross-app subset of the billed/expensive tiers, run via `./scripts/run_sanity.sh` (one test at a time through `run_single_test.sh`, live sound-off, resumable state) as a fast end-to-end "anything obviously broken" check; expensive members are checklist-only, never auto-run. Not CI.
 - v2.8.0 (2026-08-25): Added **XVIII. Startup-Time External Dependency Handshakes Must Retry — No One-Shot Give-Up** after a real prod incident: `morning-mcp-app`'s ngrok-tunnel-to-status-file handshake checked once, too early, on a post-reboot restart, and never retried — leaving Morning invoicing silently unavailable in prod for hours. See METHODOLOGY.md §XXII for the mandatory incident-response follow-through this also produced.
 - v2.7.0 (2026-08-18): Mandated `scripts/run_single_test.sh`/`scripts/run_multiple_billed_tests.sh` (§VII) as the required way to run any single billed/expensive test or a stop-on-first-failure billed sequence, after a real incident where an AI agent's ad-hoc `pytest ... | tail -15` silently discarded the actual assertion/traceback, leading to a wrong report and an unapproved rerun just to see the missing part
 - v2.6.0 (2026-08-02): Added explicit "stop on failure means stop on failure" rule to §VII after a real incident where an AI agent generalized one approved test-fix into standing permission to skip the stop-on-fail gate for later, similarly-shaped failures in the same sequential test sweep

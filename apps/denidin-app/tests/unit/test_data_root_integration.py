@@ -16,6 +16,7 @@ from unittest.mock import MagicMock
 from src.managers.session_manager import SessionManager
 from src.managers.memory_manager import MemoryManager
 from src.models.config import AppConfiguration
+from tests.denidin_test_support import make_memory_manager, make_session_manager
 
 class TestDataRootIntegration:
     """Integration tests for data_root with memory managers."""
@@ -45,9 +46,8 @@ class TestDataRootIntegration:
         
         # Create SessionManager with relative storage_dir
         # (Code should combine custom_data_root + "sessions")
-        sm = SessionManager(
-            storage_dir=str(session_storage),
-            session_timeout_hours=24
+        sm = make_session_manager(
+            storage_dir=str(session_storage)
         )
         
         # Verify storage directory was created in custom location
@@ -67,7 +67,7 @@ class TestDataRootIntegration:
         memory_storage = custom_data_root / "memory"
         
         # Create MemoryManager with relative storage_dir
-        mm = MemoryManager(
+        mm = make_memory_manager(
             storage_dir=str(memory_storage),
             embedding_model="text-embedding-3-small",
             ai_client=mock_ai_client
@@ -112,9 +112,8 @@ class TestDataRootIntegration:
         assert config.memory['session']['storage_dir'] == str(expected_path)
         
         # Create SessionManager using config value
-        sm = SessionManager(
-            storage_dir=config.memory['session']['storage_dir'],
-            session_timeout_hours=24
+        sm = make_session_manager(
+            storage_dir=config.memory['session']['storage_dir']
         )
         
         # Verify SessionManager created storage in custom location
@@ -160,15 +159,13 @@ class TestDataRootIntegration:
         
         # Load configs and create SessionManagers
         cfg1 = AppConfiguration.from_file(str(config1_file))
-        sm1 = SessionManager(
-            storage_dir=cfg1.memory['session']['storage_dir'],
-            session_timeout_hours=24
+        sm1 = make_session_manager(
+            storage_dir=cfg1.memory['session']['storage_dir']
         )
         
         cfg2 = AppConfiguration.from_file(str(config2_file))
-        sm2 = SessionManager(
-            storage_dir=cfg2.memory['session']['storage_dir'],
-            session_timeout_hours=24
+        sm2 = make_session_manager(
+            storage_dir=cfg2.memory['session']['storage_dir']
         )
         
         # Verify different storage locations

@@ -1,7 +1,7 @@
 """UserManager for role assignment and permission checking."""
 
 import re
-from typing import Optional
+from typing import Any
 from src.models.user import User, Role, MemoryScope
 
 
@@ -23,22 +23,20 @@ def _normalize_phone(phone: str) -> str:
 class UserManager:
     """Manages user roles and permissions based on phone numbers."""
 
-    def __init__(
-        self,
-        godfather_phone: Optional[str] = None,
-        admin_phones: Optional[list[str]] = None,
-        blocked_phones: Optional[list[str]] = None
-    ):
+    def __init__(self, denidin: Any):
         """Initialize UserManager with role configuration.
 
         Args:
-            godfather_phone: Phone number of the godfather (power user)
-            admin_phones: List of admin phone numbers
-            blocked_phones: List of blocked phone numbers
+            denidin: the DeniDin object (REQ-063-08) - the roles are its config's
+                godfather_phone and user_roles' admin_phones/blocked_phones.
         """
+        self.denidin = denidin
+        config = denidin.config
+        user_roles = getattr(config, 'user_roles', {}) or {}
+        godfather_phone = getattr(config, 'godfather_phone', None)
         self.godfather_phone = godfather_phone
-        self.admin_phones = admin_phones if admin_phones is not None else []
-        self.blocked_phones = blocked_phones if blocked_phones is not None else []
+        self.admin_phones = list(user_roles.get('admin_phones', []) or [])
+        self.blocked_phones = list(user_roles.get('blocked_phones', []) or [])
         self._godfather_phone_normalized = _normalize_phone(godfather_phone) if godfather_phone else None
         self._admin_phones_normalized = {_normalize_phone(p) for p in self.admin_phones}
         self._blocked_phones_normalized = {_normalize_phone(p) for p in self.blocked_phones}

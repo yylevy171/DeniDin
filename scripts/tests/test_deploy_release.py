@@ -35,6 +35,10 @@ def _deploy(scratch, app="denidin-app", env="dev", version="1.0.0"):
         cwd=scratch["repo"],
         stdin="",
         timeout=90,
+        # bugfix-076: the real final health check (lib/deploy_final_health_check.sh) otherwise
+        # defaults to a 300s grace period - short-circuit that here, since the scratch health
+        # app answers correctly almost immediately (a few seconds is plenty for these tests).
+        env_overrides={"DEPLOY_HEALTH_GRACE_SECONDS": "20", "DEPLOY_HEALTH_POLL_INTERVAL": "1"},
     )
 
 
@@ -56,6 +60,23 @@ def test_missing_args_exits_2(scratch_deploy_repo):
 def test_bad_env_exits_2(scratch_deploy_repo):
     result = _deploy(scratch_deploy_repo, env="staging")
     assert result.returncode == 2
+
+
+def test_bad_app_exits_2(scratch_deploy_repo):
+    result = _deploy(scratch_deploy_repo, app="not-an-app")
+    assert result.returncode == 2
+    assert "denidin-app, morning-mcp-app or webapp" in result.stderr
+
+
+def test_webapp_is_an_accepted_app(scratch_deploy_repo):
+    """`webapp` passes <app> validation - it fails later on the missing artifact (exit 1),
+    NOT on arg validation (exit 2). The full two-service deploy+verify path is covered by a
+    manual gate against real infra, same as morning-mcp-app's /health path (see module
+    docstring)."""
+    result = _deploy(scratch_deploy_repo, app="webapp", version="9.9.9")
+    assert result.returncode == 1
+    assert "no release found for webapp" in result.stderr
+    assert "must be denidin-app" not in result.stderr
 
 
 def test_missing_artifact_exits_1_no_docker_build(scratch_deploy_repo):

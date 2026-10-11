@@ -3,7 +3,7 @@
 Phase 3 (Transform) — Feature 061, prod-morning-ledger-backfill.
 
 Reads raw document files from --input-dir (Phase 1's own output — never a live Morning API call,
-REQ-BACKFILL-003) and persists correctly-shaped LedgerEvent files to --output-dir via the real
+REQ-BACKFILL-003) and persists correctly-shaped LedgerEvent files to --output-dir/events/ via the real
 LedgerEventManager.add_ledger_event, so dedup and the tri-state new/duplicate/anomaly guard come
 for real, unmodified, from that existing mechanism (research.md R7/R8) — every anomaly outcome is
 retained on disk (LedgerEventManager's own pending_review.json) for Phase 3.5 (validate.py) to
@@ -40,6 +40,7 @@ for _extra_path in (
 import method_a
 
 from _ledger_event_manager_loader import get_ledger_event_manager_class
+from ledger_denidin import LedgerDeniDin
 
 _DEFAULT_BUILD_ENVELOPE_FN = method_a.build_capture_envelope
 
@@ -56,13 +57,52 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output-dir",
         required=True,
-        help="Local directory for output LedgerEvent files (LedgerEventManager storage_dir).",
+        help="Local data root for the output: LedgerEvent files are written to "
+             "<output-dir>/events/ (LedgerEventManager's {data_root}/events/).",
     )
     return parser
 
 
 def _load_raw_documents(input_dir: Path) -> Iterator[Tuple[str, dict]]:
-    for path in sorted(input_dir.glob("*.json")):
+    """
+    Bugfix, 2026-09-01 (Feature 062 backfill, real prod run): previously sorted by filename
+    (the raw document's own UUID `id`) - effectively random relative to real creation order.
+    `LedgerEventManager.add_ledger_event` resolves a document's cross-reference (`reference`/
+    `reference_hint`) only against whatever is ALREADY in the ledger at the moment it's
+    processed ("no end-of-sweep second pass" - see ledger_event_manager.py's own comment,
+    correct for live conversational capture where events naturally arrive in chronological
+    order). A single-shot bulk backfill has no such natural ordering, so UUID-sort left roughly
+    half of all genuine same-batch links unresolved purely by processing-order luck (measured:
+    74/146 unresolved on the real 2025-09-01 prod backfill).
+
+    Sorting by Morning's own real `creationDate` (ascending) does NOT make every reference
+    resolve on both sides - `linkedDocuments` is bidirectional and real links commonly point
+    FORWARD in time too (e.g. a חשבון עסקה links forward to the invoice it was later converted
+    into), so a document's own reference can still legitimately land on 'צריך למצוא' if it was
+    itself the earlier side of the pair. What forward-chronological order DOES guarantee: for
+    any pair where BOTH documents are present in this batch, the LATER one's own linkedDocuments
+    entry (pointing back to the earlier one) resolves correctly, since the earlier document has
+    already been written by the time the later one is processed - verified empirically on the
+    real prod run: 62/73 same-batch pairs resolve on the later side (0 pairs unresolved on both
+    sides); the remaining 11 reference a document outside the backfill's own --since window and
+    are genuinely unrecoverable regardless of ordering. So every real relationship present in
+    the batch ends up captured at least once, discoverable from either event.
+
+    Falls back to the filename sort for any document missing `creationDate` (put after every
+    dated document, stable order) rather than raising - a backfill must not silently drop
+    documents Morning didn't stamp a creation time on.
+    """
+    def _sort_key(path: Path):
+        try:
+            doc = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return (1, path.name)
+        creation_date = doc.get("creationDate")
+        if isinstance(creation_date, (int, float)):
+            return (0, creation_date)
+        return (1, path.name)
+
+    for path in sorted(input_dir.glob("*.json"), key=_sort_key):
         yield path.stem, json.loads(path.read_text(encoding="utf-8"))
 
 
@@ -113,7 +153,7 @@ def main(argv=None) -> int:
         return 1
 
     ledger_event_manager_cls = get_ledger_event_manager_class()
-    ledger_event_manager = ledger_event_manager_cls(storage_dir=args.output_dir)
+    ledger_event_manager = ledger_event_manager_cls(LedgerDeniDin(args.output_dir))
 
     summary = run_transform(iter(raw_documents), ledger_event_manager)
 

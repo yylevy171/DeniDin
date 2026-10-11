@@ -1,0 +1,18 @@
+# Rolling 14-Day Memory Backfill - standalone operator-run pipeline (Feature 070, US4).
+#
+# NOT pip-installed as a package and declares no "path dependency" on apps/denidin-app
+# (which is not pip-installable - no setup.py/pyproject.toml). apps/denidin-app is reached
+# via sys.path insertion in _denidin_loader.py / conftest.py, exactly matching
+# apps/prod-ledger-backfill/'s established pattern.
+#
+# This app DOES import apps/denidin-app's real SessionManager + MemoryManager, so it needs
+# their heavy transitive deps directly (unlike prod-ledger-backfill, whose LedgerEventManager
+# was genuinely light):
+
+openai>=1.50.0      # MemoryManager embeddings + summarize_conversation
+chromadb>=1.5.0     # MemoryManager PersistentClient
+tiktoken>=0.7.0     # SessionManager.count_tokens
+requests>=2.31.0    # transitively pulled in by src/managers/media_file_manager.py
+
+# Testing
+pytest>=7.0.0

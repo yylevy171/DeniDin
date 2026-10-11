@@ -31,6 +31,7 @@ from src.handlers.ai_handler import AIHandler
 from src.managers.pending_approval_manager import PendingApproval
 from src.models.config import AppConfiguration
 from src.models.message import AIRequest
+from tests.ai_handler_test_support import make_ai_handler
 
 
 @pytest.fixture
@@ -56,7 +57,7 @@ def mock_ai_client():
 
 @pytest.fixture
 def ai_handler(mock_config, mock_ai_client):
-    return AIHandler(mock_ai_client, mock_config)
+    return make_ai_handler(mock_ai_client, mock_config)
 
 
 @pytest.fixture
@@ -86,6 +87,9 @@ def _mcp_call(name, output=None, error=None):
     call = Mock()
     call.type = "mcp_call"
     call.name = name
+    # The approved call's own arguments - a duplicate is the same arguments run twice
+    # (2026-10-04, AIManager.tally_write_executions).
+    call.arguments = '{"client_name": "הסתדרות כללית חדשה", "amount": 40000}'
     call.output = output
     call.error = error
     return call

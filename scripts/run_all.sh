@@ -1,5 +1,5 @@
 #!/bin/bash
-# Starts BOTH denidin-app and morning-mcp-app for a given environment.
+# Starts morning-mcp-app, denidin-app AND the Feature 068 webapp for a given environment.
 # The two apps within one environment are still bundled - neither app's
 # container may run alone (see CLAUDE.md's "Environments (dev/prod)"
 # section). Use this instead of calling run_denidin.sh/run_morning_mcp.sh
@@ -11,6 +11,8 @@
 # SECOND - denidin-app depends on morning-mcp-app (it discovers and calls
 # the Morning MCP tunnel at startup/per-request), never the other way
 # around, so morning-mcp-app must already be up before denidin-app starts.
+# The webapp (read-only ledger UI) starts LAST - it reads denidin-app's data
+# but nothing depends on it.
 #
 # NOTE: this only (re)deploys - it does NOT build either app. Both wrapped
 # scripts are `docker compose up -d` only; after a code change, build the
@@ -32,3 +34,4 @@ fi
 
 "$REPO_ROOT/apps/morning-mcp-app/run_morning_mcp.sh" "$ENV"
 "$REPO_ROOT/apps/denidin-app/run_denidin.sh" "$ENV"
+"$REPO_ROOT/apps/webapp/run_webapp.sh" "$ENV"

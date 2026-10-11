@@ -12,7 +12,7 @@ sync with by hand.
 """
 
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from src.managers.user_manager import UserManager
 from src.models.user import Role
@@ -39,17 +39,26 @@ class GroupMembershipResolver:
     """Resolves a WhatsApp group's most-permissive member, via a real Green API
     getGroupData call, cached per chat_id."""
 
-    def __init__(self, groups_client, user_manager: UserManager):
+    def __init__(self, denidin: Any):
         """
         Args:
-            groups_client: Green API's `bot.api.groups` client (constructor-injected,
-                per this codebase's DI convention - never a new global).
-            user_manager: Existing UserManager, reused for its role-precedence logic
-                (this resolver adds no new precedence rule of its own).
+            denidin: the DeniDin object (REQ-063-08). Groups are read through its
+                green_api client's `groups` (None without a live Green API - resolve()
+                then degrades to sender-only RBAC); roles through its UserManager,
+                reused for its role-precedence logic (no new precedence rule here).
         """
-        self.groups_client = groups_client
-        self.user_manager = user_manager
+        self.denidin = denidin
         self._cache: Dict[str, GroupResolution] = {}
+
+    @property
+    def groups_client(self) -> Any:
+        """Green API's groups client, or None without a live Green API."""
+        green_api = getattr(self.denidin, "green_api", None)
+        return green_api.groups if green_api is not None else None
+
+    @property
+    def user_manager(self) -> Optional[UserManager]:
+        return getattr(self.denidin, "user_manager", None)
 
     def resolve(self, chat_id: str) -> Optional[GroupResolution]:
         """Return the most-permissive member's phone/Role for this group, or None
@@ -59,6 +68,9 @@ class GroupMembershipResolver:
         """
         if chat_id in self._cache:
             return self._cache[chat_id]
+        user_manager = self.user_manager
+        if user_manager is None:
+            return None
 
         try:
             response = self.groups_client.getGroupData(chat_id)
@@ -80,7 +92,7 @@ class GroupMembershipResolver:
             logger.warning(f"GroupMembershipResolver: no participants found for {chat_id}")
             return None
 
-        users = [self.user_manager.get_user(phone) for phone in member_phones]
+        users = [user_manager.get_user(phone) for phone in member_phones]
         # Most-permissive = highest token_limit (ADMIN and GODFATHER are equivalent
         # here, per research.md SS2 - both 100_000; BLOCKED is 0; CLIENT is 4_000).
         most_permissive_user = max(users, key=lambda u: u.token_limit)

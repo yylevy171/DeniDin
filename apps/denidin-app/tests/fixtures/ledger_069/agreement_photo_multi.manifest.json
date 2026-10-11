@@ -1,0 +1,184 @@
+{
+  "source_kind": "image",
+  "story": "US9 — photographed printed fee agreement (עידן שבתאי, disciplinary proceeding, three VAT-inclusive fee tiers 23,600 / 70,800 / 9,440). Client not an exact Morning match → resolution detour → capture every fee tier against the resolved name. Two-hop.",
+  "source_file": "agreement_idan_shabtai.jpg",
+  "resolution": {
+    "mode": "new_client",
+    "name": "עידן שבתאי",
+    "email": "idan.shabtai.f069@example.com",
+    "phone": "0525550773"
+  },
+  "files": "per_component",
+  "shared_fields": {
+    "event_id": {
+      "generated": "event_id"
+    },
+    "event_datetime": {
+      "generated": "event_datetime"
+    },
+    "source_type": {
+      "tested": "הסכם"
+    },
+    "event_subtype": {
+      "tested": "יצירה"
+    },
+    "client_name": {
+      "tested": "$client"
+    },
+    "payer_name": {
+      "null": true
+    },
+    "reference": {
+      "null": true
+    },
+    "reference_hint": {
+      "null": true
+    },
+    "agreement_id": {
+      "generated": "agreement_id"
+    },
+    "vat_status": {
+      "tested": "כולל"
+    },
+    "split_partner": {
+      "null": true
+    },
+    "split_percent": {
+      "null": true
+    },
+    "bank_number": {
+      "null": true
+    },
+    "bank_branch": {
+      "null": true
+    },
+    "bank_account": {
+      "null": true
+    },
+    "accounting_document_display_number": {
+      "null": true
+    },
+    "accounting_document_status": {
+      "null": true
+    },
+    "accounting_document_status_code": {
+      "null": true
+    },
+    "accounting_document_status_label": {
+      "null": true
+    },
+    "accounting_document_payment_method": {
+      "null": true
+    },
+    "session_id": {
+      "generated": "session_id"
+    },
+    "message_id": {
+      "generated": "message_id"
+    },
+    "captured_at": {
+      "generated": "captured_at"
+    },
+    "schema_version": {
+      "generated": "schema_version"
+    }
+  },
+  "components": [
+    {
+      "component_label": {
+        "free_text": true
+      },
+      "component_id": {
+        "generated": "component_id"
+      },
+      "description": {
+        "free_text": true
+      },
+      "amount": {
+        "tested": "23600"
+      },
+      "percent": {
+        "null": true
+      },
+      "percent_base": {
+        "null": true
+      },
+      "hours": {
+        "null": true
+      },
+      "hourly_rate": {
+        "null": true
+      },
+      "txn_date": {
+        "null": true
+      },
+      "trigger_condition": {
+        "free_text": true
+      }
+    },
+    {
+      "component_label": {
+        "free_text": true
+      },
+      "component_id": {
+        "generated": "component_id"
+      },
+      "description": {
+        "free_text": true
+      },
+      "amount": {
+        "tested": "70800"
+      },
+      "percent": {
+        "null": true
+      },
+      "percent_base": {
+        "null": true
+      },
+      "hours": {
+        "null": true
+      },
+      "hourly_rate": {
+        "null": true
+      },
+      "txn_date": {
+        "null": true
+      },
+      "trigger_condition": {
+        "free_text": true
+      }
+    },
+    {
+      "component_label": {
+        "free_text": true
+      },
+      "component_id": {
+        "generated": "component_id"
+      },
+      "description": {
+        "free_text": true
+      },
+      "amount": {
+        "tested": "9440"
+      },
+      "percent": {
+        "null": true
+      },
+      "percent_base": {
+        "null": true
+      },
+      "hours": {
+        "null": true
+      },
+      "hourly_rate": {
+        "null": true
+      },
+      "txn_date": {
+        "null": true
+      },
+      "trigger_condition": {
+        "free_text": true
+      }
+    }
+  ]
+}

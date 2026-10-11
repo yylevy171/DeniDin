@@ -18,7 +18,7 @@ The SDK provides:
 **Why chatId is REQUIRED in senderData:**
 
 When our handlers call notification.answer(message), the SDK internally:
-1. Calls notification.get_chat() 
+1. Calls notification.get_chat()
 2. Extracts chatId from notification.event["senderData"]["chatId"]
 3. Calls Green API SendMessage endpoint with the chatId
 
@@ -38,8 +38,8 @@ All test fixtures MUST include chatId in senderData to match real Green API webh
 and to be compatible with the SDK's notification.answer() method.
 """
 
-from dataclasses import dataclass, field
-from typing import Optional, Dict, Any
+from dataclasses import dataclass
+from typing import Optional, Any
 
 
 @dataclass
@@ -54,13 +54,13 @@ class InstanceData:
 class SenderData:
     """
     Green API sender data object.
-    
+
     **CRITICAL FIELD: chatId**
     - chatId is REQUIRED for notification.answer() to work
     - SDK extracts chatId to determine where to send responses
     - For 1-on-1 chats: chatId == sender (same WhatsApp ID)
     - For group chats: chatId = group ID, sender = individual who sent message
-    
+
     Without chatId, the SDK cannot route responses and will raise KeyError.
     """
     chatId: str  # REQUIRED - where to send the response
@@ -74,10 +74,10 @@ class SenderData:
 class FileMessageData:
     """
     Green API fileMessageData object for image/video/audio/document messages.
-    
+
     Note: Green API does NOT provide fileSize in webhook notifications.
     File size must be determined after downloading the file.
-    
+
     Fields:
     - downloadUrl: Link to download file
     - caption: File caption (empty string if none)
@@ -113,7 +113,7 @@ class QuotedMessage:
 class MessageData:
     """
     Green API messageData object.
-    
+
     For file messages (image/video/audio/document), the file metadata
     is nested inside fileMessageData, NOT at the messageData level.
     """
@@ -127,38 +127,37 @@ class MessageData:
 class NotificationValidationError(Exception):
     """
     Raised when notification object fails validation before sending response.
-    
+
     This exception is raised when trying to validate a notification that doesn't
     match the structure required by the whatsapp-chatbot-python SDK.
     """
-    pass
 
 
 def validate_notification_for_response(notification: Any) -> None:
     """
     Validate that notification has required fields for SDK's notification.answer().
-    
+
     **CRITICAL: SDK Dependency**
     The whatsapp-chatbot-python SDK's notification.answer() method internally calls:
         notification.get_chat() -> returns notification.event["senderData"]["chatId"]
-    
+
     Without chatId, the SDK raises KeyError and cannot send responses.
-    
+
     This validation catches structural issues BEFORE calling notification.answer(),
     providing clear error messages for debugging.
-    
+
     **NOT a Green API requirement** - The Green API SendMessage endpoint only needs
     {chatId, message}. This is a requirement of the SDK's convenience wrapper.
-    
+
     Args:
         notification: Notification object from whatsapp-chatbot-python SDK
-    
+
     Raises:
         NotificationValidationError: If notification structure doesn't match SDK requirements
-    
+
     Required structure for SDK compatibility:
         notification.event['senderData']['chatId'] - MUST exist and be non-empty
-    
+
     Example usage in handlers:
         >>> validate_notification_for_response(notification)
         >>> notification.answer("Response message")  # Safe - SDK can extract chatId
@@ -169,9 +168,9 @@ def validate_notification_for_response(notification: Any) -> None:
             "Notification object missing 'event' attribute. "
             "Cannot validate notification structure."
         )
-    
+
     event = notification.event
-    
+
     # Check senderData exists
     if 'senderData' not in event:
         raise NotificationValidationError(
@@ -179,9 +178,9 @@ def validate_notification_for_response(notification: Any) -> None:
             "Cannot send response without sender information.\n"
             f"Event keys: {list(event.keys())}"
         )
-    
+
     sender_data = event['senderData']
-    
+
     # Check chatId exists (CRITICAL for SDK compatibility)
     if 'chatId' not in sender_data:
         raise NotificationValidationError(
@@ -195,7 +194,7 @@ def validate_notification_for_response(notification: Any) -> None:
             "Real Green API webhooks ALWAYS include chatId.\n"
             "For 1-on-1 chats: chatId should equal sender field."
         )
-    
+
     # Check chatId is not empty
     chat_id = sender_data['chatId']
     if not chat_id or not str(chat_id).strip():

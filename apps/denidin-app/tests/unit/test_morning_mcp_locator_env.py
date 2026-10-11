@@ -12,6 +12,13 @@ from datetime import datetime, timezone
 from src.handlers.morning_mcp_locator import MorningMcpLocator
 
 
+def _locator(mcp_config):
+    """A MorningMcpLocator on a DeniDin whose config's `mcp` block is `mcp_config`."""
+    from src.handlers.morning_mcp_locator import MorningMcpLocator
+    from tests.denidin_test_support import make_config, make_denidin
+    return MorningMcpLocator(make_denidin(make_config(mcp=mcp_config)))
+
+
 def _write_status(path, status="running", server_url="https://example.ngrok-free.app/mcp"):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({
@@ -28,8 +35,8 @@ def test_locator_resolves_only_its_configured_path(tmp_path):
     _write_status(dev_status_path, server_url="https://dev-tunnel.ngrok-free.app/mcp")
     _write_status(prod_status_path, server_url="https://prod-tunnel.ngrok-free.app/mcp")
 
-    dev_locator = MorningMcpLocator({"morning_status_file": str(dev_status_path)})
-    prod_locator = MorningMcpLocator({"morning_status_file": str(prod_status_path)})
+    dev_locator = _locator({"morning_status_file": str(dev_status_path)})
+    prod_locator = _locator({"morning_status_file": str(prod_status_path)})
 
     assert dev_locator.current_server_url() == "https://dev-tunnel.ngrok-free.app/mcp"
     assert prod_locator.current_server_url() == "https://prod-tunnel.ngrok-free.app/mcp"
@@ -42,6 +49,6 @@ def test_locator_never_falls_back_to_a_different_status_file(tmp_path):
     _write_status(prod_status_path, server_url="https://prod-tunnel.ngrok-free.app/mcp")
 
     dev_status_path = tmp_path / "mcp-status-dev" / "morning_mcp_status.dev.json"
-    dev_locator = MorningMcpLocator({"morning_status_file": str(dev_status_path)})
+    dev_locator = _locator({"morning_status_file": str(dev_status_path)})
 
     assert dev_locator.current_server_url() is None

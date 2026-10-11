@@ -1,0 +1,1 @@
+../../denidin-app/scripts/run_multiple_billed_tests.sh

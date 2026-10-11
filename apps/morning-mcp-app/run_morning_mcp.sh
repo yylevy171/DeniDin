@@ -23,10 +23,14 @@ COMPOSE_FILE="$REPO_ROOT/docker/docker-compose.$ENV.yml"
 LOCAL_OVERRIDE="$REPO_ROOT/docker/docker-compose.$ENV.local.yml"
 SERVICE="morning-mcp-app-$ENV"
 
-# The lock is shared across all clones (this one, coder1, coder2, ...) via
+# The lock is shared across all clones (this one, teammate1, teammate2, ...) via
 # ./shared, and "dev" is additionally locked to whichever clone acquires it
 # - see scripts/env_lock.sh.
 source "$REPO_ROOT/scripts/env_lock.sh"
+
+# 2026-09-28: same guard as run_denidin.sh - see there, and env_lock.sh's
+# env_lock_require_canonical_root, for the full rationale/incident.
+env_lock_require_canonical_root "$ENV"
 
 # MANDATORY per-clone override (plain relative paths, no env vars/symlinks -
 # see CLAUDE.md's "Multi-clone lock" section) for dev/prod log volume
@@ -56,6 +60,10 @@ env_lock_acquire "$ENV"
 # serving stale code (real incident, 2026-08-12: a stop/run cycle here alone
 # was mistaken for a rebuild - see CLAUDE.md's "Merging a code fix to master
 # does not redeploy it" for the general rule this is one instance of).
+# bugfix-066: refuse to start if bind-mounted config is missing (Docker would silently create it
+# as an empty root-owned directory), and clear never-started containers so a fixed mount takes.
+source "$REPO_ROOT/scripts/lib/prepare_compose_service.sh"
+prepare_compose_service "$SERVICE" "${COMPOSE_ARGS[@]}" || exit 1
 docker compose "${COMPOSE_ARGS[@]}" up -d "$SERVICE"
 docker compose "${COMPOSE_ARGS[@]}" ps "$SERVICE"
 

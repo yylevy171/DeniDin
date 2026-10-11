@@ -20,8 +20,8 @@ CLAUDE.md/CONSTITUTION §VII).
 """
 from __future__ import annotations
 
+import json
 import logging
-import re
 import time
 
 import pytest
@@ -31,7 +31,8 @@ from .denidin_mcp_e2e_helpers import (
     _calls_for,
     _random_amount,
     _random_description,
-    _seed_fresh_client,
+    _seed_client,
+    pick_existing_client,
     _send_turn,
     _send_turn_and_approve,
     _send_turn_and_approve_receipt,
@@ -65,10 +66,18 @@ logger = logging.getLogger(__name__)
 KNOWN_INVOICE_NUMBER = "52046"
 KNOWN_INVOICE_CLIENT = "רימונה כהן"
 KNOWN_INVOICE_AMOUNT_IL = "156.75"
-KNOWN_INVOICE_STATUS_HE = "שולם"  # paid
+# Every Hebrew form a correct "paid" status may take (masculine/feminine/plural,
+# verb and adjective). Plain substrings - "שולם" ends in a final mem, so it does
+# not match "שולמה"/"משולמת", which is why each form is listed.
+_PAID_STATUS_FORMS_HE = (
+    "שולם", "שולמה", "שולמו",
+    "משולם", "משולמת", "משולמים", "משולמות",
+    "נפרע", "נפרעה",
+)
 
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_godfather_gets_invoice_details_via_whatsapp(denidin_app):
     """Godfather asks about a specific invoice by client name and date only -
     never an id. The model must resolve which invoice this is itself (via
@@ -108,8 +117,13 @@ def test_godfather_gets_invoice_details_via_whatsapp(denidin_app):
     assert KNOWN_INVOICE_AMOUNT_IL in response, (
         f"Bot reply missing amount {KNOWN_INVOICE_AMOUNT_IL}. Full reply: {response!r}"
     )
-    assert KNOWN_INVOICE_STATUS_HE in response, (
-        f"Bot reply missing status {KNOWN_INVOICE_STATUS_HE!r}. Full reply: {response!r}"
+    # Accept any inflection of "paid" - "שולם"/"שולמה"/"שולמו" (verb), the
+    # adjective "משולם"/"משולמת"/... (2026-10-02: a real, correct reply said
+    # "סגורה ומשולמת"), or "נפרע"/"נפרעה" (settled) - the model isn't wrong to
+    # use any of them, so the assertion shouldn't pin one over the other.
+    assert any(form in response for form in _PAID_STATUS_FORMS_HE), (
+        f"Bot reply missing a 'paid' status (any of {_PAID_STATUS_FORMS_HE}). "
+        f"Full reply: {response!r}"
     )
 
 
@@ -119,25 +133,23 @@ def test_godfather_gets_invoice_details_via_whatsapp(denidin_app):
 # ============================================================================
 
 def _seed_fresh_invoice(amount: int, description: str) -> str:
-    """Seed a fresh invoice for a brand-new client via a real WhatsApp
-    exchange (create_invoice now requires explicit approval - Feature 022)
-    so the paid/cancel flow tests below mutate a fresh invoice each run,
-    never the reusable 2026-02-07 fixed set. Returns the client name
-    actually used - never an id - for later turns to reference the invoice.
+    """Seed a fresh invoice via a real WhatsApp exchange (create_invoice now
+    requires explicit approval - Feature 022) so the paid/cancel flow tests
+    below mutate a fresh invoice each run, never the reusable 2026-02-07 fixed
+    set. Returns the client name actually used - never an id - for later turns
+    to reference the invoice.
 
     Only asserts on the end state (a fresh invoice genuinely exists before
-    the real test begins), never on the seeding turns themselves:
-    `_seed_fresh_client` already retries with a new name on its own if a
-    particular draw collides with an existing real sandbox client, so by
-    the time this returns, seeding has unambiguously succeeded.
+    the real test begins), never on the seeding turns themselves.
 
-    Feature 027: create_invoice now resolves client_name against a real
-    client record before creating anything - seeds one first via the real
-    add_client conversation (the only way to do so from this E2E layer)."""
-    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="E2E_SEED")
+    Feature 059 item 5: the *invoice* must be fresh (marking it paid / cancelling
+    it is effectively irreversible in the sandbox), but the *client* need not be
+    - so this picks an existing sandbox client rather than paying 2-3 billed
+    turns + a sleep to seed a throwaway one (`pick_existing_client`)."""
+    client_name = pick_existing_client()["name"]
     _, (response, ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
-        text=f"צור חשבונית ל-{client_name} על {amount} ₪ עבור {description}",
+        text=f"צור חשבונית ל-{client_name} על {amount} ₪ כולל מע\"מ עבור {description}",
         id_prefix="E2E_SEED",
     )
     create_calls = _calls_for(ai_response, "create_invoice")
@@ -145,6 +157,36 @@ def _seed_fresh_invoice(amount: int, description: str) -> str:
         f"Seed create_invoice failed or was not called: {ai_response.mcp_calls!r}"
     )
     logger.info(f"Seeded fresh invoice for client {client_name!r}")
+    return client_name
+
+
+def _seed_fresh_invoice_for_a_fresh_client(amount: int, description: str) -> str:
+    """Like `_seed_fresh_invoice`, but the invoice is created for a BRAND-NEW
+    client (so that client owns exactly one invoice and a later
+    "cancel the invoice of X" is unambiguous), and VAT treatment is stated
+    explicitly in the seed text so the mandatory "כולל מע\"מ?" question
+    (`runtime_constitution.md`) never interrupts the fixed ask->approve
+    seeding turns.
+
+    Feature 059 N1 fix (2026-09-03): `_seed_fresh_invoice` was changed on this
+    branch (commit 77868e6) from a fresh client to `pick_existing_client()`,
+    which made "בטל את החשבונית של {client}" ambiguous whenever the reused
+    client already owned another open invoice - the model then (correctly)
+    asks which one, and the 2-turn `_send_turn_and_approve` helper cannot
+    answer. Seeding a fresh client removes that ambiguity at the source.
+    VAT is stated as NOT included here purely to exercise that branch."""
+    client_name, _, _ = _seed_client(GODFATHER_CHAT_ID, id_prefix="E2E_CANCEL_SEED")
+    _, (response, ai_response) = _send_turn_and_approve(
+        chat_id=GODFATHER_CHAT_ID,
+        text=f"צור חשבונית ל-{client_name} על {amount} ₪ לא כולל מע\"מ עבור {description}",
+        id_prefix="E2E_CANCEL_SEED_INV",
+    )
+    create_calls = _calls_for(ai_response, "create_invoice")
+    assert create_calls and create_calls[0]["error"] is None, (
+        f"N1 seed create_invoice failed or was not called: "
+        f"{ai_response.mcp_calls if ai_response else None!r}. Reply: {response!r}"
+    )
+    logger.info(f"Seeded fresh invoice for a fresh client {client_name!r}")
     return client_name
 
 
@@ -207,7 +249,9 @@ def test_godfather_marks_invoice_paid_via_whatsapp(denidin_app):
     # The resulting status, not just call success, is what this flow proves:
     # create_receipt's confirmation names the new receipt against the
     # original invoice - a follow-up status check confirms it actually paid.
-    assert any("קבלה" in (c["output"] or "") for c in receipt_calls), (
+    # Tool output is JSON with \u-escaped Hebrew (OpenAI re-serializes mcp_call
+    # output) - check the parsed document type, never a raw Hebrew substring.
+    assert any(json.loads(c["output"]).get("type") == 400 for c in receipt_calls if c["output"]), (
         f"create_receipt output did not reflect a new receipt: {receipt_calls!r}"
     )
     # Accept either the masculine "שולם" or feminine "שולמה" — the model may
@@ -247,7 +291,9 @@ def test_godfather_cancels_invoice_via_whatsapp(denidin_app):
     Issuing a credit note is a document-creating call, so it now requires
     explicit approval (Feature 022): the ASK turn must NOT execute it yet.
     """
-    client_name = _seed_fresh_invoice(_random_amount(), _random_description())
+    client_name = _seed_fresh_invoice_for_a_fresh_client(
+        _random_amount(), _random_description()
+    )
 
     (ask_response, ask_ai_response), (response, ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
@@ -278,7 +324,9 @@ def test_godfather_cancels_invoice_via_whatsapp(denidin_app):
 
     # The resulting status, not just call success: the confirmation message
     # explicitly names the new credit invoice issued to offset the amount.
-    assert any("זיכוי" in (c["output"] or "") for c in credit_calls), (
+    # Tool output is JSON with \u-escaped Hebrew (OpenAI re-serializes mcp_call
+    # output) - check the parsed document type, never a raw Hebrew substring.
+    assert any(json.loads(c["output"]).get("type") == 330 for c in credit_calls if c["output"]), (
         f"create_credit_note output did not reflect a new credit note: {credit_calls!r}"
     )
     assert "בוטל" in response or "זיכוי" in response, (
@@ -317,7 +365,8 @@ def test_godfather_declines_invoice_cancellation(denidin_app):
         details_ai_response, "list_invoices"
     )
     combined_output = "\n".join(c["output"] or "" for c in details_calls)
-    assert "בוטל" not in combined_output, (
+    docs = [json.loads(c["output"]) for c in details_calls if c["output"]]
+    assert not any(d.get("status_code") == 4 for d in docs), (
         f"Invoice shows as cancelled despite the decline: {combined_output!r}. "
         f"Bot reply: {details_response!r}"
     )
@@ -332,28 +381,25 @@ def test_godfather_declines_invoice_cancellation(denidin_app):
 # distinguish which closing document type actually got linked, since these
 # are the exact strings a get_invoice_details reply/tool-output surfaces.
 _COMBO_DOCUMENT_LABEL_HE = "חשבונית מס / קבלה"  # type 320
-_RECEIPT_DOCUMENT_LABEL_HE = "קבלה"  # type 400 - deliberately NOT a substring of the 320 label above
 
 
 def _seed_transaction_account_invoice(amount: int, description: str) -> str:
-    """Seed a fresh "חשבון עסקה" (type-300) document for a brand-new client
-    via a real, two-turn approved WhatsApp exchange (create_transaction_account
-    requires approval - Feature 022). Spec 021 added create_transaction_account
-    as its own dedicated MCP tool (not a document_type param on create_invoice,
-    which stays permanently locked to type 305) - the model is expected to
-    route this phrasing to that tool, using the real Hebrew terminology a user
-    would say ("חשבון עסקה" / "חשבונית עסקה" / "חשבון עיסקה" are all real
-    variants). Returns the client name actually used.
+    """Seed a fresh "חשבון עסקה" (type-300) document via a real, two-turn
+    approved WhatsApp exchange (create_transaction_account requires approval -
+    Feature 022). Spec 021 added create_transaction_account as its own dedicated
+    MCP tool (not a document_type param on create_invoice, which stays
+    permanently locked to type 305) - the model is expected to route this
+    phrasing to that tool, using the real Hebrew terminology a user would say
+    ("חשבון עסקה" / "חשבונית עסקה" / "חשבון עיסקה" are all real variants).
+    Returns the client name actually used.
 
     Only asserts on the end state (a fresh חשבון עסקה genuinely exists before
-    the real test begins), never on the seeding turns themselves:
-    `_seed_fresh_client` already retries with a new name on its own if a
-    particular draw collides with an existing real sandbox client, same
-    methodology as `_seed_fresh_invoice` above.
+    the real test begins), never on the seeding turns themselves.
 
-    Feature 027: create_transaction_account now resolves client_name against
-    a real client record before creating anything - seeds one first via the
-    real add_client conversation (the only way to do so from this E2E layer).
+    Feature 059 item 5: same as `_seed_fresh_invoice` above - the *document*
+    must be fresh (its paid/cancel state change is effectively irreversible in
+    the sandbox), the *client* need not be, so this picks an existing sandbox
+    client (`pick_existing_client`) rather than seeding a throwaway one.
 
     This phrasing never states VAT inclusion, so the model deterministically
     asks about it first (same mandatory rule as create_transaction_account's
@@ -362,7 +408,7 @@ def _seed_transaction_account_invoice(amount: int, description: str) -> str:
     real, deliberately different answer from the "כן"/explicit-VAT-stated
     phrasing used elsewhere in this file, to also exercise that branch.
     """
-    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="E2E_020_SEED_300")
+    client_name = pick_existing_client()["name"]
     ask_response, ask_ai_response = _send_turn(
         chat_id=GODFATHER_CHAT_ID,
         text=f"תפתח חשבון עסקה עבור {client_name} על סך {amount} שח עבור {description}",
@@ -401,6 +447,36 @@ def _seed_transaction_account_invoice(amount: int, description: str) -> str:
     return client_name
 
 
+def _seed_transaction_account_invoice_for_a_fresh_client(amount: int, description: str) -> str:
+    """Like `_seed_transaction_account_invoice`, but the חשבון עסקה is opened
+    for a BRAND-NEW client, so that client owns exactly one type-300 and a
+    later "סמן את חשבון העסקה של X כשולם" is unambiguous.
+
+    Feature 059 N2 fix (2026-09-03): `_seed_transaction_account_invoice` was
+    changed on this branch (commit 77868e6) from a fresh client to
+    `pick_existing_client()` - same regression as `_seed_fresh_invoice` (see
+    `_seed_fresh_invoice_for_a_fresh_client`). The VAT-inclusion question is
+    still answered here with "לא" mid-seed exactly as the shared helper does."""
+    client_name, _, _ = _seed_client(GODFATHER_CHAT_ID, id_prefix="E2E_020_SEED_300")
+    _send_turn(
+        chat_id=GODFATHER_CHAT_ID,
+        text=f"תפתח חשבון עסקה עבור {client_name} על סך {amount} שח עבור {description}",
+        id_prefix="E2E_020_SEED_300F_ASK",
+    )
+    _send_turn(chat_id=GODFATHER_CHAT_ID, text="לא", id_prefix="E2E_020_SEED_300F_VAT")
+    _, ai_response = _send_turn(
+        chat_id=GODFATHER_CHAT_ID, text="כן", id_prefix="E2E_020_SEED_300F_APPROVE"
+    )
+    create_calls = _calls_for(ai_response, "create_transaction_account")
+    assert create_calls and create_calls[0]["error"] is None, (
+        f"N2 seed create_transaction_account (חשבון עסקה) failed or was not called: "
+        f"{ai_response.mcp_calls if ai_response else None!r}"
+    )
+    logger.info(f"Seeded fresh חשבון עסקה for a fresh client {client_name!r}")
+    time.sleep(5)  # Morning search-index lag - see _seed_transaction_account_invoice
+    return client_name
+
+
 @pytest.mark.billed
 def test_godfather_marks_transaction_account_invoice_paid_via_whatsapp(denidin_app):
     """Spec 020 / bugfix-014 Flow 4: a "חשבון עסקה" (type-300 transaction
@@ -418,17 +494,21 @@ def test_godfather_marks_transaction_account_invoice_paid_via_whatsapp(denidin_a
     natural WhatsApp turn asking for the invoice's details, the same way a
     real user would confirm it themselves.
     """
-    client_name = _seed_transaction_account_invoice(_random_amount(), _random_description())
+    client_name = _seed_transaction_account_invoice_for_a_fresh_client(
+        _random_amount(), _random_description()
+    )
 
     (ask_response, ask_ai_response), (paid_response, paid_ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
-        # States VAT-inclusion explicitly (feature 023's constitution rule
-        # otherwise has the model ask "כולל מע״מ?" before calling
-        # create_combo_document_as_reference, confirmed live 2026-07-30) - this test
-        # is about the mark-as-paid dispatch itself, not the VAT-ambiguity
-        # question, so the prompt removes that ambiguity up front rather than
-        # adding a third conversational turn to answer it.
-        text=f"סמן את חשבון העסקה של {client_name} כשולם, כולל מע״מ",
+        # States the payment date explicitly: otherwise the model asks "האם
+        # התשלום התקבל היום?" (confirmed live 2026-09-02) before calling
+        # create_combo_document_as_reference, a turn the fixed ask->approve
+        # helper cannot answer. "כולל מע״מ" is a leftover from before bugfix-071:
+        # closing a 300 takes its VAT from the 300, the bot never asks about it,
+        # and an "included" statement is simply ignored (bugfix-071 matrix).
+        # Kept as-is so this test stays about the mark-as-paid dispatch; the
+        # never-asks-about-VAT behaviour is covered by the bugfix-071 scenarios.
+        text=f"סמן את חשבון העסקה של {client_name} כשולם היום, כולל מע״מ",
         id_prefix="E2E_020_PAID_300",
     )
     assert not _calls_for(ask_ai_response, "create_combo_document_as_reference"), (
@@ -452,22 +532,39 @@ def test_godfather_marks_transaction_account_invoice_paid_via_whatsapp(denidin_a
         text=f"תראה לי את כל הפרטים והמסמכים המקושרים של חשבון העסקה של {client_name}",
         id_prefix="E2E_020_DETAILS_300",
     )
-    details_calls = _calls_for(details_ai_response, "get_invoice_details")
+    # Either read tool may answer "show me the linked documents":
+    # get_invoice_details returns the 300 (linked_document -> its 320);
+    # list_invoices returns {"documents": [...]} with the 320 itself
+    # (linked_document -> the 300). Accept the link from either side.
+    details_calls = _calls_for(details_ai_response, "get_invoice_details") + _calls_for(
+        details_ai_response, "list_invoices"
+    )
     combined_output = "\n".join(c["output"] or "" for c in details_calls)
 
-    assert "מסמכים מקושרים" in combined_output, (
-        f"Expected a linked-documents section in the invoice details reply, "
+    docs = []
+    for c in details_calls:
+        if c["output"]:
+            parsed = json.loads(c["output"])
+            docs.extend(parsed.get("documents", [parsed]))
+    account_numbers = {d.get("display_number") for d in docs if d.get("type") == 300}
+    # Tool output is JSON with \u-escaped Hebrew (OpenAI re-serializes mcp_call
+    # output) - check parsed document types, never a raw label.
+    linked_types = [
+        (d.get("linked_document") or {}).get("type") for d in docs if d.get("type") == 300
+    ] + [
+        d.get("type") for d in docs
+        if (d.get("linked_document") or {}).get("number") in account_numbers
+    ]
+    linked_types = [t for t in linked_types if t is not None]
+    assert linked_types, (
+        f"Expected a linked document in the invoice details reply, "
         f"got tool output: {combined_output!r}"
     )
-    assert _COMBO_DOCUMENT_LABEL_HE in combined_output, (
+    assert 320 in linked_types, (
         f"Expected a linked type-320 combo document ({_COMBO_DOCUMENT_LABEL_HE!r}) "
         f"for a חשבון עסקה marked paid, got tool output: {combined_output!r}"
     )
-    # The bare receipt label ("קבלה") is a substring of the combo label
-    # ("חשבונית מס / קבלה"), so strip every combo-label occurrence out first -
-    # what remains must not still contain a standalone receipt label.
-    without_combo_labels = combined_output.replace(_COMBO_DOCUMENT_LABEL_HE, "")
-    assert _RECEIPT_DOCUMENT_LABEL_HE not in without_combo_labels, (
+    assert 400 not in linked_types, (
         f"A type-300 document must not be closed by a bare type-400 receipt: {combined_output!r}"
     )
 
@@ -483,10 +580,10 @@ def test_godfather_declines_marking_transaction_account_invoice_paid(denidin_app
     decline_response, decline_ai_response = _send_turn_and_decline(
         chat_id=GODFATHER_CHAT_ID,
         # See test_godfather_marks_transaction_account_invoice_paid_via_whatsapp's
-        # comment above - states VAT-inclusion explicitly so there's a real
-        # create_combo_document_as_reference pending approval to decline, rather than
-        # the model asking a VAT-clarifying question with nothing yet pending.
-        text=f"סמן את חשבון העסקה של {client_name} כשולם, כולל מע״מ",
+        # comment above - "כולל מע״מ" is a pre-bugfix-071 leftover the bot now
+        # ignores (closing a 300 never asks about VAT); kept so this test stays
+        # about declining the pending approval.
+        text=f"סמן את חשבון העסקה של {client_name} כשולם היום, כולל מע״מ",
         id_prefix="E2E_020_PAID_300_DECLINE",
     )
 
@@ -505,7 +602,14 @@ def test_godfather_declines_marking_transaction_account_invoice_paid(denidin_app
         details_ai_response, "list_invoices"
     )
     combined_output = "\n".join(c["output"] or "" for c in details_calls)
-    assert "לא שולם" in combined_output, (
+    # get_invoice_details returns one document; list_invoices wraps them in
+    # {"documents": [...]} - check each actual type-300 document.
+    docs = []
+    for c in details_calls:
+        if c["output"]:
+            parsed = json.loads(c["output"])
+            docs.extend(parsed.get("documents", [parsed]))
+    assert any(d.get("type") == 300 and d.get("status_code") == 0 for d in docs), (
         f"Expected the חשבון עסקה to still be unpaid after the decline: "
         f"{combined_output!r}. Bot reply: {details_response!r}"
     )
@@ -538,9 +642,9 @@ def test_godfather_marks_already_paid_credit_invoice_as_paid_is_rejected(denidin
         f"Setup cancellation failed or was not called: {cancel_ai_response.mcp_calls!r}"
     )
     credit_output = cancel_calls[0]["output"] or ""
-    match = re.search(r"חשבונית זיכוי מספר (\S+)", credit_output)
-    assert match, f"Could not find the credit invoice number in cancel output: {credit_output!r}"
-    credit_number = match.group(1)
+    credit_number = json.loads(credit_output).get("display_number") if credit_output else None
+    assert credit_number, f"Could not find the credit invoice number in cancel output: {credit_output!r}"
+    credit_number = str(credit_number)
 
     _, (response, ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
@@ -567,8 +671,9 @@ def test_godfather_marks_already_paid_credit_invoice_as_paid_is_rejected(denidin
     # all), the user-facing reply must not claim success. Hebrew can express
     # this refusal via several negation forms - "לא"/"לא ניתן", or
     # "אינה"/"אינו"/"אין" (e.g. "חשבונית זיכוי אינה מסמך שמסמנים כשולם") - so
-    # check for any of them rather than assuming one specific phrasing.
-    negation_markers = ("לא", "אינה", "אינו", "אין")
+    # check for any of them rather than assuming one specific phrasing. "אי אפשר"
+    # added 2026-10-04 (a correct refusal, "אי אפשר לסמן אותו כשולם", failed this).
+    negation_markers = ("לא", "אינה", "אינו", "אין", "אי אפשר")
     assert "שולם" not in response or any(marker in response for marker in negation_markers), (
         f"Bot reply appears to falsely confirm payment for an unsupported "
         f"document type. Full reply: {response!r}"

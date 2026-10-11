@@ -3,12 +3,15 @@ Task A (RED) for Phase 3.5 — Feature 061, prod-morning-ledger-backfill (T018).
 
 `validate.py` reads --raw-dir (Phase 1's output) and --ledger-dir (Phase 3's output) only — no
 live Morning API call, and NEVER writes under --ledger-dir (strictly read-only, REQ-BACKFILL-010).
-It produces a report with three checks (data-model.md entity 4): document-count reconciliation,
-surfaced anomalies (LedgerEventManager's own pending_review.json, a SIBLING of --ledger-dir, not
-nested inside it — confirmed by reading _append_pending_review directly), and a sampled
-raw-vs-transformed field comparison — reusing method_a.transform() as a deterministic ground-truth
-oracle and select_method.diff_ledger_events() for the comparison itself, rather than writing new
-mapping/diff logic a second time.
+It produces a report with two checks: document-count reconciliation, and surfaced anomalies
+(LedgerEventManager's own pending_review.json, a SIBLING of --ledger-dir, not nested inside it —
+confirmed by reading _append_pending_review directly).
+
+A third check ("sampled field-level comparison" against a method_a.transform() oracle) was
+removed 2026-09-01 (Feature 062 real prod run, explicit user direction) — the oracle stopped one
+pipeline stage short of the real save path, so it always reported every sampled document as
+"not identical" regardless of correctness, and the Method A/B comparison it existed for was
+already settled. See validate.py's own module docstring for the full removal note.
 """
 import json
 
@@ -126,7 +129,6 @@ def test_clean_pair_reports_no_discrepancy_and_no_mismatch(clean_fixture_dirs, t
     assert report["count_reconciliation"]["unexplained_discrepancy"] is False
     assert report["count_reconciliation"]["raw_document_count"] == 1
     assert report["count_reconciliation"]["ledger_event_count"] == 1
-    assert all(item["identical"] for item in report["sampled_field_comparison"])
     assert report["sign_off"]["signed"] is False
 
 
@@ -144,22 +146,6 @@ def test_missing_ledger_event_flagged_in_count_reconciliation(mismatched_fixture
     assert reconciliation["raw_document_count"] == 3
     assert reconciliation["ledger_event_count"] == 2
     assert "70011" in reconciliation["missing_document_numbers"]  # doc-b's number
-
-
-def test_wrong_field_flagged_by_sampled_comparison(mismatched_fixture_dirs, tmp_path):
-    raw_dir, ledger_dir = mismatched_fixture_dirs
-    report_path = tmp_path / "report.json"
-
-    validate.main([
-        "--raw-dir", str(raw_dir), "--ledger-dir", str(ledger_dir), "--report-out", str(report_path),
-    ])
-
-    report = json.loads(report_path.read_text(encoding="utf-8"))
-    by_number = {item["display_number"]: item for item in report["sampled_field_comparison"]}
-
-    assert by_number["70010"]["identical"] is True
-    assert by_number["70012"]["identical"] is False
-    assert "client_name" in by_number["70012"]["differing_fields"]
 
 
 def test_anomalies_are_read_from_the_sibling_accounting_reconciliation_dir(mismatched_fixture_dirs, tmp_path):

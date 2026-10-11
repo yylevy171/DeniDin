@@ -1,0 +1,1 @@
+../../denidin-app/scripts/run_single_test.sh

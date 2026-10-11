@@ -8,7 +8,9 @@ human-readable, Hebrew-formatted string.
 """
 from __future__ import annotations
 
+import json
 import re
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, NoReturn, Optional, Set, Tuple
 
@@ -25,10 +27,7 @@ from .formatters import (
     format_client_name_resolved,
     format_client_not_found,
     format_financial_summary,
-    format_invoice_confirmation,
-    format_invoice_details,
     format_invoice_json,
-    format_invoice_list,
     format_invoice_list_json,
     format_name_not_resolved,
     format_original_not_linked_to_client,
@@ -53,6 +52,107 @@ _PRIMARY_INVOICE_DOCUMENT_TYPES = {
 }
 _CREDIT_INVOICE_DOCUMENT_TYPE = 330  # "חשבונית זיכוי" — confirmed live via GET /documents/types
 
+# Feature 098: Israel's "חשבוניות ישראל" model requires an allocation number
+# (מספר הקצאה) on every tax invoice (305) and tax invoice/receipt (320) whose
+# amount EXCEEDS the threshold before VAT (5,000 since 2026-06-01). Morning
+# requests the number itself, but only if the client's record holds an ID -
+# so these two types are never sent to Morning above the threshold for a
+# client without one. Receipts, transaction accounts and credit notes are
+# out of scope (they never get an allocation number).
+_ALLOCATION_DOCUMENT_TYPES = {_TAX_INVOICE_DOCUMENT_TYPE, _INVOICE_RECEIPT_COMBO_DOCUMENT_TYPE}
+_VALID_TAX_ID_RE = re.compile(r"^\d{9}$")
+
+
+@dataclass(frozen=True)
+class InvoicingRules:
+    """Feature 098: the config-driven numbers the allocation check needs."""
+
+    allocation_threshold_nis: float
+    vat_rate: float
+
+
+# Python-level default matching MorningMCPConfig's defaults (config.py) - the
+# same pattern as _LIST_INVOICES_TOKEN_BUDGET below: server.py always passes
+# the real config values explicitly; this only matters for direct calls
+# (tests, ad hoc scripts) that don't thread a config object through.
+DEFAULT_INVOICING_RULES = InvoicingRules(allocation_threshold_nis=5000.0, vat_rate=0.18)
+
+
+class ClientTaxIdRequiredError(ValueError):
+    """A 305/320 above the allocation threshold was requested for a client
+    with no 9-digit ID (Feature 098). Nothing was sent to Morning. Its message
+    is user-facing Hebrew and is surfaced verbatim by errors.py, like
+    ClientNotFoundError's - the model acts on it by asking for the ID."""
+
+
+def _has_valid_tax_id(tax_id: Optional[str]) -> bool:
+    """Feature 098: exactly 9 digits (PM decision - the check digit is left to
+    Morning, which already rejects a bad one with errorCode 1111)."""
+    if tax_id is None:
+        return False
+    return bool(_VALID_TAX_ID_RE.match(str(tax_id).strip()))
+
+
+def _pre_vat_amount(payload: Dict[str, Any], vat_rate: float) -> float:
+    """The document's amount before VAT, computed from the payload that is
+    about to be sent - so it reflects exactly what Morning would receive
+    (including the closing flow's `amount=None`, which defaults to the
+    original's total). Read per income line: a line's `vatType == 1` means its
+    price includes VAT. Never the document-level `vatType`, whose meaning differs
+    (bugfix-071: 0 regular / 1 exempt) and changes when that bug is fixed."""
+    total = 0.0
+    for line in payload.get("income") or []:
+        gross = float(line.get("price") or 0) * float(line.get("quantity") or 1)
+        total += gross / (1 + vat_rate) if line.get("vatType") == 1 else gross
+    return round(total, 2)
+
+
+def _format_nis(value: float) -> str:
+    """5000.0 -> '5,000'; 5000.5 -> '5,000.5' (no trailing zeros)."""
+    if float(value).is_integer():
+        return f"{int(value):,}"
+    return f"{value:,.2f}".rstrip("0").rstrip(".")
+
+
+def _exceeds_allocation_threshold(payload: Dict[str, Any], rules: InvoicingRules) -> bool:
+    """True iff `payload` is a 305/320 whose pre-VAT amount is strictly
+    greater than the threshold ("עולה על" - exactly the threshold is fine)."""
+    if payload.get("type") not in _ALLOCATION_DOCUMENT_TYPES:
+        return False
+    return _pre_vat_amount(payload, rules.vat_rate) > rules.allocation_threshold_nis
+
+
+def _enforce_allocation_tax_id(
+    tool_name: str,
+    payload: Dict[str, Any],
+    client_tax_id: Optional[str],
+    client_name: Optional[str],
+    rules: InvoicingRules,
+) -> None:
+    """Feature 098 hard backstop: raise ClientTaxIdRequiredError (after
+    logging the refusal) when `payload` is a 305/320 whose pre-VAT amount is
+    strictly greater than the threshold ("עולה על") and the client has no
+    valid ID. Every other case returns without doing anything."""
+    if not _exceeds_allocation_threshold(payload, rules) or _has_valid_tax_id(client_tax_id):
+        return
+    pre_vat = _pre_vat_amount(payload, rules.vat_rate)
+    log_refusal(
+        tool_name,
+        "client_tax_id_required",
+        client_name=client_name,
+        document_type=payload.get("type"),
+        pre_vat_amount=pre_vat,
+        threshold=rules.allocation_threshold_nis,
+    )
+    threshold_text = _format_nis(rules.allocation_threshold_nis)
+    raise ClientTaxIdRequiredError(
+        f"❌ לא ניתן להפיק את המסמך: ללקוח {client_name or ''} אין ת.ז / ח.פ במערכת. "
+        f"מסמך מסוג חשבונית מס או חשבונית מס/קבלה מעל {threshold_text} ₪ לפני מע\"מ "
+        f"דורש מספר הקצאה, ולשם כך חייב להיות מספר מזהה של הלקוח. "
+        f"יש לבקש את ת.ז / ח.פ (9 ספרות), לעדכן את הלקוח, ולנסות שוב."
+    )
+
+
 # Feature 038: max raw items list_invoices will fetch pages for (mirrors
 # _LIST_CLIENTS_MAX_ITEMS's role for list_clients, below) — beyond this,
 # report the real total and ask to narrow rather than fetching further
@@ -75,6 +175,25 @@ _LIST_INVOICES_TOKEN_BUDGET_RESERVE = 120
 
 _TOKEN_ENCODING = tiktoken.get_encoding("o200k_base")
 
+# bugfix-071: Morning's two VAT enums (official OpenAPI v2.0.0) are NOT the
+# same scale, and conflating them made every "VAT included" document exempt:
+#   DocumentVatType (document `vatType`): 0 = Default (per the business type),
+#                                         1 = Exempt, 2 = Mixed.
+#   ItemVatType (income row `vatType`):   0 = Default (VAT added on top),
+#                                         1 = Included (VAT inside the price),
+#                                         2 = Exempt.
+# Row `vatRate` is never sent: Morning ignores it and applies the business rate.
+_DOCUMENT_VAT_DEFAULT = 0
+_DOCUMENT_VAT_EXEMPT = 1
+_ROW_VAT_ADDED = 0
+_ROW_VAT_INCLUDED = 1
+
+
+def _row_vat_type(vat_included: bool) -> int:
+    """The income row's ItemVatType for a stated VAT treatment (305/300)."""
+    return _ROW_VAT_INCLUDED if vat_included else _ROW_VAT_ADDED
+
+
 _STATUS_ALIASES = {
     "unpaid": {"unpaid", "open"},
     "paid": {"paid", "closed"},
@@ -87,8 +206,8 @@ def _build_create_invoice_payload(
     client_id: str,
     amount: float,
     description: str,
+    vat_included: bool,
     due_date: Optional[str] = None,
-    vat_included: bool = True,
     currency: str = "ILS",
 ) -> dict:
     """Map friendly create_invoice inputs onto a real Morning /documents payload.
@@ -105,13 +224,12 @@ def _build_create_invoice_payload(
     payment line (תקבולים) to accept a document.
     """
     today = now_local().date().isoformat()
-    vat_type = 1 if vat_included else 0
 
     payload = {
         "type": _TAX_INVOICE_DOCUMENT_TYPE,
         "date": today,
         "lang": "he",
-        "vatType": vat_type,
+        "vatType": _DOCUMENT_VAT_DEFAULT,
         "currency": currency,
         "rounding": False,
         "signed": True,
@@ -128,8 +246,7 @@ def _build_create_invoice_payload(
                 "price": amount,
                 "currency": currency,
                 "currencyRate": 1,
-                "vatRate": 0,
-                "vatType": vat_type,
+                "vatType": _row_vat_type(vat_included),
             }
         ],
         "payment": [
@@ -298,14 +415,61 @@ def _read_back_stored_total(client: MorningClient, doc_id: str) -> Optional[floa
     return float(total) if isinstance(total, (int, float)) else None
 
 
-def _amount_mismatch_warning(requested: float, stored: Optional[float]) -> str:
-    """bugfix-028 A4: if what Morning stored differs from what the user approved,
-    say so, show both numbers, and ask - never silently reconcile."""
+def _amount_mismatch_info(requested: float, stored: Optional[float]) -> Optional[dict]:
+    """bugfix-028 A4: if what Morning stored differs from what the operator
+    approved, surface both numbers so the model can say so and ask - never
+    silently reconcile. Returns a dict merged into the JSON document result
+    (2026-09-04 JSON-only contract change - this used to be a prepended
+    prose warning; a JSON tool result can't be prefixed with free text and
+    stay valid JSON, so the mismatch is now a real field the model reads and
+    turns into its own warning to the operator)."""
     if stored is None or abs(stored - requested) < 0.01:
-        return ""
-    return (
-        f"⚠️ שים לב: אישרת {requested:,.2f} ₪ אבל המסמך נוצר בפועל על סך "
-        f"{stored:,.2f} ₪. מה תרצה שאעשה?\n\n"
+        return None
+    return {"requested_amount": requested, "actual_amount": stored}
+
+
+def _with_amount_mismatch(invoice_json: str, requested: float, stored: Optional[float]) -> str:
+    """Merge `_amount_mismatch_info` into an already-built `format_invoice_json`
+    result, if a mismatch exists; returns `invoice_json` unchanged otherwise."""
+    mismatch = _amount_mismatch_info(requested, stored)
+    if mismatch is None:
+        return invoice_json
+    doc = json.loads(invoice_json)
+    doc["amount_mismatch"] = mismatch
+    return json.dumps(doc, ensure_ascii=False)
+
+
+def _created_document_result(client: MorningClient, doc_id: str, approved_amount: float) -> str:
+    """Turn a just-created document into its JSON tool result.
+
+    Every document-returning path in this app funnels through the SAME three
+    steps: `client.get_invoice(id)` (GET /documents/{id}) -> `Invoice.model_validate`
+    -> `format_invoice_json`. `get_invoice_details`, `list_invoices(include_full_details=True)`
+    (per document), and the reference create_* tools (`create_credit_note` /
+    `create_receipt` / `create_combo_document_as_reference`) all already do
+    exactly this; this helper is where `create_invoice` /
+    `create_transaction_account` / `create_combo_document` join them (they used
+    to hand-build a sparse `Invoice` from the `POST /documents` echo - which
+    carries only id/number/client/type - so their result came back with dates,
+    payment, line items and the VAT breakdown all silently null).
+
+    One authoritative shape, one serializer, for every path - so a data-model
+    change (a new payment method, a new field) is made once in the `Invoice`
+    model + `format_invoice_json` and is reflected everywhere.
+
+    The bugfix-028-A4 amount-mismatch guard is applied on top, and ONLY here:
+    these three tools take an operator-approved `amount`, so if Morning's
+    stored total disagrees with it both numbers are surfaced. The reference
+    create_* tools derive their amount from the original document, so there is
+    nothing operator-approved to disagree with and they omit the guard.
+
+    A failed re-fetch propagates (same as `create_credit_note` et al.) rather
+    than being masked with a stub - the created document's real state must not
+    be guessed at.
+    """
+    invoice = Invoice.model_validate(client.get_invoice(doc_id))
+    return _with_amount_mismatch(
+        format_invoice_json(invoice), approved_amount, invoice.total_amount
     )
 
 
@@ -336,15 +500,19 @@ def _build_transaction_account_payload(
     as `vatType: 0` ("price EXCLUDES vat"), so Morning adds ~18% - a price of 11
     is stored as 12.98, and in production ₪2,360 was stored as ₪2,784.80.
     `vatType: 1` ("price INCLUDES vat") stores 11 as 11.
+
+    bugfix-071: that `vatType: 1` was sent at BOTH levels, but at document
+    level 1 means Exempt (see `_DOCUMENT_VAT_DEFAULT`), so a 300 "including
+    VAT" stored 11 as 11 with zero VAT inside it. The document is now always
+    Default and only the income row carries included/added.
     """
     today = now_local().date().isoformat()
-    vat_type = 1 if vat_included else 0
 
     payload = {
         "type": _TRANSACTION_ACCOUNT_DOCUMENT_TYPE,
         "date": today,
         "lang": "he",
-        "vatType": vat_type,
+        "vatType": _DOCUMENT_VAT_DEFAULT,
         "currency": currency,
         "rounding": False,
         "signed": True,
@@ -361,16 +529,12 @@ def _build_transaction_account_payload(
                 "price": amount,
                 "currency": currency,
                 "currencyRate": 1,
-                "vatType": vat_type,
+                "vatType": _row_vat_type(vat_included),
             }
         ],
-        "payment": [
-            {
-                "type": _PAYMENT_TYPE_CASH,
-                "price": amount,
-                "date": today,
-            }
-        ],
+        # No "payment" line (Feature 063): a transaction account requests
+        # payment, it never records one. It used to carry a cash line dated
+        # today.
     }
     if due_date:
         payload["dueDate"] = due_date
@@ -418,7 +582,6 @@ def create_transaction_account(
         ClientNotFoundError: if name_resolved is True but the name doesn't
             match a real client exactly.
     """
-    client_name = _normalize_hebrew_geresh(client_name)
     resolved_client = _require_resolved_client(client, client_name, name_resolved, "create_transaction_account")
 
     payload = _build_transaction_account_payload(
@@ -441,26 +604,13 @@ def create_transaction_account(
         or ""
     )
 
-    stored_total = _read_back_stored_total(client, doc_id)
-    invoice = Invoice(
-        id=doc_id,
-        number=response.get("number"),
-        client_name=client_name,
-        amount=amount,
-        total_amount=stored_total if stored_total is not None else amount,
-        currency=response.get("currency", "ILS"),
-        due_date=due_date,
-        status=response.get("status"),
-        type=_TRANSACTION_ACCOUNT_DOCUMENT_TYPE,
-    )
-    return _amount_mismatch_warning(amount, stored_total) + format_invoice_confirmation(invoice)
+    return _created_document_result(client, doc_id, amount)
 
 
 def _build_combo_document_core_payload(
     client_id: str,
     amount: float,
     description: str,
-    vat_included: bool,
     payment_date: str,
     payment_method: str = _DEFAULT_PAYMENT_METHOD,
     bank_number: Optional[str] = None,
@@ -501,15 +651,20 @@ def _build_combo_document_core_payload(
     the original type-300's own language, links back to it) - the fresh
     caller never passes them, preserving its exact prior payload shape (no
     `linkedDocumentIds` key at all when closing nothing).
+
+    bugfix-071: `amount` is money actually paid, so VAT is always inside it -
+    document Default, income row Included. There is no "not included" 320:
+    the tools refuse that as a VAT conflict (`VatConflictError`) before ever
+    building a payload. A 320 closing a VAT-excluded 300 of 100 closes its
+    stored total, 118, with VAT inside it.
     """
     today = now_local().date().isoformat()
-    vat_type = 1 if vat_included else 0
 
     payload: Dict[str, Any] = {
         "type": _INVOICE_RECEIPT_COMBO_DOCUMENT_TYPE,
         "date": today,
         "lang": lang,
-        "vatType": vat_type,
+        "vatType": _DOCUMENT_VAT_DEFAULT,
         "currency": currency,
         "rounding": False,
         "signed": True,
@@ -526,8 +681,7 @@ def _build_combo_document_core_payload(
                 "price": amount,
                 "currency": currency,
                 "currencyRate": 1,
-                "vatRate": 0,
-                "vatType": vat_type,
+                "vatType": _ROW_VAT_INCLUDED,
             }
         ],
         "payment": [
@@ -552,7 +706,6 @@ def _build_combo_document_payload(
     client_id: str,
     amount: float,
     description: str,
-    vat_included: bool,
     payment_date: str,
     payment_method: str = _DEFAULT_PAYMENT_METHOD,
     bank_number: Optional[str] = None,
@@ -578,7 +731,6 @@ def _build_combo_document_payload(
         client_id=client_id,
         amount=amount,
         description=description,
-        vat_included=vat_included,
         payment_date=payment_date,
         payment_method=payment_method,
         bank_number=bank_number,
@@ -594,14 +746,15 @@ def create_combo_document(
     client_name: str,
     amount: float,
     description: str,
-    vat_included: bool,
     payment_date: str,
+    vat_included: Optional[bool] = None,
     payment_method: str = _DEFAULT_PAYMENT_METHOD,
     bank_number: Optional[str] = None,
     bank_branch: Optional[str] = None,
     bank_account: Optional[str] = None,
     transaction_reference: Optional[str] = None,
     name_resolved: bool = False,
+    rules: InvoicingRules = DEFAULT_INVOICING_RULES,
 ) -> str:
     """Create an already-paid combo invoice+receipt ("חשבונית מס/קבלה",
     type 320) in Morning and return a Hebrew confirmation message.
@@ -616,18 +769,22 @@ def create_combo_document(
     exact, word-order-independent match - see `_require_resolved_client`'s
     docstring for the full contract.
 
-    bugfix-028 (A2/A3/A3b): `vat_included` and `payment_date` are both REQUIRED.
-    This document asserts that money has already arrived, so how much of it is
-    VAT, and when it arrived, are facts about a real transaction - neither may be
-    defaulted or guessed. Ask the user rather than assuming.
+    bugfix-028 (A3/A3b): `payment_date` is REQUIRED. This document asserts that
+    money has already arrived, so when it arrived is a fact about a real
+    transaction - never defaulted or guessed. Ask the user rather than assuming.
+
+    bugfix-071 (replacing bugfix-028 A2's required `vat_included` here): money
+    actually paid always has VAT inside it, so VAT is never asked about.
+    `vat_included` may be omitted or `True` (consistent, changes nothing);
+    `False` is a VAT conflict - refused before anything reaches Morning.
 
     Args:
         client: An authenticated MorningClient (injected).
         client_name: The client's exact, already-resolved name.
         amount: Amount in NIS, already received.
         description: Service/product description.
-        vat_included: Whether VAT is included in `amount`. Required - an
-            undecided VAT treatment must never reach Morning (A2).
+        vat_included: Optional. Omit or True - VAT is inside the amount paid.
+            False raises VatConflictError (nothing is created).
         payment_date: The real date the money moved, ISO YYYY-MM-DD. Required,
             must not be in the future, never defaulted to today (A3).
         payment_method: How the money arrived - "bank_transfer" (default),
@@ -652,21 +809,26 @@ def create_combo_document(
             match a real client exactly.
         ValueError: if payment_date is missing, unparseable, or in the future,
             or payment_method is unknown.
+        ClientTaxIdRequiredError: Feature 098 - a pre-VAT amount above
+            `rules.allocation_threshold_nis` for a client with no 9-digit ID;
+            nothing is sent to Morning.
     """
-    client_name = _normalize_hebrew_geresh(client_name)
+    _refuse_vat_not_included("create_combo_document", vat_included, client_name=client_name)
     resolved_client = _require_resolved_client(client, client_name, name_resolved, "create_combo_document")
 
     payload = _build_combo_document_payload(
         resolved_client.id,
         amount,
         description,
-        vat_included=vat_included,
         payment_date=payment_date,
         payment_method=payment_method,
         bank_number=bank_number,
         bank_branch=bank_branch,
         bank_account=bank_account,
         transaction_reference=transaction_reference,
+    )
+    _enforce_allocation_tax_id(
+        "create_combo_document", payload, resolved_client.tax_id, resolved_client.name, rules
     )
     response = client.create_invoice(payload)
     log_mutation(
@@ -685,18 +847,7 @@ def create_combo_document(
         or ""
     )
 
-    stored_total = _read_back_stored_total(client, doc_id)
-    invoice = Invoice(
-        id=doc_id,
-        number=response.get("number"),
-        client_name=client_name,
-        amount=amount,
-        total_amount=stored_total if stored_total is not None else amount,
-        currency=response.get("currency", "ILS"),
-        status=response.get("status"),
-        type=_INVOICE_RECEIPT_COMBO_DOCUMENT_TYPE,
-    )
-    return _amount_mismatch_warning(amount, stored_total) + format_invoice_confirmation(invoice)
+    return _created_document_result(client, doc_id, amount)
 
 
 def create_invoice(
@@ -704,9 +855,10 @@ def create_invoice(
     client_name: str,
     amount: float,
     description: str,
+    vat_included: bool,
     due_date: Optional[str] = None,
-    vat_included: bool = True,
     name_resolved: bool = False,
+    rules: InvoicingRules = DEFAULT_INVOICING_RULES,
 ) -> str:
     """Create an invoice in Morning and return a Hebrew confirmation message.
 
@@ -734,7 +886,10 @@ def create_invoice(
         amount: Invoice amount in NIS.
         description: Service/product description.
         due_date: Optional due date, ISO format YYYY-MM-DD.
-        vat_included: Whether VAT is included in the amount (default True).
+        vat_included: Whether VAT is included in the amount. Required, no
+            default (bugfix-071, completing bugfix-028 A2): a 305 is a request
+            for money not yet paid, so it can go either way - True keeps 100
+            as 100 with VAT inside it, False makes 100 into 118.
         name_resolved: Must be True (asserting `resolve_client_name` was
             already called with this name) or this refuses immediately,
             attempting no Morning lookup at all.
@@ -747,11 +902,14 @@ def create_invoice(
     Raises:
         ClientNotFoundError: if name_resolved is True but the name doesn't
             match a real client exactly.
+        ClientTaxIdRequiredError: Feature 098 - a pre-VAT amount above
+            `rules.allocation_threshold_nis` for a client with no 9-digit ID;
+            nothing is sent to Morning.
     """
-    client_name = _normalize_hebrew_geresh(client_name)
     resolved_client = _require_resolved_client(client, client_name, name_resolved, "create_invoice")
 
-    payload = _build_create_invoice_payload(resolved_client.id, amount, description, due_date, vat_included)
+    payload = _build_create_invoice_payload(resolved_client.id, amount, description, vat_included, due_date)
+    _enforce_allocation_tax_id("create_invoice", payload, resolved_client.tax_id, resolved_client.name, rules)
     response = client.create_invoice(payload)
     log_mutation(
         "create_invoice",
@@ -769,18 +927,7 @@ def create_invoice(
         or ""
     )
 
-    stored_total = _read_back_stored_total(client, internal_morning_id)
-    invoice = Invoice(
-        id=internal_morning_id,
-        number=response.get("number"),
-        client_name=client_name,
-        amount=amount,
-        total_amount=stored_total if stored_total is not None else amount,
-        currency=response.get("currency", "ILS"),
-        due_date=due_date,
-        status=response.get("status"),
-    )
-    return _amount_mismatch_warning(amount, stored_total) + format_invoice_confirmation(invoice)
+    return _created_document_result(client, internal_morning_id, amount)
 
 
 def _map_list_invoices_filters(
@@ -862,22 +1009,10 @@ def _matches_status(item: dict, status: Optional[str]) -> bool:
     return item_status in _STATUS_ALIASES.get(status, {status})
 
 
-def _truncate_invoices_to_token_budget(
-    invoices: List[Invoice], token_budget: int
-) -> List[Invoice]:
-    """Return the largest prefix of `invoices` whose formatted blocks fit
-    within `token_budget` (reserving headroom for the count line/closing
-    note - REQ-INVOICE-008, research.md Decision 6/7)."""
-    item_budget = token_budget - _LIST_INVOICES_TOKEN_BUDGET_RESERVE
-    shown: List[Invoice] = []
-    cumulative_tokens = 0
-    for invoice in invoices:
-        block_tokens = len(_TOKEN_ENCODING.encode(format_invoice_confirmation(invoice)))
-        if cumulative_tokens + block_tokens > item_budget:
-            break
-        cumulative_tokens += block_tokens
-        shown.append(invoice)
-    return shown
+# 2026-09-04 JSON-only contract change: list_invoices no longer truncates its
+# result to a token budget (the JSON reply is always the complete match set,
+# with total_matched stated explicitly) - _truncate_invoices_to_token_budget
+# and the token-budget machinery it used were removed as dead code.
 
 
 def list_invoices(
@@ -887,12 +1022,18 @@ def list_invoices(
     to_date: Optional[str] = None,
     client_name: Optional[str] = None,
     document_display_number: Optional[str] = None,
-    token_budget: int = _LIST_INVOICES_TOKEN_BUDGET,
     name_resolved: bool = False,
-    output_format: str = "text",
     include_full_details: bool = False,
 ) -> str:
-    """List/search invoices and return a Hebrew, human-readable result.
+    """List/search invoices and return a JSON result.
+
+    2026-09-04 JSON-only contract change: this tool used to also support an
+    `output_format="text"` mode returning Hebrew prose, truncated to fit a
+    token budget. That mode is abandoned entirely - the caller (DeniDin's
+    model) is now responsible for reading this JSON and composing its own
+    Hebrew, bullet-style reply. Since the JSON result is not token-budget-
+    truncated (a reconciliation/automation consumer needs every match), the
+    old `token_budget` parameter and its truncation helper are dead here too.
 
     MCP tool: list_invoices (contracts/list_invoices.json, user-stories.md
     US1/US2/US3). Real-pagination fetch cap ported from list_clients
@@ -919,18 +1060,12 @@ def list_invoices(
             - the real Morning API's own `number` search field (bugfix,
             2026-08-07), previously never wired up here. Non-numeric values
             are ignored.
-        token_budget: Max estimated tiktoken size of the formatted reply
-            before truncation (REQ-INVOICE-010: config-driven in
-            production via MorningMCPConfig.list_invoices_token_budget,
-            passed in by server.py - this default is only used by direct
-            calls that don't thread a config value through).
-
     Returns:
-        A Hebrew string listing matching invoices (a token-budget-limited
-        prefix if the complete set doesn't fit), a friendly "no results"
-        message if a resolved/unfiltered/number/single-word search finds
-        nothing, a "too many, narrow your search" message if the real
-        total exceeds the fetch cap, or a plain procedural refusal if a
+        A JSON string (`format_invoice_list_json`) listing every matching
+        invoice, with `total_matched` stated explicitly, a friendly
+        "no results" JSON if a resolved/unfiltered/number/single-word
+        search finds nothing, a "too many, narrow your search" JSON if the
+        real total exceeds the fetch cap, or a plain procedural refusal if a
         multi-word `client_name` is given without `name_resolved=True`
         (architecture fix, 2026-08-12 - disambiguation/confirmation-
         question handling for a non-exact multi-word name now lives
@@ -986,20 +1121,12 @@ def list_invoices(
         except ValidationError as exc:
             logger.warning("Skipping unparseable invoice in list_invoices result: %s", exc)
 
-    shown_invoices = _truncate_invoices_to_token_budget(invoices, token_budget)
-
-    # Feature 025 Phase 9: TWO INDEPENDENT decisions, deliberately not conflated
-    # (user catch, 2026-08-23).
-    #
-    # 1. `include_full_details` gates the per-document fan-out. Deliberately NOT
-    #    tied to output_format: Phase 9b makes JSON the format for every read
-    #    tool, so a format-based gate would make every ordinary list explode.
-    #    It is a CAPABILITY the caller opts into, available in ANY context -
-    #    a conversation that genuinely needs bank details or linked documents
-    #    should ask for it too (user, 2026-08-23: the only cost is latency, and
-    #    that is acceptable). It is simply not the default, because most
-    #    questions do not need it.
-    # 2. `output_format` gates only presentation.
+    # Feature 025 Phase 9 / 2026-09-04 JSON-only contract: `include_full_details`
+    # gates the per-document fan-out. It is a CAPABILITY the caller opts into,
+    # available in ANY context - a conversation that genuinely needs bank
+    # details or linked documents should ask for it too (user, 2026-08-23: the
+    # only cost is latency, and that is acceptable). It is simply not the
+    # default, because most questions do not need it.
     if include_full_details:
         # Structured bank details (payment[].bankName/bankBranch/bankAccount) and
         # linkedDocuments exist ONLY on the single-document GET. Asking the MODEL
@@ -1019,21 +1146,16 @@ def list_invoices(
                 )
                 detailed.append(inv)
         invoices = detailed
-        shown_invoices = invoices
 
-    if output_format == "json":
-        # Machine-readable output. Not token-budget-truncated: a reconciliation
-        # consumer needs every match, and total_matched is stated explicitly so
-        # truncation is detectable rather than silent.
-        return format_invoice_list_json(invoices, total_matched=len(invoices))
-
-    return format_invoice_list(shown_invoices, total_matched=len(invoices))
+    # Machine-readable output, always. Not token-budget-truncated: the caller
+    # (DeniDin's model) needs every match to compose an accurate reply, and
+    # total_matched is stated explicitly so truncation is detectable rather
+    # than silent.
+    return format_invoice_list_json(invoices, total_matched=len(invoices))
 
 
-def get_invoice_details(
-    client: MorningClient, internal_morning_id: str, output_format: str = "text"
-) -> str:
-    """Fetch full details for one invoice and return a Hebrew, human-readable view.
+def get_invoice_details(client: MorningClient, internal_morning_id: str) -> str:
+    """Fetch full details for one invoice and return a JSON result.
 
     MCP tool: get_invoice_details (contracts/get_invoice_details.json,
     user-stories.md US3).
@@ -1043,13 +1165,14 @@ def get_invoice_details(
         internal_morning_id: Morning document id.
 
     Returns:
-        A Hebrew string with status, dates, and any recorded payments.
+        A JSON string (`format_invoice_json`) with status, dates, and any
+        recorded payments. 2026-09-04 JSON-only contract change: this tool
+        used to also support an `output_format="text"` Hebrew-prose mode -
+        abandoned entirely, see module docstring.
     """
     response = client.get_invoice(internal_morning_id)
     invoice = Invoice.model_validate(response)
-    if output_format == "json":
-        return format_invoice_json(invoice)
-    return format_invoice_details(invoice)
+    return format_invoice_json(invoice)
 
 
 def _build_cancellation_payload(
@@ -1073,12 +1196,24 @@ def _build_cancellation_payload(
     rebuilding a bare-name client object - callers (create_credit_note) MUST
     check `_extract_linked_client_id(original)` and refuse before calling
     this if it's None (a pre-feature, bare-name-only original).
+
+    bugfix-071: the credit reverses exactly what the original booked. Its
+    document `vatType` mirrors the original's DocumentVatType (Default or
+    Exempt - callers validate it via `_original_document_vat_type`), and its
+    single income row carries the credited amount with VAT inside it. It used
+    to mirror the original's DOCUMENT vatType onto the ROW too, where the same
+    number means something else (0 = VAT added), over-crediting a correct
+    original by 18%. The full default is the original's stored VAT-inclusive
+    `amount` (not the raw row prices, which exclude VAT on a VAT-added
+    original).
     """
     today = now_local().date().isoformat()
     income_items = original.get("income") or []
     original_id = str(original.get("id") or original.get("documentId") or "")
     original_number = original.get("number")
     total_amount = original.get("total")
+    if total_amount is None:
+        total_amount = original.get("amount")
     if total_amount is None:
         total_amount = sum(
             float(item.get("price", 0)) * float(item.get("quantity", 1)) for item in income_items
@@ -1090,7 +1225,7 @@ def _build_cancellation_payload(
         "type": _CREDIT_INVOICE_DOCUMENT_TYPE,
         "date": today,
         "lang": original.get("lang", "he"),
-        "vatType": original.get("vatType", 1),
+        "vatType": _original_document_vat_type(original),
         "currency": original.get("currency", "ILS"),
         "rounding": False,
         "signed": True,
@@ -1108,8 +1243,7 @@ def _build_cancellation_payload(
                 "price": credit_amount,
                 "currency": original.get("currency", "ILS"),
                 "currencyRate": 1,
-                "vatRate": 0,
-                "vatType": original.get("vatType", 1),
+                "vatType": _ROW_VAT_INCLUDED,
             }
         ],
         "payment": [{"type": 1, "price": credit_amount, "date": today}],
@@ -1121,6 +1255,7 @@ def create_credit_note(
     original_internal_morning_id: str,
     amount: Optional[float] = None,
     description: Optional[str] = None,
+    vat_included: Optional[bool] = None,
 ) -> str:
     """Create a standalone credit note ("חשבונית זיכוי", type 330) linked to
     an existing document, and return a Hebrew confirmation.
@@ -1137,6 +1272,10 @@ def create_credit_note(
         original_internal_morning_id: Morning document id of the invoice being credited.
         amount: Optional override — defaults to the original's full total.
         description: Optional override — defaults to a generated cancellation note.
+        vat_included: Optional - VAT comes from the original (bugfix-071).
+            Against a taxable original: omit or True; False is a VAT
+            conflict. Against an exempt original any value is a VAT
+            conflict. A conflict raises VatConflictError, nothing created.
 
     Returns:
         A Hebrew confirmation string with the new credit note's number, or a
@@ -1156,6 +1295,17 @@ def create_credit_note(
         )
         return format_original_not_linked_to_client()
 
+    if _original_document_vat_type(original) == _DOCUMENT_VAT_EXEMPT:
+        if vat_included is not None:
+            _raise_vat_conflict(
+                "create_credit_note", vat_included,
+                original_internal_morning_id=original_internal_morning_id, original_exempt=True,
+            )
+    else:
+        _refuse_vat_not_included(
+            "create_credit_note", vat_included, original_internal_morning_id=original_internal_morning_id
+        )
+
     payload = _build_cancellation_payload(original, amount=amount, description=description)
     credit_response = client.create_invoice(payload)
     log_mutation(
@@ -1166,18 +1316,26 @@ def create_credit_note(
         client_name=(original.get("client") or {}).get("name"),
     )
 
-    original_number = original.get("number", original_internal_morning_id)
-    credit_number = credit_response.get("number", credit_response.get("id", ""))
-
-    return (
-        f"הופקה חשבונית זיכוי מספר {credit_number} עבור חשבונית מספר {original_number}."
-    )
+    # bugfix-028 A4's lesson (see _read_back_stored_total): POST /documents
+    # returns only a minimal echo (id/number/client/type/...), never amount/
+    # total - format_invoice_json needs the full document, so re-fetch it
+    # rather than validating the bare creation response.
+    new_id = str(credit_response.get("id") or credit_response.get("documentId") or "")
+    return format_invoice_json(Invoice.model_validate(client.get_invoice(new_id)))
 
 
 _CLOSED_STATUS_CODES = {1, 2}  # closed (via payment) / manually closed — see models._MORNING_STATUS_CODES
 
 
-def _build_payment_receipt_payload(original: dict, payment_date: str, amount: Optional[float] = None) -> dict:
+def _build_payment_receipt_payload(
+    original: dict,
+    payment_date: str,
+    amount: Optional[float] = None,
+    payment_method: str = _DEFAULT_PAYMENT_METHOD,
+    bank_number: Optional[str] = None,
+    bank_branch: Optional[str] = None,
+    bank_account: Optional[str] = None,
+) -> dict:
     """Build a Morning receipt (type 400) payload that marks `original` paid
     (fully by default, or partially via `amount`).
 
@@ -1203,8 +1361,13 @@ def _build_payment_receipt_payload(original: dict, payment_date: str, amount: Op
     rebuilding a bare-name client object - callers (create_receipt) MUST
     check `_extract_linked_client_id(original)` and refuse before calling
     this if it's None (a pre-feature, bare-name-only original).
+
+    Feature 063: the payment line is built by `_build_payment_line`, the same
+    builder the 320 tools use - bank transfer by default, with bank details
+    when given. It used to be a hard-coded cash line (type 1), which booked
+    every receipt as cash and dropped any bank details (bugfix-028's bug,
+    left unfixed on the 400 path).
     """
-    validated_payment_date = _validate_payment_date(payment_date)
     today = now_local().date().isoformat()
     original_id = str(original.get("id") or original.get("documentId") or "")
     original_number = original.get("number")
@@ -1223,7 +1386,12 @@ def _build_payment_receipt_payload(original: dict, payment_date: str, amount: Op
         "description": f"תשלום עבור חשבונית מספר {original_number or original_id}",
         "linkedDocumentIds": [original_id] if original_id else [],
         "client": {"self": False, "id": _extract_linked_client_id(original)},
-        "payment": [{"type": 1, "price": receipt_amount, "date": validated_payment_date}],
+        "payment": [
+            _build_payment_line(
+                receipt_amount, payment_date, payment_method, bank_number, bank_branch, bank_account,
+                currency=original.get("currency", "ILS"),
+            )
+        ],
     }
 
 
@@ -1232,6 +1400,10 @@ def _build_standalone_receipt_payload(
     amount: float,
     description: str,
     payment_date: str,
+    payment_method: str = _DEFAULT_PAYMENT_METHOD,
+    bank_number: Optional[str] = None,
+    bank_branch: Optional[str] = None,
+    bank_account: Optional[str] = None,
 ) -> dict:
     """Build a Morning receipt (type 400) payload for a standalone receipt -
     one with no prior document to reference at all (feature 056).
@@ -1258,8 +1430,11 @@ def _build_standalone_receipt_payload(
     money has already moved, so its real date is a fact to carry, never a
     silent "today". The document's own top-level `date` (issue date, set
     below) stays today regardless.
+
+    Feature 063: the payment line comes from `_build_payment_line` (bank
+    transfer by default), not a hard-coded cash line - see
+    `_build_payment_receipt_payload`.
     """
-    validated_payment_date = _validate_payment_date(payment_date)
     today = now_local().date().isoformat()
 
     return {
@@ -1271,7 +1446,9 @@ def _build_standalone_receipt_payload(
         "signed": True,
         "description": description,
         "client": {"self": False, "id": client_id},
-        "payment": [{"type": 1, "price": amount, "date": validated_payment_date}],
+        "payment": [
+            _build_payment_line(amount, payment_date, payment_method, bank_number, bank_branch, bank_account)
+        ],
     }
 
 
@@ -1285,7 +1462,6 @@ def _build_combo_closing_payload(
     transaction_reference: Optional[str] = None,
     amount: Optional[float] = None,
     description: Optional[str] = None,
-    vat_included: bool = True,
 ) -> dict:
     """Build a Morning invoice/receipt combo (type 320) payload that closes a
     type-300 ("חשבון עסקה") `original` as paid, either in full (defaults) or
@@ -1307,11 +1483,10 @@ def _build_combo_closing_payload(
     A 320 document is self-contained and invoice-shaped (carries its own
     line items/VAT), unlike a bare receipt.
 
-    `vat_included` controls the new document's own top-level `vatType`
-    (1/0) - it must NOT be inferred from the original's own `vatType`
-    (confirmed live, feature 023): a real type-300 document created via
-    create_transaction_account carries no VAT concept and Morning reports it
-    back as `vatType: 0`.
+    bugfix-071: VAT comes from the 300 being closed - its stored total
+    already reflects whether its amount included VAT (100 included -> 100;
+    100 not included -> 118), and the 320 records that total as paid, VAT
+    inside it (see `_build_combo_document_core_payload`).
 
     Always builds a single clean income line from the resolved close amount
     (never mirrors the original's raw `income` items - confirmed live,
@@ -1352,7 +1527,6 @@ def _build_combo_closing_payload(
         client_id=_extract_linked_client_id(original),
         amount=close_amount,
         description=close_description,
-        vat_included=vat_included,
         payment_date=payment_date,
         payment_method=payment_method,
         bank_number=bank_number,
@@ -1371,12 +1545,13 @@ def create_combo_document_as_reference(
     payment_date: str,
     amount: Optional[float] = None,
     description: Optional[str] = None,
-    vat_included: bool = True,
+    vat_included: Optional[bool] = None,
     payment_method: str = _DEFAULT_PAYMENT_METHOD,
     bank_number: Optional[str] = None,
     bank_branch: Optional[str] = None,
     bank_account: Optional[str] = None,
     transaction_reference: Optional[str] = None,
+    rules: InvoicingRules = DEFAULT_INVOICING_RULES,
 ) -> str:
     """Create a standalone combo document ("חשבונית מס/קבלה", type 320) that
     closes an existing transaction account ("חשבון עסקה", type 300), linked
@@ -1445,7 +1620,14 @@ def create_combo_document_as_reference(
             about to be created (not the idempotent no-op path).
         Any exception raised by `client.get_invoice` if `original_internal_morning_id`
         does not resolve to a real document (propagated, not swallowed).
+        ClientTaxIdRequiredError: Feature 098 - a pre-VAT amount above
+            `rules.allocation_threshold_nis` for a client with no 9-digit ID;
+            nothing is sent to Morning.
     """
+    _refuse_vat_not_included(
+        "create_combo_document_as_reference", vat_included,
+        original_internal_morning_id=original_internal_morning_id,
+    )
     original = client.get_invoice(original_internal_morning_id)
     original_type = original.get("type")
     if original_type != _TRANSACTION_ACCOUNT_DOCUMENT_TYPE:
@@ -1456,7 +1638,7 @@ def create_combo_document_as_reference(
 
     if amount is None and original.get("status") in _CLOSED_STATUS_CODES:
         # Already closed — idempotent no-op, avoid creating a duplicate closing document.
-        return format_invoice_confirmation(Invoice.model_validate(original))
+        return format_invoice_json(Invoice.model_validate(original))
 
     if _extract_linked_client_id(original) is None:
         # Pre-feature, bare-name-only original - refuse rather than fall
@@ -1478,8 +1660,19 @@ def create_combo_document_as_reference(
         transaction_reference=transaction_reference,
         amount=amount,
         description=description,
-        vat_included=vat_included,
     )
+    if _exceeds_allocation_threshold(payload, rules):
+        # Feature 098: the original's client snapshot can predate the ID being
+        # added (UAT 2.1), so read the client's CURRENT record - only when the
+        # check can actually refuse, so below-threshold closes cost no extra call.
+        current_client = client.get_client(_extract_linked_client_id(original))
+        _enforce_allocation_tax_id(
+            "create_combo_document_as_reference",
+            payload,
+            current_client.get("taxId"),
+            current_client.get("name") or (original.get("client") or {}).get("name"),
+            rules,
+        )
     combo_response = client.create_invoice(payload)
     log_mutation(
         "create_combo_document_as_reference",
@@ -1489,12 +1682,11 @@ def create_combo_document_as_reference(
         client_name=(original.get("client") or {}).get("name"),
     )
 
-    original_number = original.get("number", original_internal_morning_id)
-    combo_number = combo_response.get("number", combo_response.get("id", ""))
-
-    return (
-        f"הופקה חשבונית מס/קבלה מספר {combo_number} לסגירת חשבון עסקה מספר {original_number}."
-    )
+    # bugfix-028 A4's lesson (see _read_back_stored_total): POST /documents
+    # returns only a minimal echo, never amount/total - re-fetch the full
+    # document rather than validating the bare creation response.
+    new_id = str(combo_response.get("id") or combo_response.get("documentId") or "")
+    return format_invoice_json(Invoice.model_validate(client.get_invoice(new_id)))
 
 
 def cancel_transaction_account(client: MorningClient, original_internal_morning_id: str) -> str:
@@ -1586,6 +1778,11 @@ def create_receipt(
     client_name: Optional[str] = None,
     description: Optional[str] = None,
     name_resolved: bool = False,
+    payment_method: str = _DEFAULT_PAYMENT_METHOD,
+    bank_number: Optional[str] = None,
+    bank_branch: Optional[str] = None,
+    bank_account: Optional[str] = None,
+    vat_included: Optional[bool] = None,
 ) -> str:
     """Create a receipt ("קבלה", type 400) and return a Hebrew confirmation -
     either linked to an existing document being paid, or standalone (feature
@@ -1648,6 +1845,10 @@ def create_receipt(
         name_resolved: Standalone branch only - must be True (asserting
             `resolve_client_name` was already called with `client_name`) or
             this refuses immediately, attempting no Morning lookup at all.
+        payment_method: How the money arrived, both branches - "bank_transfer"
+            (default) or "cash" (any method `_build_payment_line` accepts).
+        bank_number / bank_branch / bank_account: Stored only on a bank
+            transfer. `bank_number` is the bank's NUMBER (e.g. "31").
 
     Returns:
         A Hebrew confirmation string with the new receipt's number, or (on
@@ -1671,14 +1872,21 @@ def create_receipt(
         Any exception raised by `client.get_invoice` if `original_internal_morning_id`
         does not resolve to a real document (propagated, not swallowed).
     """
+    # bugfix-071: a receipt records money actually received - VAT is inside
+    # it (standalone) or comes from the 305 it pays. Omitted/True proceed;
+    # False is a VAT conflict, refused before anything reaches Morning.
+    _refuse_vat_not_included(
+        "create_receipt", vat_included,
+        original_internal_morning_id=original_internal_morning_id, client_name=client_name,
+    )
     if original_internal_morning_id is None:
         # Feature 056: standalone receipt, no original to fetch at all.
         if client_name:
-            client_name = _normalize_hebrew_geresh(client_name)
-        resolved_client = _require_resolved_client(client, client_name, name_resolved, "create_receipt")
+                resolved_client = _require_resolved_client(client, client_name, name_resolved, "create_receipt")
 
         payload = _build_standalone_receipt_payload(
-            resolved_client.id, amount, description, payment_date
+            resolved_client.id, amount, description, payment_date,
+            payment_method, bank_number, bank_branch, bank_account,
         )
         response = client.create_invoice(payload)
         log_mutation(
@@ -1688,8 +1896,11 @@ def create_receipt(
             client_id=resolved_client.id,
             client_name=client_name,
         )
-        receipt_number = response.get("number", response.get("id", ""))
-        return f"הופקה קבלה מספר {receipt_number}."
+        # bugfix-028 A4's lesson (see _read_back_stored_total): POST
+        # /documents returns only a minimal echo - re-fetch the full
+        # document rather than validating the bare creation response.
+        new_id = str(response.get("id") or response.get("documentId") or "")
+        return format_invoice_json(Invoice.model_validate(client.get_invoice(new_id)))
 
     original = client.get_invoice(original_internal_morning_id)
     original_type = original.get("type")
@@ -1704,7 +1915,7 @@ def create_receipt(
         # Already paid — idempotent no-op, avoid creating a duplicate receipt.
         # payment_date is deliberately never inspected here - nothing is
         # actually being recorded on this path.
-        return format_invoice_confirmation(Invoice.model_validate(original))
+        return format_invoice_json(Invoice.model_validate(original))
 
     if _extract_linked_client_id(original) is None:
         # Pre-feature, bare-name-only original - refuse rather than fall
@@ -1716,7 +1927,10 @@ def create_receipt(
         )
         return format_original_not_linked_to_client()
 
-    payload = _build_payment_receipt_payload(original, payment_date=payment_date, amount=amount)
+    payload = _build_payment_receipt_payload(
+        original, payment_date=payment_date, amount=amount, payment_method=payment_method,
+        bank_number=bank_number, bank_branch=bank_branch, bank_account=bank_account,
+    )
     receipt_response = client.create_invoice(payload)
     log_mutation(
         "create_receipt",
@@ -1726,38 +1940,55 @@ def create_receipt(
         client_name=(original.get("client") or {}).get("name"),
     )
 
-    original_number = original.get("number", original_internal_morning_id)
-    receipt_number = receipt_response.get("number", receipt_response.get("id", ""))
-
-    return f"הופקה קבלה מספר {receipt_number} עבור חשבונית מספר {original_number}."
+    # bugfix-028 A4's lesson (see _read_back_stored_total): POST /documents
+    # returns only a minimal echo - re-fetch the full document rather than
+    # validating the bare creation response.
+    new_id = str(receipt_response.get("id") or receipt_response.get("documentId") or "")
+    return format_invoice_json(Invoice.model_validate(client.get_invoice(new_id)))
 
 
 _ISRAELI_PHONE_MOBILE_LENGTH = 10  # 0 + 3-digit prefix + 7 digits, e.g. 050-1234567
 _ISRAELI_PHONE_LANDLINE_LENGTH = 9  # 0 + 1-digit area code + 7 digits, e.g. 02-1234567
 
 
-# Bugfix (2026-08-07, found while verifying Feature 027): the model does not
-# consistently type a Hebrew consonant-modifier apostrophe the same way
-# across turns - e.g. add_client sees a plain ASCII apostrophe ("סידורוביץ'")
-# but a later turn's create_invoke call reconstructs the same name using the
-# correct Hebrew geresh punctuation mark ("סידורוביץ׳", U+05F3) instead, or
-# vice versa. Since Morning's real client search is sensitive to this exact
-# character (confirmed live: a full-name query with the "wrong" variant
-# returned zero matches even though the client existed and a shorter,
-# punctuation-free query found it fine), that silent inconsistency caused a
-# real, existing client to be reported as "not found". Every client name is
-# now normalized to the single correct Hebrew form (geresh, never a plain or
-# typographic apostrophe) at every write and lookup boundary, so resolution
-# is robust to whichever variant was actually typed.
-_HEBREW_GERESH = "׳"  # ׳
-_APOSTROPHE_VARIANTS = ("'", "’")  # ASCII ' and typographic '
+# Client-name quote characters (bugfix-027). Morning stores a client's name
+# exactly as it was typed - both the ASCII apostrophe (U+0027) and the Hebrew
+# geresh (U+05F3) occur in real data, likewise the ASCII double quote (U+0022)
+# and the gershayim (U+05F4) - and its search is sensitive to the exact
+# character: a query spelled with the "other" one finds nothing. Nothing here
+# rewrites a name; a name is always sent and stored as given. Instead a
+# SEARCH is run once per spelling and the results are merged, so a client is
+# found whichever variant the user (an iPhone keyboard only has the
+# apostrophe) happened to type.
+_QUOTE_SWAPS = (("'", "\u05f3"), ("\u05f3", "'"), ('"', "\u05f4"), ("\u05f4", '"'))
 
 
-def _normalize_hebrew_geresh(name: str) -> str:
-    """Replace any apostrophe-like character with the correct Hebrew geresh."""
-    for variant in _APOSTROPHE_VARIANTS:
-        name = name.replace(variant, _HEBREW_GERESH)
-    return name
+def _name_spellings(text: str) -> List[str]:
+    """`text` as typed, plus each quote-pair flipped - the distinct
+    spellings one search must cover. No quote characters -> just `text`."""
+    spellings = [text]
+    for ascii_char, hebrew_char in (("'", "\u05f3"), ('"', "\u05f4")):
+        for variant in list(spellings):
+            for source, target in ((ascii_char, hebrew_char), (hebrew_char, ascii_char)):
+                if source in variant:
+                    flipped = variant.replace(source, target)
+                    if flipped not in spellings:
+                        spellings.append(flipped)
+    return spellings
+
+
+def _search_clients_by_name(client: MorningClient, text: str) -> Dict[str, Client]:
+    """Search Morning once per spelling of `text` (see `_name_spellings`)
+    and merge the hits by client id. The one place a client-name search is
+    made."""
+    merged: Dict[str, Client] = {}
+    for spelling in _name_spellings(text):
+        response = client.search_clients({"name": spelling})
+        for item in response.get("items") or []:
+            candidate = Client.model_validate(item)
+            if candidate.id:
+                merged.setdefault(candidate.id, candidate)
+    return merged
 
 
 def _resolve_client_by_name(client: MorningClient, name: str) -> Tuple[Optional[Client], List[Client]]:
@@ -1768,9 +1999,7 @@ def _resolve_client_by_name(client: MorningClient, name: str) -> Tuple[Optional[
     - 1 match: (client, [client])
     - >1 matches: (None, [client1, client2, ...]) - caller must disambiguate, never guess.
     """
-    response = client.search_clients({"name": _normalize_hebrew_geresh(name)})
-    items = response.get("items") or []
-    candidates = [Client.model_validate(item) for item in items]
+    candidates = list(_search_clients_by_name(client, name).values())
     if len(candidates) == 1:
         return candidates[0], candidates
     return None, candidates
@@ -1803,14 +2032,14 @@ def _levenshtein(a: str, b: str) -> int:
 
 def _bag_equal_words(query: str, candidate_name: str) -> bool:
     """Whether `query` and `candidate_name` are made of exactly the same
-    words (case-insensitive, geresh-normalized), regardless of order -
+    words (case-insensitive), regardless of order -
     the real exactness criterion for the algorithm below (bugfix-039,
     round 3, 2026-08-11): the caller may not have typed the words in the
     same order Morning stored them, and that alone must never turn a
     genuinely exact name into a refusal."""
 
     def _bag(name: str) -> List[str]:
-        return sorted(_normalize_hebrew_geresh(w.strip().casefold()) for w in name.split() if w)
+        return sorted(w.strip().casefold() for w in name.split() if w)
 
     return _bag(query) == _bag(candidate_name)
 
@@ -1818,10 +2047,7 @@ def _bag_equal_words(query: str, candidate_name: str) -> bool:
 def _search_word_prefix(client: MorningClient, prefix: str) -> Dict[str, Client]:
     """One real Morning /clients/search call for a single prefix string -
     the one search primitive the algorithm below is built from."""
-    response = client.search_clients({"name": _normalize_hebrew_geresh(prefix)})
-    items = response.get("items") or []
-    candidates = [Client.model_validate(item) for item in items]
-    return {c.id: c for c in candidates if c.id}
+    return _search_clients_by_name(client, prefix)
 
 
 _COMMON_WORD_DISCOVERY_CAP = 10  # user decision, 2026-08-11 - see resolve_client_by_name's loop
@@ -1933,7 +2159,6 @@ def resolve_client_by_name(client: MorningClient, query: str) -> Tuple[Optional[
     fresh data - the loop's own confirmation came from piecemeal per-word/
     per-letter prefix searches, not one direct fetch of the full name.
     """
-    query = _normalize_hebrew_geresh(query)
     words = [w for w in query.split() if w]
     if not words:
         return None, []
@@ -1998,10 +2223,10 @@ def resolve_client_by_name(client: MorningClient, query: str) -> Tuple[Optional[
 
 
 def _sorted_by_distance(query: str, candidates: List[Client]) -> List[Client]:
-    """Closest-to-the-query first (Levenshtein, normalized) - orders,
+    """Closest-to-the-query first (Levenshtein) - orders,
     never filters (see resolve_client_by_name's docstring)."""
-    q = _normalize_hebrew_geresh(query.strip().casefold())
-    return sorted(candidates, key=lambda c: _levenshtein(q, _normalize_hebrew_geresh(c.name.strip().casefold())))
+    q = query.strip().casefold()
+    return sorted(candidates, key=lambda c: _levenshtein(q, c.name.strip().casefold()))
 
 
 def _resolve_client_final(client: MorningClient, resolved: Client) -> Tuple[Optional[Client], List[Client]]:
@@ -2012,17 +2237,16 @@ def _resolve_client_final(client: MorningClient, resolved: Client) -> Tuple[Opti
 
 def _is_exact_name_match(resolved_name: str, queried_name: str) -> bool:
     """Whether a resolved client's stored name is identical (case-
-    insensitive, whitespace-trimmed, apostrophe/geresh-normalized) to what
-    was searched for. Morning's real search is a token-prefix match
-    (confirmed live, research.md Decision 12) - a single non-ambiguous match
-    can still be a partial/prefix reference, not the literal stored name, so
-    callers must distinguish the two before deciding whether to explicitly
-    disclose which client was found. Normalizing both sides here (not just
-    at the search boundary) keeps this comparison correct even against an
-    older client record stored before this normalization existed."""
-    return _normalize_hebrew_geresh(resolved_name.strip().casefold()) == _normalize_hebrew_geresh(
-        queried_name.strip().casefold()
-    )
+    insensitive, whitespace-trimmed) to what was searched for. Morning's
+    real search is a token-prefix match (confirmed live, research.md
+    Decision 12) - a single non-ambiguous match can still be a
+    partial/prefix reference, not the literal stored name, so callers must
+    distinguish the two before deciding whether to explicitly disclose which
+    client was found. A difference in a quote character (apostrophe vs
+    geresh) is deliberately NOT ignored: it makes the match a "did you mean"
+    the user confirms, after which the stored spelling is used verbatim
+    (bugfix-027)."""
+    return resolved_name.strip().casefold() == queried_name.strip().casefold()
 
 
 def resolve_client_name(client: MorningClient, name: str) -> str:
@@ -2056,8 +2280,8 @@ def resolve_client_name(client: MorningClient, name: str) -> str:
 
     Args:
         client: An authenticated MorningClient (injected).
-        name: Free-text client name (apostrophe/geresh-normalized before
-            resolution - see `_normalize_hebrew_geresh`).
+        name: Free-text client name (searched under both quote spellings -
+            see `_search_clients_by_name`).
 
     Returns:
         A Hebrew string: the resolved exact name (never the client_id -
@@ -2081,7 +2305,6 @@ def _resolve_exact_client_name(client: MorningClient, name: str) -> Optional[Cli
     a word-for-word (order-independent) match. Never grows letters, never
     picks a 'closest' candidate - that fuzzy work belongs to
     resolve_client_name alone now."""
-    name = _normalize_hebrew_geresh(name)
     resolved, _ = _resolve_client_by_name(client, name)
     if resolved is not None and _bag_equal_words(name, resolved.name):
         return resolved
@@ -2118,11 +2341,54 @@ def _require_resolved_client(
     """
     if not name_resolved:
         log_refusal(tool_name, "name_not_resolved", client_name=client_name)
-        raise ClientNameNotResolvedError(format_name_not_resolved())
+        # This exception's message is surfaced verbatim by errors.py's
+        # friendly_error_message - a real, plain-text procedural instruction,
+        # NOT a tool-call return value, so it is deliberately NOT
+        # format_name_not_resolved()'s JSON (2026-09-04 JSON-only contract
+        # applies to tool results, not to exception messages read by
+        # errors.py).
+        raise ClientNameNotResolvedError(
+            "יש לקרוא ל-resolve_client_name עם שם הלקוח קודם, להשתמש בשם המדויק "
+            "שהוא מחזיר, ולנסות שוב עם name_resolved=true"
+        )
     resolved = _resolve_exact_client_name(client, client_name)
     if resolved is None:
         _raise_client_not_found(tool_name, client_name)
     return resolved
+
+
+class VatConflictError(ValueError):
+    """The VAT treatment the caller stated contradicts the document type
+    (bugfix-071): "not included" on money already paid (a 320 or a 400), or
+    on a document whose VAT comes from its original (a 320 closing a 300, a
+    400 against a 305, a 330), or any VAT statement on a credit note against
+    a VAT-exempt original. Raised before anything is sent to Morning, so
+    nothing is created; surfaces as a real MCP failure with
+    `errors.VAT_CONFLICT` (see `friendly_error_message`), telling the model
+    to ask the user what they meant rather than pick one side.
+    """
+
+
+def _raise_vat_conflict(tool_name: str, vat_included: Optional[bool], **context: Any) -> NoReturn:
+    log_refusal(tool_name, "vat_conflict", vat_included=vat_included, **context)
+    raise VatConflictError(f"{tool_name}: vat_included={vat_included} contradicts the document's VAT rule")
+
+
+def _refuse_vat_not_included(tool_name: str, vat_included: Optional[bool], **context: Any) -> None:
+    """The VAT rule for every document whose VAT is not the caller's to
+    choose: omitted or True proceed, False is a conflict."""
+    if vat_included is False:
+        _raise_vat_conflict(tool_name, vat_included, **context)
+
+
+def _original_document_vat_type(original: dict) -> int:
+    """The original's DocumentVatType, for a credit note to mirror. Only
+    Default (0) and Exempt (1) are supported - a Mixed (2) or missing value
+    is refused rather than guessed (bugfix-071)."""
+    vat_type = original.get("vatType")
+    if vat_type not in (_DOCUMENT_VAT_DEFAULT, _DOCUMENT_VAT_EXEMPT):
+        raise ValueError(f"Unsupported original document vatType {vat_type!r} for a credit note")
+    return vat_type
 
 
 class ClientNotFoundError(ValueError):
@@ -2173,7 +2439,12 @@ def _raise_client_not_found(tool_name: str, client_name: str) -> NoReturn:
     user-facing message regardless of which tool was called.
     """
     log_refusal(tool_name, "client_not_found", client_name=client_name)
-    raise ClientNotFoundError(f"{format_client_not_found()} ({client_name})")
+    # This exception's message is surfaced verbatim by errors.py's
+    # friendly_error_message - real, plain-text Hebrew, NOT a tool-call
+    # return value, so it is deliberately NOT format_client_not_found()'s
+    # JSON (2026-09-04 JSON-only contract applies to tool results, not to
+    # exception messages read by errors.py).
+    raise ClientNotFoundError(f'לא נמצא לקוח בשם "{client_name}"')
 
 
 def _extract_linked_client_id(original: dict) -> Optional[str]:
@@ -2210,10 +2481,19 @@ def _normalize_israeli_phone(phone: str) -> str:
     +972/972-prefixed, local, dashed, or undashed input; rejects anything
     that doesn't resolve to a plausible Israeli number (9 or 10 digits
     starting with 0).
+
+    A number whose leading zero was dropped (bugfix-032, e.g. `50-822-5928`)
+    is repaired only when it has one unambiguous reading: 9 digits starting
+    with 5/7 (mobile/VoIP) or 8 digits starting with 2/3/4/8/9 (landline).
     """
     digits = re.sub(r"\D", "", phone)
     if digits.startswith("972"):
         digits = "0" + digits[3:]
+    elif not digits.startswith("0") and (
+        (len(digits) == _ISRAELI_PHONE_MOBILE_LENGTH - 1 and digits[:1] in ("5", "7"))
+        or (len(digits) == _ISRAELI_PHONE_LANDLINE_LENGTH - 1 and digits[:1] in ("2", "3", "4", "8", "9"))
+    ):
+        digits = "0" + digits
     if not digits.startswith("0") or len(digits) not in (
         _ISRAELI_PHONE_LANDLINE_LENGTH,
         _ISRAELI_PHONE_MOBILE_LENGTH,
@@ -2250,8 +2530,8 @@ def list_clients(client: MorningClient, name: Optional[str] = None) -> str:
 
     Args:
         client: An authenticated MorningClient (injected).
-        name: Optional name filter (apostrophe/geresh-normalized - see
-            `_normalize_hebrew_geresh`), passed to Morning's real search
+        name: Optional name filter (searched under both quote spellings -
+            see `_search_clients_by_name`), passed to Morning's real search
             (token-prefix match) to narrow results server-side.
 
     Returns:
@@ -2259,21 +2539,29 @@ def list_clients(client: MorningClient, name: Optional[str] = None) -> str:
         message if none, or a "too many, narrow your search" message with
         the real total if the count exceeds the display cap.
     """
-    payload: Dict[str, Any] = {"name": _normalize_hebrew_geresh(name)} if name else {}
-    first_page = client.search_clients(payload)
-    total = first_page.get("total", 0) or 0
+    payloads: List[Dict[str, Any]] = [{"name": sp} for sp in _name_spellings(name)] if name else [{}]
+    first_pages = [client.search_clients(payload) for payload in payloads]
+    total = max((page.get("total", 0) or 0) for page in first_pages)
 
     if total > _LIST_CLIENTS_MAX_ITEMS:
         return format_too_many_clients_message(total)
 
-    items = list(first_page.get("items") or [])
-    page_num = first_page.get("page", 1) or 1
-    total_pages = first_page.get("pages", 1) or 1
-    while len(items) < total and page_num < total_pages:
-        page_num += 1
-        next_page = client.search_clients({**payload, "page": page_num})
-        items.extend(next_page.get("items") or [])
+    items: List[Any] = []
+    for payload, first_page in zip(payloads, first_pages):
+        page_items = list(first_page.get("items") or [])
+        page_total = first_page.get("total", 0) or 0
+        page_num = first_page.get("page", 1) or 1
+        total_pages = first_page.get("pages", 1) or 1
+        while len(page_items) < page_total and page_num < total_pages:
+            page_num += 1
+            next_page = client.search_clients({**payload, "page": page_num})
+            page_items.extend(next_page.get("items") or [])
+        items.extend(page_items)
 
+    merged: Dict[str, Any] = {}
+    for item in items:
+        merged.setdefault(item.get("id") or id(item), item)
+    items = list(merged.values())
     clients = [Client.model_validate(item) for item in items]
     return format_client_list(clients)
 
@@ -2358,9 +2646,7 @@ def add_client(
 
     Args:
         client: An authenticated MorningClient (injected).
-        name: Client/company name (required, apostrophe/geresh-normalized -
-            see `_normalize_hebrew_geresh` - so the stored record always uses
-            the correct Hebrew form regardless of which variant was typed).
+        name: Client/company name (required, stored exactly as given).
         email: Client email (required, validated).
         phone: Client phone number (required, normalized to Israeli format).
         tax_id: Optional Israeli business tax ID (ע"מ).
@@ -2372,10 +2658,9 @@ def add_client(
     Raises:
         ValueError: if email or phone fails validation/normalization.
     """
-    normalized_name = _normalize_hebrew_geresh(name)
     validated_email = _validate_email(email)
     normalized_phone = _normalize_israeli_phone(phone)
-    payload = _build_add_client_payload(normalized_name, validated_email, normalized_phone, tax_id)
+    payload = _build_add_client_payload(name, validated_email, normalized_phone, tax_id)
     response = client.add_client(payload)
     # bugfix-036: the response was previously discarded outright, so the id
     # Morning assigned the new client existed nowhere in this app. It still
@@ -2385,9 +2670,18 @@ def add_client(
         payload=payload,
         response=response,
         client_id=(response or {}).get("id") if isinstance(response, dict) else None,
-        client_name=normalized_name,
+        client_name=name,
     )
-    return f"נוצר לקוח חדש: {normalized_name}"
+    return json.dumps(
+        {
+            "status": "created",
+            "client": {
+                "name": name, "email": validated_email,
+                "phone": normalized_phone, "tax_id": tax_id,
+            },
+        },
+        ensure_ascii=False,
+    )
 
 
 def _build_update_client_payload(
@@ -2439,7 +2733,7 @@ def update_client(
     Args:
         client: An authenticated MorningClient (injected).
         name: The client's exact, already-resolved current name.
-        new_name: Optional new name value (apostrophe/geresh-normalized).
+        new_name: Optional new name value (stored exactly as given).
         email: Optional new email (validated).
         phone: Optional new phone (normalized to Israeli format).
         tax_id: Optional new Israeli business tax ID (ע"מ).
@@ -2466,21 +2760,29 @@ def update_client(
 
     resolved_client = _require_resolved_client(client, name, name_resolved, "update_client")
 
-    normalized_new_name = _normalize_hebrew_geresh(new_name) if new_name else None
     validated_email = _validate_email(email) if email else None
     normalized_phone = _normalize_israeli_phone(phone) if phone else None
-    payload = _build_update_client_payload(normalized_new_name, validated_email, normalized_phone, tax_id)
+    payload = _build_update_client_payload(new_name or None, validated_email, normalized_phone, tax_id)
     response = client.update_client(resolved_client.id, payload)
     log_mutation(
         "update_client",
         payload=payload,
         response=response,
         client_id=resolved_client.id,
-        client_name=normalized_new_name or name,
+        client_name=new_name or name,
     )
 
-    display_name = normalized_new_name or name
-    return f"עודכנו פרטי הלקוח: {display_name}"
+    display_name = new_name or name
+    return json.dumps(
+        {
+            "status": "updated",
+            "client": {
+                "name": display_name, "email": validated_email,
+                "phone": normalized_phone, "tax_id": tax_id,
+            },
+        },
+        ensure_ascii=False,
+    )
 
 
 def _resolve_period_dates(
@@ -2632,4 +2934,6 @@ def download_invoice_pdf(client: MorningClient, internal_morning_id: str, lang: 
         raise ValueError(f"No PDF download URL available for invoice {internal_morning_id!r}.")
 
     invoice_number = original.get("number", internal_morning_id)
-    return f"קישור להורדת חשבונית מספר {invoice_number}:\n{pdf_url}"
+    return json.dumps(
+        {"display_number": invoice_number, "pdf_url": pdf_url}, ensure_ascii=False
+    )

@@ -75,6 +75,11 @@ def synthesize_notification(
     base_event = {
         "typeWebhook": "incomingMessageReceived",
         "timestamp": timestamp,
+        # Feature 069: marks this as a replayed (not live) message. `timestamp`
+        # above is the message's ORIGINAL conversation time; WhatsAppMessage
+        # .from_notification reads this flag so AIHandler dates the bot's own
+        # reply just after that original moment rather than at wall-clock now.
+        "replay": True,
         # 2026-08-20: a real random UUID, not a caller-supplied sequence number.
         # Used to be `f"player-{idmessage_seq}"`, a per-call-site counter that
         # restarted at 1 for every fresh PlayerExportSource instance - harmless

@@ -12,6 +12,8 @@ Uses a fake MorningClient (dependency-injected, matching the real
 list_invoices(params) -> list[dict] contract) - this is mocking a third-party
 API boundary, not an internal component (CONSTITUTION.md SSI/SSV).
 """
+import json
+
 from denidin_mcp_morning.tools import get_financial_summary
 
 
@@ -50,11 +52,10 @@ def test_unpaid_invoice_with_non_allowlisted_type_is_still_counted():
         _raw_invoice("unpaid-other-type", doc_type=300, status_code=0, amount=10620),
     ])
 
-    result = get_financial_summary(client, period="custom", from_date="2026-07-01", to_date="2026-07-31")
+    payload = json.loads(get_financial_summary(client, period="custom", from_date="2026-07-01", to_date="2026-07-31"))
 
-    assert "מספר חשבוניות: 2 " in result, f"Expected both invoices counted, got: {result!r}"
-    assert "10,620.00" in result, f"Unpaid invoice's amount missing from totals: {result!r}"
-    assert "לא שולם: ₪10,620.00" in result, f"Unpaid total wrong/missing: {result!r}"
+    assert payload["invoice_count"] == 2, f"Expected both invoices counted, got: {payload!r}"
+    assert payload["total_unpaid"] == 10620.0, f"Unpaid total wrong/missing: {payload!r}"
 
 
 def test_credit_invoice_is_still_excluded_from_total_invoiced():
@@ -66,10 +67,10 @@ def test_credit_invoice_is_still_excluded_from_total_invoiced():
         _raw_invoice("credit-1", doc_type=330, status_code=1, amount=200),
     ])
 
-    result = get_financial_summary(client, period="custom", from_date="2026-07-01", to_date="2026-07-31")
+    payload = json.loads(get_financial_summary(client, period="custom", from_date="2026-07-01", to_date="2026-07-31"))
 
-    assert "סה\"כ הופק: ₪800.00" in result, (
-        f"Credit invoice amount should net out of total_invoiced (1000 - 200 = 800): {result!r}"
+    assert payload["total_invoiced"] == 800.0, (
+        f"Credit invoice amount should net out of total_invoiced (1000 - 200 = 800): {payload!r}"
     )
 
 
@@ -86,7 +87,7 @@ def test_receipt_type_is_excluded_from_totals():
         _raw_invoice("receipt-1", doc_type=400, status_code=1, amount=1000),
     ])
 
-    result = get_financial_summary(client, period="custom", from_date="2026-07-01", to_date="2026-07-31")
+    payload = json.loads(get_financial_summary(client, period="custom", from_date="2026-07-01", to_date="2026-07-31"))
 
-    assert "מספר חשבוניות: 1 " in result, f"Receipt must not be counted as its own invoice: {result!r}"
-    assert "סה\"כ הופק: ₪1,000.00" in result, f"Receipt amount must not inflate total_invoiced: {result!r}"
+    assert payload["invoice_count"] == 1, f"Receipt must not be counted as its own invoice: {payload!r}"
+    assert payload["total_invoiced"] == 1000.0, f"Receipt amount must not inflate total_invoiced: {payload!r}"

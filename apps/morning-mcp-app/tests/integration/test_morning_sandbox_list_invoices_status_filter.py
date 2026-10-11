@@ -12,6 +12,7 @@ between them - the exact real-world scenario that surfaced the bug (a
 freshly created invoice was invisible to status="unpaid"). Per CONSTITUTION
 §V and this app's testing policy (spec.md §Testing Strategy).
 """
+import json
 import time
 from pathlib import Path
 
@@ -48,7 +49,7 @@ def unpaid_invoice(morning_client):
 
     marker = f"DENIDIN_STATUSFILTER_UNPAID_{int(now_local().timestamp())}"
     _, client_name = seed_real_client(morning_client, marker)
-    create_invoice(morning_client, client_name=client_name, amount=61.0, description=marker, name_resolved=True)
+    create_invoice(morning_client, client_name=client_name, amount=61.0, description=marker, name_resolved=True, vat_included=True)
     return {"client_name": client_name}
 
 
@@ -61,7 +62,7 @@ def paid_invoice(morning_client):
     marker = f"DENIDIN_STATUSFILTER_PAID_{int(now_local().timestamp())}"
     _, client_name = seed_real_client(morning_client, marker)
     response = create_invoice(
-        morning_client, client_name=client_name, amount=62.0, description=marker, name_resolved=True
+        morning_client, client_name=client_name, amount=62.0, description=marker, name_resolved=True, vat_included=True
     )
 
     # Real invoice id is only in the tool's own confirmation text - resolve
@@ -71,9 +72,10 @@ def paid_invoice(morning_client):
 
     internal_morning_id = None
     for _ in range(12):
-        result = list_invoices(morning_client, client_name=client_name, name_resolved=True)
-        if "מזהה פנימי" in result:
-            internal_morning_id = result.split("מזהה פנימי (internal_morning_id): ")[1].splitlines()[0].strip()
+        payload = json.loads(list_invoices(morning_client, client_name=client_name, name_resolved=True))
+        documents = payload.get("documents") or []
+        if documents:
+            internal_morning_id = documents[0]["internal_morning_id"]
             break
         time.sleep(1.5)
     assert internal_morning_id, f"Could not resolve internal_morning_id for {client_name!r} to mark it paid: {response!r}"

@@ -6,6 +6,17 @@ import pytest
 from unittest.mock import Mock, MagicMock, patch
 import requests
 from src.handlers.whatsapp_handler import WhatsAppHandler
+from tests.denidin_test_support import make_denidin
+import denidin as denidin_module
+
+
+def _reply_unsupported(whatsapp_handler, notification, monkeypatch):
+    """The unsupported-type auto-reply as denidin.py sends it (2026-10-02: moved off
+    WhatsAppHandler onto denidin.py)."""
+    app = whatsapp_handler.denidin
+    app.whatsapp_handler = whatsapp_handler
+    monkeypatch.setattr(denidin_module, "denidin_app", app)
+    denidin_module._reply_unsupported(notification)
 from src.constants.error_messages import UNSUPPORTED_MESSAGE_TYPE_SUPPORTED_TYPES
 from src.models.message import AIResponse, WhatsAppMessage
 from whatsapp_chatbot_python import Notification
@@ -14,7 +25,7 @@ from whatsapp_chatbot_python import Notification
 @pytest.fixture
 def whatsapp_handler():
     """Create WhatsAppHandler instance"""
-    return WhatsAppHandler()
+    return WhatsAppHandler(make_denidin())
 
 
 @pytest.fixture
@@ -199,14 +210,14 @@ class TestUnsupportedMessageTypes:
 
         assert is_valid is True
     
-    @patch('src.handlers.whatsapp_handler.logger')
+    @patch('denidin.logger')
     def test_auto_reply_sent_for_unsupported_type(
-        self, mock_logger, whatsapp_handler, mock_notification
+        self, mock_logger, whatsapp_handler, mock_notification, monkeypatch
     ):
         """Test auto-reply sent 'I currently only support text messages'"""
         mock_notification.event['messageData']['typeMessage'] = 'imageMessage'
         
-        whatsapp_handler.handle_unsupported_message(mock_notification)
+        _reply_unsupported(whatsapp_handler, mock_notification, monkeypatch)
         
         # Should send auto-reply
         mock_notification.answer.assert_called_once()
@@ -214,15 +225,15 @@ class TestUnsupportedMessageTypes:
         # Should return the exact unsupported message constant
         assert reply_text == UNSUPPORTED_MESSAGE_TYPE_SUPPORTED_TYPES
     
-    @patch('src.handlers.whatsapp_handler.logger')
+    @patch('denidin.logger')
     def test_bot_continues_after_unsupported_message(
-        self, mock_logger, whatsapp_handler, mock_notification
+        self, mock_logger, whatsapp_handler, mock_notification, monkeypatch
     ):
         """Test bot skips processing and continues after unsupported message"""
         mock_notification.event['messageData']['typeMessage'] = 'videoMessage'
         
         # Should not raise exception
-        whatsapp_handler.handle_unsupported_message(mock_notification)
+        _reply_unsupported(whatsapp_handler, mock_notification, monkeypatch)
         
         # Should log warning
         assert mock_logger.warning.called or mock_logger.info.called

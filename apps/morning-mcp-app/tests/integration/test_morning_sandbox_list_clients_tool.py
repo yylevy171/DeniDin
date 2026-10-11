@@ -3,6 +3,7 @@
 No mocks: drives denidin_mcp_morning.tools.list_clients against the live
 sandbox, per CONSTITUTION §V and this app's testing policy.
 """
+import json
 import re
 import time
 from datetime import datetime, timezone
@@ -71,10 +72,10 @@ def test_list_clients_over_cap_reports_real_total(morning_client):
     real total and ask to narrow, matching the unit-level contract exactly."""
     from denidin_mcp_morning.tools import list_clients
 
-    result = list_clients(morning_client)
+    payload = json.loads(list_clients(morning_client))
 
-    assert "יותר מדי" in result or "צמצם" in result
-    assert re.search(r"\d{2,}", result), f"Expected a real (2+ digit) total in: {result!r}"
+    assert payload["status"] == "too_many"
+    assert payload["total"] >= 100, f"Expected a real, large total in: {payload!r}"
 
 
 def test_list_clients_never_includes_raw_client_id(morning_client):

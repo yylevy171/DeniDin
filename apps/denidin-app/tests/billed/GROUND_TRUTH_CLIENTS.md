@@ -22,7 +22,7 @@ depend on a client seeded once, out of band, and never re-created.
 **This is NOT the default pattern for this suite.** Most tests
 (`test_godfather_creates_invoice_via_whatsapp` and friends) deliberately use
 a *fresh*, randomly-generated client every run
-(`_unique_client_name`/`_seed_client_via_conversation` in
+(`_unique_client_name`/`_seed_client` in
 `denidin_mcp_e2e_helpers.py`) — a shared client that keeps accumulating new
 invoices on every run eventually breaks pagination-sensitive assertions in
 *other* tests (this happened for real to `"יוסי שמואלי"`, see below). Only
@@ -30,6 +30,53 @@ use a permanent fixture when a test's own assertions don't care how many
 documents the client accumulates over time (e.g. bugfix-039's T1/T2, which
 only check that *one* `create_invoice` call succeeds against the right
 client — never list/count that client's full document history).
+
+## The random-pick pool (Feature 059 item 5) — the middle option
+
+Between "seed a fresh client every run" (2 OpenAI calls + a `time.sleep(3)`,
+every run, forever) and "one hardcoded permanent name" (this registry), there
+is a third pattern for the large group of tests that just need **a** client to
+exist and genuinely don't care *which* one — e.g. "create a type-320 for
+someone", "list my clients and see one of them", "update a client's phone".
+This is Feature 059's "Group 2".
+
+`apps/denidin-app/tests/fixtures/morning_sandbox_clients.json` is a **committed**
+snapshot of every real Morning sandbox client whose name is safe to pick
+blindly (exactly two Hebrew words, no digits/Latin/brackets, first word unique
+across the set so Morning's word-prefix search can't land on the wrong record,
+and not on the denylist below). Group 2 tests call
+`denidin_mcp_e2e_helpers.pick_existing_client()` — a plain `random.choice` over
+that file, **no OpenAI call, no seeding conversation, no sleep** (the client is
+already indexed, so it resolves on the very next turn).
+
+Spreading the picks randomly over the whole pool (182 clients as of the first
+pull) is deliberate: it is exactly what stops any single client from
+accumulating invoices run-over-run and breaking a pagination-sensitive
+assertion elsewhere — the `יוסי שמואלי` failure mode (see the Registry).
+
+**Regenerating the snapshot** (occasionally — it's a cache, not a source of
+truth; a stale row only ever costs one test one retry-worthy miss, never a
+wrong pass):
+```bash
+cd apps/morning-mcp-app
+./venv/bin/python3 scripts/pull_sandbox_clients.py
+```
+That script holds its own denylist (`DENYLIST_EXACT` / `DENYLIST_PREFIX`) of
+names other tests make specific/counting/relational assertions about — every
+permanent fixture in the Registry below, the two vCard-fixture names, the
+expensive bank-deposit payer `אסתר אסולין` (`Deposit_Eti.jpeg`; the retired
+`עטיה רועי מאיר` stays denylisted too, still used by
+`test_group_b_reference_approval_e2e.py`), and the `הסתדרות כללית חדשה …`
+ambiguity probes. **When you add a new permanent fixture to this registry, add
+its name to that script's `DENYLIST_EXACT` too** — otherwise the next
+regeneration could pull it into the random pool and a Group 2 test could create
+documents against it.
+
+Tests that DO depend on a brand-new, never-before-seen client (Feature 059's
+"Group 1" — the `add_client` happy-path tests, near-duplicate-name tests,
+ambiguous-prefix tests, and the client-mutation tests that need a disposable
+record to change) keep using `_seed_client` (its drawn-name, `create=False`,
+and specific-name variants) and are unaffected by any of the above.
 
 ## Registry
 

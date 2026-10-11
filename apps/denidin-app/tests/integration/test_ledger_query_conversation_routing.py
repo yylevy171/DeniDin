@@ -4,7 +4,7 @@ Component-Integration Test: Ledger Event Querying Conversation Routing
 
 Verifies the full real router-dispatch path for querying ledger events: a
 real textMessage-shaped Green API notification -> bot.router ->
-handle_text_message -> WhatsAppHandler -> AIHandler.get_response ->
+handle_text_message -> WhatsAppHandler -> AIHandler.single_turn ->
 _finalize_response -> _handle_query_ledger_events -> a real
 LedgerEventManager.query_events call -> a real follow-up round-trip whose
 reply is what actually gets sent - all real internal objects and real router
@@ -51,6 +51,24 @@ GODFATHER_CHAT_ID = "972501234567@c.us"
 GODFATHER_SENDER = "972501234567@c.us"
 
 
+def _is_post_turn_recognition_call(kwargs) -> bool:
+    """Feature 069: every godfather/admin turn now ends with a text-only
+    `recognize_ledger_event` call (tools=[report_ledger_recognition]). These tests
+    exercise the `query_ledger_events` main-turn route, not recognition - let each
+    stub short-circuit that trailing call to an inert `none` verdict so it neither
+    advances the stub's own call counter nor clobbers a captured-kwargs slot."""
+    return any(
+        isinstance(t, dict) and t.get("name") == "report_ledger_recognition"
+        for t in (kwargs.get("tools") or [])
+    )
+
+
+_RECOGNITION_NOOP = SimpleNamespace(
+    id="resp_recognition_noop", output=[], output_text="", model="gpt-5.6-luna",
+    usage=SimpleNamespace(total_tokens=1, input_tokens=1, output_tokens=0),
+)
+
+
 @pytest.mark.integration
 class TestLedgerQueryRouting:
 
@@ -79,7 +97,9 @@ class TestLedgerQueryRouting:
                 'ai_reply_max_tokens': config.ai_reply_max_tokens,
                 'log_level': config.log_level,
                 'data_root': config.data_root,
-                'feature_flags': config.feature_flags,
+                # This file tests the legacy AIHandler routing; config.test.json keeps the
+                # backbone flag ON for billed runs, so pin it off here.
+                'feature_flags': {**(config.feature_flags or {}), 'enable_capability_backbone': False},
                 'godfather_phone': config.godfather_phone,
                 'memory': config.memory,
                 'constitution_config': config.constitution_config,
@@ -88,10 +108,17 @@ class TestLedgerQueryRouting:
             }
             denidin_module.denidin_app = denidin_module.initialize_app(config_dict)
 
-        return denidin_module.denidin_app
+        app = denidin_module.denidin_app
+        # Stop the background session-cleanup thread: it makes its own
+        # client.responses.create calls (session summarization) that race these
+        # tests' stubbed OpenAI client and desync their call counters.
+        if getattr(app, "cleanup_thread", None) is not None:
+            app.cleanup_thread.stop()
+            app.cleanup_thread = None
+        return app
 
     def _wipe_events(self, denidin_app):
-        manager = denidin_app.ai_handler.ledger_event_manager
+        manager = denidin_app.ledger_event_manager
         manager._index = []
         for path in manager.storage_dir.glob("*.json"):
             path.unlink()
@@ -108,7 +135,7 @@ class TestLedgerQueryRouting:
     def _seed(self, denidin_app, client_name, payer_name=None, source_type="הסכם",
               event_subtype="יצירה", amount="1,000₪", message_id="seed",
               timestamp=1786784400):  # 2026-08-15 local, unless overridden
-        return denidin_app.ai_handler.ledger_event_manager.add_ledger_event(
+        return denidin_app.ledger_event_manager.add_ledger_event(
             session_id="s", event={
                 "source_type": source_type, "event_subtype": event_subtype,
                 "client_name": client_name, "payer_name": payer_name,
@@ -173,10 +200,12 @@ class TestLedgerQueryRouting:
         calls = {"n": 0}
 
         def fake_create(**kwargs):
+            if _is_post_turn_recognition_call(kwargs):
+                return _RECOGNITION_NOOP
             calls["n"] += 1
             return first_response if calls["n"] == 1 else followup_response
 
-        monkeypatch.setattr(denidin_app.ai_handler.client.responses, 'create', fake_create)
+        monkeypatch.setattr(denidin_app.ai_manager.client.responses, 'create', fake_create)
 
     def _stub_multi_call_response(self, denidin_app, monkeypatch, calls_args: list,
                                    followup_text: str = "התוצאות נמצאו"):
@@ -211,13 +240,15 @@ class TestLedgerQueryRouting:
         calls = {"n": 0}
 
         def fake_create(**kwargs):
+            if _is_post_turn_recognition_call(kwargs):
+                return _RECOGNITION_NOOP
             calls["n"] += 1
             if calls["n"] == 1:
                 return first_response
             captured.update(kwargs)
             return followup_response
 
-        monkeypatch.setattr(denidin_app.ai_handler.client.responses, 'create', fake_create)
+        monkeypatch.setattr(denidin_app.ai_manager.client.responses, 'create', fake_create)
         return captured
 
     NO_FILTER_ARGS = {"criteria": []}
@@ -276,6 +307,8 @@ class TestLedgerQueryRouting:
         captured_kwargs = {}
 
         def capture_and_respond(**kwargs):
+            if _is_post_turn_recognition_call(kwargs):
+                return _RECOGNITION_NOOP
             captured_kwargs.update(kwargs)
             return SimpleNamespace(
                 id="resp_client_ledger_query_1", output=[], output_text="בסדר",
@@ -283,7 +316,7 @@ class TestLedgerQueryRouting:
                 usage=SimpleNamespace(total_tokens=4, input_tokens=3, output_tokens=1),
             )
 
-        monkeypatch.setattr(denidin_app.ai_handler.client.responses, 'create', capture_and_respond)
+        monkeypatch.setattr(denidin_app.ai_manager.client.responses, 'create', capture_and_respond)
 
         notification = self._create_notification(
             client_chat_id, client_chat_id, "Test Client",
@@ -314,6 +347,8 @@ class TestLedgerQueryRouting:
         calls = {"n": 0}
 
         def fake_create(**kwargs):
+            if _is_post_turn_recognition_call(kwargs):
+                return _RECOGNITION_NOOP
             calls["n"] += 1
             if calls["n"] == 1:
                 return SimpleNamespace(
@@ -333,7 +368,7 @@ class TestLedgerQueryRouting:
                 usage=SimpleNamespace(total_tokens=6, input_tokens=4, output_tokens=2),
             )
 
-        monkeypatch.setattr(denidin_app.ai_handler.client.responses, 'create', fake_create)
+        monkeypatch.setattr(denidin_app.ai_manager.client.responses, 'create', fake_create)
 
         notification = self._create_notification(
             GODFATHER_CHAT_ID, GODFATHER_SENDER, "Test Godfather",
@@ -405,6 +440,8 @@ class TestLedgerQueryRouting:
         calls = {"n": 0}
 
         def fake_create(**kwargs):
+            if _is_post_turn_recognition_call(kwargs):
+                return _RECOGNITION_NOOP
             calls["n"] += 1
             if calls["n"] == 1:
                 return SimpleNamespace(
@@ -424,7 +461,7 @@ class TestLedgerQueryRouting:
                 usage=SimpleNamespace(total_tokens=6, input_tokens=4, output_tokens=2),
             )
 
-        monkeypatch.setattr(denidin_app.ai_handler.client.responses, 'create', fake_create)
+        monkeypatch.setattr(denidin_app.ai_manager.client.responses, 'create', fake_create)
 
         notification = self._create_notification(
             GODFATHER_CHAT_ID, GODFATHER_SENDER, "Test Godfather",

@@ -7,7 +7,12 @@ Naming convention: Const names describe the TEXT content, not the error situatio
 APP_NOT_READY_RETRY_LATER = "אני לא זמין כרגע. אנא נסה שוב בעוד רגע."
 
 # Message type support errors
-UNSUPPORTED_MESSAGE_TYPE_SUPPORTED_TYPES = "סוג הודעה זה אינו נתמך עדיין. אני תומך בטקסט, תמונות וקבצים."
+# Feature 076 (Q6): shortened from the old "...אני תומך בטקסט, תמונות וקבצים." - now
+# used only for the narrow ERROR_REPLY_TYPES bucket (denidin.py), not every
+# unrecognized type (most of those are now silently ignored - see
+# handle_ignored_message_default). Name kept as-is to avoid a churny rename
+# across every import site (spec.md "Touch points" - a rename is out of scope).
+UNSUPPORTED_MESSAGE_TYPE_SUPPORTED_TYPES = "סוג הודעה לא נתמך"
 
 # Message processing errors
 ERROR_PROCESSING_MESSAGE_TRY_AGAIN = "אני נתקלתי בשגיאה בעיבוד הודעתך. אנא נסה שוב."
@@ -21,7 +26,18 @@ CONTACT_CARD_ONE_AT_A_TIME = "אני יכול לטפל באיש קשר אחד ב
 # the approval-resolution call was observed to re-execute the already-
 # approved MCP tool server-side, creating two invoices for one approval.
 APPROVAL_FAILED_TRY_AGAIN = "לא הצלחתי לבצע את הפעולה כרגע. אנא נסה לאשר שוב בעוד רגע."
-APPROVAL_POSSIBLY_DUPLICATED = "אירעה שגיאה באישור הפעולה וייתכן שהיא בוצעה יותר מפעם אחת. אנא בדוק ידנית במערכת לפני שתנסה שוב, ואל תאשר שוב בינתיים."
+# Backbone (2026-10-04): appended AFTER the model's own reply on an approved-write
+# turn - never replacing it. Duplicated: the same write succeeded twice with identical
+# arguments. Not performed: the user approved and no write was even attempted.
+APPROVED_WRITE_POSSIBLY_DUPLICATED_NOTE = (
+    "⚠️ שים לב: המערכת רשמה שאותה פעולה בוצעה פעמיים עם אותם פרטים. "
+    "כדאי לבדוק במורנינג שלא נוצר מסמך כפול."
+)
+APPROVED_WRITE_NOT_PERFORMED_NOTE = "⚠️ לא בוצעה בפועל אף פעולה במערכת."
+APPROVAL_POSSIBLY_DUPLICATED = (
+    "אירעה שגיאה באישור הפעולה וייתכן שהיא בוצעה יותר מפעם אחת. "
+    "אנא בדוק ידנית במערכת לפני שתנסה שוב, ואל תאשר שוב בינתיים."
+)
 
 # Ledger-event follow-up safety net (bugfix-018, 2026-08-04) - the turn that
 # calls capture_ledger_event always has empty output_text (a real reply only
@@ -45,3 +61,16 @@ REMINDER_ACTION_FAILED_TRY_AGAIN = "לא הצלחתי לבצע את פעולת �
 # (FR-005/FR-006), shown immediately instead of a false approval prompt.
 REMINDER_PAST_DATE_REJECTED = "אי אפשר להגדיר תזכורת למועד שכבר עבר. אנא ציין מועד עתידי."
 REMINDER_CAP_EXCEEDED = "כבר יש 20 תזכורות פעילות - המספר המרבי המותר. יש למחוק תזכורת קיימת לפני יצירת תזכורת חדשה."
+
+# Dynamic Capability Backbone (Feature 063) - flag-on fallback strings. Every
+# one of these can become a user-visible reply (a domain tool's result text may
+# be relayed as-is), so none of them may ever be anything but Hebrew, same as
+# every other user-facing string in this file.
+BACKBONE_CAPABILITY_NOT_CONFIGURED = "היכולת הזו לא זמינה כרגע. אנא נסה שוב מאוחר יותר."
+BACKBONE_NO_MEDIA_ATTACHED = "לא זוהה קובץ מצורף להודעה הזו, אין מה לחלץ."
+BACKBONE_UNEXPECTED_ERROR = "אני נתקלתי בשגיאה בעיבוד הודעתך. אנא נסה שוב."
+# The legacy single_turn's per-error fallbacks (AIHandler._get_response_impl's
+# APITimeoutError / RateLimitError / APIError replies), in Hebrew (C8, 2026-10-04).
+BACKBONE_AI_TIMEOUT = "יש לי בעיה להתחבר לשירות ה-AI כרגע. אנא נסה שוב מאוחר יותר."
+BACKBONE_AI_RATE_LIMITED = "אני עמוס כרגע. אנא נסה שוב בעוד דקה."
+BACKBONE_AI_API_ERROR = "נתקלתי בשגיאה בעיבוד הבקשה שלך. אנא נסה שוב."

@@ -39,7 +39,7 @@ class PlayerConfig:
     data_root: str
     denidin_config: str
     # 2026-08-19: DeniDin's own WhatsApp number (bare digits, e.g.
-    # "972501234567" - same convention as AIHandler.own_whatsapp_number,
+    # "972501234567" - same convention as WhatsAppHandler.own_whatsapp_number,
     # bugfix-024) - a real live app resolves this itself via a Green API
     # getWaSettings() call at startup, but the player never touches Green
     # API at all (research.md R3), so there's no live way to discover it.

@@ -27,10 +27,24 @@ from starlette.responses import JSONResponse, PlainTextResponse
 from starlette.routing import Route
 
 HEALTH_PATH = "/health"
+# bugfix-043: a separate, deliberately minimal endpoint - no real backend
+# checks, just confirms a request reached this server end-to-end (through
+# the ngrok tunnel, from denidin-app's own /health check). See
+# health_checks.py's module docstring for why this needs to be distinct
+# from /health rather than denidin-app just calling /health directly (that
+# would double up on the real, non-free morning_connectivity check on every
+# single denidin-app health probe).
+IS_ALIVE_PATH = "/is_alive"
 
 from . import tools
 from .config import MorningMCPConfig, load_config
 from .errors import friendly_error_message
+from .health_checks import (
+    check_log_freshness,
+    check_morning_connectivity,
+    resolve_log_path,
+    start_heartbeat_thread,
+)
 from .morning_client import MorningClient
 from .utils.correlation import correlation_scope, new_correlation_id
 from .utils.logger import DEFAULT_VERSION_FILE, read_version, get_logger, reconfigure_package_log_level
@@ -56,7 +70,7 @@ class BearerTokenMiddleware(BaseHTTPMiddleware):
         self._expected_header = f"Bearer {token}" if token else None
 
     async def dispatch(self, request: Request, call_next):
-        if request.url.path == HEALTH_PATH:
+        if request.url.path in (HEALTH_PATH, IS_ALIVE_PATH):
             return await call_next(request)
 
         if self._expected_header is None:
@@ -68,13 +82,26 @@ class BearerTokenMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-def _make_health_handler(environment: Optional[str], version: str) -> Callable[[Request], Any]:
+def _make_health_handler(
+    environment: Optional[str],
+    version: str,
+    morning_client: Optional[MorningClient] = None,
+    log_path: Optional[Path] = None,
+) -> Callable[[Request], Any]:
     """Build the /health handler, closing over this process's own declared
     `environment` (2026-07-21 incident: watchdog.py needs a caller-visible,
     at-rest AND external-tunnel way to confirm which environment a server
     is actually serving as, not just what its mounted config claims) and its
     current `version` (Feature 034, REQ-VER-002 - read once at startup, not
-    per-request, since a version can't change mid-process)."""
+    per-request, since a version can't change mid-process).
+
+    bugfix-043: also runs the deeper connectivity/logging checks used by the
+    prod-only external prober's health monitoring. `morning_client`/`log_path`
+    are optional so existing callers (watchdog.py's simple environment-match
+    check, tests/e2e_helpers.py) keep working unchanged when not supplied -
+    those checks are then simply omitted from the response, not reported as
+    failed.
+    """
 
     async def _health(_request: Request) -> JSONResponse:
         """Unauthenticated liveness probe - used by callers (e.g. the
@@ -82,9 +109,41 @@ def _make_health_handler(environment: Optional[str], version: str) -> Callable[[
         environment's watchdog.py) to confirm the server is reachable
         end-to-end without needing the bearer token, and which environment
         it's actually running as."""
-        return JSONResponse({"status": "ok", "environment": environment, "version": version})
+        checks: dict = {
+            "app_up": "success",
+            "environment": environment,
+            "version": version,
+        }
+        all_ok = True
+
+        if morning_client is not None:
+            ok = check_morning_connectivity(morning_client)
+            checks["morning_connectivity"] = "success" if ok else "fail"
+            all_ok = all_ok and ok
+
+        if log_path is not None:
+            ok = check_log_freshness(log_path)
+            checks["logs_writing"] = "success" if ok else "fail"
+            all_ok = all_ok and ok
+
+        checks["status"] = "ok" if all_ok else "fail"
+        return JSONResponse(checks, status_code=200 if all_ok else 503)
 
     return _health
+
+
+def _make_is_alive_handler() -> Callable[[Request], Any]:
+    """Build the /is_alive handler - deliberately does NO real backend
+    checks (bugfix-043). Its only purpose is confirming a request reached
+    this server end-to-end through the tunnel; denidin-app's own /health
+    check calls this (not /health) for its morning_connectivity_via_tunnel
+    check, so a probe every ~1 minute doesn't also trigger a real Morning
+    API call every time."""
+
+    async def _is_alive(_request: Request) -> JSONResponse:
+        return JSONResponse({"status": "ok"})
+
+    return _is_alive
 
 
 def build_asgi_app(
@@ -92,6 +151,8 @@ def build_asgi_app(
     auth_token: Optional[str] = None,
     environment: Optional[str] = None,
     version_file: Path = DEFAULT_VERSION_FILE,
+    morning_client: Optional[MorningClient] = None,
+    log_path: Optional[Path] = None,
 ) -> Starlette:
     """Build the MCP server's ASGI app, optionally wrapped with bearer-token auth.
 
@@ -101,12 +162,21 @@ def build_asgi_app(
 
     `version_file` (Feature 034, REQ-VER-002): defaults to this app's real VERSION file;
     tests pass a scratch path.
+
+    `morning_client`/`log_path` (bugfix-043): optional, wired into /health's
+    deeper checks when supplied (main() always supplies both for a real run;
+    tests that only care about the basic liveness shape can omit them).
     """
     app = mcp.streamable_http_app()
     version = read_version(Path(version_file))
     app.router.routes.append(
-        Route(HEALTH_PATH, _make_health_handler(environment, version), methods=["GET"])
+        Route(
+            HEALTH_PATH,
+            _make_health_handler(environment, version, morning_client=morning_client, log_path=log_path),
+            methods=["GET"],
+        )
     )
+    app.router.routes.append(Route(IS_ALIVE_PATH, _make_is_alive_handler(), methods=["GET"]))
     if auth_token:
         app.add_middleware(BearerTokenMiddleware, token=auth_token)
     return app
@@ -209,6 +279,12 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         auth_url=config.auth_url,
         refresh_before_seconds=config.refresh_before_seconds,
     )
+    # Feature 098: the allocation check's numbers, from config - passed
+    # explicitly to the three 305/320-creating tools below.
+    invoicing_rules = tools.InvoicingRules(
+        allocation_threshold_nis=config.allocation_threshold_nis,
+        vat_rate=config.default_vat_rate,
+    )
 
     # FastMCP auto-enables Host-header DNS-rebinding protection restricted to
     # 127.0.0.1/localhost whenever `host` is loopback and no transport_security
@@ -231,8 +307,8 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         client_name: str,
         amount: float,
         description: str,
+        vat_included: bool,
         due_date: Optional[str] = None,
-        vat_included: bool = True,
         name_resolved: bool = False,
     ) -> str:
         """Create an ordinary TAX INVOICE ("חשבונית מס", document type 305) - a
@@ -243,13 +319,23 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         transfer confirmation, a payment screenshot): use create_combo_document for
         a new payment, or create_receipt against the invoice the payment settles.
 
+        `vat_included` is REQUIRED, no default (bugfix-071): true = the amount
+        includes VAT (100 stays 100), false = VAT is added on top (100 becomes
+        118). Ask the user if they haven't said.
+
+        ALLOCATION NUMBER (Feature 098): if the amount BEFORE VAT exceeds the
+        allocation threshold, the client must have a 9-digit ID (ת.ז / ח.פ) on
+        file, or this refuses and creates nothing. Check get_client_details
+        first; if the ID is missing, ask the user for it and update_client
+        before calling this.
+
         REQUIRES name_resolved=True: call resolve_client_name first with this
         client_name, then pass the EXACT name it returns here, together with
         name_resolved=True. Without it, this refuses immediately.
         """
         return _call_with_error_boundary(
             tools.create_invoice, morning_client, client_name, amount, description,
-            due_date, vat_included, name_resolved
+            vat_included, due_date, name_resolved, invoicing_rules
         )
 
     @mcp.tool(structured_output=False)
@@ -284,8 +370,8 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         client_name: str,
         amount: float,
         description: str,
-        vat_included: bool,
         payment_date: str,
+        vat_included: Optional[bool] = None,
         payment_method: str = "bank_transfer",
         bank_number: Optional[str] = None,
         bank_branch: Optional[str] = None,
@@ -303,10 +389,15 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         305, create_combo_document_as_reference for a 300) - never a second document for the
         same money.
 
-        `vat_included` and `payment_date` are REQUIRED and must come from the real
-        transaction, never a guess: `payment_date` is the date the money actually
-        moved (ISO YYYY-MM-DD, never a future date, never "today" unless that is
-        genuinely when it arrived). Ask the user if either is unclear.
+        `payment_date` is REQUIRED and must come from the real transaction, never
+        a guess: the date the money actually moved (ISO YYYY-MM-DD, never a future
+        date, never "today" unless that is genuinely when it arrived). Ask the
+        user if it is unclear.
+
+        VAT is always inside the amount paid (bugfix-071) - never ask about it.
+        `vat_included` is optional: omit it (or True, which changes nothing);
+        False is refused as a VAT conflict, creating nothing - ask the user
+        what they meant.
 
         `payment_method` records how it arrived: "bank_transfer" (default), "cash",
         "cheque", "credit_card", "paypal", or an app ("bit", "pay", "paybox",
@@ -315,14 +406,20 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         `bank_number` is the bank's NUMBER (e.g. "31"), not its name - never
         invent a bank's name when only its number is known.
 
+        ALLOCATION NUMBER (Feature 098): if the amount BEFORE VAT exceeds the
+        allocation threshold, the client must have a 9-digit ID (ת.ז / ח.פ) on
+        file, or this refuses and creates nothing. Check get_client_details
+        first; if the ID is missing, ask the user for it and update_client
+        before calling this.
+
         REQUIRES name_resolved=True: call resolve_client_name first with this
         client_name, then pass the EXACT name it returns here, together with
         name_resolved=True. Without it, this refuses immediately.
         """
         return _call_with_error_boundary(
             tools.create_combo_document, morning_client, client_name, amount, description,
-            vat_included, payment_date, payment_method, bank_number, bank_branch,
-            bank_account, transaction_reference, name_resolved
+            payment_date, vat_included, payment_method, bank_number, bank_branch,
+            bank_account, transaction_reference, name_resolved, invoicing_rules
         )
 
     @mcp.tool(structured_output=False)
@@ -330,6 +427,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         original_internal_morning_id: str,
         amount: Optional[float] = None,
         description: Optional[str] = None,
+        vat_included: Optional[bool] = None,
     ) -> str:
         """Create a standalone credit note ("חשבונית זיכוי", document type 330)
         linked to an existing document, identified by original_internal_morning_id (the
@@ -338,9 +436,16 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         number). Defaults to a full credit against the original's total; pass
         amount for a partial credit note. Also the correct target for "cancel
         this invoice" phrasing (there is no separate status-update tool) -
-        call this directly with the full amount in that case."""
+        call this directly with the full amount in that case.
+
+        VAT mirrors the original document (bugfix-071) - never ask the user
+        about it, and normally omit `vat_included`. True is fine against a
+        taxable original; False against a taxable original, or ANY value
+        against a VAT-exempt original, is refused as a VAT conflict, creating
+        nothing - ask the user what they meant."""
         return _call_with_error_boundary(
-            tools.create_credit_note, morning_client, original_internal_morning_id, amount, description
+            tools.create_credit_note, morning_client, original_internal_morning_id, amount, description,
+            vat_included
         )
 
     @mcp.tool(structured_output=False)
@@ -351,6 +456,11 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         client_name: Optional[str] = None,
         description: Optional[str] = None,
         name_resolved: bool = False,
+        payment_method: str = "bank_transfer",
+        bank_number: Optional[str] = None,
+        bank_branch: Optional[str] = None,
+        bank_account: Optional[str] = None,
+        vat_included: Optional[bool] = None,
     ) -> str:
         """Create a receipt ("קבלה", document type 400) - either linked to an
         existing document being paid, or STANDALONE, with no invoice at all
@@ -381,7 +491,19 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         ISO YYYY-MM-DD. "Today" is a genuinely fine answer for a verbal
         "mark as paid"/"received a deposit" request, but only once asked and
         confirmed - never silently assumed. Ask the user if it isn't already
-        stated in the conversation."""
+        stated in the conversation.
+
+        `payment_method` records how the money arrived, on both paths:
+        "bank_transfer" (default) or "cash". Bank details (`bank_number`,
+        `bank_branch`, `bank_account`) are stored only on a bank transfer.
+        `bank_number` is the bank's NUMBER (e.g. "31"), not its name - never
+        invent a bank's name when only its number is known.
+
+        VAT is never asked about (bugfix-071): a receipt records money
+        actually received - VAT is inside it, or comes from the invoice it
+        pays. `vat_included` is optional: omit it (or True, which changes
+        nothing); False is refused as a VAT conflict, creating nothing - ask
+        the user what they meant."""
         return _call_with_error_boundary(
             tools.create_receipt,
             morning_client,
@@ -391,6 +513,11 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
             client_name,
             description,
             name_resolved,
+            payment_method,
+            bank_number,
+            bank_branch,
+            bank_account,
+            vat_included,
         )
 
     @mcp.tool(structured_output=False)
@@ -399,7 +526,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         payment_date: str,
         amount: Optional[float] = None,
         description: Optional[str] = None,
-        vat_included: bool = True,
+        vat_included: Optional[bool] = None,
         payment_method: str = "bank_transfer",
         bank_number: Optional[str] = None,
         bank_branch: Optional[str] = None,
@@ -413,12 +540,20 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         list_invoices, if the user only gave a client name or document number).
         Defaults to closing the full amount; pass amount for a partial close.
         Only supports type-300 originals - raises a clear error for any other
-        original document type. A transaction account itself carries no VAT
-        field to infer vat_included from - if it isn't clear from the
-        conversation whether VAT should be included, ask the user rather than
-        guessing. Also the correct target for "mark as paid" phrasing once
-        the referenced document's type is resolved to 300 (there is no
-        separate status-update tool).
+        original document type. Also the correct target for "mark as paid"
+        phrasing once the referenced document's type is resolved to 300 (there
+        is no separate status-update tool).
+
+        VAT comes from the original document (bugfix-071) - never ask the
+        user about it. `vat_included` is optional: omit it (or True, which
+        changes nothing); False contradicts the original and is refused as a
+        VAT conflict, creating nothing - ask the user what they meant.
+
+        ALLOCATION NUMBER (Feature 098): if the amount BEFORE VAT exceeds the
+        allocation threshold, the client must have a 9-digit ID (ת.ז / ח.פ) on
+        file, or this refuses and creates nothing. Check get_client_details
+        first; if the ID is missing, ask the user for it and update_client
+        before calling this.
 
         REQUIRES payment_date: the real date the money moved, ISO YYYY-MM-DD.
         "Today" is a genuinely fine answer for a verbal "mark as paid" request,
@@ -435,7 +570,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         return _call_with_error_boundary(
             tools.create_combo_document_as_reference, morning_client, original_internal_morning_id, payment_date,
             amount, description, vat_included, payment_method, bank_number, bank_branch,
-            bank_account, transaction_reference
+            bank_account, transaction_reference, invoicing_rules
         )
 
     @mcp.tool(structured_output=False)
@@ -472,18 +607,17 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         client_name: Optional[str] = None,
         document_display_number: Optional[str] = None,
         name_resolved: bool = False,
-        output_format: str = "text",
         include_full_details: bool = False,
     ) -> str:
         """List/search invoices with optional filters (status/date range/client
         name/exact document_display_number - e.g. "51365", the human-visible
         label - NEVER an internal_morning_id).
 
-        output_format: leave unset (or "text") for the normal Hebrew,
-        human-readable result - that is what you want when answering a person.
-        Pass "json" ONLY for automated bookkeeping/reconciliation tasks that
-        explicitly ask for machine-readable output; it returns every match
-        untruncated, with native types and explicit nulls.
+        Returns a JSON result (every match, untruncated, native types, explicit
+        nulls) - never Hebrew prose. Compose your own Hebrew, bullet-style
+        reply for the user from it; never show raw JSON to them (2026-09-04
+        JSON-only contract - see denidin_mcp_morning.formatters module
+        docstring for the full rationale).
 
         include_full_details: set True when you need each matching document's
         FULL detail - its payment's bank number/branch/account, and any linked
@@ -508,14 +642,12 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
             to_date,
             client_name,
             document_display_number,
-            config.list_invoices_token_budget,
             name_resolved,
-            output_format,
             include_full_details,
         )
 
     @mcp.tool(structured_output=False)
-    def get_invoice_details(internal_morning_id: str, output_format: str = "text") -> str:
+    def get_invoice_details(internal_morning_id: str) -> str:
         """Fetch full details for one document: status, dates, payments
         (including structured bank number/branch/account for a bank transfer),
         and any linked documents.
@@ -535,11 +667,11 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         across six live attempts, no matter how explicitly it was instructed
         to - the tool's own description outweighed the instruction.)
 
-        output_format: leave unset (or "text") for the normal Hebrew,
-        human-readable view. Pass "json" ONLY for automated tasks that
-        explicitly ask for machine-readable output."""
+        Returns a JSON result - never Hebrew prose. Compose your own Hebrew,
+        bullet-style reply for the user from it; never show raw JSON to them
+        (2026-09-04 JSON-only contract)."""
         return _call_with_error_boundary(
-            tools.get_invoice_details, morning_client, internal_morning_id, output_format
+            tools.get_invoice_details, morning_client, internal_morning_id
         )
 
     @mcp.tool(structured_output=False)
@@ -642,7 +774,17 @@ def main() -> None:
             "config/config.json). Set it to true to start the server."
         )
 
-    server = create_server(config)
+    # bugfix-043: built explicitly here (rather than left to create_server's
+    # own default) so the same instance can also be handed to build_asgi_app
+    # for /health's morning_connectivity check.
+    morning_client = MorningClient(
+        api_key_id=config.api_key_id,
+        api_key_secret=config.api_key_secret,
+        base_url=config.api_url,
+        auth_url=config.auth_url,
+        refresh_before_seconds=config.refresh_before_seconds,
+    )
+    server = create_server(config, client=morning_client)
     logger.info(
         "Starting %s on %s:%s (%s)%s",
         config.mcp_server_name,
@@ -652,12 +794,23 @@ def main() -> None:
         " [bearer-token auth enabled]" if config.mcp_auth_token else " [no auth configured]",
     )
 
+    # bugfix-043: periodic heartbeat log write so /health's logs_writing
+    # check has something to observe even during genuinely idle periods -
+    # see health_checks.py's module docstring.
+    start_heartbeat_thread()
+
     if config.mcp_transport == "streamable-http":
         # Bypass FastMCP.run()'s built-in uvicorn runner so the app can be
         # wrapped with BearerTokenMiddleware before serving.
         import uvicorn
 
-        app = build_asgi_app(server, auth_token=config.mcp_auth_token, environment=config.environment)
+        app = build_asgi_app(
+            server,
+            auth_token=config.mcp_auth_token,
+            environment=config.environment,
+            morning_client=morning_client,
+            log_path=resolve_log_path("logs"),
+        )
         uvicorn.run(app, host=config.mcp_host, port=config.mcp_port, log_level=config.mcp_log_level.lower())
     else:
         # stdio/sse aren't network-exposed the same way; no HTTP-level

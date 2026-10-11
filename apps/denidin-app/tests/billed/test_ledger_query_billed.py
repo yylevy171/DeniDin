@@ -38,12 +38,13 @@ import calendar
 import json
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
 
 from src.models.config import AppConfiguration
+from tests.e2e_helpers import sanity_worker_data_root
 from src.utils.time_utils import now_local
 
 logger = logging.getLogger(__name__)
@@ -52,17 +53,44 @@ logger.setLevel(logging.DEBUG)
 GODFATHER_CHAT_ID_TEMPLATE = "{phone}@c.us"
 
 
-def _this_month_timestamp(day=5, hour=9):
-    """Real Unix epoch for a given day/hour in the CURRENT local month - never a
-    hardcoded calendar month, so this file doesn't go stale whenever it's re-run."""
-    now = now_local()
-    last_day = calendar.monthrange(now.year, now.month)[1]
-    dt = now.replace(day=min(day, last_day), hour=hour, minute=0, second=0, microsecond=0)
+def _days_ago_timestamp(days, hour=9):
+    """Real Unix epoch `days` before today at `hour` - always in the past, whatever
+    day of the month the run happens on. (A fixed day N of the current month is still
+    in the future early in the month - a real failure on 2026-10-04.)"""
+    dt = (now_local() - timedelta(days=days)).replace(hour=hour, minute=0, second=0, microsecond=0)
     return int(dt.timestamp())
 
 
+def _this_month_so_far_timestamp(day):
+    """For "this month" (החודש) questions: a real Unix epoch that is in the CURRENT
+    month AND already in the past, whatever day the run happens on. `day` (1-31) only
+    orders the seeds: it is mapped proportionally into [start of this month, now], so a
+    lower `day` is always earlier."""
+    now = now_local()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    span = (now - month_start).total_seconds()
+    return int(month_start.timestamp() + span * day / 32)
+
+
+def _this_month_so_far_date_str(day):
+    """ISO YYYY-MM-DD of _this_month_so_far_timestamp(day) - for txn_date."""
+    return datetime.fromtimestamp(_this_month_so_far_timestamp(day), tz=now_local().tzinfo).strftime("%Y-%m-%d")
+
+
+def _most_recent_past_day_timestamp(day, hour=9):
+    """Real Unix epoch for the most recent `day`-of-month that is already in the past
+    (this month if it has passed, otherwise last month) - for a test that asserts the
+    day number itself appears in the reply."""
+    now = now_local()
+    candidate = now.replace(day=day, hour=hour, minute=0, second=0, microsecond=0)
+    if candidate >= now:
+        year, month = (now.year - 1, 12) if now.month == 1 else (now.year, now.month - 1)
+        candidate = candidate.replace(year=year, month=month)
+    return int(candidate.timestamp())
+
+
 def _last_month_timestamp(day=5, hour=9):
-    """Same as _this_month_timestamp, one calendar month back - for negative-control
+    """Real Unix epoch for a given day/hour in LAST calendar month - for negative-control
     events that must NOT match a "this month" query."""
     now = now_local()
     year, month = (now.year - 1, 12) if now.month == 1 else (now.year, now.month - 1)
@@ -71,18 +99,37 @@ def _last_month_timestamp(day=5, hour=9):
     return int(dt.timestamp())
 
 
-def _this_month_date_str(day=5):
-    """ISO YYYY-MM-DD for a given day in the CURRENT local month - for txn_date,
-    which needs a date string, never an epoch int."""
-    now = now_local()
-    last_day = calendar.monthrange(now.year, now.month)[1]
-    return now.replace(day=min(day, last_day)).strftime("%Y-%m-%d")
-
-
 def _last_month_date_str(day=5):
-    """Same as _this_month_date_str, one calendar month back."""
+    """ISO YYYY-MM-DD for a given day in LAST calendar month - for txn_date."""
     now = now_local()
     year, month = (now.year - 1, 12) if now.month == 1 else (now.year, now.month - 1)
+    last_day = calendar.monthrange(year, month)[1]
+    return now.replace(year=year, month=month, day=min(day, last_day)).strftime("%Y-%m-%d")
+
+
+def _months_ago(n):
+    """(year, month) for `n` whole calendar months before the current local month."""
+    now = now_local()
+    total = (now.year * 12 + (now.month - 1)) - n
+    return total // 12, (total % 12) + 1
+
+
+def _n_months_ago_timestamp(n, day=5, hour=9):
+    """Real epoch for a day/hour `n` whole months back - generalizes
+    _last_month_timestamp so a query about "last month" can have a decoy that
+    sits two months back, clear of the window on any run date."""
+    now = now_local()
+    year, month = _months_ago(n)
+    last_day = calendar.monthrange(year, month)[1]
+    dt = now.replace(year=year, month=month, day=min(day, last_day),
+                     hour=hour, minute=0, second=0, microsecond=0)
+    return int(dt.timestamp())
+
+
+def _n_months_ago_date_str(n, day=5):
+    """ISO date string for a day `n` whole months back (see _n_months_ago_timestamp)."""
+    now = now_local()
+    year, month = _months_ago(n)
     last_day = calendar.monthrange(year, month)[1]
     return now.replace(year=year, month=month, day=min(day, last_day)).strftime("%Y-%m-%d")
 
@@ -99,6 +146,26 @@ def _reply_contains_amount(reply: str, amount: int) -> bool:
     return any(variant in reply for variant in _amount_variants(amount))
 
 
+def _surfaced_the_second_deposit(reply: str) -> bool:
+    """T029's real bar: the model did NOT silently answer from only the
+    exact-spelling match. It counts as surfaced if the reply combines both
+    into the total (150), cites the second deposit's own amount (50), quotes
+    the typo'd spelling itself, or explicitly flags that a second / similar-
+    named / differently-spelled deposit exists (with or without a literal
+    "?"). Only a reply that reports 100 alone, mentioning nothing of the
+    second event, fails."""
+    if _reply_contains_amount(reply, 150) or _reply_contains_amount(reply, 50):
+        return True
+    if "יןסי" in reply:  # the ו/ן-swapped spelling, verbatim
+        return True
+    second_entry_language = (
+        "נוספת", "נוספות", "שנייה", "שני", "שתי", "עוד הפקדה", "הפקדה שנייה",
+        "דומה", "דומה מאוד", "כתיב", "איות", "שגיאת", "וריאציה", "אותו אדם",
+        "אותה לקוחה", "שני שמות", "?",
+    )
+    return any(k in reply for k in second_entry_language)
+
+
 @pytest.mark.billed
 class TestLedgerQueryBilled:
     """Given/When/Then E2E coverage for query_ledger_events across explicit and
@@ -111,7 +178,7 @@ class TestLedgerQueryBilled:
             pytest.skip("config.test.json not found")
         config = AppConfiguration.from_file(str(config_path))
         config.validate()
-        test_data_root = Path(__file__).parent.parent.parent / "test_data"
+        test_data_root = sanity_worker_data_root()  # per-xdist-worker under -n (Feature 075)
         config.data_root = str(test_data_root)
         config.memory['session']['storage_dir'] = str(test_data_root / "sessions")
         config.memory['longterm']['storage_dir'] = str(test_data_root / "memory")
@@ -144,7 +211,7 @@ class TestLedgerQueryBilled:
         # Safety guard (mirrors test_ledger_event_capture_billed.py's precedent):
         # LedgerEventManager.storage_dir MUST resolve under this test's isolated
         # data_root, never real production/dev data.
-        actual_events_dir = Path(denidin.denidin_app.ai_handler.ledger_event_manager.storage_dir).resolve()
+        actual_events_dir = Path(denidin.denidin_app.ledger_event_manager.storage_dir).resolve()
         expected_root = Path(config.data_root).resolve()
         assert actual_events_dir.is_relative_to(expected_root), (
             f"LedgerEventManager.storage_dir={actual_events_dir} is NOT under this "
@@ -179,7 +246,20 @@ class TestLedgerQueryBilled:
 
     @staticmethod
     def _get_response(notification):
-        return notification._test_sent_messages[0] if notification._test_sent_messages else None
+        """The turn's real final answer - Feature 080: LAST sent message, not the first.
+        A slow turn may send one or more interim send_progress_update messages BEFORE
+        the real answer (see _get_progress_updates below) - the first message is no
+        longer reliably the answer. On a fast turn with no interim message, there's
+        exactly one message and last == first, so this stays correct for every
+        pre-existing caller unchanged."""
+        return notification._test_sent_messages[-1] if notification._test_sent_messages else None
+
+    @staticmethod
+    def _get_progress_updates(notification):
+        """Every message BEFORE the final answer - i.e. any interim
+        send_progress_update sends this turn made. Empty list on a fast turn (flag off,
+        or the model judged no interim update was warranted)."""
+        return notification._test_sent_messages[:-1]
 
     def _send_text(self, chat_id, sender, sender_name, text, label):
         from denidin import handle_text_message
@@ -204,7 +284,7 @@ class TestLedgerQueryBilled:
               percent=None, message_id="seed", timestamp=None,
               description="תיאור", reference_hint=None, trigger_condition=None,
               component_label="בסיס"):
-        return denidin_app.ai_handler.ledger_event_manager.add_ledger_event(
+        return denidin_app.ledger_event_manager.add_ledger_event(
             session_id="s", event={
                 "source_type": source_type, "event_subtype": event_subtype,
                 "client_name": client_name, "payer_name": payer_name,
@@ -221,7 +301,7 @@ class TestLedgerQueryBilled:
                 "agreement_label": "תיק" if source_type == "הסכם" else None,
                 "component_label": component_label if source_type == "הסכם" else None,
             },
-            message_id=message_id, message_timestamp=timestamp or _this_month_timestamp(),
+            message_id=message_id, message_timestamp=timestamp or _days_ago_timestamp(17),
         )
 
     def _seed_noise(self, denidin_app, count=5, label="noise"):
@@ -259,7 +339,7 @@ class TestLedgerQueryBilled:
         (300, "חשבון עסקה"), (305, "חשבונית מס"), (320, "חשבונית מס/קבלה"),
         (400, "קבלה"), (330, "חשבונית זיכוי").
         """
-        ts = timestamp or _this_month_timestamp()
+        ts = timestamp or _days_ago_timestamp(17)
         display_number = display_number or f"D{uuid.uuid4().hex[:8]}"
         creation_iso = datetime.fromtimestamp(ts, tz=now_local().tzinfo).isoformat()
         doc = {
@@ -270,13 +350,13 @@ class TestLedgerQueryBilled:
             "client_name": client_name, "description": description,
             "amount": amount, "amount_excl_vat": amount, "vat_amount": 0, "vat_rate": 0,
             "currency": "ILS",
-            "document_date": _this_month_date_str(),
+            "document_date": datetime.fromtimestamp(ts, tz=now_local().tzinfo).strftime("%Y-%m-%d"),
             "due_date": None,
             "creation_date": creation_iso,
             "payment": None,
             "linked_document": linked_document,
         }
-        return denidin_app.ai_handler.ledger_event_manager.add_ledger_event(
+        return denidin_app.ledger_event_manager.add_ledger_event(
             session_id="accounting-reconciliation",
             event={
                 "source_type": "חשבונית", "event_subtype": "הפקה",
@@ -301,11 +381,12 @@ class TestLedgerQueryBilled:
         assert reply is not None
         assert _reply_contains_amount(reply, 45), f"expected 45 in reply: {reply!r}"
 
+    @pytest.mark.sanity
     def test_explicit_date_lookup(self, denidin_app, config):
         phone = config.godfather_phone
         chat_id = self._fresh_chat_id(config, 't008_date')
         self._seed_noise(denidin_app, count=6, label="t008_date_noise")
-        target_ts = _this_month_timestamp(day=17, hour=10)
+        target_ts = _most_recent_past_day_timestamp(17, hour=10)
         self._seed(
             denidin_app, "נועה שדה", amount="42₪",
             message_id="t008_date_target", timestamp=target_ts,
@@ -374,38 +455,72 @@ class TestLedgerQueryBilled:
             f"expected BOTH amounts reflected after confirming both, got: {both!r}"
         )
 
+        # Feature 080 acceptance scenario (user-stories.md, Telemetry assertion):
+        # this multi-turn disambiguation drives at least one real query_ledger_events
+        # round-trip per turn - a RequestTelemetry row for the LAST turn ("both") must
+        # exist, with a plausible non-zero duration and at least one recorded LLM call.
+        telemetry_manager = denidin_app.telemetry_manager
+        if telemetry_manager is not None:  # None whenever the feature flag is off
+            row = telemetry_manager.get_latest_by_chat(chat_id)
+            assert row is not None, f"expected a telemetry row for chat={chat_id!r}"
+            assert row["llm_turns_count"] >= 1
+            assert row["total_duration_ms"] >= 0
+            assert row["input_tokens_count"] > 0
+            assert row["output_tokens_count"] > 0
+
     # ------------------------------------------------------------------
     # T010 - aggregation
     # ------------------------------------------------------------------
 
-    def test_hours_by_client_this_month(self, denidin_app, config):
+    @pytest.mark.sanity
+    def test_hours_by_client_last_month(self, denidin_app, config):
+        # Anchored to LAST month, not "this month": a "this month so far" question
+        # is ambiguous about a seeded date that hasn't occurred yet (run the suite
+        # on the 4th with an entry dated the 10th and the model correctly declines
+        # to fold a future entry into a "so far" total - not a bug, 2026-09-04).
+        # Last month is wholly in the past on every run date, so 3 + 4 = 7 is
+        # unambiguous. Real entries on the 3rd + 14th of last month; the decoy
+        # sits two months back so it's clear of the window no matter the run day.
         phone = config.godfather_phone
         chat_id = self._fresh_chat_id(config, 't010_hours_client')
         self._seed_noise(denidin_app, count=6, label="t010_hours_client_noise")
         self._seed(
             denidin_app, "מיכל רוזן", amount=None, hours="3",
-            txn_date=_this_month_date_str(day=3),
-            message_id="t010_hc_1", timestamp=_this_month_timestamp(day=3),
+            txn_date=_last_month_date_str(day=3),
+            message_id="t010_hc_1", timestamp=_last_month_timestamp(day=3),
         )
         self._seed(
             denidin_app, "מיכל רוזן", amount=None, hours="4",
-            txn_date=_this_month_date_str(day=10),
-            message_id="t010_hc_2", timestamp=_this_month_timestamp(day=10),
+            txn_date=_last_month_date_str(day=14),
+            message_id="t010_hc_2", timestamp=_last_month_timestamp(day=14),
         )
-        # Negative control - same client, LAST month, must not be included.
+        # Negative control - same client, TWO months ago, must not be included.
         self._seed(
             denidin_app, "מיכל רוזן", amount=None, hours="99",
-            txn_date=_last_month_date_str(day=5),
-            message_id="t010_hc_decoy", timestamp=_last_month_timestamp(day=5),
+            txn_date=_n_months_ago_date_str(2, day=10),
+            message_id="t010_hc_decoy", timestamp=_n_months_ago_timestamp(2, day=10),
         )
 
         reply = self._get_response(self._send_text(
             chat_id, phone, "Test Godfather",
-            "כמה שעות אני צריך לחייב את מיכל רוזן החודש?", "t010_hours_client",
+            "כמה שעות אני צריך לחייב את מיכל רוזן בחודש שעבר?", "t010_hours_client",
         ))
         assert reply is not None
         assert "7" in reply, f"expected the correct sum (3+4=7) in reply: {reply!r}"
-        assert "99" not in reply, f"last month's decoy hours leaked into the reply: {reply!r}"
+        assert "99" not in reply, f"the two-months-ago decoy hours leaked into the reply: {reply!r}"
+
+        # Feature 080 acceptance scenario (user-stories.md, Telemetry assertion):
+        # this aggregation query (client resolution -> ledger scan -> computed answer)
+        # must produce a RequestTelemetry row with plausible non-zero timing/token data.
+        telemetry_manager = denidin_app.telemetry_manager
+        if telemetry_manager is not None:  # None whenever the feature flag is off
+            row = telemetry_manager.get_latest_by_chat(chat_id)
+            assert row is not None, f"expected a telemetry row for chat={chat_id!r}"
+            assert row["llm_turns_count"] >= 1
+            assert row["total_duration_ms"] >= 0
+            assert row["llm_total_inference_time_ms"] >= 0
+            assert row["input_tokens_count"] > 0
+            assert row["output_tokens_count"] > 0
 
     def test_hours_by_payer_this_month(self, denidin_app, config):
         phone = config.godfather_phone
@@ -413,13 +528,13 @@ class TestLedgerQueryBilled:
         self._seed_noise(denidin_app, count=6, label="t010_hours_payer_noise")
         self._seed(
             denidin_app, "בני אשכנזי", payer_name="מגדל", amount=None, hours="2",
-            txn_date=_this_month_date_str(day=6),
-            message_id="t010_hp_1", timestamp=_this_month_timestamp(day=6),
+            txn_date=_this_month_so_far_date_str(day=6),
+            message_id="t010_hp_1", timestamp=_this_month_so_far_timestamp(day=6),
         )
         self._seed(
             denidin_app, "בני אשכנזי", payer_name="מגדל", amount=None, hours="5",
-            txn_date=_this_month_date_str(day=12),
-            message_id="t010_hp_2", timestamp=_this_month_timestamp(day=12),
+            txn_date=_this_month_so_far_date_str(day=12),
+            message_id="t010_hp_2", timestamp=_this_month_so_far_timestamp(day=12),
         )
 
         reply = self._get_response(self._send_text(
@@ -435,16 +550,16 @@ class TestLedgerQueryBilled:
         self._seed_noise(denidin_app, count=6, label="t010_income_noise")
         self._seed(
             denidin_app, "דנה פלד", source_type="בנק", event_subtype="הפקדה",
-            amount="40₪", message_id="t010_income_1", timestamp=_this_month_timestamp(day=4),
+            amount="40₪", message_id="t010_income_1", timestamp=_this_month_so_far_timestamp(day=4),
         )
         self._seed(
             denidin_app, "אלון שני", source_type="בנק", event_subtype="הפקדה",
-            amount="22₪", message_id="t010_income_2", timestamp=_this_month_timestamp(day=14),
+            amount="22₪", message_id="t010_income_2", timestamp=_this_month_so_far_timestamp(day=14),
         )
         # Negative control - agreed but NOT paid, same month - must be excluded from "income".
         self._seed(
             denidin_app, "אלעד ברק", amount="80₪",
-            message_id="t010_income_decoy", timestamp=_this_month_timestamp(day=20),
+            message_id="t010_income_decoy", timestamp=_this_month_so_far_timestamp(day=20),
         )
 
         reply = self._get_response(self._send_text(
@@ -462,6 +577,7 @@ class TestLedgerQueryBilled:
     # T011 - four-way multi-criterion, name + date combined
     # ------------------------------------------------------------------
 
+    @pytest.mark.sanity
     def test_four_way_multi_criterion_with_date_range(self, denidin_app, config):
         phone = config.godfather_phone
         chat_id = self._fresh_chat_id(config, 't011_four_way')
@@ -473,7 +589,7 @@ class TestLedgerQueryBilled:
         for name, amount, day in clients:
             self._seed(
                 denidin_app, name, amount=f"{amount}₪",
-                message_id=f"t011_{name}", timestamp=_this_month_timestamp(day=day),
+                message_id=f"t011_{name}", timestamp=_this_month_so_far_timestamp(day=day),
             )
 
         reply = self._get_response(self._send_text(
@@ -505,11 +621,11 @@ class TestLedgerQueryBilled:
         # the user's own example ("except Yossi who I know already paid").
         self._seed(
             denidin_app, "יוסי ברנע", amount="55₪",
-            message_id="t014_yossi", timestamp=_this_month_timestamp(day=8),
+            message_id="t014_yossi", timestamp=_this_month_so_far_timestamp(day=8),
         )
         self._seed(
             denidin_app, "קרן אביטל", amount="33₪",
-            message_id="t014_other", timestamp=_this_month_timestamp(day=15),
+            message_id="t014_other", timestamp=_this_month_so_far_timestamp(day=15),
         )
 
         reply = self._get_response(self._send_text(
@@ -531,6 +647,7 @@ class TestLedgerQueryBilled:
     # research.md's "2026-08-24 Redesign" section for the full trail.
     # ------------------------------------------------------------------
 
+    @pytest.mark.sanity
     def test_or_across_two_identities_single_turn(self, denidin_app, config):
         """T017: explicit OR across two distinct, unambiguous identities named
         up front in ONE request (distinct from T009's ambiguity-then-"both/
@@ -540,11 +657,11 @@ class TestLedgerQueryBilled:
         self._seed_noise(denidin_app, count=6, label="t017_noise")
         self._seed(
             denidin_app, "אלי אבירם", source_type="בנק", event_subtype="הפקדה",
-            amount="100₪", message_id="t017_a", timestamp=_this_month_timestamp(day=6),
+            amount="100₪", message_id="t017_a", timestamp=_days_ago_timestamp(16),
         )
         self._seed(
             denidin_app, "דוד כרמון", source_type="בנק", event_subtype="הפקדה",
-            amount="100₪", message_id="t017_b", timestamp=_this_month_timestamp(day=12),
+            amount="100₪", message_id="t017_b", timestamp=_days_ago_timestamp(10),
         )
 
         reply = self._get_response(self._send_text(
@@ -567,21 +684,21 @@ class TestLedgerQueryBilled:
         self._seed_noise(denidin_app, count=6, label="t018_noise")
         self._seed(
             denidin_app, "קרן שלו", amount=None, percent="60",
-            message_id="t018_keren", timestamp=_this_month_timestamp(day=4),
+            message_id="t018_keren", timestamp=_days_ago_timestamp(18),
         )
         self._seed(
             denidin_app, "אורי ששון", amount=None, percent="70",
-            message_id="t018_ori", timestamp=_this_month_timestamp(day=9),
+            message_id="t018_ori", timestamp=_days_ago_timestamp(13),
         )
         self._seed(
             denidin_app, "מאיה זיו", amount=None, percent="55",
-            message_id="t018_maya", timestamp=_this_month_timestamp(day=15),
+            message_id="t018_maya", timestamp=_days_ago_timestamp(7),
         )
         # Negative control - below the 50% threshold, must be excluded
         # regardless of the "except קרן שלו" clause.
         self._seed(
             denidin_app, "רן אלפסי", amount=None, percent="45",
-            message_id="t018_ran", timestamp=_this_month_timestamp(day=20),
+            message_id="t018_ran", timestamp=_days_ago_timestamp(2),
         )
 
         reply = self._get_response(self._send_text(
@@ -596,6 +713,7 @@ class TestLedgerQueryBilled:
             f"the below-threshold negative control leaked into the reply: {reply!r}"
         )
 
+    @pytest.mark.sanity
     def test_broad_threshold_who_owes_above_amount(self, denidin_app, config):
         """T019: the original "who owes above 100 shekel" example from the
         redesign discussion - broad-category retrieval (no name given at
@@ -608,33 +726,33 @@ class TestLedgerQueryBilled:
         # Above threshold, genuinely still owed (no payment on file):
         self._seed(
             denidin_app, "תמר כרמי", amount="150₪",
-            message_id="t019_tamar", timestamp=_this_month_timestamp(day=3),
+            message_id="t019_tamar", timestamp=_days_ago_timestamp(18),
         )
         self._seed(
             denidin_app, "עומר לביא", amount="220₪",
-            message_id="t019_omer", timestamp=_this_month_timestamp(day=8),
+            message_id="t019_omer", timestamp=_days_ago_timestamp(13),
         )
         # Above threshold but ALREADY PAID (a separate בנק/הפקדה event, same
         # period) - must be excluded from "still owed," not just "agreed
         # above 100."
         self._seed(
             denidin_app, "שני אור", amount="180₪",
-            message_id="t019_shani_agreement", timestamp=_this_month_timestamp(day=5),
+            message_id="t019_shani_agreement", timestamp=_days_ago_timestamp(16),
         )
         self._seed(
             denidin_app, "שני אור", source_type="בנק", event_subtype="הפקדה",
             amount="180₪", message_id="t019_shani_payment",
-            timestamp=_this_month_timestamp(day=11),
+            timestamp=_days_ago_timestamp(10),
         )
         # At-or-below threshold, real negative controls (absence, not just
         # silence, is the point):
         self._seed(
             denidin_app, "בר אילן", amount="90₪",
-            message_id="t019_bar", timestamp=_this_month_timestamp(day=14),
+            message_id="t019_bar", timestamp=_days_ago_timestamp(7),
         )
         self._seed(
             denidin_app, "יובל שדה", amount="100₪",
-            message_id="t019_yuval", timestamp=_this_month_timestamp(day=17),
+            message_id="t019_yuval", timestamp=_days_ago_timestamp(4),
         )
 
         reply = self._get_response(self._send_text(
@@ -670,11 +788,11 @@ class TestLedgerQueryBilled:
         self._seed_noise(denidin_app, count=6, label="t020_noise")
         self._seed(
             denidin_app, "משה כהן", amount="45₪",
-            message_id="t020_agreed", timestamp=_this_month_timestamp(day=4),
+            message_id="t020_agreed", timestamp=_days_ago_timestamp(18),
         )
         self._seed(
             denidin_app, "משה כהן", source_type="בנק", event_subtype="הפקדה",
-            amount="20₪", message_id="t020_paid", timestamp=_this_month_timestamp(day=12),
+            amount="20₪", message_id="t020_paid", timestamp=_days_ago_timestamp(10),
         )
 
         reply = self._get_response(self._send_text(
@@ -710,7 +828,7 @@ class TestLedgerQueryBilled:
         self._seed_accounting_document(
             denidin_app, "לירז אבני", doc_type=300, type_name="חשבון עסקה",
             amount=250, status="unpaid", status_code=0, status_label="פתוח",
-            timestamp=_this_month_timestamp(day=6),
+            timestamp=_days_ago_timestamp(16),
         )
 
         reply = self._get_response(self._send_text(
@@ -732,18 +850,18 @@ class TestLedgerQueryBilled:
         self._seed_accounting_document(
             denidin_app, "בועז נחמיאס", doc_type=305, type_name="חשבונית מס",
             amount=400, status="unpaid", status_code=0, status_label="פתוח",
-            display_number="D022A", timestamp=_this_month_timestamp(day=3),
+            display_number="D022A", timestamp=_days_ago_timestamp(19),
         )
         self._seed_accounting_document(
             denidin_app, "בועז נחמיאס", doc_type=400, type_name="קבלה",
             amount=400, status="paid", status_code=1, status_label="מסמך סגור",
             linked_document={"type_name": "חשבונית מס", "number": "D022A"},
-            timestamp=_this_month_timestamp(day=10),
+            timestamp=_days_ago_timestamp(12),
         )
         self._seed_accounting_document(
             denidin_app, "שירה בכר", doc_type=305, type_name="חשבונית מס",
             amount=150, status="unpaid", status_code=0, status_label="פתוח",
-            timestamp=_this_month_timestamp(day=14),
+            timestamp=_days_ago_timestamp(8),
         )
 
         reply = self._get_response(self._send_text(
@@ -768,26 +886,26 @@ class TestLedgerQueryBilled:
         self._seed_accounting_document(
             denidin_app, "מאיה פלד", doc_type=305, type_name="חשבונית מס",
             amount=300, status="unpaid", status_code=0, status_label="פתוח",
-            display_number="D023A", timestamp=_this_month_timestamp(day=2),
+            display_number="D023A", timestamp=_days_ago_timestamp(20),
         )
         self._seed_accounting_document(
             denidin_app, "מאיה פלד", doc_type=400, type_name="קבלה",
             amount=300, status="paid", status_code=1, status_label="מסמך סגור",
             display_number="D023A_R",
             linked_document={"type_name": "חשבונית מס", "number": "D023A"},
-            timestamp=_this_month_timestamp(day=6),
+            timestamp=_days_ago_timestamp(16),
         )
         self._seed_accounting_document(
             denidin_app, "מאיה פלד", doc_type=330, type_name="חשבונית זיכוי",
             amount=300, status="paid", status_code=1, status_label="מסמך סגור",
             description="ביטול קבלה שהופקה בטעות",
             linked_document={"type_name": "קבלה", "number": "D023A_R"},
-            timestamp=_this_month_timestamp(day=9),
+            timestamp=_days_ago_timestamp(13),
         )
         self._seed_accounting_document(
             denidin_app, "רועי אבן", doc_type=305, type_name="חשבונית מס",
             amount=120, status="unpaid", status_code=0, status_label="פתוח",
-            timestamp=_this_month_timestamp(day=17),
+            timestamp=_days_ago_timestamp(5),
         )
 
         reply = self._get_response(self._send_text(
@@ -810,11 +928,11 @@ class TestLedgerQueryBilled:
         self._seed_noise(denidin_app, count=6, label="t024_noise")
         self._seed(
             denidin_app, "שלומית ברגר", amount="200₪",
-            message_id="t024_original", timestamp=_this_month_timestamp(day=3),
+            message_id="t024_original", timestamp=_days_ago_timestamp(19),
         )
         self._seed(
             denidin_app, "שלומית ברגר", amount="350₪",
-            message_id="t024_updated", timestamp=_this_month_timestamp(day=20),
+            message_id="t024_updated", timestamp=_days_ago_timestamp(2),
             reference_hint="מעדכן את ההסכם הקודם - העלאת שכר טרחה ל-350",
         )
 
@@ -844,22 +962,22 @@ class TestLedgerQueryBilled:
         self._seed_noise(denidin_app, count=6, label="t025_noise")
         self._seed(
             denidin_app, "דנה עמית", amount="500₪",
-            message_id="t025_agreement", timestamp=_this_month_timestamp(day=2),
+            message_id="t025_agreement", timestamp=_days_ago_timestamp(20),
         )
         self._seed(
             denidin_app, "דנה עמית", source_type="בנק", event_subtype="הפקדה",
             amount="200₪", message_id="t025_deposit",
-            timestamp=_this_month_timestamp(day=9),
+            timestamp=_days_ago_timestamp(13),
         )
         self._seed_accounting_document(
             denidin_app, "דנה עמית", doc_type=400, type_name="קבלה",
             amount=200, status="paid", status_code=1, status_label="מסמך סגור",
-            timestamp=_this_month_timestamp(day=9),
+            timestamp=_days_ago_timestamp(13),
         )
         self._seed(
             denidin_app, "דנה עמית", source_type="בנק", event_subtype="הפקדה",
             amount="100₪", message_id="t025_second_deposit",
-            timestamp=_this_month_timestamp(day=21),
+            timestamp=_days_ago_timestamp(1),
         )
 
         reply = self._get_response(self._send_text(
@@ -890,11 +1008,11 @@ class TestLedgerQueryBilled:
         self._seed_noise(denidin_app, count=6, label="t026_noise")
         self._seed(
             denidin_app, "ג'ינג'י בלס", amount="130₪",
-            message_id="t026_gingi", timestamp=_this_month_timestamp(day=5),
+            message_id="t026_gingi", timestamp=_days_ago_timestamp(17),
         )
         self._seed(
             denidin_app, "פאפי טריטי", amount="170₪",
-            message_id="t026_pappy", timestamp=_this_month_timestamp(day=13),
+            message_id="t026_pappy", timestamp=_days_ago_timestamp(9),
         )
 
         reply = self._get_response(self._send_text(
@@ -927,22 +1045,22 @@ class TestLedgerQueryBilled:
         self._seed_noise(denidin_app, count=6, label="t027_noise")
         self._seed(
             denidin_app, "חווה יערי", amount="80₪", component_label="רכיב 1",
-            message_id="t027_comp1", timestamp=_this_month_timestamp(day=2),
+            message_id="t027_comp1", timestamp=_days_ago_timestamp(20),
         )
         self._seed(
             denidin_app, "חווה יערי", amount="100₪", component_label="רכיב 2",
             trigger_condition="ערעור", message_id="t027_comp2",
-            timestamp=_this_month_timestamp(day=2),
+            timestamp=_days_ago_timestamp(20),
         )
         self._seed(
             denidin_app, "חווה יערי", source_type="בנק", event_subtype="הפקדה",
             amount="80₪", message_id="t027_deposit",
-            timestamp=_this_month_timestamp(day=9),
+            timestamp=_days_ago_timestamp(13),
         )
         self._seed_accounting_document(
             denidin_app, "חווה יערי", doc_type=320, type_name="חשבונית מס/קבלה",
             amount=80, status="paid", status_code=1, status_label="מסמך סגור",
-            timestamp=_this_month_timestamp(day=9),
+            timestamp=_days_ago_timestamp(13),
         )
 
         reply = self._get_response(self._send_text(
@@ -984,17 +1102,17 @@ class TestLedgerQueryBilled:
         self._seed_noise(denidin_app, count=6, label="t028_noise")
         self._seed(
             denidin_app, "עוזי לנדאו", amount="100₪",
-            message_id="t028_agreement", timestamp=_this_month_timestamp(day=3),
+            message_id="t028_agreement", timestamp=_days_ago_timestamp(19),
         )
         self._seed(
             denidin_app, "בני לנדאו", source_type="בנק", event_subtype="הפקדה",
             amount="100₪", description="מקושר ללקוח עוזי לנדאו",
-            message_id="t028_deposit", timestamp=_this_month_timestamp(day=10),
+            message_id="t028_deposit", timestamp=_days_ago_timestamp(12),
         )
         self._seed_accounting_document(
             denidin_app, "עוזי לנדאו", doc_type=320, type_name="חשבונית מס/קבלה",
             amount=100, status="paid", status_code=1, status_label="מסמך סגור",
-            timestamp=_this_month_timestamp(day=10),
+            timestamp=_days_ago_timestamp(12),
         )
 
         reply = self._get_response(self._send_text(
@@ -1015,38 +1133,39 @@ class TestLedgerQueryBilled:
             f"receipt alone, regardless of the differently-named deposit: {reply!r}"
         )
 
+    @pytest.mark.sanity
     def test_typo_variant_name_resolved_or_clarified_never_silently_dropped(
         self, denidin_app, config
     ):
         """T029: two bank deposits for the same real person, one with a
         single-character typo in the client_name (יוסי אביאל vs יןסי אביאל -
-        ו/ן swapped). Two acceptable outcomes: the model resolves the typo'd
-        entry as obviously the same person and sums both (150), or it asks a
-        clarifying question naming the discrepancy - either is fine. What's
-        NOT acceptable is silently answering from only one of the two events
-        (100 alone) with no acknowledgement the second exists."""
+        ו/ן swapped). The model passes as long as it does NOT silently answer
+        from only the exact-spelling match: summing both to 150, citing the
+        second deposit's amount (50), quoting the typo'd spelling, or flagging
+        that a second / similar-named entry exists all count. The ONLY failure
+        is reporting 100 alone with no acknowledgement the second exists (see
+        _surfaced_the_second_deposit)."""
         phone = config.godfather_phone
         chat_id = self._fresh_chat_id(config, 't029_typo')
         self._seed_noise(denidin_app, count=6, label="t029_noise")
         self._seed(
             denidin_app, "יוסי אביאל", source_type="בנק", event_subtype="הפקדה",
             amount="100₪", message_id="t029_correct",
-            timestamp=_this_month_timestamp(day=4),
+            timestamp=_days_ago_timestamp(18),
         )
         self._seed(
             denidin_app, "יןסי אביאל", source_type="בנק", event_subtype="הפקדה",
             amount="50₪", message_id="t029_typo",
-            timestamp=_this_month_timestamp(day=11),
+            timestamp=_days_ago_timestamp(11),
         )
 
         reply = self._get_response(self._send_text(
             chat_id, phone, "Test Godfather", "כמה שילם יוסי אביאל", "t029_typo",
         ))
         assert reply is not None
-        resolved_full_sum = _reply_contains_amount(reply, 150)
-        asked_clarifying_question = "?" in reply
-        assert resolved_full_sum or asked_clarifying_question, (
-            f"expected either a resolved total of 150 (typo recognized as the "
-            f"same person) or a clarifying question about the second, "
-            f"differently-spelled entry - got neither: {reply!r}"
+        assert _surfaced_the_second_deposit(reply), (
+            f"the model silently answered from only the exact-spelling match "
+            f"(100) with no acknowledgement the second, differently-spelled "
+            f"deposit exists - it must either sum both to 150, cite the second "
+            f"entry, or flag the discrepancy: {reply!r}"
         )

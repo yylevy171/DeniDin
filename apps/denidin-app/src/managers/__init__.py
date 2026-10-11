@@ -1,7 +1,7 @@
 """
-Manager modules for business logic orchestration.
+Manager modules for business logic coordination.
 
-This package contains manager classes that orchestrate complex workflows
+This package contains manager classes that drive complex workflows
 and business logic, separate from handlers (external APIs), models (data),
 and utilities (pure functions).
 """

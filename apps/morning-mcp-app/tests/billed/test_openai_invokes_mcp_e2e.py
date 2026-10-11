@@ -164,6 +164,7 @@ def mcp_endpoint(config):
 
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_openai_invokes_create_invoice_via_remote_mcp(config, mcp_endpoint):
     """A real OpenAI Responses API call, given a natural-language prompt and
     this server registered as a remote MCP tool (over a real public ngrok

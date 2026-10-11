@@ -32,6 +32,7 @@ from openai import RateLimitError, APITimeoutError, APIError
 from src.handlers.ai_handler import AIHandler
 from src.models.config import AppConfiguration
 from src.models.message import WhatsAppMessage
+from tests.ai_handler_test_support import make_ai_handler
 
 
 @pytest.fixture
@@ -65,7 +66,7 @@ def mock_ai_client():
 @pytest.fixture
 def ai_handler(mock_config, mock_ai_client):
     """Create AIHandler instance with mocked dependencies"""
-    return AIHandler(mock_ai_client, mock_config)
+    return make_ai_handler(mock_ai_client, mock_config)
 
 
 @pytest.fixture
@@ -105,7 +106,7 @@ class TestAIHandlerCallsOpenAIExactlyOnce:
         )
 
         request = ai_handler.create_request(sample_whatsapp_message)
-        response = ai_handler.get_response(request)
+        response = ai_handler.single_turn(request)
 
         assert mock_ai_client.responses.create.call_count == 1
         assert response.response_text == "Success response"
@@ -126,7 +127,7 @@ class TestAIHandlerCallsOpenAIExactlyOnce:
         mock_ai_client.responses.create.side_effect = exception_factory()
 
         request = ai_handler.create_request(sample_whatsapp_message)
-        ai_handler.get_response(request)
+        ai_handler.single_turn(request)
 
         assert mock_ai_client.responses.create.call_count == 1
 
@@ -145,7 +146,7 @@ class TestAIHandlerFallbackOnFailure:
         )
 
         request = ai_handler.create_request(sample_whatsapp_message)
-        response = ai_handler.get_response(request)
+        response = ai_handler.single_turn(request)
 
         assert "capacity" in response.response_text.lower()
 
@@ -155,7 +156,7 @@ class TestAIHandlerFallbackOnFailure:
         mock_ai_client.responses.create.side_effect = APITimeoutError(request=Mock())
 
         request = ai_handler.create_request(sample_whatsapp_message)
-        response = ai_handler.get_response(request)
+        response = ai_handler.single_turn(request)
 
         assert "trouble connecting" in response.response_text.lower()
 
@@ -165,7 +166,7 @@ class TestAIHandlerFallbackOnFailure:
         mock_ai_client.responses.create.side_effect = APIError("API Error", request=Mock(), body={})
 
         request = ai_handler.create_request(sample_whatsapp_message)
-        response = ai_handler.get_response(request)
+        response = ai_handler.single_turn(request)
 
         assert "encountered an error" in response.response_text.lower()
 
@@ -175,6 +176,6 @@ class TestAIHandlerFallbackOnFailure:
         mock_ai_client.responses.create.side_effect = RuntimeError("something else entirely")
 
         request = ai_handler.create_request(sample_whatsapp_message)
-        response = ai_handler.get_response(request)
+        response = ai_handler.single_turn(request)
 
         assert "unexpected error" in response.response_text.lower()

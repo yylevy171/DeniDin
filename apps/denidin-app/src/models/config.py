@@ -4,7 +4,7 @@ Supports loading from JSON/YAML files and validation.
 """
 import json
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from typing import Any, Optional, Dict
 
 
@@ -53,6 +53,11 @@ class AppConfiguration:
     feature_flags: Dict[str, bool] = field(default_factory=dict)
     memory: Dict = field(default_factory=dict)
     constitution_config: Dict = field(default_factory=dict)
+    # Feature 063 (Dynamic Capability Backbone) - parallel to constitution_config, only ever
+    # read by the new src/backbone when feature_flags['enable_capability_backbone']
+    # is true. AIHandler never reads this; a config that never sets the flag needs no
+    # backbone_config block at all (data-model.md's Config additions).
+    backbone_config: Dict = field(default_factory=dict)
     user_roles: Dict = field(default_factory=dict)
 
     # Morning MCP integration (Feature 018)
@@ -68,6 +73,49 @@ class AppConfiguration:
     # record-shape side of this feature is gated by CURRENT_SCHEMA_VERSION instead)
     # - this field only controls whether the background poller runs.
     accounting_ledger_update_freq: int = 0
+
+    # Backbone capability idle reset (Feature 063, 2026-09-24): minutes of chat
+    # inactivity (no message sent or received - Session.last_active) after
+    # which a background sweep clears that chat's loaded capabilities
+    # (Session.active_capabilities), returning it to the plain backbone. 0 =
+    # inactive (no scheduler started). Top-level like
+    # accounting_ledger_update_freq; deliberately NOT a feature flag.
+    capabilities_reset_minutes: int = 0
+
+    # Feature 069: how many hours of chat history the post-turn ledger-recognition
+    # call sees as its context window (float; DI only, never an env var). Older
+    # messages are excluded from the recognition input. Default 1.0.
+    ledger_recognition_context_window_hours: float = 1.0
+
+    # Feature 098: a tax invoice (305) or tax invoice/receipt (320) whose amount
+    # before VAT EXCEEDS this needs an allocation number (מספר הקצאה), so the
+    # client must have an ID. Used ONLY to fill the runtime constitution's
+    # {{ALLOCATION_THRESHOLD_NIS}} placeholder. morning-mcp-app enforces the rule
+    # from its OWN copy of this value (its config's allocation_threshold_nis) -
+    # DeniDin never calls or imports it. Change both together.
+    allocation_threshold_nis: float = 5000
+
+    # Health monitoring (bugfix-043) - localhost-only /health HTTP endpoint for
+    # the prod-only external health-check prober. 0 = disabled (no server
+    # started at all) - matches accounting_ledger_update_freq's "0 = inactive"
+    # convention above, so an environment that hasn't set this key yet never
+    # accidentally starts a new listener.
+    health_check_port: int = 0
+
+    # Log retention (Feature 070, US5). Top-level (not under `memory`) - this is an
+    # operational concern, not part of the memory model. `rotation_when` feeds
+    # logging.handlers.TimedRotatingFileHandler(when=...); `backup_count` 0 = keep
+    # every rotated (gzipped) segment forever. No env vars.
+    logging: Dict = field(default_factory=dict)
+
+    # Fee agreement document generation (Feature 083) - RBAC-gated
+    # (GODFATHER/ADMIN), same as reminders/Morning MCP tools; no separate
+    # feature flag (2026-09-15, explicit human instruction - see
+    # fee_agreement_tools.py's build_tools docstring). Shape:
+    # {"templates_dir": "config/fee_agreement_templates", "tmp_dir": "tmp/fee_agreements"}
+    # - tmp_dir is relative to data_root, matching every other per-environment
+    # runtime-state path in this app (never an OS temp dir - see research.md #3).
+    fee_agreements: Dict = field(default_factory=dict)
 
     @classmethod
     def from_file(cls, file_path: str) -> 'AppConfiguration':
@@ -122,10 +170,15 @@ class AppConfiguration:
             'feature_flags': {},
             'memory': {},
             'constitution_config': {},
+            'backbone_config': {},
             'user_roles': {},
             'mcp': {},
             'reminders': {},
-            'accounting_ledger_update_freq': 0
+            'accounting_ledger_update_freq': 0,
+            'capabilities_reset_minutes': 0,
+            'ledger_recognition_context_window_hours': 1.0,
+            'allocation_threshold_nis': 5000,
+            'logging': {}
         }
 
         # Merge with defaults
@@ -136,18 +189,33 @@ class AppConfiguration:
         # Set memory sub-field defaults if memory key exists
         if 'memory' in config_data and config_data['memory']:
             data_root = config_data.get('data_root', 'data')
-            memory_defaults = {
+            memory_defaults: Dict[str, Dict[str, Any]] = {
                 'session': {
                     'storage_dir': 'sessions',  # Relative to data_root
                     'max_tokens_by_role': {'client': 4000, 'godfather': 100000},
-                    'session_timeout_hours': 24
+                    # Feature 070: rolling verbatim window length in Israel-local
+                    # calendar days (REQ-MEM-008). There is no idle-expiry
+                    # timeout any more - the old `session_timeout_hours` key is
+                    # retired and removed from every config file.
+                    'window_days': 14
                 },
                 'longterm': {
                     'enabled': True,
                     'storage_dir': 'memory',  # Relative to data_root
                     'collection_name': 'godfather_memory',
                     'top_k_results': 5,
-                    'min_similarity': 0.7
+                    'min_similarity': 0.7,
+                    # Feature 070: top_k for the single per-turn conversational
+                    # recall call, which now also surfaces daily summaries
+                    # (REQ-MEM-047, contracts/ai-handler-recall.md). The
+                    # MemoryManager.recall parameter default stays 5.
+                    'daily_summary_top_k': 10
+                },
+                # Feature 070: nightly daily-summary roll (US2).
+                'roll': {
+                    'hour': 2,                     # CronTrigger(hour=...), Israel local
+                    'catchup_lookback_days': 21,   # startup catch-up sweep bound (REQ-MEM-028)
+                    'stale_claim_minutes': 120     # a 'claimed' roll marker older than this is re-takeable
                 }
             }
 
@@ -160,20 +228,26 @@ class AppConfiguration:
                         if key not in config_data['memory'][section]:
                             config_data['memory'][section][key] = value
 
+            # Feature 070: top-level memory key (not a section) - archived-message
+            # retention. 0 = retain forever by design; no pruner is built
+            # (REQ-MEM-034).
+            if 'archive_retention_days' not in config_data['memory']:
+                config_data['memory']['archive_retention_days'] = 0
+
             # Combine data_root with storage_dir for each section
             for section in ['session', 'longterm']:
                 if section in config_data['memory'] and 'storage_dir' in config_data['memory'][section]:
                     storage_dir = config_data['memory'][section]['storage_dir']
-                    
+
                     # Skip absolute paths (start with / or drive letter on Windows)
                     if storage_dir.startswith('/') or (len(storage_dir) > 1 and storage_dir[1] == ':'):
                         continue
-                    
+
                     # Backward compatibility: strip data_root prefix if present
                     # Old configs have "data/sessions", new configs have "sessions"
                     if storage_dir.startswith(f'{data_root}/'):
                         storage_dir = storage_dir[len(data_root)+1:]  # Strip "data/" prefix
-                    
+
                     # Combine data_root with relative storage_dir
                     config_data['memory'][section]['storage_dir'] = f'{data_root}/{storage_dir}'
 
@@ -198,8 +272,19 @@ class AppConfiguration:
                 if key not in config_data['reminders']:
                     config_data['reminders'][key] = value
 
+        # Set logging sub-field defaults (Feature 070, US5). Always applied - a
+        # bare/missing `logging` block still gets the safe retention defaults.
+        logging_defaults = {
+            'rotation_when': 'midnight',  # TimedRotatingFileHandler(when=...)
+            'backup_count': 0             # 0 = keep every rotated segment
+        }
+        config_data.setdefault('logging', {})
+        for key, value in logging_defaults.items():
+            if key not in config_data['logging']:
+                config_data['logging'][key] = value
+
         # Filter out unknown keys (backward compatibility for removed config fields)
-        valid_fields = {f.name for f in cls.__dataclass_fields__.values()}
+        valid_fields = {f.name for f in fields(cls)}
         filtered_config = {k: v for k, v in config_data.items() if k in valid_fields}
 
         return cls(**filtered_config)
@@ -239,6 +324,23 @@ class AppConfiguration:
             if not isinstance(max_age, (int, float)) or max_age < 0:
                 raise ValueError(f"mcp.url_max_age_seconds must be a non-negative number, got {max_age!r}")
 
+        # Validate ledger_recognition_context_window_hours is a positive number (Feature 069)
+        if (not isinstance(self.ledger_recognition_context_window_hours, (int, float))
+                or isinstance(self.ledger_recognition_context_window_hours, bool)
+                or self.ledger_recognition_context_window_hours <= 0):
+            raise ValueError(
+                "ledger_recognition_context_window_hours must be a positive number, "
+                f"got {self.ledger_recognition_context_window_hours!r}"
+            )
+
+        # Validate allocation_threshold_nis is a positive number (Feature 098)
+        if (not isinstance(self.allocation_threshold_nis, (int, float))
+                or isinstance(self.allocation_threshold_nis, bool)
+                or self.allocation_threshold_nis <= 0):
+            raise ValueError(
+                f"allocation_threshold_nis must be a positive number, got {self.allocation_threshold_nis!r}"
+            )
+
         # Validate reminders.max_active_reminders is a positive integer, if configured
         if self.reminders:
             max_active = self.reminders.get('max_active_reminders', 20)
@@ -246,3 +348,43 @@ class AppConfiguration:
                 raise ValueError(
                     f"reminders.max_active_reminders must be a positive integer, got {max_active!r}"
                 )
+
+        # Validate Feature 070 memory tunables, if a memory block is configured
+        if self.memory:
+            session_cfg = self.memory.get('session', {})
+            window_days = session_cfg.get('window_days', 14)
+            if not isinstance(window_days, int) or isinstance(window_days, bool) or window_days < 1:
+                raise ValueError(f"memory.session.window_days must be a positive integer, got {window_days!r}")
+
+            longterm_cfg = self.memory.get('longterm', {})
+            ds_top_k = longterm_cfg.get('daily_summary_top_k', 10)
+            if not isinstance(ds_top_k, int) or isinstance(ds_top_k, bool) or ds_top_k < 1:
+                raise ValueError(
+                    f"memory.longterm.daily_summary_top_k must be a positive integer, got {ds_top_k!r}"
+                )
+
+            retention = self.memory.get('archive_retention_days', 0)
+            if not isinstance(retention, int) or isinstance(retention, bool) or retention < 0:
+                raise ValueError(
+                    f"memory.archive_retention_days must be a non-negative integer, got {retention!r}"
+                )
+
+            roll_cfg = self.memory.get('roll', {})
+            for key, minimum in (('hour', 0), ('catchup_lookback_days', 1), ('stale_claim_minutes', 1)):
+                val = roll_cfg.get(key, {'hour': 2, 'catchup_lookback_days': 21, 'stale_claim_minutes': 120}[key])
+                if not isinstance(val, int) or isinstance(val, bool) or val < minimum:
+                    raise ValueError(f"memory.roll.{key} must be an integer >= {minimum}, got {val!r}")
+            if roll_cfg.get('hour', 2) > 23:
+                raise ValueError(f"memory.roll.hour must be 0-23, got {roll_cfg.get('hour')!r}")
+
+        # Validate logging tunables (Feature 070, US5)
+        if self.logging:
+            rotation_when = self.logging.get('rotation_when', 'midnight')
+            valid_when = {'midnight', 'S', 'M', 'H', 'D', 'W0', 'W1', 'W2', 'W3', 'W4', 'W5', 'W6'}
+            if rotation_when not in valid_when:
+                raise ValueError(
+                    f"logging.rotation_when must be one of {sorted(valid_when)}, got {rotation_when!r}"
+                )
+            backup_count = self.logging.get('backup_count', 0)
+            if not isinstance(backup_count, int) or isinstance(backup_count, bool) or backup_count < 0:
+                raise ValueError(f"logging.backup_count must be a non-negative integer, got {backup_count!r}")

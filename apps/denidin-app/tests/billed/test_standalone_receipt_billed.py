@@ -20,6 +20,7 @@ CLAUDE.md/CONSTITUTION §VII).
 """
 from __future__ import annotations
 
+import json
 import logging
 
 import pytest
@@ -29,7 +30,7 @@ from .denidin_mcp_e2e_helpers import (
     _calls_for,
     _random_amount,
     _random_description,
-    _seed_fresh_client,
+    pick_existing_client,
     _send_turn,
     _send_turn_and_approve_receipt,
 )
@@ -38,6 +39,7 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_godfather_records_a_deposit_as_a_standalone_receipt(denidin_app):
     """Feature 056 (T009): a godfather tells DeniDin about a refundable
     deposit just received from a known, existing client - money that isn't
@@ -50,7 +52,7 @@ def test_godfather_records_a_deposit_as_a_standalone_receipt(denidin_app):
     structured reason code - the specific wording here, "פיקדון", is just
     one plausible example, not a distinct code path).
     """
-    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="E2E_056_STANDALONE")
+    client_name = pick_existing_client()["name"]  # Feature 059 item 5: any existing client works
     amount = _random_amount()
     description = _random_description()
 
@@ -58,7 +60,7 @@ def test_godfather_records_a_deposit_as_a_standalone_receipt(denidin_app):
         _send_turn_and_approve_receipt(
             chat_id=GODFATHER_CHAT_ID,
             text=(
-                f"קיבלתי פיקדון של {amount} שקל מ{client_name}, זה לא הכנסה, "
+                f"קיבלתי פיקדון של {amount} שקל מ-{client_name}, זה לא הכנסה, "
                 f"תוציא לי קבלה על זה. התשלום התקבל היום."
             ),
             id_prefix="E2E_056_STANDALONE",
@@ -76,28 +78,70 @@ def test_godfather_records_a_deposit_as_a_standalone_receipt(denidin_app):
         f"request: {approve_ai_response.mcp_calls if approve_ai_response else None!r}. "
         f"Final reply: {approve_response!r}"
     )
-    assert "original_internal_morning_id" not in (receipt_calls[0]["arguments"] or ""), (
-        f"Expected the STANDALONE branch (no original_internal_morning_id) to fire, "
+    # The standalone branch fires on original_internal_morning_id being None -
+    # the model may express that either by omitting the key or by passing it
+    # explicitly as null; both deserialize to None and hit the same server
+    # branch. Assert on the VALUE, not the key's textual presence in the JSON
+    # (a real UUID here would mean the model wrongly linked an invoice).
+    receipt_args = json.loads(receipt_calls[0]["arguments"] or "{}")
+    assert receipt_args.get("original_internal_morning_id") is None, (
+        f"Expected the STANDALONE branch (original_internal_morning_id None/absent) to fire, "
         f"got arguments: {receipt_calls[0]['arguments']!r}"
     )
 
-    # Verified via Morning: a real follow-up get_invoice_details/list_invoices
-    # call independently confirms a receipt exists for this client, and that
-    # no invoice/tax document was ever created alongside it.
+    # "no tax document created/attached" is proven by the create_receipt result
+    # itself: the standalone branch produces a plain receipt (type 400, "קבלה"),
+    # whereas every linked/combo variant is a "חשבונית מס / קבלה" document.
+    # Scanning the client's whole document history for "חשבונית מס" instead is
+    # unreliable - an existing client (pick_existing_client is random) routinely
+    # already owns unrelated tax invoices from prior sandbox runs.
+    receipt_output = receipt_calls[0]["output"] or ""
+    receipt_doc = json.loads(receipt_output) if receipt_output else {}
+    assert receipt_doc.get("type") == 400 and "חשבונית מס" not in (receipt_doc.get("type_name") or ""), (
+        f"Standalone create_receipt should be a plain receipt (type 400, קבלה), not a "
+        f"tax-linked/combo document, got: {receipt_output!r}"
+    )
+
+    # And a real follow-up turn independently confirms THIS receipt persisted
+    # for the client (by the number Morning assigned it).
+    receipt_number = receipt_doc.get("display_number")
+    assert receipt_number, f"Could not read the receipt number from: {receipt_output!r}"
+    receipt_number = str(receipt_number)
+
     details_response, details_ai_response = _send_turn(
         chat_id=GODFATHER_CHAT_ID,
-        text=f"מה כל המסמכים שיש לי אצל {client_name}?",
+        text=(
+            "תביא את הפרטים של הקבלה האחרונה מתוך מערכת החשבוניות ישירות. "
+            "אני רוצה לוודא שלא נפלה טעות."
+        ),
         id_prefix="E2E_056_STANDALONE_VERIFY",
     )
+    # "מתוך מערכת החשבוניות ישירות" forces a live Morning read
+    # (list_invoices / get_invoice_details), not an answer from the local
+    # ledger-event cache (query_ledger_events).
     details_calls = _calls_for(details_ai_response, "list_invoices") + _calls_for(
         details_ai_response, "get_invoice_details"
     )
-    combined_output = "\n".join(c["output"] or "" for c in details_calls)
-
-    assert "קבלה" in combined_output, (
-        f"Expected a receipt ('קבלה') to show up for {client_name!r}, "
-        f"got tool output: {combined_output!r}"
+    assert details_calls, (
+        f"follow-up turn did not query Morning directly - no list_invoices/"
+        f"get_invoice_details call: "
+        f"{details_ai_response.mcp_calls if details_ai_response else None!r}"
     )
-    assert "חשבונית מס" not in combined_output, (
-        f"A standalone receipt must never come with a tax invoice attached: {combined_output!r}"
+    combined_output = "\n".join(c["output"] or "" for c in details_calls)
+    payloads = [json.loads(c["output"]) for c in details_calls if c["output"]]
+    # list_invoices returns a {"total_matched", "shown", "documents": [...]} wrapper;
+    # get_invoice_details returns a bare document. Flatten both shapes.
+    docs = [p for p in payloads if "documents" not in p] + [
+        d for p in payloads for d in p.get("documents", [])
+    ]
+
+    # A real follow-up turn must re-query Morning and surface THIS receipt by
+    # the number Morning assigned it - independent confirmation that the
+    # standalone receipt actually persisted server-side.
+    assert any(
+        str(d.get("display_number")) == receipt_number and d.get("type") == 400
+        for d in docs
+    ), (
+        f"the receipt fetched live from Morning is not the standalone receipt "
+        f"#{receipt_number} (type 400) just created: {combined_output!r}"
     )

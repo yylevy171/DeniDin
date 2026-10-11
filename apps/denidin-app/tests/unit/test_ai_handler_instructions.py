@@ -31,6 +31,7 @@ from unittest.mock import MagicMock
 from src.handlers.ai_handler import AIHandler
 from src.models.config import AppConfiguration
 from src.utils.time_utils import now_local, local_from_timestamp
+from tests.ai_handler_test_support import make_ai_handler
 
 
 def _make_handler(tmp_path):
@@ -45,7 +46,7 @@ def _make_handler(tmp_path):
         constitution_config={"file": "runtime_constitution.md", "base_dir": str(tmp_path)},
     )
     (tmp_path / "runtime_constitution.md").write_text("# Constitution\nBe helpful.", encoding="utf-8")
-    return AIHandler(MagicMock(), config)
+    return make_ai_handler(MagicMock(), config)
 
 
 class TestBuildInstructionsReferenceTimestamp:

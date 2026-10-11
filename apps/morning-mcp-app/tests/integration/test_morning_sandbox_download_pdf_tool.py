@@ -36,7 +36,7 @@ def seeded_internal_morning_id(morning_client):
 
     unique_marker = f"DENIDIN_PDF_TEST_{int(datetime.now(timezone.utc).timestamp())}"
     client_id, _ = seed_real_client(morning_client, unique_marker)
-    payload = _build_create_invoice_payload(client_id=client_id, amount=15.0, description=unique_marker)
+    payload = _build_create_invoice_payload(client_id=client_id, amount=15.0, description=unique_marker, vat_included=True)
     created = morning_client.create_invoice(payload)
     internal_morning_id = str(created.get("id") or created.get("documentId") or "")
     assert internal_morning_id

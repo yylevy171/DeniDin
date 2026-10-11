@@ -21,6 +21,8 @@ from src.handlers.extractors.image_extractor import ImageExtractor
 from src.handlers.extractors.pdf_extractor import PDFExtractor
 from src.handlers.media_handler import MediaHandler
 from src.models.media import Media
+from tests.ai_handler_test_support import make_ai_handler
+from tests.extractor_test_support import make_extractor_ai_manager
 
 
 class TestCaptureLedgerEventsFromTextThreadsReferenceTimestamp:
@@ -41,7 +43,7 @@ class TestCaptureLedgerEventsFromTextThreadsReferenceTimestamp:
         mock_response.output = []
         mock_response.id = "resp_1"
         client.responses.create.return_value = mock_response
-        handler = AIHandler(client, config)
+        handler = make_ai_handler(client, config)
 
         handler.capture_ledger_events_from_text("some extracted text", today_timestamp=1706600034)
 
@@ -66,7 +68,7 @@ class TestCaptureLedgerEventsFromTextThreadsReferenceTimestamp:
         mock_response.output = []
         mock_response.id = "resp_1"
         client.responses.create.return_value = mock_response
-        handler = AIHandler(client, config)
+        handler = make_ai_handler(client, config)
 
         result = handler.capture_ledger_events_from_text("some extracted text")
 
@@ -77,9 +79,9 @@ class TestImageExtractorThreadsReferenceTimestamp:
     @pytest.fixture
     def mock_denidin(self):
         denidin = Mock()
-        denidin.ai_handler = Mock()
-        denidin.ai_handler._load_constitution.return_value = ""
-        denidin.ai_handler.capture_ledger_events_from_text.return_value = []
+        denidin.ai_manager = make_extractor_ai_manager()
+        denidin.ai_manager.extraction_prompt_prefix.return_value = ""
+        denidin.ai_manager.capture_ledger_events_from_text.return_value = []
         denidin.config = Mock()
         denidin.config.ai_vision_model = "gpt-4o"
         denidin.config.ai_reply_max_tokens = 1000
@@ -93,12 +95,12 @@ class TestImageExtractorThreadsReferenceTimestamp:
         mock_response = Mock()
         mock_response.output_text = "TEXT:\nsome text\nCONFIDENCE: high\nNOTES: none"
         mock_response.output = []
-        mock_denidin.ai_handler.client.responses.create.return_value = mock_response
+        mock_denidin.ai_manager.client.responses.create.return_value = mock_response
         extractor = ImageExtractor(mock_denidin)
 
         extractor.analyze_media(test_media, today_timestamp=1706600034)
 
-        mock_denidin.ai_handler.capture_ledger_events_from_text.assert_called_once_with(
+        mock_denidin.ai_manager.capture_ledger_events_from_text.assert_called_once_with(
             mock_response.output_text, today_timestamp=1706600034
         )
 
@@ -106,12 +108,12 @@ class TestImageExtractorThreadsReferenceTimestamp:
         mock_response = Mock()
         mock_response.output_text = "TEXT:\nsome text\nCONFIDENCE: high\nNOTES: none"
         mock_response.output = []
-        mock_denidin.ai_handler.client.responses.create.return_value = mock_response
+        mock_denidin.ai_manager.client.responses.create.return_value = mock_response
         extractor = ImageExtractor(mock_denidin)
 
         extractor.analyze_media(test_media)
 
-        mock_denidin.ai_handler.capture_ledger_events_from_text.assert_called_once_with(
+        mock_denidin.ai_manager.capture_ledger_events_from_text.assert_called_once_with(
             mock_response.output_text, today_timestamp=None
         )
 
@@ -120,9 +122,9 @@ class TestPDFExtractorThreadsReferenceTimestamp:
     @pytest.fixture
     def mock_denidin(self):
         denidin = Mock()
-        denidin.ai_handler = Mock()
-        denidin.ai_handler._load_constitution.return_value = ""
-        denidin.ai_handler.capture_ledger_events_from_text.return_value = []
+        denidin.ai_manager = make_extractor_ai_manager()
+        denidin.ai_manager.extraction_prompt_prefix.return_value = ""
+        denidin.ai_manager.capture_ledger_events_from_text.return_value = []
         denidin.config = Mock()
         denidin.config.ai_vision_model = "gpt-4o"
         denidin.config.ai_model = "gpt-4o-mini"

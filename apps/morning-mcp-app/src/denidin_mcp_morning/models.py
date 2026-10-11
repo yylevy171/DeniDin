@@ -118,7 +118,12 @@ class Payment(BaseModel):
     # Optional (was required): the raw payment object has no invoice_id at all -
     # it is nested inside its document, so the parent is implicit.
     invoice_id: Optional[str] = None
-    amount: float = Field(ge=0)
+    # No lower bound (was Field(ge=0) until bugfix, 2026-09-01): a real prod
+    # document hit this during Feature 062's backfill - a type-400 receipt
+    # cancellation ("ביטול חשבונית מס / קבלה ...") carries a genuinely negative
+    # payment amount (Morning's own reversal convention), not corrupted data.
+    # Confirmed against 15 real prod documents of this shape.
+    amount: float
     currency: str = "ILS"
     payment_date: Optional[date] = None
     method: Optional[str] = None          # raw `name`, e.g. "העברה בנקאית" / "מזומן"
@@ -164,7 +169,9 @@ class LinkedDocument(BaseModel):
     type: Optional[int] = None
     number: Optional[str] = None
     document_date: Optional[date] = None
-    amount: float = Field(ge=0)
+    # No lower bound - same reasoning/date as Payment.amount above: a linked
+    # document can itself be a negative-amount cancellation/reversal.
+    amount: float
     currency: str = "ILS"
 
     @field_validator("number", mode="before")
@@ -192,7 +199,12 @@ class Invoice(BaseModel):
     client_phone: Optional[str] = None
     client_email: Optional[str] = None
     currency: str = "ILS"
-    amount: float = Field(ge=0)
+    # No lower bound (was Field(ge=0) until bugfix, 2026-09-01) - a real type-400
+    # receipt cancellation document ("ביטול חשבונית מס / קבלה ...") carries a
+    # genuinely negative amount by Morning's own convention, not corrupted data.
+    # Confirmed live against 15 real prod documents of this shape during Feature
+    # 062's ledger backfill (see test_invoice_model_accepts_negative_amount).
+    amount: float
     total_amount: Optional[float] = None
     vat_amount: Optional[float] = None
     # Feature 025 Phase 9: exposed so denidin-app can DERIVE vat_status in code

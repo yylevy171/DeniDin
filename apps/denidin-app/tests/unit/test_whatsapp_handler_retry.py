@@ -6,13 +6,14 @@ import pytest
 from unittest.mock import Mock, MagicMock, patch
 import requests
 from src.handlers.whatsapp_handler import WhatsAppHandler
+from tests.denidin_test_support import make_denidin
 from src.models.message import AIResponse
 
 
 @pytest.fixture
 def whatsapp_handler():
     """Create WhatsAppHandler instance"""
-    return WhatsAppHandler()
+    return WhatsAppHandler(make_denidin())
 
 
 @pytest.fixture

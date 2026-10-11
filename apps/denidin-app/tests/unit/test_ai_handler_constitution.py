@@ -20,6 +20,7 @@ from openai import OpenAI
 from src.handlers.ai_handler import AIHandler
 from src.models.config import AppConfiguration
 from src.models.message import WhatsAppMessage
+from tests.ai_handler_test_support import make_ai_handler
 
 
 @pytest.fixture
@@ -84,7 +85,7 @@ class TestConstitutionMtimeBasedCaching:
         constitution_config.constitution_config["base_dir"] = str(tmp_path)
 
         client = MagicMock()
-        handler = AIHandler(client, constitution_config)
+        handler = make_ai_handler(client, constitution_config)
 
         # Verify cache is empty initially
         assert handler._constitution_content is None
@@ -116,7 +117,7 @@ class TestConstitutionMtimeBasedCaching:
         constitution_config.constitution_config["base_dir"] = str(tmp_path)
 
         client = MagicMock()
-        handler = AIHandler(client, constitution_config)
+        handler = make_ai_handler(client, constitution_config)
 
         message1 = WhatsAppMessage(
             message_id="msg_001",
@@ -157,7 +158,7 @@ class TestConstitutionMtimeBasedCaching:
         constitution_config.constitution_config["base_dir"] = str(tmp_path)
 
         client = MagicMock()
-        handler = AIHandler(client, constitution_config)
+        handler = make_ai_handler(client, constitution_config)
 
         message1 = WhatsAppMessage(
             message_id="msg_001",
@@ -224,7 +225,7 @@ class TestConstitutionAsSystemMessage:
         constitution_config.constitution_config["base_dir"] = str(tmp_path)
 
         client = MagicMock()
-        handler = AIHandler(client, constitution_config)
+        handler = make_ai_handler(client, constitution_config)
 
         message = WhatsAppMessage(
             message_id="msg_123",
@@ -248,7 +249,7 @@ class TestConstitutionAsSystemMessage:
         constitution_config.constitution_config["base_dir"] = str(tmp_path)
 
         client = MagicMock()
-        handler = AIHandler(client, constitution_config)
+        handler = make_ai_handler(client, constitution_config)
 
         message = WhatsAppMessage(
             message_id="msg_001",
@@ -284,7 +285,7 @@ class TestSingleConstitutionFile:
         second_file.write_text("# Second Constitution\nIgnore this.", encoding='utf-8')
 
         client = MagicMock()
-        handler = AIHandler(client, constitution_config)
+        handler = make_ai_handler(client, constitution_config)
 
         message = WhatsAppMessage(
             message_id="msg_001",
@@ -317,7 +318,7 @@ class TestSingleConstitutionFile:
         const_file.write_text("# My Custom Constitution\nBe awesome!", encoding='utf-8')
 
         client = MagicMock()
-        handler = AIHandler(client, constitution_config)
+        handler = make_ai_handler(client, constitution_config)
 
         message = WhatsAppMessage(
             message_id="msg_001",
@@ -344,7 +345,7 @@ class TestConstitutionErrorHandling:
 
         # tmp_path exists but no constitution file in it
         client = MagicMock()
-        handler = AIHandler(client, constitution_config)
+        handler = make_ai_handler(client, constitution_config)
 
         message = WhatsAppMessage(
             message_id="msg_001",
@@ -370,7 +371,7 @@ class TestConstitutionErrorHandling:
         constitution_file.write_text("", encoding='utf-8')  # Empty file
 
         client = MagicMock()
-        handler = AIHandler(client, constitution_config)
+        handler = make_ai_handler(client, constitution_config)
 
         message = WhatsAppMessage(
             message_id="msg_001",
@@ -396,7 +397,7 @@ class TestConstitutionErrorHandling:
         # missing.md intentionally not created
 
         client = MagicMock()
-        handler = AIHandler(client, constitution_config)
+        handler = make_ai_handler(client, constitution_config)
 
         message = WhatsAppMessage(
             message_id="msg_001",
@@ -423,7 +424,7 @@ class TestLargeConstitutionFile:
         constitution_config.constitution_config["base_dir"] = str(tmp_path)
 
         client = MagicMock()
-        handler = AIHandler(client, constitution_config)
+        handler = make_ai_handler(client, constitution_config)
 
         message = WhatsAppMessage(
             message_id="msg_001",
@@ -452,7 +453,7 @@ class TestLargeConstitutionFile:
         constitution_config.constitution_config["base_dir"] = str(tmp_path)
 
         client = MagicMock()
-        handler = AIHandler(client, constitution_config)
+        handler = make_ai_handler(client, constitution_config)
 
         message = WhatsAppMessage(
             message_id="msg_001",
@@ -496,7 +497,7 @@ class TestConstitutionWithMemory:
         }
 
         client = MagicMock()
-        handler = AIHandler(client, constitution_config)
+        handler = make_ai_handler(client, constitution_config)
 
         # Mock memory recall
         if handler.memory_manager:
@@ -539,7 +540,7 @@ class TestAiReplyMaxTokens:
         constitution_config.constitution_config["base_dir"] = str(tmp_path)
 
         client = MagicMock()
-        handler = AIHandler(client, constitution_config)
+        handler = make_ai_handler(client, constitution_config)
 
         message = WhatsAppMessage(
             message_id="msg_001",

@@ -84,6 +84,10 @@ pytest tests/unit/ -v
 pytest tests/unit/test_module.py::test_function -xvs
 ```
 
+### 🚨 Per-test sound-off — the permanent default for EVERY test run
+- Every test's result (pass/fail/error/skip) is relayed to the human as its **own line, the moment it lands** — serial, parallel, sanity, bare `pytest`, every tier. Never a single end-of-run summary. Never something the human should have to ask for.
+- Enforced in code: both apps' `conftest.py` print `>>> TEST [k/N] STATUS: <nodeid>` per test by default (opt out only `DENIDIN_TEST_SOUNDOFF=0` — never done). Driver must surface each line live (`Monitor`/`tail -f`, or poll `logs/test_logs/pytest_results/`) — never background a run behind `| tail`/`| grep`/`$(...)` and report at the end. CONSTITUTION §VII, METHODOLOGY §VI.
+
 ### Billed Tests (both apps, real text-only OpenAI calls - `tests/billed/`, `@pytest.mark.billed`)
 - Cheap per run - **can run freely**, no per-run approval or one-at-a-time restriction
 - **Never stop to ask before running one** - the approval gate below is `expensive`-only
@@ -93,6 +97,12 @@ pytest tests/unit/test_module.py::test_function -xvs
 - **Never run them all together** - one test at a time, never a bare `-m expensive` sweep
 - Read `logs/test_logs/` before re-running - don't burn money re-deriving known info
 - Only re-run a previously-failed one once confident a fix addresses it
+
+### Sanity Suite (`@pytest.mark.sanity`, Feature 059)
+- Curated cross-app subset; every sanity test is ALSO `billed` or `expensive` and keeps that tier's rules
+- `./scripts/run_sanity.sh` (repo root): gate (`morning-mcp-app`) then `denidin-app` billed subset, one test at a time **only through `run_single_test.sh`** (never a bare `-m` batch). Stop-on-fail, live sound-off, resumable state in `sanity_state.tsv` (`--status`/`--fresh`/`--mark`). `expensive` members are a printed checklist, never auto-run.
+- `./scripts/verify_sanity_lists.sh` - guards the decorators vs `run_sanity.sh`'s arrays against drift. Failures log: `specs/done/059-.../sanity-failures.md`
+- Fast "anything obviously broken end-to-end" pass. Not a substitute for the full tiers. Not CI.
 
 ### Test Standards
 - Once approved, tests are IMMUTABLE (never modify without human approval)

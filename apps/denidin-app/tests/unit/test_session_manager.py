@@ -5,18 +5,20 @@ Tests conversation history management with role-based token limits.
 Written following TDD workflow - tests BEFORE implementation.
 """
 
+from unittest.mock import MagicMock
+
 import pytest
 import json
 import os
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import Mock, patch
 from src.managers.session_manager import SessionManager, Session, Message
 from src.handlers.media_handler import MediaHandler
 from src.managers.ledger_event_manager import LedgerEventManager
 from src.models.user import Role
+from tests.denidin_test_support import make_config, make_denidin, make_ledger_event_manager, make_session_manager
 
 
 @pytest.fixture
@@ -30,9 +32,8 @@ def temp_session_dir(tmp_path):
 @pytest.fixture
 def session_manager(temp_session_dir):
     """Create SessionManager instance for testing."""
-    manager = SessionManager(
+    manager = make_session_manager(
         storage_dir=str(temp_session_dir),
-        session_timeout_hours=24
     )
     yield manager
 
@@ -137,6 +138,69 @@ class TestSenderRecipientRealIdentifiers:
         assert message_data["sender_name"] == "DeniDin"
         assert message_data["recipient"] == "972501234567@c.us"
         assert message_data["recipient_name"] == "Godfather"
+
+
+class TestSourceTimestamp:
+    """Feature 069 (converged onto Feature 070's `timestamp` seam on merge):
+    Message.timestamp is the time the event actually happened. An inbound turn
+    passes an explicit `timestamp` (AIHandler/MediaHandler derive it from the
+    Green API notification epoch - the WhatsApp-export player injects the
+    message's ORIGINAL conversation time) and it must be persisted verbatim,
+    NOT replaced with processing time. received_at always stays processing time.
+    """
+
+    def test_explicit_timestamp_is_persisted_as_message_timestamp(self, session_manager):
+        from src.utils.time_utils import local_from_timestamp
+        # 2026-01-15 09:30:00 +02:00  ->  epoch 1736926200
+        source = local_from_timestamp(1736926200)
+        message_id = session_manager.add_message(
+            chat_id="1234567890@c.us", role="user", content="Hi", user_role="client",
+            timestamp=source,
+        )
+        session = session_manager.get_session("1234567890@c.us")
+        message_file = (
+            Path(session_manager.storage_dir) / session.session_id / "messages" / f"{message_id}.json"
+        )
+        with open(message_file) as f:
+            message_data = json.load(f)
+
+        assert message_data["timestamp"] == source.isoformat()
+        # received_at is still "now", not the source time
+        assert message_data["received_at"] != message_data["timestamp"]
+
+    def test_absent_timestamp_falls_back_to_processing_time(self, session_manager):
+        from datetime import datetime, timedelta
+        message_id = session_manager.add_message(
+            chat_id="1234567890@c.us", role="assistant", content="Reply", user_role="client",
+        )
+        session = session_manager.get_session("1234567890@c.us")
+        message_file = (
+            Path(session_manager.storage_dir) / session.session_id / "messages" / f"{message_id}.json"
+        )
+        with open(message_file) as f:
+            message_data = json.load(f)
+        # timestamp and received_at are two independent now_local() reads when no
+        # explicit timestamp is passed - both processing time, within a hair.
+        ts = datetime.fromisoformat(message_data["timestamp"])
+        recv = datetime.fromisoformat(message_data["received_at"])
+        assert abs((recv - ts).total_seconds()) < 1.0
+
+    def test_explicit_timestamp_survives_token_counting_path(self, session_manager):
+        from src.models.user import Role
+        from src.utils.time_utils import local_from_timestamp
+        source = local_from_timestamp(1736926200)
+        session_manager.add_message_with_tokens(
+            chat_id="1234567890@c.us", role="user", content="Hi", user_role=Role.GODFATHER,
+            timestamp=source,
+        )
+        session = session_manager.get_session("1234567890@c.us")
+        mid = session.message_ids[-1]
+        message_file = (
+            Path(session_manager.storage_dir) / session.session_id / "messages" / f"{mid}.json"
+        )
+        with open(message_file) as f:
+            message_data = json.load(f)
+        assert message_data["timestamp"] == source.isoformat()
 
 
 class TestRealRoleAndAiRequiredRole:
@@ -327,12 +391,12 @@ class TestPersistence:
         chat_id = "1234567890@c.us"
         
         # Create session with first manager
-        manager1 = SessionManager(storage_dir=str(temp_session_dir))
+        manager1 = make_session_manager(storage_dir=str(temp_session_dir))
         manager1.add_message(chat_id, "user", "Persisted message", "client")
         session_id = manager1.get_session(chat_id).session_id
         
         # Create new manager (simulates restart)
-        manager2 = SessionManager(storage_dir=str(temp_session_dir))
+        manager2 = make_session_manager(storage_dir=str(temp_session_dir))
         session = manager2.get_session(chat_id)
         
         assert session.session_id == session_id
@@ -343,136 +407,10 @@ class TestPersistence:
         assert history[0]["content"] == "Persisted message"
 
 
-class TestSessionExpiration:
-    """Test session timeout and expiration."""
-    
-    def test_session_moved_to_expired_folder_by_date(self, session_manager, temp_session_dir):
-        """Test expired sessions moved to expired/YYYY-MM-DD/ folder, not deleted."""
-        chat_id = "1234567890@c.us"
-        
-        # Create session with message
-        session_manager.add_message(chat_id, "user", "Test message", "client")
-        session = session_manager.get_session(chat_id)
-        session_id = session.session_id
-        
-        # Manually set old timestamp
-        old_time = datetime.now(timezone.utc) - timedelta(hours=25)
-        session.last_active = old_time.isoformat()
-        session_manager._save_session(session)
-        
-        # Trigger archival (simulates what background cleanup does)
-        session_manager.archive_session(session)
-        
-        # Session directory should be moved to expired/YYYY-MM-DD/
-        active_dir = Path(temp_session_dir) / session_id
-        # Expected date folder based on when session last_active date
-        expected_date = old_time.strftime("%Y-%m-%d")
-        expired_dir = Path(temp_session_dir) / "expired" / expected_date / session_id
-        
-        assert not active_dir.exists()
-        assert expired_dir.exists()
-        
-        # Verify expired session content preserved
-        session_file = expired_dir / "session.json"
-        assert session_file.exists()
-        with open(session_file) as f:
-            data = json.load(f)
-        assert data["session_id"] == session_id
-        assert data["whatsapp_chat"] == chat_id
-    
-    def test_expired_session_messages_also_moved(self, session_manager, temp_session_dir):
-        """Test messages from expired sessions moved with session directory."""
-        chat_id = "1234567890@c.us"
-        
-        # Create session with messages
-        msg_id_1 = session_manager.add_message(chat_id, "user", "Message 1", "client")
-        msg_id_2 = session_manager.add_message(chat_id, "assistant", "Response 1", "client")
-        
-        session = session_manager.get_session(chat_id)
-        session_id = session.session_id
-        old_time = datetime.now(timezone.utc) - timedelta(hours=25)
-        session.last_active = old_time.isoformat()
-        session_manager._save_session(session)
-        
-        # Trigger archival (simulates what background cleanup does)
-        session_manager.archive_session(session)
-        
-        # Entire session directory should be moved to dated subfolder
-        active_dir = Path(temp_session_dir) / session_id
-        expected_date = old_time.strftime("%Y-%m-%d")
-        expired_dir = Path(temp_session_dir) / "expired" / expected_date / session_id
-        
-        assert not active_dir.exists()
-        assert expired_dir.exists()
-        
-        # Messages should be in expired session directory
-        expired_msg_1 = expired_dir / "messages" / f"{msg_id_1}.json"
-        expired_msg_2 = expired_dir / "messages" / f"{msg_id_2}.json"
-        
-        assert expired_msg_1.exists()
-        assert expired_msg_2.exists()
-    
-    def test_expired_session_not_in_index(self, session_manager):
-        """Test expired sessions removed from chat_to_session mapping."""
-        chat_id = "1234567890@c.us"
-        
-        # Create and expire session
-        session_manager.add_message(chat_id, "user", "Old message", "client")
-        session = session_manager.get_session(chat_id)
-        old_session_id = session.session_id
-        
-        # Verify session is in index
-        assert session_manager.chat_to_session.get(chat_id) == old_session_id
-        
-        # Expire and cleanup
-        session.last_active = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat()
-        session_manager._save_session(session)
-        session_manager.archive_session(session)
-        session_manager.remove_from_index(session)
-        
-        # Verify session removed from index
-        assert chat_id not in session_manager.chat_to_session
-    
-    def test_new_session_created_after_expiration(self, session_manager):
-        """Test accessing expired session creates new session."""
-        chat_id = "1234567890@c.us"
-        
-        # Create and expire session
-        session_manager.add_message(chat_id, "user", "Old message", "client")
-        old_session_id = session_manager.get_session(chat_id).session_id
-        
-        session = session_manager.get_session(chat_id)
-        session.last_active = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat()
-        session_manager._save_session(session)
-        
-        # Cleanup (simulates what background cleanup does)
-        session_manager.archive_session(session)
-        session_manager.remove_from_index(session)
-        
-        # Get session again - should create new one
-        new_session = session_manager.get_session(chat_id)
-        assert new_session.session_id != old_session_id
-        assert len(new_session.message_ids) == 0  # Fresh session
-
 
 class TestSessionManagement:
     """Test session lifecycle management."""
     
-    def test_clear_session(self, session_manager):
-        """Test session cleared completely."""
-        chat_id = "1234567890@c.us"
-        
-        # Add messages
-        session_manager.add_message(chat_id, "user", "Message 1", "client")
-        session_manager.add_message(chat_id, "user", "Message 2", "client")
-        
-        # Clear session
-        session_manager.clear_session(chat_id)
-        
-        # Verify cleared
-        session = session_manager.get_session(chat_id)
-        assert len(session.message_ids) == 0
-        assert session.total_tokens == 0
     
     def test_multiple_sessions_isolated(self, session_manager):
         """Test different chats have isolated sessions."""
@@ -496,6 +434,18 @@ class TestSessionManagement:
         assert history2[0]["content"] == "Chat 2 message"
 
 
+def _store_received_media(denidin_context, chat_id, message_id):
+    """The media message as denidin.py stores it on receipt (2026-09-30)."""
+    from datetime import datetime, timezone
+    from src.models.message import WhatsAppMessage
+    denidin_context.store_inbound(WhatsAppMessage(
+        message_id=message_id, chat_id=chat_id, sender_id=chat_id, sender_name="John",
+        text_content="Check out this image!", timestamp=int(datetime.now(timezone.utc).timestamp()),
+        message_type="imageMessage", is_group=False,
+        received_timestamp=datetime.now(timezone.utc),
+    ))
+
+
 class TestImagePathStorage:
     """Test image path field for media persistence."""
 
@@ -508,39 +458,21 @@ class TestImagePathStorage:
         without carrying image_path forward. This exercises the real call site
         instead of SessionManager directly."""
         chat_id = "1234567890@c.us"
-        sender_phone = "1234567890"
         saved_file_path = tmp_path / "media" / "DD-1234567890-abc123.jpg"
 
-        denidin_context = SimpleNamespace(
-            config=SimpleNamespace(
-                data_root=str(tmp_path),
-                ai_vision_model="gpt-4o-mini",
-                ai_model="gpt-4o-mini",
-            ),
-            ai_handler=SimpleNamespace(
-                session_manager=session_manager,
-                # Feature 033: MediaHandler.__init__ now also wires a
-                # LedgerEventManager - real instance (not a Mock), matching
-                # this suite's real-internal-components convention, even
-                # though this specific test never exercises it directly.
-                ledger_event_manager=LedgerEventManager(storage_dir=str(tmp_path / "events")),
-                # 2026-08-19: _store_media_turn now resolves role/own-number via
-                # these - RBAC disabled here since this test is about
-                # image_path/extracted_text storage, not RBAC.
-                rbac_enabled=False,
-                user_manager=None,
-                own_whatsapp_number="",
-            ),
+        denidin_context = make_denidin(
+            make_config(data_root=str(tmp_path), ai_vision_model="gpt-4o-mini", ai_model="gpt-4o-mini"),
+            session_manager=session_manager,
+            ai_manager=MagicMock(),  # the extractors' AI side - unused by these tests
+            ledger_event_manager=make_ledger_event_manager(storage_dir=str(tmp_path / "events")),
         )
         media_handler = MediaHandler(denidin_context)
+        # 2026-09-30: the media message is stored on receipt; _store_media_turn fills in
+        # what processing learned.
+        _store_received_media(denidin_context, chat_id, "msg-media-1")
 
         media_handler._store_media_turn(
-            chat_id=chat_id,
-            sender_phone=sender_phone,
-            sender_display=sender_phone,
-            media_type="image",
-            caption="Check out this image!",
-            summary="AI analysis of the image",
+            chat_id, "msg-media-1",
             image_path=str(saved_file_path.relative_to(tmp_path)),
         )
 
@@ -552,9 +484,8 @@ class TestImagePathStorage:
         with open(message_file) as f:
             message_data = json.load(f)
 
-        # 2026-08-19: role is the real role - "client" (RBAC disabled fallback,
-        # same as AIHandler._finalize_response's own RBAC-disabled path).
-        assert message_data["role"] == "client"
+        # role is the real role - "godfather" (the default role when none is known).
+        assert message_data["role"] == "godfather"
         assert message_data["image_path"] == "media/DD-1234567890-abc123.jpg"
     
     def test_image_path_optional(self, session_manager):
@@ -586,32 +517,19 @@ class TestExtractedTextStorage:
 
     def test_extracted_text_storage(self, session_manager, tmp_path):
         chat_id = "1234567890@c.us"
-        sender_phone = "1234567890"
         saved_file_path = tmp_path / "media" / "DD-1234567890-abc123.jpg"
 
-        denidin_context = SimpleNamespace(
-            config=SimpleNamespace(
-                data_root=str(tmp_path),
-                ai_vision_model="gpt-4o-mini",
-                ai_model="gpt-4o-mini",
-            ),
-            ai_handler=SimpleNamespace(
-                session_manager=session_manager,
-                ledger_event_manager=LedgerEventManager(storage_dir=str(tmp_path / "events")),
-                rbac_enabled=False,
-                user_manager=None,
-                own_whatsapp_number="",
-            ),
+        denidin_context = make_denidin(
+            make_config(data_root=str(tmp_path), ai_vision_model="gpt-4o-mini", ai_model="gpt-4o-mini"),
+            session_manager=session_manager,
+            ai_manager=MagicMock(),  # the extractors' AI side - unused by these tests
+            ledger_event_manager=make_ledger_event_manager(storage_dir=str(tmp_path / "events")),
         )
         media_handler = MediaHandler(denidin_context)
+        _store_received_media(denidin_context, chat_id, "msg-media-1")
 
         media_handler._store_media_turn(
-            chat_id=chat_id,
-            sender_phone=sender_phone,
-            sender_display=sender_phone,
-            media_type="image",
-            caption="Check out this image!",
-            summary="AI analysis of the image",
+            chat_id, "msg-media-1",
             image_path=str(saved_file_path.relative_to(tmp_path)),
             extracted_text="טקסט שחולץ מהתמונה",
         )
@@ -701,7 +619,7 @@ class TestMessageLedgerEventIds:
         session = session_manager.get_session(chat_id)
         session_dir = session_manager.storage_dir / session.session_id
 
-        reloaded_manager = SessionManager(storage_dir=str(temp_session_dir), session_timeout_hours=24)
+        reloaded_manager = make_session_manager(storage_dir=str(temp_session_dir))
         with open(session_dir / "messages" / f"{message_id}.json", encoding="utf-8") as f:
             data = json.load(f)
         assert data["ledger_event_ids"] == ["B28072614260"]
@@ -749,10 +667,90 @@ class TestAddMessageIdOverride:
         )
         assert returned_id == "supplied-id-2"
 
-    def test_add_message_with_token_limit_threads_supplied_message_id(self, session_manager):
+
+class TestWhatsappIdMessageField:
+    """Feature 084 (WhatsApp reactions, T003): Message.whatsapp_id_message - the real
+    Green API wire id, distinct from message_id (DeniDin's own internal UUID)."""
+
+    def test_add_message_threads_whatsapp_id_message(self, session_manager):
         chat_id = "1234567890@c.us"
-        returned_id = session_manager.add_message_with_token_limit(
-            chat_id=chat_id, role="user", content="hello",
-            user_role="client", token_limit=4000, message_id="supplied-id-3",
+        message_id = session_manager.add_message(
+            chat_id=chat_id, role="user", content="hello", user_role="client",
+            whatsapp_id_message="wamid.ABC123",
         )
-        assert returned_id == "supplied-id-3"
+        session = session_manager.get_session(chat_id)
+        loaded = session_manager.load_message(session, message_id)
+        assert loaded.whatsapp_id_message == "wamid.ABC123"
+
+    def test_add_message_defaults_whatsapp_id_message_to_none(self, session_manager):
+        chat_id = "1234567890@c.us"
+        message_id = session_manager.add_message(
+            chat_id=chat_id, role="user", content="hello", user_role="client",
+        )
+        session = session_manager.get_session(chat_id)
+        loaded = session_manager.load_message(session, message_id)
+        assert loaded.whatsapp_id_message is None
+
+    def test_add_message_with_tokens_threads_whatsapp_id_message(self, session_manager):
+        chat_id = "1234567890@c.us"
+        message_id = session_manager.add_message_with_tokens(
+            chat_id=chat_id, role="user", content="hello", user_role=Role.CLIENT,
+            whatsapp_id_message="wamid.DEF456",
+        )
+        session = session_manager.get_session(chat_id)
+        loaded = session_manager.load_message(session, message_id)
+        assert loaded.whatsapp_id_message == "wamid.DEF456"
+
+    def test_loading_old_message_missing_the_field_defaults_to_none(self, session_manager):
+        """Tolerant load: a message persisted before this field existed must load
+        with whatsapp_id_message=None, not crash."""
+        chat_id = "1234567890@c.us"
+        message_id = session_manager.add_message(
+            chat_id=chat_id, role="user", content="hello", user_role="client",
+        )
+        session = session_manager.get_session(chat_id)
+        message_file = (
+            session_manager.storage_dir / session.session_id / "messages" / f"{message_id}.json"
+        )
+        with open(message_file, encoding="utf-8") as f:
+            data = json.load(f)
+        del data["whatsapp_id_message"]
+        with open(message_file, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+
+        loaded = session_manager.load_message(session, message_id)
+        assert loaded.whatsapp_id_message is None
+
+
+class TestActiveDocumentMessageIdField:
+    """Feature 084 (WhatsApp reactions, T003): Session.active_document_message_id -
+    the multi-turn "originating message" pointer for deferred reaction flips."""
+
+    def test_defaults_to_none_on_a_new_session(self, session_manager):
+        session = session_manager.get_session("1234567890@c.us")
+        assert session.active_document_message_id is None
+
+    def test_round_trips_through_save_and_load(self, session_manager):
+        chat_id = "1234567890@c.us"
+        session = session_manager.get_session(chat_id)
+        session.active_document_message_id = "wamid.DOC1"
+        session_manager._save_session(session)
+
+        reloaded = session_manager.get_session(chat_id)
+        assert reloaded.active_document_message_id == "wamid.DOC1"
+
+    def test_loading_old_session_missing_the_field_defaults_to_none(self, session_manager):
+        """Tolerant load: a session.json persisted before this field existed must load
+        with active_document_message_id=None, not crash."""
+        chat_id = "1234567890@c.us"
+        session = session_manager.get_session(chat_id)
+        session_file = session_manager.storage_dir / session.session_id / "session.json"
+        with open(session_file, encoding="utf-8") as f:
+            data = json.load(f)
+        del data["active_document_message_id"]
+        with open(session_file, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+
+        reloaded = session_manager._load_session(session.session_id)
+        assert reloaded.active_document_message_id is None
+

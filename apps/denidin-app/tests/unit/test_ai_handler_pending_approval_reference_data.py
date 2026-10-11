@@ -22,23 +22,29 @@ import pytest
 from src.handlers.ai_handler import (
     _build_pending_approval_details,
     _find_referenced_document_details,
-    _strip_internal_morning_id_line,
+    _format_referenced_document_for_approval,
 )
 
 _INVOICE_ID = "ac538347-7cc8-4221-b070-8d70ff348710"
 _OTHER_INVOICE_ID = "11111111-2222-3333-4444-555555555555"
 
-# A realistic get_invoice_details real output shape (mirrors
-# morning-mcp-app's format_invoice_details/format_invoice_confirmation).
-_REAL_INVOICE_DETAILS_OUTPUT = (
-    "חשבונית #52077\n"
-    'לקוח: "צפניה עוז"\n'
-    "סכום: ₪19.00\n"
-    "סוג מסמך: חשבונית מס\n"
-    "סטטוס: לא שולם\n"
-    "תאריך הפקה: 13/08/2026\n"
-    f"מזהה פנימי (internal_morning_id): {_INVOICE_ID}"
-)
+# A realistic get_invoice_details output shape (mirrors morning-mcp-app's
+# format_invoice_json - JSON per the 2026-09-04 JSON-only contract).
+_REAL_INVOICE_DETAILS_OUTPUT = json.dumps({
+    "display_number": "52077",
+    "internal_morning_id": _INVOICE_ID,
+    "type": 305,
+    "type_name": "חשבונית מס",
+    "status": "unpaid",
+    "status_code": 0,
+    "status_label": "מסמך פתוח",
+    "client_name": "צפניה עוז",
+    "description": "ייעוץ",
+    "amount": 19.00,
+    "document_date": "2026-08-13",
+    "payment": None,
+    "linked_document": None,
+}, ensure_ascii=False)
 
 
 def _get_invoice_details_call(internal_morning_id: str, output: str = _REAL_INVOICE_DETAILS_OUTPUT) -> dict:
@@ -51,22 +57,29 @@ def _get_invoice_details_call(internal_morning_id: str, output: str = _REAL_INVO
 
 
 # ---------------------------------------------------------------------------
-# _strip_internal_morning_id_line
+# _format_referenced_document_for_approval - JSON output -> readable Hebrew,
+# never the internal id (2026-09-04 JSON-only Morning contract)
 # ---------------------------------------------------------------------------
 
-def test_strip_internal_morning_id_line_removes_only_that_line():
-    result = _strip_internal_morning_id_line(_REAL_INVOICE_DETAILS_OUTPUT)
+def test_format_referenced_document_renders_the_readable_fields():
+    result = _format_referenced_document_for_approval(_REAL_INVOICE_DETAILS_OUTPUT)
 
     assert _INVOICE_ID not in result
-    assert "מזהה פנימי" not in result
-    assert 'לקוח: "צפניה עוז"' in result
-    assert "סכום: ₪19.00" in result
-    assert "תאריך הפקה: 13/08/2026" in result
+    assert "internal_morning_id" not in result
+    assert "לקוח: צפניה עוז" in result
+    assert "סכום: 19 ₪" in result
+    assert "תאריך: 13/08/2026" in result
+    assert "סוג מסמך: חשבונית מס" in result
+    assert "מספר מסמך: 52077" in result
+    assert "סטטוס: מסמך פתוח" in result
 
 
-def test_strip_internal_morning_id_line_handles_text_without_the_line():
-    text = 'לקוח: "צפניה עוז"\nסכום: ₪19.00'
-    assert _strip_internal_morning_id_line(text) == text
+def test_format_referenced_document_returns_none_on_non_json():
+    assert _format_referenced_document_for_approval("not json at all") is None
+
+
+def test_format_referenced_document_returns_none_when_no_usable_fields():
+    assert _format_referenced_document_for_approval(json.dumps({"foo": "bar"})) is None
 
 
 # ---------------------------------------------------------------------------
@@ -157,7 +170,7 @@ def test_group_b_tools_render_reference_block_when_lookup_present(tool_name, ext
 
     assert "📄 המסמך המקושר:" in result
     assert "צפניה עוז" in result
-    assert "19.00" in result
+    assert "19 ₪" in result
     assert "13/08/2026" in result
     assert _INVOICE_ID not in result, "the internal Morning id must never reach the user"
     assert result.endswith("אישור — כן/לא?")
@@ -240,7 +253,7 @@ def test_cancel_transaction_account_renders_reference_block_when_lookup_present(
 
     assert "📄 המסמך המקושר:" in result
     assert "צפניה עוז" in result
-    assert "19.00" in result
+    assert "19 ₪" in result
     assert "13/08/2026" in result
     assert _INVOICE_ID not in result, "the internal Morning id must never reach the user"
     assert result.endswith("אישור — כן/לא?")

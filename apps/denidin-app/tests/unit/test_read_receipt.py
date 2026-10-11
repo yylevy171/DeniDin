@@ -1,6 +1,6 @@
 """
 Unit tests for Feature 045's read-receipt decision logic: extracting a (chatId,
-idMessage) target from a raw Green API notification body, and the orchestrating
+idMessage) target from a raw Green API notification body, and the driving
 `mark_message_read` callback that decides whether/how to call
 `bot.api.marking.readChat`.
 

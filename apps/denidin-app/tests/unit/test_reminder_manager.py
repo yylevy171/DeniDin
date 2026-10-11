@@ -33,6 +33,7 @@ from src.managers.reminder_manager import (
     InvalidRecurrenceError,
     round_to_five_minutes,
 )
+from tests.denidin_test_support import make_reminder_manager
 
 
 # --- Fixtures -----------------------------------------------------------------
@@ -44,7 +45,7 @@ def storage_dir(tmp_path):
 
 @pytest.fixture
 def manager(storage_dir):
-    return ReminderManager(storage_dir=str(storage_dir))
+    return make_reminder_manager(storage_dir=str(storage_dir))
 
 
 def _db_path(storage_dir):
@@ -85,27 +86,22 @@ class TestReminderManagerCore:
 
     def test_creates_storage_dir_if_missing(self, storage_dir):
         assert not storage_dir.exists()
-        ReminderManager(storage_dir=str(storage_dir))
+        make_reminder_manager(storage_dir=str(storage_dir))
         assert storage_dir.is_dir()
 
     def test_creates_db_file(self, manager, storage_dir):
         assert _db_path(storage_dir).exists()
 
-    def test_does_not_read_data_root_or_config_internally(self, storage_dir):
-        # REQ-STORE-001-style discipline (matches LedgerEventManager/MediaFileManager):
-        # the constructor only ever takes pre-composed values (storage_dir, and the
-        # cap - both caller-composed from AppConfiguration.data_root/config.reminders
-        # at construction time, e.g. ReminderManager(storage_dir=..., max_active_reminders=
-        # config.reminders.get('max_active_reminders', 20))) - never an AppConfiguration
-        # object or a bare "read config" call internally.
+    def test_takes_only_the_denidin_object(self, storage_dir):
+        # REQ-063-08: every DeniDin manager takes the DeniDin object as its only
+        # constructor argument and reads its settings (data_root,
+        # reminders.max_active_reminders) off DeniDin's config.
         import inspect
-        sig = inspect.signature(ReminderManager.__init__)
-        params = list(sig.parameters)
-        assert params == ["self", "storage_dir", "max_active_reminders"]
-        assert sig.parameters["max_active_reminders"].default == 20
+        params = list(inspect.signature(ReminderManager.__init__).parameters)
+        assert params == ["self", "denidin"]
 
     def test_max_active_reminders_is_configurable(self, storage_dir):
-        manager = ReminderManager(storage_dir=str(storage_dir), max_active_reminders=2)
+        manager = make_reminder_manager(storage_dir=str(storage_dir), max_active_reminders=2)
         manager.create_reminder(
             message_text="a", schedule_type="one_time", one_time_due_at=_future(60),
             recurrence=None, created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
@@ -147,13 +143,13 @@ class TestReminderManagerCore:
         conn.close()
 
     def test_reinitializing_against_existing_db_does_not_lose_data(self, storage_dir):
-        m1 = ReminderManager(storage_dir=str(storage_dir))
+        m1 = make_reminder_manager(storage_dir=str(storage_dir))
         result = m1.create_reminder(
             message_text="test", schedule_type="one_time",
             one_time_due_at=_future(60), recurrence=None,
             created_by_phone="972500000000", created_by_role="GODFATHER", delivery_chat_id="972500000000@c.us",
         )
-        m2 = ReminderManager(storage_dir=str(storage_dir))
+        m2 = make_reminder_manager(storage_dir=str(storage_dir))
         conn = _connect(storage_dir)
         row = conn.execute(
             "SELECT * FROM reminders WHERE reminder_id = ?", (result["reminder_id"],)

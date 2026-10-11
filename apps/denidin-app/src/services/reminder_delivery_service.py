@@ -17,7 +17,7 @@ thread per reminder (the original design guardrail).
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
-# type: ignore[import-untyped] on both - no stub package exists for apscheduler
+# apscheduler ships no type stubs - hence the import-untyped ignore on its imports.
 from apscheduler.schedulers.background import BackgroundScheduler  # type: ignore[import-untyped]
 from apscheduler.triggers.cron import CronTrigger  # type: ignore[import-untyped]
 
@@ -125,9 +125,9 @@ def _deliver_one_occurrence(
             # message actually landed in - a delivery target may be a group
             # with no single governing role of its own.
             creator_user = user_manager.get_user(created_by_phone)
-            session_manager.add_message_with_token_limit(
+            session_manager.add_message_with_tokens(
                 chat_id=used_chat_id, role="assistant", content=message_text,
-                user_role=creator_user.role, token_limit=creator_user.token_limit,
+                user_role=creator_user.role,
                 recipient=used_chat_id,
             )
         except Exception as e:  # pylint: disable=broad-except
@@ -172,7 +172,7 @@ def _sweep_due_reminders(
     simulate a startup catch-up sweep specifically (rather than an ordinary
     periodic tick) must pass STARTUP_SWEEP_LOOKBACK explicitly too.
     """
-    reminder_manager = global_context.ai_handler.reminder_manager
+    reminder_manager = global_context.reminder_manager
 
     now = now or now_local()
     try:
@@ -187,7 +187,7 @@ def _sweep_due_reminders(
     for occurrence in due:
         _deliver_one_occurrence(
             occurrence, bot, reminder_manager,
-            global_context.session_manager, global_context.ai_handler.user_manager,
+            global_context.session_manager, global_context.user_manager,
             log_prefix,
         )
 

@@ -190,7 +190,30 @@ Given that feature description, do this:
 
    d. **Update Checklist**: After each validation iteration, update the checklist file with current pass/fail status
 
-7. Report completion with branch name, spec file path, checklist results, and readiness for the next phase (`/speckit.clarify` or `/speckit.plan`).
+7. **Draft `billed`/`expensive` acceptance scenarios and get explicit human approval — BLOCKING, before `/speckit.plan` may run** (METHODOLOGY.md §VI.a/§IV Phase -1, added 2026-09-12):
+
+   a. In plain, user-facing language (NOT test code — no test file, no pytest function, no
+      assertions), draft every `billed`/`expensive` acceptance scenario the feature will need:
+      what a real person does (what they'd type/send), what they should see happen in response,
+      which user story/success criterion it validates, and its exact tier (`billed` vs
+      `expensive` — flag `expensive` explicitly, since it carries its own separate per-run
+      approval gate later). Write these into `user-stories.md`'s Acceptance Scenarios/UAT
+      section (create the section if `user-stories.md` doesn't already have one).
+
+   b. Present the drafted scenarios to the user and explicitly ask them to approve — do not
+      assume silence or an unrelated reply means approval, and do not proceed past this step
+      without a clear "approved"/"yes"/equivalent.
+
+   c. If the user requests changes, revise and re-present until approved.
+
+   d. **Do not report readiness for `/speckit.plan` until this approval is obtained.** This is
+      the point where the human operator and the AI agree on the actual observable outcome,
+      before any technical design work is spent — `speckit.plan` is expected to refuse to start
+      without it.
+
+8. Report completion with branch name, spec file path, checklist results, the approved
+   acceptance-scenario list, and readiness for the next phase (`/speckit.clarify` or
+   `/speckit.plan`).
 
 **NOTE:** The script creates and checks out the new branch and initializes the spec file before writing.
 

@@ -48,11 +48,25 @@ def test_invoice_model_parses_real_document_response():
     assert invoice.due_date == date(2026, 8, 8)
 
 
-def test_invoice_model_rejects_negative_amount():
-    bad = dict(REAL_DOCUMENT_RESPONSE_SAMPLE, amount=-100.0)
+def test_invoice_model_accepts_negative_amount():
+    """Bugfix, 2026-09-01: this used to assert the opposite (ValidationError on
+    a negative amount) - that assumption was disproven by 15 real prod
+    documents hit during Feature 062's ledger backfill, all genuine type-400
+    receipt cancellations ("ביטול חשבונית מס / קבלה ...") that Morning itself
+    represents with a negative amount (a reversal), not corrupted data. Shape
+    below mirrors a real one of those documents (client/business PII replaced)."""
+    cancellation = dict(
+        REAL_DOCUMENT_RESPONSE_SAMPLE,
+        type=400,
+        amount=-13000.0,
+        description="ביטול חשבונית מס / קבלה 112113",
+        payment=[{"id": "pay-1", "name": "העברה בנקאית", "type": 4, "amount": -13000.0}],
+    )
 
-    with pytest.raises(ValidationError):
-        Invoice.model_validate(bad)
+    invoice = Invoice.model_validate(cancellation)
+
+    assert invoice.amount == -13000.0
+    assert invoice.payments[0].amount == -13000.0
 
 
 def test_invoice_model_defaults_currency_to_ils_when_omitted():

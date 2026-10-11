@@ -23,6 +23,11 @@ if [ "$ENV" != "dev" ] && [ "$ENV" != "prod" ]; then
 fi
 
 source "$REPO_ROOT/scripts/env_lock.sh"
+
+# 2026-09-28: same guard as run_morning_mcp.sh - see there, and env_lock.sh's
+# env_lock_require_canonical_root, for the full rationale/incident.
+env_lock_require_canonical_root "$ENV"
+
 env_lock_release "$ENV" "$FORCE"
 
 COMPOSE_FILE="$REPO_ROOT/docker/docker-compose.$ENV.yml"

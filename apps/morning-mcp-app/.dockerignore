@@ -2,9 +2,13 @@
 # layers (VOLUME ["/app/config"] overrides them at runtime anyway — only
 # config.example.json and config.schema.json, which hold no secrets, should
 # ship in the image).
-config/config.dev.json
-config/config.prod.json
-config/config.test.json
+config/config.*.json
+!config/config.example.json
+!config/config.schema.json
+**/.DS_Store
+logs/
+**/*.log
+**/*.log.*
 
 # Local dev/VCS cruft.
 .git/

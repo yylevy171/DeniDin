@@ -26,7 +26,9 @@ reading refusals as approvals.
 """
 import pytest
 
-from src.handlers.ai_handler import _is_affirmative_reply
+from src.core.ai_manager import AIManager
+
+_is_affirmative_reply = AIManager.is_affirmative_reply
 
 RLM = "‏"   # RIGHT-TO-LEFT MARK - what WhatsApp actually sent
 LRM = "‎"   # LEFT-TO-RIGHT MARK

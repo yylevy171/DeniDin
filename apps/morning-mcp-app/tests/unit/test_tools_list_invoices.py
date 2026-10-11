@@ -1,19 +1,21 @@
-"""Tests for feature 038's rewritten `list_invoices` fetch-loop, item-count
-cap, and token-budget truncation logic.
+"""Tests for feature 038's `list_invoices` fetch-loop and item-count cap
+logic, updated for the 2026-09-04 JSON-only contract (Feature 069 US2
+follow-up): `list_invoices` now always returns JSON
+(`format_invoice_list_json`'s shape) - there is no more `output_format`
+parameter, no more prose default, and no more token-budget truncation (a
+reconciliation/automation consumer needs every match, so the JSON reply is
+always the complete match set with `total_matched` stated explicitly).
 
 Uses a fake MorningClient (dependency-injected, matching the real
 `list_invoices` contract) - this mocks a third-party API boundary, not an
 internal component (CONSTITUTION.md §I/§V), mirroring the established
 pattern in test_tools_client_management.py.
 """
+import json
+
 import pytest
-import tiktoken
 
 from denidin_mcp_morning import tools
-from denidin_mcp_morning.formatters import format_invoice_confirmation
-from denidin_mcp_morning.models import Invoice
-
-_ENCODING = tiktoken.get_encoding("o200k_base")
 
 
 class _FakeMorningClient:
@@ -41,8 +43,7 @@ class _FakeMorningClient:
 
 
 def _raw_document(number: str, client_name: str = "Test Client") -> dict:
-    """A raw Morning /documents(/search) item, matching the real shape
-    (see REAL_DOCUMENT_RESPONSE_SAMPLE in test_formatters.py)."""
+    """A raw Morning /documents(/search) item, matching the real shape."""
     return {
         "id": f"doc-{number}",
         "number": number,
@@ -60,6 +61,10 @@ def _page_response(items, total, page=1, pages=1):
     return {"pageSize": 25, "page": page, "total": total, "pages": pages, "items": items}
 
 
+def _numbers(payload) -> list:
+    return [doc["display_number"] for doc in payload["documents"]]
+
+
 # ============================================================================
 # Fetch-loop / item-count cap boundary (REQ-INVOICE-001/002/003/007)
 # ============================================================================
@@ -75,12 +80,11 @@ def test_list_invoices_loops_every_page_when_total_within_cap():
         ]
     )
 
-    result = tools.list_invoices(client)
+    payload = json.loads(tools.list_invoices(client))
 
     assert len(client.list_invoices_calls) == 2
     assert client.list_invoices_calls[1]["page"] == 2
-    for n in range(1, 16):
-        assert f"חשבונית #{n}" in result
+    assert set(_numbers(payload)) == {str(n) for n in range(1, 16)}
 
 
 def test_list_invoices_boundary_at_exact_cap_still_fetches_everything():
@@ -109,11 +113,12 @@ def test_list_invoices_refuses_and_fetches_only_page_one_when_over_cap():
     page1_items = [_raw_document(str(n)) for n in range(1, 26)]
     client = _FakeMorningClient([_page_response(page1_items, total=101, page=1, pages=5)])
 
-    result = tools.list_invoices(client)
+    payload = json.loads(tools.list_invoices(client))
 
     assert len(client.list_invoices_calls) == 1
-    assert "נמצאו 101" in result  # designed refusal-message phrase, not a bare digit check
-    assert "חשבונית #" not in result
+    assert payload["status"] == "too_many"
+    assert payload["total"] == 101
+    assert payload["kind"] == "invoices"
 
 
 def test_list_invoices_defaults_missing_page_and_pages_fields():
@@ -124,19 +129,19 @@ def test_list_invoices_defaults_missing_page_and_pages_fields():
     response = {"total": 5, "items": items}  # no "page"/"pages" keys at all
     client = _FakeMorningClient([response])
 
-    result = tools.list_invoices(client)
+    payload = json.loads(tools.list_invoices(client))
 
     assert len(client.list_invoices_calls) == 1
-    for n in range(1, 6):
-        assert f"חשבונית #{n}" in result
+    assert set(_numbers(payload)) == {str(n) for n in range(1, 6)}
 
 
-def test_list_invoices_zero_matches_returns_unchanged_no_results_message():
+def test_list_invoices_zero_matches_returns_empty_documents_list():
     client = _FakeMorningClient([_page_response([], total=0, page=1, pages=1)])
 
-    result = tools.list_invoices(client)
+    payload = json.loads(tools.list_invoices(client))
 
-    assert result == "לא נמצאו חשבוניות התואמות את החיפוש."
+    assert payload["total_matched"] == 0
+    assert payload["documents"] == []
 
 
 def test_list_invoices_multi_word_client_name_not_found_raises():
@@ -182,9 +187,9 @@ def test_list_invoices_single_word_client_name_is_untouched_by_the_gate():
     item = _raw_document("1", client_name="Cohen Industries")
     client = _FakeMorningClient([_page_response([item], total=1, page=1, pages=1)])
 
-    result = tools.list_invoices(client, client_name="Cohen")
+    payload = json.loads(tools.list_invoices(client, client_name="Cohen"))
 
-    assert "חשבונית #1" in result
+    assert _numbers(payload) == ["1"]
     assert client.search_clients_calls == []  # never resolved - single word, untouched
     assert client.list_invoices_calls == [{"clientName": "Cohen"}]
 
@@ -224,118 +229,36 @@ def test_list_invoices_finds_document_by_number():
     item = _raw_document("51365")
     client = _FakeMorningClient([_page_response([item], total=1, page=1, pages=1)])
 
-    result = tools.list_invoices(client, document_display_number="51365")
+    payload = json.loads(tools.list_invoices(client, document_display_number="51365"))
 
-    assert "חשבונית #51365" in result
+    assert _numbers(payload) == ["51365"]
 
 
-def test_list_invoices_number_not_found_returns_unchanged_no_results_message():
+def test_list_invoices_number_not_found_returns_empty_documents_list():
     client = _FakeMorningClient([_page_response([], total=0, page=1, pages=1)])
 
-    result = tools.list_invoices(client, document_display_number="99999999")
+    payload = json.loads(tools.list_invoices(client, document_display_number="99999999"))
 
-    assert result == "לא נמצאו חשבוניות התואמות את החיפוש."
-
-
-# ============================================================================
-# Token-budget truncation (REQ-INVOICE-008/009, research.md Decision 6)
-#
-# `token_budget` is a config-driven value (MorningMCPConfig.list_invoices_
-# token_budget, default 2500 in real deployments - server.py threads it into
-# tools.list_invoices via dependency injection, same pattern as every other
-# config value in this app). Production behavior stays at the real,
-# unmodified default everywhere except here: per explicit user direction,
-# this ONE test - the one that specifically needs to exercise the
-# truncation boundary deterministically and cheaply - passes an explicitly
-# low `token_budget` value directly, exactly like "a testing harness setting
-# its own config" would. No other test in this suite touches this
-# parameter; every other test call relies on the real default.
-# ============================================================================
-
-
-def _block_tokens(number: str, client_name: str = "Test Client") -> int:
-    invoice = Invoice.model_validate(_raw_document(number, client_name))
-    return len(_ENCODING.encode(format_invoice_confirmation(invoice)))
-
-
-def test_list_invoices_truncates_to_a_partial_prefix_within_token_budget():
-    numbers = [str(n) for n in range(1, 6)]
-    items = [_raw_document(n) for n in numbers]
-
-    # Compute a deliberately low test-only budget from the real block size
-    # (not hardcoded) so this test doesn't depend on guessing
-    # format_invoice_confirmation's exact output size: big enough for 2
-    # blocks to fit, too small for all 5.
-    single_block_tokens = _block_tokens(numbers[0])
-    low_test_budget = single_block_tokens * 2 + 120  # ~2 blocks + reserve headroom
-    assert single_block_tokens * 3 > low_test_budget - 100, (
-        "test fixture assumption: 3 blocks must already exceed the smallest possible "
-        "item-block budget at this low_test_budget, or this test doesn't actually "
-        "exercise truncation"
-    )
-
-    client = _FakeMorningClient([_page_response(items, total=len(items), page=1, pages=1)])
-
-    result = tools.list_invoices(client, token_budget=low_test_budget)
-
-    shown = result.count("חשבונית #")
-    assert 0 < shown < len(numbers), f"expected a genuine partial prefix, got shown={shown} of {len(numbers)}"
-    assert f"מתוך {len(numbers)}" in result  # designed "shown X מתוך Y" phrase, real total still accurate
-
-
-def test_list_invoices_no_truncation_when_reply_fits_comfortably_within_budget():
-    """Uses the real default budget (no override) - confirms production
-    behavior for a small reply is unaffected by this feature."""
-    numbers = [str(n) for n in range(1, 4)]
-    items = [_raw_document(n) for n in numbers]
-    client = _FakeMorningClient([_page_response(items, total=len(items), page=1, pages=1)])
-
-    result = tools.list_invoices(client)
-
-    assert result.count("חשבונית #") == len(numbers)
-    assert "מתוך" not in result  # untruncated reply uses the simple count line, not "shown X of Y"
+    assert payload["total_matched"] == 0
+    assert payload["documents"] == []
 
 
 # ============================================================================
-# Feature 025 Phase 9: output_format
+# 2026-09-04 JSON-only contract: always JSON, never truncated
 # ============================================================================
 
-def test_list_invoices_defaults_to_hebrew_prose_unchanged():
-    """The default path MUST stay byte-for-byte what conversations get today -
-    only the reconciliation sweep opts into JSON."""
-    import json as _json
-    from denidin_mcp_morning import tools as _tools
 
-    class _StubClient:
-        def list_invoices(self, params=None):
-            return {"total": 1, "page": 1, "pages": 1, "items": [{
-                "id": "abc", "number": 40406, "type": 300, "status": 1,
-                "client": {"id": "c1", "name": "נאדר קרא"},
-                "documentDate": "2026-08-20", "creationDate": 1787241168,
-                "description": "תחזוקה", "amount": 51.92,
-            }]}
+def test_list_invoices_always_returns_parseable_json():
+    """No more output_format parameter, no more prose default - every call
+    returns the same machine-readable shape."""
+    client = _FakeMorningClient([_page_response([{
+        "id": "abc", "number": "40406", "type": 300, "status": 1,
+        "client": {"id": "c1", "name": "נאדר קרא"},
+        "documentDate": "2026-08-20", "creationDate": 1787241168,
+        "description": "תחזוקה", "amount": 51.92,
+    }], total=1, page=1, pages=1)])
 
-    text = _tools.list_invoices(_StubClient(), from_date="2026-08-20")
-    assert "חשבונית #40406" in text
-    with pytest.raises(_json.JSONDecodeError):
-        _json.loads(text)
-
-
-def test_list_invoices_json_format_returns_parseable_machine_output():
-    import json as _json
-    from denidin_mcp_morning import tools as _tools
-
-    class _StubClient:
-        def list_invoices(self, params=None):
-            return {"total": 1, "page": 1, "pages": 1, "items": [{
-                "id": "abc", "number": 40406, "type": 300, "status": 1,
-                "client": {"id": "c1", "name": "נאדר קרא"},
-                "documentDate": "2026-08-20", "creationDate": 1787241168,
-                "description": "תחזוקה", "amount": 51.92,
-            }]}
-
-    payload = _json.loads(_tools.list_invoices(
-        _StubClient(), from_date="2026-08-20", output_format="json"))
+    payload = json.loads(tools.list_invoices(client, from_date="2026-08-20"))
 
     assert payload["total_matched"] == 1
     doc = payload["documents"][0]
@@ -344,12 +267,10 @@ def test_list_invoices_json_format_returns_parseable_machine_output():
     assert doc["creation_date"].startswith("2026-08-20T18:52:48")
 
 
-def test_list_invoices_json_is_not_token_budget_truncated():
-    """A reconciliation consumer needs EVERY match - the prose path's token
-    budget (which silently showed 8 of 18 real documents) must not apply."""
-    import json as _json
-    from denidin_mcp_morning import tools as _tools
-
+def test_list_invoices_is_never_truncated_regardless_of_result_size():
+    """A reconciliation consumer needs EVERY match - the old prose path's
+    token-budget truncation (which used to silently show 8 of 18 real
+    documents) is gone entirely; every match is always present."""
     many = [{
         "id": f"id-{i}", "number": 40000 + i, "type": 300, "status": 1,
         "client": {"id": "c1", "name": "לקוח ארוך שם מאוד לצורך בדיקה"},
@@ -357,13 +278,9 @@ def test_list_invoices_json_is_not_token_budget_truncated():
         "description": "תיאור ארוך מאוד כדי לצרוך תקציב טוקנים" * 5,
         "amount": 100.0,
     } for i in range(40)]
+    client = _FakeMorningClient([_page_response(many, total=len(many), page=1, pages=1)])
 
-    class _StubClient:
-        def list_invoices(self, params=None):
-            return {"total": len(many), "page": 1, "pages": 1, "items": many}
-
-    payload = _json.loads(_tools.list_invoices(
-        _StubClient(), from_date="2026-08-20", output_format="json", token_budget=50))
+    payload = json.loads(tools.list_invoices(client, from_date="2026-08-20"))
 
     assert payload["total_matched"] == 40
     assert len(payload["documents"]) == 40
@@ -398,13 +315,11 @@ def test_include_full_details_fans_out_to_full_details_server_side():
     ONLY on the single-document GET. Asking the MODEL to chain those N calls
     proved unreliable (it stopped after two captures without ever calling
     get_invoice_details), so the fan-out is deterministic server-side code."""
-    import json as _json
-    from denidin_mcp_morning import tools as _tools
     calls = {"get": 0}
 
-    payload = _json.loads(_tools.list_invoices(
+    payload = json.loads(tools.list_invoices(
         _stub_client_factory(calls, _SEARCH_ITEM, _DETAIL),
-        from_date="2026-08-20", output_format="json", include_full_details=True))
+        from_date="2026-08-20", include_full_details=True))
 
     assert calls["get"] == 1
     doc = payload["documents"][0]
@@ -412,53 +327,29 @@ def test_include_full_details_fans_out_to_full_details_server_side():
     assert doc["linked_document"]["number"] == "52203"
 
 
-def test_json_output_alone_never_fans_out():
-    """The decisive separation (user catch, 2026-08-23): the fan-out is gated on
-    include_full_details, NOT on the output format. Phase 9b makes JSON the
-    format for every read tool - a format-based gate would make every ordinary
-    list explode into N per-document GETs.
-
-    Note this is about the DEFAULT, not a prohibition: a conversation that
-    genuinely needs bank details or linked documents may pass
-    include_full_details=True itself (see the test below). The only cost is
-    latency, which is acceptable - it just should not happen unasked."""
-    import json as _json
-    from denidin_mcp_morning import tools as _tools
+def test_default_call_never_fans_out():
+    """The fan-out is gated on include_full_details alone (user catch,
+    2026-08-23) - not the default, since most questions don't need it. The
+    only cost of opting in is latency, which is acceptable when asked for."""
     calls = {"get": 0}
 
-    payload = _json.loads(_tools.list_invoices(
-        _stub_client_factory(calls, _SEARCH_ITEM, _DETAIL),
-        from_date="2026-08-20", output_format="json"))   # default purpose
+    payload = json.loads(tools.list_invoices(
+        _stub_client_factory(calls, _SEARCH_ITEM, _DETAIL), from_date="2026-08-20"))
 
-    assert calls["get"] == 0, "a conversational call must never fan out"
+    assert calls["get"] == 0, "a conversational call must never fan out unasked"
     assert payload["documents"][0]["display_number"] == "60443"
-
-
-def test_text_output_alone_never_fans_out():
-    from denidin_mcp_morning import tools as _tools
-    calls = {"get": 0}
-
-    text = _tools.list_invoices(
-        _stub_client_factory(calls, _SEARCH_ITEM, _DETAIL), from_date="2026-08-20")
-
-    assert calls["get"] == 0
-    assert "60443" in text
 
 
 def test_include_full_details_survives_a_failing_detail_fetch():
     """One unreachable document must not lose the whole sweep."""
-    import json as _json
-    from denidin_mcp_morning import tools as _tools
-
     class _Failing:
         def list_invoices(self, params=None):
             return {"total": 1, "page": 1, "pages": 1, "items": [_SEARCH_ITEM]}
         def get_invoice(self, invoice_id):
             raise RuntimeError("boom")
 
-    payload = _json.loads(_tools.list_invoices(
-        _Failing(), from_date="2026-08-20", output_format="json",
-        include_full_details=True))
+    payload = json.loads(tools.list_invoices(
+        _Failing(), from_date="2026-08-20", include_full_details=True))
 
     assert len(payload["documents"]) == 1
     assert payload["documents"][0]["display_number"] == "60443"
@@ -469,26 +360,11 @@ def test_a_conversation_may_opt_into_full_details_too():
     context, not something reserved for the ledger sweep. A conversational turn
     that needs bank details or linked documents ("which account was I paid
     into?") can ask for them - it is simply not the default."""
-    import json as _json
-    from denidin_mcp_morning import tools as _tools
     calls = {"get": 0}
 
-    payload = _json.loads(_tools.list_invoices(
+    payload = json.loads(tools.list_invoices(
         _stub_client_factory(calls, _SEARCH_ITEM, _DETAIL),
-        from_date="2026-08-20", output_format="json", include_full_details=True))
+        from_date="2026-08-20", include_full_details=True))
 
     assert calls["get"] == 1
     assert payload["documents"][0]["payment"]["bank_number"] == "31"
-
-
-def test_full_details_works_in_text_mode_as_well():
-    """The two parameters are independent: a prose-answering conversation can
-    still opt into full details."""
-    from denidin_mcp_morning import tools as _tools
-    calls = {"get": 0}
-
-    _tools.list_invoices(
-        _stub_client_factory(calls, _SEARCH_ITEM, _DETAIL),
-        from_date="2026-08-20", include_full_details=True)
-
-    assert calls["get"] == 1

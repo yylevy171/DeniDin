@@ -4,6 +4,8 @@ No mocks: this test drives denidin_mcp_morning.tools.create_invoice, which
 calls the real MorningClient against the live sandbox, per CONSTITUTION §V
 and this app's testing policy (see spec.md §Testing Strategy).
 """
+import json
+
 import pytest
 import requests
 
@@ -44,28 +46,14 @@ def test_create_invoice_tool_creates_real_sandbox_document(morning_client):
             amount=45.0,
             description=f"Consulting services {unique_marker}",
             name_resolved=True,
+            vat_included=True,
         )
     except requests.exceptions.HTTPError as exc:
         body = exc.response.text if exc.response is not None else str(exc)
         pytest.fail(f"create_invoice tool failed against the sandbox. Server response: {body}")
 
     assert isinstance(confirmation, str)
-    assert client_name in confirmation
-    assert "₪45.00" in confirmation
+    doc = json.loads(confirmation)
+    assert doc["client_name"] == client_name
+    assert doc["amount"] == 45.0
 
-
-def test_create_invoice_tool_defaults_vat_included_to_true(morning_client):
-    from denidin_mcp_morning.tools import create_invoice
-
-    unique_marker = f"DENIDIN_TOOL_TEST_VAT_{int(now_local().timestamp())}"
-    _, client_name = seed_real_client(morning_client, unique_marker)
-
-    confirmation = create_invoice(
-        morning_client,
-        client_name=client_name,
-        amount=35.0,
-        description=f"VAT default check {unique_marker}",
-        name_resolved=True,
-    )
-
-    assert client_name in confirmation

@@ -6,7 +6,7 @@ Same entry point, fixtures, and non-technical-user conventions as this
 directory's other Morning-MCP billed E2E test modules (feature 018 and
 successors) - reuses shared fixtures/helpers rather than duplicating them
 (denidin_app via conftest.py; _send_turn, _send_turn_and_approve,
-_send_turn_and_decline, _calls_for, _seed_fresh_client, GODFATHER_CHAT_ID
+_send_turn_and_decline, _calls_for, pick_existing_client, GODFATHER_CHAT_ID
 via denidin_mcp_e2e_helpers.py). See
 test_denidin_morning_invoice_creation_e2e.py's docstring for the full
 rationale behind single-turn-only prompts for non-document-creating tools
@@ -44,6 +44,7 @@ invoices existing for the same client name in the same sandbox.
 
 NO MOCKING anywhere. @pytest.mark.billed: real OpenAI billing on every run.
 """
+import json
 import random
 import re
 import time
@@ -53,13 +54,20 @@ import pytest
 
 from tests.billed.denidin_mcp_e2e_helpers import (  # noqa: F401
     GODFATHER_CHAT_ID,
+    VAT_FROM_ORIGINAL,
+    VAT_INCLUDED,
+    VAT_NOT_INCLUDED,
     _calls_for,
-    _seed_fresh_client,
+    assert_document_approval_states_vat,
+    assert_stored_receipt,
+    assert_stored_vat,
+    pick_existing_client,
     _send_turn,
     _send_turn_and_approve,
     _send_turn_and_approve_receipt,
     _send_turn_and_decline,
 )
+from tests.e2e_helpers import approval_vat_label
 
 # `denidin_app`/`denidin_config`/`live_morning_tunnel` are no longer imported
 # explicitly - they're pytest fixtures auto-discovered from this directory's
@@ -82,33 +90,34 @@ def _seed_fresh_invoice_and_get_number(amount: int, description: str) -> Tuple[s
     by name, for tests that need that instead).
 
     Only asserts on the end state (a fresh invoice genuinely exists before
-    the real test begins), never on the seeding turns themselves:
-    `_seed_fresh_client` already retries with a new name on its own if a
-    particular draw collides with an existing real sandbox client.
+    the real test begins), never on the seeding turns themselves.
 
-    Feature 027: create_invoice now resolves client_name against a real
-    client record before creating anything - seeds one first via the real
-    add_client conversation (the only way to do so from this E2E layer).
+    Feature 059 item 5: the *invoice* must be fresh (the credit-note / receipt
+    flows below consume it irreversibly in the sandbox), the *client* need not
+    be - so this picks an existing sandbox client (`pick_existing_client`)
+    rather than paying 2-3 billed turns + a sleep to seed a throwaway one.
     """
-    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="E2E_021_SEED")
-    _, (response, ai_response) = _send_turn_and_approve(
+    client_name = pick_existing_client()["name"]
+    (ask_response, _), (response, ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
-        text=f"צור חשבונית ל-{client_name} על {amount} ₪ עבור {description}",
+        text=f"צור חשבונית ל-{client_name} על {amount} ₪ לא כולל מע״מ עבור {description}",
         id_prefix="E2E_021_SEED",
     )
+    assert_document_approval_states_vat(ask_response, VAT_NOT_INCLUDED)  # bugfix-071
     create_calls = _calls_for(ai_response, "create_invoice")
     assert create_calls and create_calls[0]["error"] is None, (
         f"Seed create_invoice failed or was not called: {ai_response.mcp_calls!r}"
     )
+    assert_stored_vat(create_calls[0], round(amount * 1.18, 2))  # bugfix-071: "לא כולל" -> amount + VAT
     output = create_calls[0]["output"] or ""
-    match = re.search(r"#(\d+)", output)
-    assert match, f"Could not extract invoice number from create_invoice output: {output!r}"
+    display_number = json.loads(output).get("display_number") if output else None
+    assert display_number, f"Could not extract invoice number from create_invoice output: {output!r}"
     time.sleep(3)  # search-index lag (research.md Decision 8) - a caller that immediately
     # list_invoices/get_invoice_details's for this just-seeded invoice would otherwise race
     # the sandbox's own indexing (a real, billed failure: 2026-07-31,
     # test_receipt_request_for_already_paid_invoice_handled_sensibly - the freshly-created
     # invoice was missing from list_invoices' results for the first ~10s after creation)
-    return client_name, match.group(1)
+    return client_name, str(display_number)
 
 
 _SEED_DESCRIPTIONS = ("ייעוץ", "עיצוב לוגו", "תחזוקת אתר", "צילום")
@@ -119,6 +128,7 @@ _SEED_DESCRIPTIONS = ("ייעוץ", "עיצוב לוגו", "תחזוקת אתר"
 # ============================================================================
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_godfather_creates_transaction_account_via_whatsapp(denidin_app):
     """Godfather asks for a non-tax transaction account ("חשבון עסקה") the
     way a real, non-technical person would - client name, amount, what it's
@@ -140,7 +150,7 @@ def test_godfather_creates_transaction_account_via_whatsapp(denidin_app):
     """
     amount = _small_random_amount()
     description = random.choice(_SEED_DESCRIPTIONS)
-    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="E2E_TXN_ACCT")
+    client_name = pick_existing_client()["name"]  # Feature 059 item 5: any valid client works here
 
     ask_response, ask_ai_response = _send_turn(
         chat_id=GODFATHER_CHAT_ID,
@@ -152,11 +162,15 @@ def test_godfather_creates_transaction_account_via_whatsapp(denidin_app):
         f"was given: {ask_ai_response.mcp_calls if ask_ai_response else None!r}"
     )
 
-    # First "כן" answers the mandatory VAT-inclusion question - this produces
-    # the real pending approval, not an execution yet.
-    _, vat_ai_response = _send_turn(
-        chat_id=GODFATHER_CHAT_ID, text="כן", id_prefix="E2E_TXN_ACCT_VAT"
+    # This turn answers the mandatory VAT-inclusion question - this produces
+    # the real pending approval, not an execution yet. Answered explicitly
+    # (2026-10-04): the question is "included or not?", which a bare "כן"
+    # doesn't answer.
+    vat_answer_response, vat_ai_response = _send_turn(
+        chat_id=GODFATHER_CHAT_ID, text="כולל מע\"מ", id_prefix="E2E_TXN_ACCT_VAT"
     )
+    # bugfix-071: answered "included" -> the approval says included.
+    assert_document_approval_states_vat(vat_answer_response, VAT_INCLUDED)
     assert not _calls_for(vat_ai_response, "create_transaction_account"), (
         f"create_transaction_account executed before the actual approval turn: "
         f"{vat_ai_response.mcp_calls if vat_ai_response else None!r}"
@@ -183,6 +197,7 @@ def test_godfather_creates_transaction_account_via_whatsapp(denidin_app):
         f"create_transaction_account was not called with the client name "
         f"{client_name!r}: {create_calls!r}"
     )
+    assert_stored_vat(create_calls[0], amount)  # bugfix-071: VAT inside the amount
 
 
 # ============================================================================
@@ -190,6 +205,7 @@ def test_godfather_creates_transaction_account_via_whatsapp(denidin_app):
 # ============================================================================
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_godfather_creates_combo_document_via_whatsapp(denidin_app):
     """Godfather reports payment already received and asks for the combo
     invoice+receipt document - the natural phrasing a real person uses right
@@ -204,7 +220,7 @@ def test_godfather_creates_combo_document_via_whatsapp(denidin_app):
     """
     amount = _small_random_amount()
     description = random.choice(_SEED_DESCRIPTIONS)
-    client_name, _, _ = _seed_fresh_client(GODFATHER_CHAT_ID, id_prefix="E2E_COMBO")
+    client_name = pick_existing_client()["name"]  # Feature 059 item 5: any valid client works here
 
     # Turn 1: no description given - create_combo_document requires one, so
     # the model is expected to ask for it (constitution's "ask for missing
@@ -244,6 +260,8 @@ def test_godfather_creates_combo_document_via_whatsapp(denidin_app):
         f"create_combo_document executed before the actual approval turn: "
         f"{date_ai_response.mcp_calls if date_ai_response else None!r}"
     )
+    # bugfix-071: a 320 records money already paid - VAT is inside it.
+    assert_document_approval_states_vat(date_response, VAT_INCLUDED)
 
     # Turn 4: approve.
     response, ai_response = _send_turn(
@@ -263,6 +281,7 @@ def test_godfather_creates_combo_document_via_whatsapp(denidin_app):
     assert all(c["error"] is None for c in create_calls), (
         f"create_combo_document call(s) reported an error: {create_calls}"
     )
+    assert_stored_vat(create_calls[0], amount)  # bugfix-071: was stored VAT-exempt
 
 
 # ============================================================================
@@ -270,6 +289,7 @@ def test_godfather_creates_combo_document_via_whatsapp(denidin_app):
 # ============================================================================
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_godfather_creates_credit_note_against_real_invoice(denidin_app):
     """Godfather explicitly asks for a credit note against a real, existing
     invoice by its real invoice number - exactly one such invoice exists
@@ -295,6 +315,7 @@ def test_godfather_creates_credit_note_against_real_invoice(denidin_app):
         f"create_credit_note executed on the ASK turn before approval was "
         f"given: {ask_ai_response.mcp_calls if ask_ai_response else None!r}"
     )
+    assert_document_approval_states_vat(ask_response, VAT_FROM_ORIGINAL)  # bugfix-071
 
     create_calls = _calls_for(ai_response, "create_credit_note")
 
@@ -308,6 +329,9 @@ def test_godfather_creates_credit_note_against_real_invoice(denidin_app):
     assert all(c["error"] is None for c in create_calls), (
         f"create_credit_note call(s) reported an error: {create_calls}"
     )
+    # bugfix-071: a full credit of the "לא כולל" seed credits its whole total,
+    # VAT included, taking its VAT from the original.
+    assert_stored_vat(create_calls[0], round(amount * 1.18, 2))
 
 
 @pytest.mark.billed
@@ -356,6 +380,7 @@ def test_credit_note_request_with_invalid_invoice_number_fails_gracefully(denidi
 # ============================================================================
 
 @pytest.mark.billed
+@pytest.mark.sanity
 def test_godfather_creates_receipt_against_unpaid_invoice(denidin_app):
     """Godfather explicitly asks for a receipt document against a real,
     existing unpaid invoice, referenced by its real invoice number (exactly
@@ -392,36 +417,55 @@ def test_godfather_creates_receipt_against_unpaid_invoice(denidin_app):
     assert all(c["error"] is None for c in create_calls), (
         f"create_receipt call(s) reported an error: {create_calls}"
     )
+    # bugfix-071: a receipt for the whole "לא כולל" seed records its full total,
+    # VAT included, and carries no VAT of its own.
+    assert_stored_receipt(create_calls[0], round(amount * 1.18, 2))
+
+
+def _amount_mentioned(text: str, value: float) -> bool:
+    """Whether `value` appears in `text` as a standalone number, in any of the
+    ways the bot writes amounts (42.48, 59, 59.00, 1,180.00)."""
+    forms = {f"{value:.2f}", f"{value:g}", f"{value:,.2f}", f"{value:,g}"}
+    return any(re.search(rf"(?<![\d.,]){re.escape(f)}(?![\d])", text) for f in forms)
 
 
 @pytest.mark.billed
-def test_receipt_request_with_exact_invoice_amount_resolves_correctly(denidin_app):
-    """Godfather references the invoice by client name + the EXACT amount
-    that was seeded on it (no invoice number mentioned at all) - a realistic
-    "X paid me Y" phrasing that only disambiguates via the amount matching
-    the real, single seeded invoice for that client. `payment_date` is
-    mandatory (2026-08-12) and no date is given here either, so an extra
-    turn may be needed to answer it - see `_send_turn_and_approve_receipt`.
-    """
+def test_receipt_for_the_net_amount_of_a_vat_added_invoice_is_flagged(denidin_app):
+    """bugfix-071 (rewritten 2026-10-06, user-approved): the invoice was issued
+    as X ₪ "לא כולל מע״מ", so Morning holds X + VAT. The godfather then says the
+    client paid X - the net amount - and asks for a receipt. That does not match
+    what the client owes, so nothing may be created and nothing may be put up
+    for approval; the bot must point out the gap by stating the invoice's real
+    total (X + VAT) or the VAT difference itself.
+
+    (Was `test_receipt_request_with_exact_invoice_amount_resolves_correctly`,
+    which assumed the paid amount equals the invoice total - false once the
+    seed says "לא כולל מע״מ".)"""
     amount = _small_random_amount()
-    client_name, _ = _seed_fresh_invoice_and_get_number(amount, random.choice(_SEED_DESCRIPTIONS))
-
-    _, (response, ai_response) = _send_turn_and_approve_receipt(
-        chat_id=GODFATHER_CHAT_ID,
-        text=f"{client_name} שילם {amount} שח. תפיק קבלה",
-        id_prefix="E2E_RECEIPT_EXACT_AMOUNT",
+    client_name, invoice_number = _seed_fresh_invoice_and_get_number(
+        amount, random.choice(_SEED_DESCRIPTIONS)
     )
-    create_calls = _calls_for(ai_response, "create_receipt")
+    gross = round(amount * 1.18, 2)
+    vat = round(gross - amount, 2)
 
-    assert response is not None, "CRITICAL: godfather got NO RESPONSE (silent drop)"
-    assert len(response) > 0
-
-    assert create_calls, (
-        f"Model never invoked create_receipt via the remote MCP server. "
-        f"mcp_calls: {ai_response.mcp_calls!r}. Final reply: {response!r}"
+    response, ai_response = _send_turn(
+        GODFATHER_CHAT_ID,
+        f"{client_name} שילם {amount} שח. תפיק קבלה",
+        id_prefix="E2E_RECEIPT_NET_AMOUNT",
     )
-    assert all(c["error"] is None for c in create_calls), (
-        f"create_receipt call(s) reported an error: {create_calls}"
+
+    assert response, "CRITICAL: godfather got NO RESPONSE (silent drop)"
+    for tool in ("create_receipt", "create_combo_document", "create_combo_document_as_reference"):
+        assert not _calls_for(ai_response, tool), (
+            f"a receipt for the net amount was created without flagging the VAT gap: "
+            f"{ai_response.mcp_calls!r}"
+        )
+    assert approval_vat_label(response) is None, (
+        f"the net-amount payment went straight to approval instead of being flagged: {response!r}"
+    )
+    assert _amount_mentioned(response, gross) or _amount_mentioned(response, vat), (
+        f"the bot did not point out the gap: expected invoice #{invoice_number}'s real total "
+        f"{gross:g} or the VAT difference {vat:g} in the reply. Reply: {response!r}"
     )
 
 

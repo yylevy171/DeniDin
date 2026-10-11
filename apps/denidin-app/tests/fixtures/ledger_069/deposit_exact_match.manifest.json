@@ -1,0 +1,122 @@
+{
+  "source_kind": "image",
+  "story": "US7d — bank-deposit photo whose payer is an EXACT existing Morning client: no disambiguation question, no add_client, captured directly against the existing client. Two-hop.",
+  "source_file": "Bank-test-image.jpg",
+  "_note": "Bank triplet filled in 2026-09-10 from the extractor's own legible read on the 2026-09-07 expensive run (bank 31 / branch 109 / account 105542585, amount 1500, txn_date 12/07/2026). The reference number (3263) is rendered into the free-text description by the model but not lifted into the `reference` field, so `reference`/`reference_hint` stay null.",
+  "seed_clients": [
+    {
+      "id_prefix": "F069_DEP_EXACT",
+      "name": "עטיה רועי מאיר",
+      "ensure_exists": true
+    }
+  ],
+  "resolution": {
+    "mode": "exact",
+    "name": "עטיה רועי מאיר"
+  },
+  "files": "single",
+  "shared_fields": {
+    "event_id": {
+      "generated": "event_id"
+    },
+    "event_datetime": {
+      "generated": "event_datetime"
+    },
+    "source_type": {
+      "tested": "בנק"
+    },
+    "event_subtype": {
+      "tested": "הפקדה"
+    },
+    "client_name": {
+      "tested": "$client"
+    },
+    "payer_name": {
+      "null": true
+    },
+    "description": {
+      "free_text": true
+    },
+    "amount": {
+      "tested": "1500"
+    },
+    "txn_date": {
+      "tested": "2026-07-12"
+    },
+    "reference": {
+      "null": true
+    },
+    "reference_hint": {
+      "null": true
+    },
+    "bank_number": {
+      "tested": "31"
+    },
+    "bank_branch": {
+      "tested": "109"
+    },
+    "bank_account": {
+      "tested": "105542585"
+    },
+    "vat_status": {
+      "tested": "כולל"
+    },
+    "agreement_id": {
+      "null": true
+    },
+    "component_id": {
+      "null": true
+    },
+    "component_label": {
+      "null": true
+    },
+    "trigger_condition": {
+      "null": true
+    },
+    "percent": {
+      "null": true
+    },
+    "percent_base": {
+      "null": true
+    },
+    "hours": {
+      "null": true
+    },
+    "hourly_rate": {
+      "null": true
+    },
+    "split_partner": {
+      "null": true
+    },
+    "split_percent": {
+      "null": true
+    },
+    "accounting_document_display_number": {
+      "null": true
+    },
+    "accounting_document_status": {
+      "null": true
+    },
+    "accounting_document_status_code": {
+      "null": true
+    },
+    "accounting_document_status_label": {
+      "null": true
+    },
+    "accounting_document_payment_method": {
+      "null": true
+    },
+    "session_id": {
+      "generated": "session_id"
+    },
+    "message_id": {
+      "generated": "message_id"
+    },
+    "captured_at": {
+      "generated": "captured_at"
+    },
+    "schema_version": {
+      "generated": "schema_version"
+    }
+  }
+}

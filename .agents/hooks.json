@@ -1,0 +1,10 @@
+{
+  "load-personality": {
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "./scripts/load_personality.sh"
+      }
+    ]
+  }
+}
