@@ -345,4 +345,5 @@ def test_update_client_tool_exact_match_uses_standard_phrasing(morning_client):
     assert doc["status"] == "updated"
     assert doc["client"]["name"] == name
     assert set(doc) == {"status", "client"}, f"unexpected extra keys in {doc!r}"
+    assert doc["client"]["tax_id"] == "308253681"
     assert "מצאתי ועדכנתי" not in result

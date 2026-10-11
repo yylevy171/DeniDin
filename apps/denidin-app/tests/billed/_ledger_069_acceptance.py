@@ -221,12 +221,16 @@ def _answer_bank_for(resolution: Dict[str, Any]) -> ClarificationAnswerBank:
         # No client-resolution detour — only whatever gate the scenario's own
         # flow raises (e.g. US2's mutation-approval gate). Supply the common
         # follow-ups; the shared driver answers the closed כן/לא gate itself.
-        return ClarificationAnswerBank(
-            [{"topic": "payment_method",
-              "keywords": ["אמצעי התשלום", "אמצעי תשלום", "איך שולם", "צורת התשלום"],
-              "answer": "שולם בהעברה בנקאית"}],
-            fallback="כן",
-        )
+        entries = [{"topic": "payment_method",
+                    "keywords": ["אמצעי התשלום", "אמצעי תשלום", "איך שולם", "צורת התשלום"],
+                    "answer": "שולם בהעברה בנקאית"}]
+        if resolution.get("tax_id"):
+            # Feature 098: above the allocation threshold, DeniDin asks for the
+            # client's ID before the document.
+            entries.append({"topic": "client_tax_id",
+                            "keywords": ["ח.פ", "ח\"פ", "ת.ז", "ת\"ז", "מספר זהות", "הקצאה"],
+                            "answer": f"ח.פ {resolution['tax_id']}"})
+        return ClarificationAnswerBank(entries, fallback="כן")
     if mode == "new_client":
         return _new_client_answer_bank(
             full_name=resolution["name"],

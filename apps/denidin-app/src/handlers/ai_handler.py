@@ -17,6 +17,7 @@ from src.models.message import (
     NO_REPLY_SENTINEL as _NO_REPLY_SENTINEL, should_reply_for,
 )
 from src.utils.logger import get_logger, read_version, DEFAULT_VERSION_FILE
+from src.utils.allocation_threshold import fill_allocation_threshold
 from src.utils.time_utils import now_local, local_from_timestamp
 from src.utils.wire_log import audit_wire, debug_wire
 from src.core.ai_manager import AIManager, MORNING_READ_MCP_TOOLS, MORNING_WRITE_MCP_TOOLS
@@ -105,6 +106,7 @@ REMINDER_AUTHORIZED_ROLES = (Role.GODFATHER, Role.ADMIN)
 # Re-exported here so every existing `from src.handlers.ai_handler import
 # NO_REPLY_SENTINEL` keeps working.
 NO_REPLY_SENTINEL = _NO_REPLY_SENTINEL
+
 
 # Feature 080 (REQ-080-04, research.md R3 as revised during implementation): the active
 # turn's TelemetryBuilder, if any. Set once at the top of single_turn() (try/finally around
@@ -691,11 +693,21 @@ class AIHandler(AIManager):
                 logger.warning(f"Constitution file is empty: {filepath}, using system_message fallback")
                 return ""
 
-            return self._apply_feature_080_constitution_gate(self._constitution_content)
+            return self._fill_allocation_threshold(
+                self._apply_feature_080_constitution_gate(self._constitution_content)
+            )
 
         except Exception as e:
             logger.error(f"Failed to load constitution file {filepath}: {e}", exc_info=True)
             return ""
+
+    def _fill_allocation_threshold(self, content: str) -> str:
+        """Feature 098: replace {{ALLOCATION_THRESHOLD_NIS}} with this app's own
+        configured threshold (e.g. "5,000"). Applied on every load, never stored
+        in the mtime cache, so a config change needs only a restart. The value is
+        the same on every call, so the constitution stays a byte-identical prefix
+        and OpenAI's prompt caching is unaffected."""
+        return fill_allocation_threshold(content, self.config.allocation_threshold_nis)
 
     def _apply_feature_080_constitution_gate(self, content: str) -> str:
         """Feature 080: the "Proactive Progress Updates" section is wrapped in

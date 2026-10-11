@@ -1472,7 +1472,8 @@ def handle_button_tap(notification: Notification) -> None:
         return
 
     # Under the Backbone a tap's resolution CAN chain a fresh approval - the same
-    # send-and-record as a typed turn.
+    # send-and-record as a typed turn (also Feature 098's "save the ID, then issue
+    # the document" chain on the legacy path).
     _send_ai_response_and_attach(notification, message.chat_id, ai_response)
     logger.info(f"[047] Button tap resolved and response sent for chat={message.chat_id!r}")
 
@@ -1694,6 +1695,9 @@ def main() -> None:
         'capabilities_reset_minutes': startup_config.capabilities_reset_minutes,
         # Feature 069: context-window size for the post-turn ledger recognition call.
         'ledger_recognition_context_window_hours': startup_config.ledger_recognition_context_window_hours,
+        # Feature 098: fills the constitution's {{ALLOCATION_THRESHOLD_NIS}} -
+        # same "must also be listed here or it silently has no effect" rule.
+        'allocation_threshold_nis': startup_config.allocation_threshold_nis,
         # bugfix-043: same "hand-maintained subset dict, easy to forget"
         # pattern warned about immediately above - added here explicitly so
         # a config.dev.json/config.prod.json value doesn't silently do

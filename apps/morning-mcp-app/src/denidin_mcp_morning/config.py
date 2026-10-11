@@ -34,6 +34,11 @@ class MorningMCPConfig:
     environment: Optional[str]
     default_currency: str
     default_vat_rate: float
+    # Feature 098: a 305/320 whose pre-VAT amount EXCEEDS this needs an
+    # allocation number, so the client must have an ID. Changes with
+    # regulation (20,000 -> 10,000 -> 5,000) - config, never a code constant.
+    # denidin-app keeps its own copy of the same value for its prompts.
+    allocation_threshold_nis: float
     refresh_before_seconds: int
     rate_limit_per_second: float
     # Feature 038: max estimated tiktoken (o200k_base) size of list_invoices'
@@ -102,7 +107,9 @@ def load_config(path: Path) -> MorningMCPConfig:
         auth_url=raw["auth_url"],
         environment=raw.get("environment") or None,
         default_currency=raw.get("default_currency", "ILS"),
-        default_vat_rate=raw.get("default_vat_rate", 0.17),
+        # 0.17 until Feature 098 - Israel's VAT has been 18% since 2025-01-01.
+        default_vat_rate=raw.get("default_vat_rate", 0.18),
+        allocation_threshold_nis=raw.get("allocation_threshold_nis", 5000),
         refresh_before_seconds=raw.get("refresh_before_seconds", 300),
         rate_limit_per_second=raw.get("rate_limit_per_second", 3),
         list_invoices_token_budget=raw.get("list_invoices_token_budget", 2500),

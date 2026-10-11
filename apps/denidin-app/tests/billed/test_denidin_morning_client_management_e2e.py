@@ -26,6 +26,7 @@ import time
 import pytest
 
 from .denidin_mcp_e2e_helpers import (
+    VALID_TAX_ID,
     BLOCKED_ROLE_CHAT_ID,
     CLIENT_ROLE_CHAT_ID,
     GODFATHER_CHAT_ID,
@@ -181,8 +182,9 @@ def test_godfather_updates_client_via_whatsapp(denidin_app):
     """update_client is approval-gated (T020), same as add_client. Verifies:
     1. ASK turn: update_client must NOT execute yet.
     2. APPROVE turn: mcp_calls shows an update_client call with no error.
-    3. A follow-up get_client_details turn confirms only the intended field
-       (phone) changed and round-tripped normalized - name/email untouched
+    3. A follow-up get_client_details turn confirms only the intended fields
+       (phone, and the ID - Feature 098) changed, the phone round-tripped
+       normalized - name/email untouched
        (research.md Decision 3's partial-payload guarantee, exercised here
        through the full real WhatsApp conversation, not just the sandbox
        tool call)."""
@@ -193,7 +195,7 @@ def test_godfather_updates_client_via_whatsapp(denidin_app):
 
     (ask_response, ask_ai_response), (response, ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
-        text=f"תעדכן את הטלפון של {client_name} ל-0541234567",
+        text=f"תעדכן את הטלפון של {client_name} ל-0541234567 ואת הח.פ ל-{VALID_TAX_ID}",
         id_prefix="E2E_UPDATE_CLIENT",
     )
 
@@ -229,6 +231,12 @@ def test_godfather_updates_client_via_whatsapp(denidin_app):
     assert "054-1234567" in details_response, (
         f"Expected the updated, normalized phone in the follow-up details "
         f"reply, got: {details_response!r}"
+    )
+    assert any(VALID_TAX_ID in (c["output"] or "") for c in detail_calls), (
+        f"Morning does not hold the saved ID: {detail_calls!r}"
+    )
+    assert VALID_TAX_ID in details_response, (
+        f"Expected the saved ID in the follow-up details reply, got: {details_response!r}"
     )
     assert seed_email.lower() in details_response.lower(), (
         f"Updating phone must not clobber the untouched email field "

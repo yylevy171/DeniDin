@@ -134,12 +134,13 @@ def _field(item: Any, name: str) -> Any:
 def _arguments_signature(call: Any) -> str:
     """A call's arguments as one comparable string: a JSON string or dict both become
     sorted-key JSON, so the same arguments compare equal however they were carried."""
-    arguments = _field(call, "arguments")
-    if isinstance(arguments, str):
+    raw = _field(call, "arguments")
+    arguments = raw
+    if isinstance(raw, str):
         try:
-            arguments = json.loads(arguments)
+            arguments = json.loads(raw)
         except ValueError:
-            return arguments
+            return raw
     try:
         return json.dumps(arguments, sort_keys=True, ensure_ascii=False)
     except TypeError:

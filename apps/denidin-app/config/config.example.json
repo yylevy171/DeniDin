@@ -1,5 +1,6 @@
 {
   "accounting_ledger_update_freq": 60,
+  "allocation_threshold_nis": 5000,
   "capabilities_reset_minutes": 60,
   "ai_api_key": "YOUR_OPENAI_API_KEY",
   "ai_embedding_model": "text-embedding-3-large",
@@ -19,7 +20,7 @@
   "data_root": "dev_data_for_dev_or_data_for_prod",
   "environment": "dev",
   "feature_flags": {
-    "enable_capability_backbone": false
+    "enable_capability_backbone": true
   },
   "godfather_phone": "YOUR_GODFATHER_PHONE_NUMBER",
   "green_api_instance_id": "YOUR_GREEN_API_INSTANCE_ID",
