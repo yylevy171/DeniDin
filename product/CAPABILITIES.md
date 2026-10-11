@@ -5,13 +5,18 @@ Customer-facing functional features, conversational intelligence, and business c
 
 ## Features
 
-- **096**: `096-webapp-undo-client-resolutions` — Status: Backlog
-- **095**: `095-webapp-handle-lasgor-closing` — Status: Backlog
+- **100**: `100-client-resolution-caching` — Status: In-progress
+- **099**: `099-dual-doc-cancellation-320` — Status: In-progress
+- **098**: `098-mandatory-id-above-5000-nis` — Status: In-progress
+- **097**: `097-ai-driven-e2e-testing` — Status: Backlog
+- **096**: `096-approved-write-args-contract` — Status: Backlog
+- **095**: `095-google-drive-client-document-filing` — Status: Backlog
+- **094**: `094-local-ai-hosting-exploration` — Status: Backlog
 - **093**: `093-hourly-payer-not-client` — Status: Backlog
-- **092**: `092-undo-client-resolution` — Status: Backlog
+- **092**: `092-undo-client-resolution` — Status: Done (v0.7.9)
 - **091**: `091-group-agreements` — Status: Backlog
 - **090**: `090-remove-turn-concept` — Status: Obsolete
-- **089**: `089-ui-agreement-edits` — Status: Backlog
+- **089**: `089-ui-agreement-edits` — Status: In-progress
 - **088**: `088-docx-to-pdf` — Status: Backlog
 - **087**: `087-webapp-clients-mgmt` — Status: Done (v0.7.6)
 - **086**: `086-combo-doc-closing-multiple-300-accounts` — Status: Backlog
@@ -24,14 +29,14 @@ Customer-facing functional features, conversational intelligence, and business c
 - **077**: `077-long-term-memory-assembly` — Status: Low-priority
 - **076**: `076-edited-reaction-deleted-message-support` — Status: Done (v0.7.0)
 - **074**: `074-morning-client-name-cache-alias` — Status: Obsolete
-- **072**: `072-morning-client-name-cache` — Status: Backlog
-- **071**: `071-pdf-single-call-extraction` — Status: Backlog
+- **072**: `072-morning-client-name-cache` — Status: In-progress
+- **071**: `071-pdf-single-call-extraction` — Status: In-progress
 - **070**: `070-rolling-memory-window` — Status: Repo
 - **069**: `069-mandatory-client-resolution-before-ledger-event` — Status: Done (v0.7.0)
 - **068**: `068-ledger-ui-and-reports` — Status: Done (v0.7.0)
-- **067**: `067-realistic-message-handling` — Status: Backlog
-- **066**: `066-support-bit-and-paybox` — Status: Backlog
-- **064**: `064-bank-deposit-full-cycle` — Status: Backlog
+- **067**: `067-realistic-message-handling` — Status: In-progress
+- **066**: `066-support-bit-and-paybox` — Status: In-progress
+- **064**: `064-bank-deposit-full-cycle` — Status: In-progress
 - **061**: `061-prod-morning-ledger-backfill` — Status: Done (v0.5.3)
 - **060**: `060-duplicate-bank-image-detection` — Status: Low-priority
 - **059**: `059-stabilize-tests-sanity-suite` — Status: Done (v0.5.4)
@@ -91,7 +96,12 @@ Customer-facing functional features, conversational intelligence, and business c
 
 ## Bugfixes
 
-- **068**: `bugfix-068-manual-close-comment` — Status: Bugfixes
+- **072**: `bugfix-072-bank-deposit-missing-txn-date` — Status: In-progress
+- **071**: `bugfix-071-morning-vat-zero-defect` — Status: Done (v0.8.0)
+- **070**: `bugfix-070-synthetic-media-turn-attributed-to-human-sender` — Status: Bugfixes
+- **069**: `bugfix-069-whatsapp-health-authorized` — Status: Done (v0.8.0)
+- **068**: `bugfix-068-manual-close-comment` — Status: Done (v0.7.9)
+- **068**: `bugfix-068-shared-sqlite-connections-across-threads` — Status: Done (v0.7.9)
 - **067**: `bugfix-067-morning-anonymous-config-volume` — Status: Done (v0.7.8)
 - **066**: `bugfix-066-prod-deploy-config-shipping-and-prober` — Status: Done (v0.7.7)
 - **064**: `bugfix-064-webapp-stale-in-memory-ledger-index` — Status: Done (v0.7.6)

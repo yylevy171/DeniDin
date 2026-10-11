@@ -438,9 +438,24 @@ def cmd_move(item_id: str, target_status: str, version: Optional[str] = None):
     # Find matching item by ID or name
     matched = None
     for item in items:
-        if item["id"] == item_id or item["id"] == item_id.zfill(3) or item["name"] == item_id:
+        if item["name"] == item_id:
             matched = item
             break
+        
+        if item_id.startswith("bugfix-"):
+            clean_target = item_id.replace("bugfix-", "").lstrip("0")
+            if item["type"] == "bugfix" and item["id"].lstrip("0") == clean_target:
+                matched = item
+                break
+        elif item_id.startswith("feature-"):
+            clean_target = item_id.replace("feature-", "").lstrip("0")
+            if item["type"] == "feature" and item["id"].lstrip("0") == clean_target:
+                matched = item
+                break
+        else:
+            if item["id"] == item_id or item["id"] == item_id.zfill(3):
+                matched = item
+                break
             
     if not matched:
         print(f"Error: Could not find feature or bugfix matching '{item_id}' in specs/repo/.")
