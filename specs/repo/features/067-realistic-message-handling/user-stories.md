@@ -96,3 +96,63 @@ The user sends ~10 messages in a row, very quickly.
 - The producer/hand-back machinery exists only behind the **live** message source;
   `PlayerExportSource` and the shared dispatch/handler code stay synchronous.
 - `HANDLER_REGISTRY` stays exactly the current 8 message types.
+
+---
+
+## Acceptance Scenarios (`billed` / `expensive`) — DRAFT, awaiting human approval
+
+*(METHODOLOGY §VI.a. Plain-language descriptions of what a real person does and sees. No test code
+exists or will exist until the feature is code-complete. Each runs through the real webhook →
+router → handler → backbone → OpenAI path; Morning scenarios use the real Morning sandbox via
+MCP. Because replies are sent as they come back, scenarios assert on the **final state and on the
+last answer**, not on an exact number of intermediate messages. Seeded state is wiped before and
+after each test.)*
+
+**A1 — Quick additive burst (`billed`) — US1, SC-001.**
+The owner sends three short messages one right after another, e.g. "תפיק לי חשבונית", "ללקוח
+דנה", "על 500 שקל", faster than DeniDin can answer the first. *They should see:* DeniDin ends up
+with one coherent understanding — its final answer (e.g. the approval prompt) names Dana and
+500 ₪, and never asks for something the later messages already said. All three user messages are
+saved individually, in order.
+
+**A2 — Long burst (`billed`) — US2, SC-002, SC-005.**
+The owner sends ten short messages in a row very quickly (e.g. ten separate facts about one
+invoice request). *They should see:* DeniDin starts answering after the first message without
+waiting; nothing is lost — its final answer reflects every message (including the last one);
+all ten are saved individually, in order, each with its timestamp.
+
+**A3 — "Do X", then "stop, don't do X" (`billed`, Morning sandbox) — US3, SC-003.**
+The owner asks for a receipt for a client, then immediately writes "עצור, אל תעשה את זה". *They
+should see:* no document appears in Morning; DeniDin acknowledges the cancellation; if an
+approval prompt was already shown, a later "כן" does not create anything unwanted.
+
+**A4 — Message sent while an approved action is executing (`billed`, Morning sandbox) — US8,
+US4, SC-004, SC-007.**
+The owner approves a document ("כן") and, right away, sends "רגע, תבטל". *They should see:* the
+approved document is created exactly once; DeniDin's reply states honestly that it was created
+(with its number) and then deals with the cancel request (e.g. asks how to proceed); no second
+document is ever created.
+
+**A5 — Confusing sequence (`billed`) — US5.**
+The owner sends "תשלח לדנה", then "לא, ליוסי", then "בעצם דנה". *They should see:* DeniDin either
+settles correctly on Dana (using the timeline of the messages) or asks a short clarifying
+question — it never silently picks the wrong person.
+
+**A6 — Group chat, second person joins (`billed`) — US7.**
+In a group, person A starts a request and person B adds a detail seconds later. *They should
+see:* DeniDin's answer accounts for both messages; both are saved as separate user messages.
+
+**A7 — Approval button still works after unrelated chatter (`billed`) — US9.**
+DeniDin shows an approval prompt with buttons; the owner sends two unrelated messages; then taps
+the button. *They should see:* the tap is honored (the action runs once); after the approval is
+resolved, tapping the same button again does nothing.
+
+**A8 — Image sent during text handling (`expensive` — vision call; needs its own per-run
+approval) — US6.**
+The owner sends a text request and, a moment later, an image. *They should see:* the text request
+is answered normally and the image is handled separately; the image's content is not mixed into
+the text request.
+
+*Not covered by a `billed`/`expensive` scenario (existing or unit/integration coverage instead):*
+idle capability reset (already tested), acknowledge-on-receipt, replay-player unchanged,
+worker-failure continuation.
