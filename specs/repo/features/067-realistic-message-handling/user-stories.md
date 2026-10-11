@@ -44,10 +44,12 @@ The user sends ~10 messages in a row, very quickly.
 
 ### User Story 3 — "Do X" then "stop, don't do X" (P2)
 
-1. **Given** the model is preparing an approval-gated write for X, **When** "stop" arrives
-   before it hands back, **Then** at the hand-back the app gives the model the new message
-   **instead of** executing/presenting the write unreviewed, and no write happens.
+1. **Given** the model proposes an approval-gated write for X and the user then writes "stop",
+   **Then** the "stop" reaches the model at its next hand-back and the write never runs without
+   the user's approval.
 2. **Given** a write needs approval, **Then** nothing is created until the user approves.
+3. **Given** the model's reply arrives while newer messages are waiting, **Then** the reply is
+   sent as is, and the newer messages go to the model in its next input.
 
 ### User Story 4 — Something was already done (P2)
 

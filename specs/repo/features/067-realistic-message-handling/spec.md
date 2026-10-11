@@ -5,7 +5,7 @@
 **Revised**: 2026-10-11 — Feature 090 ("Removing the Concept of a Turn") folded in; the design was
 re-clarified one question at a time with the product owner (see Clarifications, Session
 2026-10-11). This revision **supersedes** the 2026-08-30 discard-and-merge-turn design.
-**Status**: In progress — spec revised 2026-10-11. `plan.md`, `research.md`, `data-model.md`,
+**Status**: In progress — spec revised 2026-10-11 (all open items answered). `plan.md`, `research.md`, `data-model.md`,
 `contracts/`, `quickstart.md` still describe the SUPERSEDED turn-based design and must be redone
 (`speckit.plan`) against the post-Feature-063 backbone before `speckit.tasks`.
 **Priority**: P2 (first-pass estimate)
@@ -82,6 +82,9 @@ redo) · `data-model.md` ⛔ · `contracts/` ⛔ · `research.md` ⛔ (partly re
   history, trimmed from the oldest to the role's token cap; later calls chain via
   `previous_response_id`; everything is persisted as it happens, so a chain can be restarted from
   the rolling window at any time without loss.)
+- Q: At a hand-back with newer user messages waiting, what happens to the model's output? → A:
+  **A reply is sent as is. Whatever else the model asked for is done, and the next message sent to
+  the model carries ALL user messages received since.** Backbone only (not the legacy path).
 - Q: Feature flag? → A: **No flag.** (Supersedes the 2026-08-30 decision for
   `feature_flags.realistic_message_handling`; rollback is the previous release.)
 
@@ -133,8 +136,8 @@ Detailed design (threading model, class seams, exact hand-back points) is deferr
   machinery lives behind the **live** message source only.
 - Handling stays **single-threaded per chat** — at most one model exchange runs at a time for a
   given chat.
-- Applies to the **Dynamic Capability Backbone** (Feature 063, the live path). Whether the legacy
-  `AIHandler` path is touched at all is **not yet decided** — see Open Items.
+- **Backbone only** (Feature 063, the live path); the legacy `AIHandler` path is not touched
+  (product owner, 2026-10-11).
 - Calls to the model remain blocking `responses.create`; true in-call cancellation (e.g. the API's
   background mode) is **not** part of this feature and is unverified (CONSTITUTION: no unverified
   third-party assumptions).
@@ -148,7 +151,7 @@ Authoritative stories with Given-When-Then criteria are in **`user-stories.md`**
 - **US2 (P1)** — A long burst (≈10 messages): the first is handled at once and the rest are
   picked up at later hand-backs, with timestamps.
 - **US3 (P2)** — "Do X" then "stop, don't do X" arriving mid-work: the correction reaches the model
-  at its next hand-back, before any approval-gated write; nothing is created without approval.
+  at its next hand-back; an approval-gated write is never run without the user's approval.
 - **US4 (P2)** — A write the model already performed server-side before the correction arrived is
   visible to the model in its own chain and reported truthfully.
 - **US5 (P2)** — Timeline: every user message carries a timestamp and a before/after marker, and
@@ -191,14 +194,16 @@ Authoritative stories with Given-When-Then criteria are in **`user-stories.md`**
 
 - **REQ-RMH-010**: The system MUST NOT attempt to abort a running model call. Control over what
   happens next is exercised only at hand-backs.
-- **REQ-RMH-011**: At a hand-back with pending user messages, the system MUST NOT execute a
-  proposed action that requires approval; the model is given the new messages first. (Writes are
-  already approval-gated in the backbone.)
+- **REQ-RMH-011**: Approval-gated writes execute only after the user's approval, as today. A
+  correction ("stop, don't do X") that arrives before the user approves is simply handed to the
+  model at its next hand-back; the unapproved write never runs.
 - **REQ-RMH-012**: The model MUST be able to see the results of side effects it already caused
   (Morning tool results, ledger/reminder writes) in its own call chain, so it can report them
   truthfully and not repeat them.
-- **REQ-RMH-013**: Handling of a hand-back with pending user messages versus the model's other
-  output items (reads, loads, progress, `send_to_user`) is **not yet decided** — see Open Items.
+- **REQ-RMH-013**: At a hand-back, the system MUST do whatever the model asked for (run its tool
+  calls, load/unload capabilities, send its `send_to_user` reply and progress updates **as is** —
+  a reply is never held back because newer user messages are waiting), and in the **next message
+  sent to the model** MUST add **all** user messages that arrived since the previous one.
 - **REQ-RMH-014**: The "כן"/"לא" approval-**execution** step MUST be non-interruptible: it always
   runs to completion and its reply is sent; messages arriving during it are persisted and handed
   to the model afterwards.
@@ -262,13 +267,15 @@ retired.)*
 - **SC-007**: A message sent during a "כן" approval execution never causes that execution to be
   aborted or run twice.
 
-## Open Items — to ask the product owner (one at a time) before `speckit.plan`
+## Open Items
 
-1. **A `send_to_user` (or other reply-producing output) that comes back while newer user messages
-   are already waiting**: send it as is, hold it and merge first, or something else? (Not yet
-   answered.)
-2. **Other model outputs at a hand-back with pending messages** (read tools, capability loads,
-   progress updates): execute them and attach the pending messages to the function results, or
-   hand the messages over first? (Not yet answered.)
-3. **Legacy `AIHandler` path**: in scope, or backbone-only? (Not yet answered.)
+1. *(Resolved 2026-10-11)* A reply that comes back while newer user messages are waiting is
+   **sent as is**.
+2. *(Resolved 2026-10-11)* Other model outputs at a hand-back: **do whatever the model asked**,
+   and attach **all** user messages received since to the next message sent to the model.
+3. *(Resolved 2026-10-11)* Scope is the **backbone only**; the legacy `AIHandler` path is not
+   touched.
 4. **Media-burst handling** and **`contactsArrayMessage`** remain a separate future decision.
+5. **To verify during `speckit.plan`** (no decision needed): that when a model call returns, every
+   server-side Morning tool call it made is fully present in the response (nothing still running),
+   confirmed against a real logged response (CONSTITUTION: no unverified third-party assumptions).
