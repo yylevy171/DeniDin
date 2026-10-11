@@ -24,7 +24,7 @@ The Webapp UI will integrate this into the existing "Clients" tab, allowing user
 ## Terminology Glossary
 
 - **Agreement**: the engagement container for one client matter (`agreement_id`, e.g. `0726-ישראל_ישראלי-ערעור`). Holds payer, partner, partner %, status.
-- **Component**: one fee rule inside an agreement (`component_id`, e.g. retainer, success fee). Has its own status and amount/percent.
+- **Component**: one fee rule inside an agreement (identified by an immutable `component_key`, labelled uniquely within the agreement, e.g. retainer, success fee). Has its own status and amount/percent.
 - **Component status**: `Pending` (has a trigger, not yet triggered), `Active` (payment expected), `Completed` (paid), `Cancelled`.
 - **Agreement status**: `Active`, `Completed`, `Cancelled`. A closed agreement locks all its components.
 - **Locked**: a component that cannot be edited or have its status changed except by Reopen: Completed or Cancelled, or belonging to a non-Active agreement.

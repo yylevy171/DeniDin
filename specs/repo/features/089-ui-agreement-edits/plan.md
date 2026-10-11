@@ -131,7 +131,7 @@ apps/webapp/
 ├── backend/src/webapp_backend/{agreements_client.py (NEW), server.py, clients_reader.py, config.py}
 ├── backend/scripts/export_name_resolution.py   # NEW
 ├── frontend/src/{AgreementsSection.tsx (NEW), ClientsView.tsx, api.ts}
-└── e2e/tests/agreements.spec.ts  + playwright.config.ts (webServer for the API)
+└── e2e/tests-agreements/20-agreements.spec.ts  + playwright.agreements.config.ts (webServer for the API)
 docker/docker-compose.{dev,prod}.yml            # API port (dev: 127.0.0.1 publish only)
 ```
 
@@ -154,10 +154,10 @@ callers of it.
 
 | UATs | Tier | Home |
 |---|---|---|
-| 1.1-1.4, 2.1-2.6, 3.1-3.6, 4.1, 6.1 | [UI] Playwright | `apps/webapp/e2e/tests/agreements.spec.ts` |
+| 1.1-1.4, 2.1-2.6, 3.1-3.6, 4.1, 6.1 | [UI] Playwright | `apps/webapp/e2e/tests-agreements/20-agreements.spec.ts` (run with `playwright.agreements.config.ts`; 20 tests, green) |
 | 4.2, 4.3 | [UI+WA] | split in two: the UI edit and its ledger effect are asserted in Playwright (T041); the bot's answer from a DB pre-edited through the API is a billed test (T042) |
-| 5.1-5.6 | [WA] billed | `apps/denidin-app/tests/billed/test_agreements_whatsapp.py` |
-| 7.1-7.5 | [MIG] integration | `apps/denidin-app/tests/integration/test_migrate_agreements_089.py` |
+| 5.1-5.6 | [WA] billed | `apps/denidin-app/tests/billed/test_agreements_whatsapp.py::TestAgreementsWhatsAppBilled::test_uat_5_1_...`, `test_uat_5_2_...`, `5_3`, `5_4`, `5_5a`, `5_5b`, `5_6` (authored; NOT yet run, pending human go-ahead) |
+| 7.1-7.5 | [MIG] integration | `apps/denidin-app/tests/integration/test_migrate_agreements_089.py::test_us7_1_...` through `test_us7_5_...` (+ dry-run and duplicate-label tests) |
 
 ## Risks
 

@@ -23,7 +23,7 @@ import threading
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple, cast
 
 from src.managers.ledger_event_manager import _normalize_amount, _slugify
 from src.utils.logger import get_logger
@@ -278,7 +278,7 @@ class AgreementsManager:
         ).fetchone()
         if row is None:
             raise NotFoundError(f"component {component_key!r} not found in agreement {agreement_id!r}")
-        return row
+        return cast(sqlite3.Row, row)
 
     # ------------------------------------------------------------------ #
     # Reads
@@ -626,7 +626,7 @@ class AgreementsManager:
         agreement = self._agreement_dict(conn, agreement_id)
         for comp in agreement["components"]:
             if comp["component_key"] == key:
-                return comp
+                return cast(Dict[str, Any], comp)
         raise NotFoundError(f"component {key!r} not found")
 
     def edit_component(self, agreement_id: str, component_key: str, fields: Dict[str, Any], actor: str,
@@ -848,7 +848,8 @@ class AgreementsManager:
         flagged ledger-only path the ledger always used. Returns every ledger event id."""
         shared = {k: v for k, v in event.items() if k not in ("components", "component_count")}
         components = event.get("components") or []
-        priced, work_lines = [], []
+        priced: List[Dict[str, Any]] = []
+        work_lines: List[Dict[str, Any]] = []
         for component in components:
             (work_lines if not _blank({**shared, **component}.get("hours")) else priced).append(component)
         ledger_kwargs = {"session_id": session_id, "message_id": message_id, "message_timestamp": message_timestamp}

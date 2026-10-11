@@ -9,7 +9,8 @@ ledger (`_normalize_amount`).
 ### `agreements`
 | Column | Type | Notes |
 |---|---|---|
-| `agreement_id` | TEXT PK | Same slug convention as the ledger's `agreement_id` (`_slugify`); migrated rows keep their ledger value. |
+| `agreement_id` | TEXT PK | `MMYY-<client slug>-<title slug>` (`_slugify`), derived at creation; a duplicate id is refused. Migrated rows keep their ledger value. |
+| `title` | TEXT NOT NULL | Short agreement title (human decision 2026-10-09), part of the id. |
 | `client_name` | TEXT NOT NULL | Official Morning client name (resolved upfront; migration resolves from the Clients-tab mapping). |
 | `payer_name` | TEXT NULL | Only when different from the client. |
 | `partner_name` | TEXT NULL | |
@@ -20,7 +21,8 @@ ledger (`_normalize_amount`).
 ### `components`
 | Column | Type | Notes |
 |---|---|---|
-| `component_id` | TEXT PK | Ledger convention (`agreement_id` + label slug); unique within the DB. |
+| `component_key` | TEXT PK | Immutable uuid hex; the identifier used in API paths. |
+| `component_id` | TEXT NOT NULL | Ledger convention (`agreement_id` + label slug). **Labels are unique within an agreement** (human decision 2026-10-09), so this is unique per agreement. |
 | `agreement_id` | TEXT FK | |
 | `label` | TEXT NOT NULL | |
 | `description` | TEXT NULL | The wording. |
@@ -42,7 +44,7 @@ enter this table (REQ-089-13).
 |---|---|---|
 | `revision_id` | INTEGER PK AUTOINCREMENT | Total order = chronological order. |
 | `agreement_id` | TEXT NOT NULL | Kept after a component delete. |
-| `component_id` | TEXT NULL | Null for agreement-level revisions. |
+| `component_key` | TEXT NULL | Null for agreement-level revisions. |
 | `actor` | TEXT NOT NULL | `webapp` / `whatsapp` / `migration`. |
 | `action` | TEXT NOT NULL | `create_agreement`, `edit_agreement`, `add_component`, `edit_component`, `set_component_status`, `set_agreement_status`, `delete_component`, `cascade`. |
 | `snapshot_json` | TEXT NOT NULL | Full new state of the agreement or component after the change. |

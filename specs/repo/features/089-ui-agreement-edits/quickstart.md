@@ -18,14 +18,14 @@ curl -s -H "Authorization: Bearer <token from config.test.json>" "localhost:8300
 cd apps/denidin-app
 scripts/run_unit_integration_tests.sh tests/unit/test_agreements_manager.py
 scripts/run_unit_integration_tests.sh tests/integration/test_agreements_api.py
-scripts/run_single_test.sh "tests/billed/test_agreements_whatsapp.py::TestUat51::test_query"   # billed
-cd ../webapp/e2e && npx playwright test agreements                                            # [UI]
+scripts/run_single_test.sh "tests/billed/test_agreements_whatsapp.py::TestAgreementsWhatsAppBilled::test_uat_5_2_edit_component_amount"   # billed (needs the human go-ahead for the feature first)
+cd ../webapp/e2e && npx playwright test -c playwright.agreements.config.ts                    # [UI]
 ```
 
 ## Migration rehearsal (on a COPY, never prod)
 
 ```bash
-cd apps/webapp/backend && python3 scripts/export_name_resolution.py --config <cfg> --out <scratch>/name_resolution.json
+cd apps/webapp/backend && python3 scripts/export_name_resolution.py --clients-dir <copy>/webapp_data/clients --events-dir <copy>/events --config <cfg> --out <scratch>/name_resolution.json
 cd apps/denidin-app && python3 scripts/migrate_agreements_089.py --data-root <copy> \
     --resolution <scratch>/name_resolution.json --dry-run
 ```
