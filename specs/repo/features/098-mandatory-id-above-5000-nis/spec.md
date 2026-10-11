@@ -2,7 +2,7 @@
 
 **Feature Branch**: `feature/098-mandatory-id-above-5000-nis`
 **Created**: 2026-10-05 (stub, commit 94fbc4f), rewritten via speckit.specify the same day
-**Status**: Done - implemented and tested, merging to master
+**Status**: Done - Merged to master (PR #714)
 **Priority**: P1 (regulatory - documents above the threshold are non-compliant without it)
 
 User stories and acceptance scenarios: **`user-stories.md`** (authoritative).
