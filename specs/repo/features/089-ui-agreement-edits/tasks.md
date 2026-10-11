@@ -174,3 +174,11 @@ Phase 10 needs every story done; Phase 11 after Phase 10.
 ## Addendum (analysis 2026-10-09)
 
 - [x] T050 Regression sweep for the other apps in scope: run the Feature 025 reconciliation unit/integration tests, the player's tests, and `apps/prod-ledger-backfill` and `apps/rolling-memory-backfill` tests through their wrapper scripts, to prove the v4 ledger fields and the recognizer rewiring broke nothing. `apps/morning-mcp-app` is out of scope (no change).
+
+---
+
+## Decisions 2026-10-11 (human)
+
+- Tests run against the **dev** denidin (no per-coder host denidin, no standalone Agreements API launcher in the end state). Until dev denidin can start, the Playwright suites keep their current throwaway harness - to be replaced, not extended.
+- **Deferred:** letting denidin start (and serve the Agreements API) while Green API is unreachable. Not now.
+- Soft delete (`is_active`) in the Agreements DB; `DELETE /agreements/{id}` is API-only (tests/admin), used for test cleanup against dev. Deleting an agreement leaves its `הסכם` ledger events untouched (no `ביטול` events).
