@@ -1,10 +1,13 @@
 #!/bin/bash
 # Single entrypoint for the Feature 068 Ledger Web UI. One argument selects the mode:
 #
-#   ./run_webapp.sh host                    host processes, no Docker: uvicorn :8110 +
-#                                           Vite dev server :5183 (distinct from dev Docker's 8100/5100), live-reload, Ctrl-C stops
-#                                           both. Backend uses backend/config/config.json
-#                                           resolution. localhost only.
+#   ./run_webapp.sh local                   LOCAL CODE, DEV DEPENDENCIES (no Docker): uvicorn :8110 +
+#                                           Vite dev server :5183 (distinct from dev Docker's
+#                                           8100/5100), live-reload, Ctrl-C stops both. Reads
+#                                           backend/config/config.local.json (per clone, gitignored;
+#                                           template: config.local.example.json), which points at
+#                                           the DEV denidin's Agreements API (127.0.0.1:8300) and the
+#                                           root clone's dev data. localhost only.
 #
 #   ./run_webapp.sh dev                     Docker Compose: webapp-backend-dev (:8100) +
 #   ./run_webapp.sh prod                    webapp-frontend-dev nginx (:5100). Ports bind
@@ -36,12 +39,20 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 MODE="$1"
 
 case "$MODE" in
-  host)
+  local)
+    LOCAL_CONFIG="$SCRIPT_DIR/backend/config/config.local.json"
+    if [ ! -f "$LOCAL_CONFIG" ]; then
+      echo "ERROR: $LOCAL_CONFIG is missing. Copy backend/config/config.local.example.json to config.local.json and fill in the placeholders." >&2
+      exit 1
+    fi
+    if grep -q "PASTE_" "$LOCAL_CONFIG"; then
+      echo "ERROR: $LOCAL_CONFIG still contains PASTE_ placeholders - fill them in." >&2
+      exit 1
+    fi
     cd "$SCRIPT_DIR/backend"
     [ -d venv ] || python3 -m venv venv
     ./venv/bin/pip -q install -r requirements.txt
-    PYTHONPATH=src ./venv/bin/python -m uvicorn \
-      webapp_backend.server:app_factory --factory --host 127.0.0.1 --port 8110 &
+    PYTHONPATH=src ./venv/bin/python -m webapp_backend.server config/config.local.json &
     BACKEND_PID=$!
 
     cd "$SCRIPT_DIR/frontend"
@@ -51,8 +62,8 @@ case "$MODE" in
 
     trap 'kill $BACKEND_PID $FRONTEND_PID 2>/dev/null' INT TERM EXIT
     echo ""
-    echo "  mode    : host (no Docker, live-reload)"
-    echo "  backend : http://127.0.0.1:8110/health   (config: backend/config/config.dev.json)"
+    echo "  mode    : local code -> dev dependencies (no Docker, live-reload)"
+    echo "  backend : http://127.0.0.1:8110/health   (config: backend/config/config.local.json)"
     echo "  frontend: http://localhost:5183"
     echo ""
     wait
@@ -96,7 +107,7 @@ case "$MODE" in
     ;;
 
   *)
-    echo "Usage: $0 host | dev | prod" >&2
+    echo "Usage: $0 local | dev | prod" >&2
     exit 1
     ;;
 esac

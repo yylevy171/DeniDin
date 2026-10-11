@@ -50,7 +50,7 @@ services:
       # Windows box before choosing it.
       - "8200:8100"
       # Feature 089: the Agreements API (config.agreements_api.port = 8300). Published on
-      # 127.0.0.1 ONLY, for `run_webapp.sh host` (the webapp backend on this machine); inside
+      # 127.0.0.1 ONLY, for `run_webapp.sh local` (the webapp backend run from local code on this machine); inside
       # compose the webapp backend reaches it by service name (http://denidin-app-dev:8300).
       # Never published on a routable interface - the browser must not reach it.
       - "127.0.0.1:8300:8300"
@@ -111,8 +111,8 @@ services:
       - "8100:8100"
     volumes:
       # 2026-09-24: mounts the canonical ROOT clone's config.dev.json (this path resolves against
-      # --project-directory, which dev forces to the root clone); host mode reads each clone's OWN
-      # config.dev.json instead - same name, different files (no more separate ".container.json") — its paths are relative to CWD (/app/apps/webapp/backend,
+      # --project-directory, which dev forces to the root clone); `run_webapp.sh local` reads each
+      # clone's own config.local.json instead (no more separate ".container.json") — its paths are relative to CWD (/app/apps/webapp/backend,
       # matching the repo tree, which the Dockerfile COPYs in at build time — never git),
       # so mount targets below mirror that same repo-relative layout instead of a flat
       # /app/denidin-data / /app/webapp-data convention.

@@ -31,17 +31,18 @@ Add (top level, next to the existing `denidin_data_root` etc.):
 |---|---|
 | dev, in Docker (`run_webapp.sh dev`) | `http://denidin-app-dev:8300` |
 | prod, in Docker (`run_webapp.sh prod`) | `http://denidin-app-prod:8300` |
-| host mode (`run_webapp.sh host`, dev denidin-app running in Docker) | `http://127.0.0.1:8300` (dev compose publishes it on 127.0.0.1 only) |
+| `run_webapp.sh local` (local code, dev denidin-app running in Docker) | `http://127.0.0.1:8300` (dev compose publishes it on 127.0.0.1 only) |
 
-Dev Docker and host mode use DIFFERENT physical files (same name, different clone):
+Which file gets which value:
 
-- **Dev in Docker** (`run_webapp.sh dev`) refuses to run outside the canonical root clone and mounts
-  `<root clone>/apps/webapp/backend/config/config.dev.json`. Put the Docker URL
-  (`http://denidin-app-dev:8300`) in THAT file.
-- **Host mode** (`run_webapp.sh host`) reads `config/config.dev.json` relative to the working clone's own
-  `apps/webapp/backend/`. Put `http://127.0.0.1:8300` in THAT clone's file.
+- **Dev in Docker** (`run_webapp.sh dev`) mounts `<root clone>/apps/webapp/backend/config/config.dev.json`:
+  put `http://denidin-app-dev:8300` and the dev token in THAT file.
+- **`run_webapp.sh local`** (local code, dev dependencies) reads `apps/webapp/backend/config/config.local.json`
+  in the clone you run it from (gitignored; template `config.local.example.json`): `http://127.0.0.1:8300`, the
+  SAME dev token, the root clone's `dev_data` / `webapp_data` / `auth/password.hash` as absolute paths. The script
+  refuses to start while any `PASTE_` placeholder remains.
 
-They are never shared. Prod is Docker-only (`config.prod.json` on the prod box).
+Prod is Docker-only (`config.prod.json` on the prod box).
 
 ## 3. Already in the repo (nothing to do)
 
