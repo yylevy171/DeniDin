@@ -433,3 +433,117 @@ class TestLedgerCapacity:
         assert len(mgr.revisions(aid)) == revisions and len(_events(mgr)) == events
         mgr.set_agreement_status(aid, "complete", "webapp", **at(1))        # next minute: fine
         assert mgr.get_agreement(aid)["status"] == "Completed"
+
+
+class TestSoftDelete:
+    """Nothing is ever really deleted: rows get is_active = 0 and every query filters on it."""
+
+    @staticmethod
+    def _rows(mgr, table, where="1=1", args=()):
+        import sqlite3
+        conn = sqlite3.connect(str(mgr.db_path))
+        try:
+            return conn.execute(f"SELECT is_active FROM {table} WHERE {where}", args).fetchall()  # noqa: S608
+        finally:
+            conn.close()
+
+    def test_deleted_agreement_disappears_from_every_read(self, mgr):
+        agreement, _ = _create(mgr)
+        agreement_id = agreement["agreement_id"]
+        mgr.delete_agreement(agreement_id, "webapp")
+        with pytest.raises(NotFoundError):
+            mgr.get_agreement(agreement_id)
+        with pytest.raises(NotFoundError):
+            mgr.revisions(agreement_id)
+        assert mgr.find_agreements("ישראל ישראלי") == []
+        assert mgr.list_agreements() == []
+        assert mgr.totals() == {}
+
+    def test_rows_are_kept_and_flagged_inactive(self, mgr):
+        agreement, _ = _create(mgr)
+        agreement_id = agreement["agreement_id"]
+        mgr.delete_agreement(agreement_id, "webapp")
+        assert self._rows(mgr, "agreements", "agreement_id = ?", (agreement_id,)) == [(0,)]
+        assert self._rows(mgr, "components", "agreement_id = ?", (agreement_id,)) == [(0,), (0,)]
+        assert len(self._rows(mgr, "revisions", "agreement_id = ?", (agreement_id,))) >= 2  # create + delete
+
+    def test_delete_writes_no_ledger_events(self, mgr):
+        agreement, _ = _create(mgr)
+        before = len(_events(mgr))
+        mgr.delete_agreement(agreement["agreement_id"], "webapp")
+        assert len(_events(mgr)) == before
+
+    def test_deleting_twice_or_an_unknown_id_is_not_found(self, mgr):
+        agreement, _ = _create(mgr)
+        mgr.delete_agreement(agreement["agreement_id"], "webapp")
+        with pytest.raises(NotFoundError):
+            mgr.delete_agreement(agreement["agreement_id"], "webapp")
+        with pytest.raises(NotFoundError):
+            mgr.delete_agreement("nope", "webapp")
+
+    def test_wrong_actor_is_rejected_and_nothing_changes(self, mgr):
+        agreement, _ = _create(mgr)
+        with pytest.raises(InvalidActorError):
+            mgr.delete_agreement(agreement["agreement_id"], "someone")
+        assert mgr.get_agreement(agreement["agreement_id"])["status"] == "Active"
+
+    def test_other_agreements_are_untouched(self, mgr):
+        keep, _ = _create(mgr)
+        gone, _ = _create(mgr, client_name="אחר", title="תיק אחר")
+        mgr.delete_agreement(gone["agreement_id"], "webapp")
+        assert [a["agreement_id"] for a in mgr.list_agreements()] == [keep["agreement_id"]]
+        assert mgr.totals() == {"ישראל ישראלי": 5000}
+
+    def test_deleted_component_is_soft_deleted_and_its_label_is_reusable(self, mgr):
+        agreement, _ = _create(mgr)
+        key = _by_label(agreement, "ריטיינר")["component_key"]
+        mgr.delete_component(agreement["agreement_id"], key, "webapp")
+        assert self._rows(mgr, "components", "component_key = ?", (key,)) == [(0,)]
+        after = mgr.get_agreement(agreement["agreement_id"])
+        assert [c["label"] for c in after["components"]] == ["שכר הצלחה"]
+        again, _ = mgr.add_component(agreement["agreement_id"], dict(RETAINER), "webapp")
+        assert "ריטיינר" in [c["label"] for c in again["components"]]
+
+    def test_same_agreement_id_can_be_created_again_after_a_delete_with_a_clean_history(self, mgr):
+        first, _ = _create(mgr)
+        agreement_id = first["agreement_id"]
+        mgr.delete_agreement(agreement_id, "webapp")
+        second, _ = _create(mgr)                      # same client + title -> same agreement_id
+        assert second["agreement_id"] == agreement_id
+        assert [c["label"] for c in second["components"]] == ["ריטיינר", "שכר הצלחה"]
+        assert [r["action"] for r in mgr.revisions(agreement_id)] == ["create_agreement"]
+        assert len(self._rows(mgr, "agreements", "agreement_id = ?", (agreement_id,))) == 2
+        assert sorted(r[0] for r in self._rows(mgr, "agreements", "agreement_id = ?", (agreement_id,))) == [0, 1]
+        # edits hit only the live agreement
+        mgr.edit_agreement(agreement_id, {"payer_name": "חברה"}, "webapp")
+        assert mgr.get_agreement(agreement_id)["payer_name"] == "חברה"
+
+    def test_two_live_agreements_cannot_share_an_id(self, mgr):
+        _create(mgr)
+        with pytest.raises(ValidationError):
+            _create(mgr)
+
+    def test_database_created_before_the_flag_existed_is_upgraded_in_place(self, tmp_path):
+        import sqlite3
+        db = tmp_path / "agreements" / "agreements.db"
+        db.parent.mkdir(parents=True)
+        conn = sqlite3.connect(str(db))
+        conn.executescript("""
+            CREATE TABLE agreements (agreement_id TEXT PRIMARY KEY, title TEXT NOT NULL, client_name TEXT NOT NULL,
+                payer_name TEXT, partner_name TEXT, partner_percent REAL, status TEXT NOT NULL,
+                created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+            CREATE TABLE components (component_key TEXT PRIMARY KEY, component_id TEXT NOT NULL, agreement_id TEXT NOT NULL REFERENCES agreements(agreement_id),
+                label TEXT NOT NULL, description TEXT, amount INTEGER, percent REAL, percent_base TEXT,
+                trigger_condition TEXT, vat_status TEXT, txn_date TEXT, status TEXT NOT NULL, origin_event_id TEXT,
+                sort_order INTEGER NOT NULL);
+            CREATE TABLE revisions (revision_id INTEGER PRIMARY KEY AUTOINCREMENT, agreement_id TEXT NOT NULL,
+                component_key TEXT, actor TEXT NOT NULL, action TEXT NOT NULL, snapshot_json TEXT NOT NULL,
+                changed_json TEXT NOT NULL, ledger_event_ids_json TEXT NOT NULL, created_at TEXT NOT NULL);
+            INSERT INTO agreements VALUES ('old-1','כותרת','לקוח ישן',NULL,NULL,NULL,'Active','2026-01-01','2026-01-01');
+            INSERT INTO components VALUES ('k1','old-1-רכיב','old-1','רכיב',NULL,900,NULL,NULL,NULL,NULL,NULL,'Active',NULL,0);
+        """)
+        conn.commit()
+        conn.close()
+        upgraded = make_agreements_manager(tmp_path)
+        assert [a["agreement_id"] for a in upgraded.find_agreements("לקוח ישן")] == ["old-1"]
+        assert upgraded.totals() == {"לקוח ישן": 900}

@@ -168,7 +168,8 @@ class AgreementsManager:
             conn.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS agreements (
-                    agreement_id    TEXT PRIMARY KEY,
+                    row_id          TEXT PRIMARY KEY,
+                    agreement_id    TEXT NOT NULL,
                     title           TEXT NOT NULL,
                     client_name     TEXT NOT NULL,
                     payer_name      TEXT,
@@ -176,12 +177,13 @@ class AgreementsManager:
                     partner_percent REAL,
                     status          TEXT NOT NULL,
                     created_at      TEXT NOT NULL,
-                    updated_at      TEXT NOT NULL
+                    updated_at      TEXT NOT NULL,
+                    is_active       INTEGER NOT NULL DEFAULT 1
                 );
                 CREATE TABLE IF NOT EXISTS components (
                     component_key     TEXT PRIMARY KEY,
                     component_id      TEXT NOT NULL,
-                    agreement_id      TEXT NOT NULL REFERENCES agreements(agreement_id),
+                    agreement_id      TEXT NOT NULL,
                     label             TEXT NOT NULL,
                     description       TEXT,
                     amount            INTEGER,
@@ -192,7 +194,8 @@ class AgreementsManager:
                     txn_date          TEXT,
                     status            TEXT NOT NULL,
                     origin_event_id   TEXT,
-                    sort_order        INTEGER NOT NULL
+                    sort_order        INTEGER NOT NULL,
+                    is_active         INTEGER NOT NULL DEFAULT 1
                 );
                 CREATE INDEX IF NOT EXISTS idx_components_agreement ON components(agreement_id);
                 CREATE TABLE IF NOT EXISTS revisions (
@@ -204,11 +207,62 @@ class AgreementsManager:
                     snapshot_json         TEXT NOT NULL,
                     changed_json          TEXT NOT NULL,
                     ledger_event_ids_json TEXT NOT NULL,
-                    created_at            TEXT NOT NULL
+                    created_at            TEXT NOT NULL,
+                    is_active             INTEGER NOT NULL DEFAULT 1
                 );
                 CREATE INDEX IF NOT EXISTS idx_revisions_agreement ON revisions(agreement_id);
                 """
             )
+            self._upgrade_legacy_schema(conn)
+            # An agreement_id only has to be unique among ACTIVE rows: a deleted agreement's id can be reused.
+            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_agreements_active_id "
+                         "ON agreements(agreement_id) WHERE is_active = 1")
+
+    @staticmethod
+    def _upgrade_legacy_schema(conn: sqlite3.Connection) -> None:
+        """Databases created before `is_active` / the internal `row_id` existed: add the flag
+        (existing rows = active) and rebuild `agreements` with a uuid primary key."""
+        for table in ("agreements", "components", "revisions"):
+            columns = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}  # noqa: S608
+            if "is_active" not in columns:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")  # noqa: S608
+        conn.execute("PRAGMA foreign_keys = OFF")
+        # `components.agreement_id` used to be a FOREIGN KEY on agreements(agreement_id), which is no
+        # longer unique across deleted rows: rebuild the table without the constraint.
+        if conn.execute("PRAGMA foreign_key_list(components)").fetchall():
+            conn.execute("ALTER TABLE components RENAME TO components_legacy")
+            conn.execute(
+                """CREATE TABLE components (
+                    component_key TEXT PRIMARY KEY, component_id TEXT NOT NULL, agreement_id TEXT NOT NULL,
+                    label TEXT NOT NULL, description TEXT, amount INTEGER, percent REAL, percent_base TEXT,
+                    trigger_condition TEXT, vat_status TEXT, txn_date TEXT, status TEXT NOT NULL,
+                    origin_event_id TEXT, sort_order INTEGER NOT NULL, is_active INTEGER NOT NULL DEFAULT 1)"""
+            )
+            conn.execute("INSERT INTO components SELECT component_key, component_id, agreement_id, label, "
+                         "description, amount, percent, percent_base, trigger_condition, vat_status, txn_date, "
+                         "status, origin_event_id, sort_order, is_active FROM components_legacy")
+            conn.execute("DROP TABLE components_legacy")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_components_agreement ON components(agreement_id)")
+        if "row_id" in {r["name"] for r in conn.execute("PRAGMA table_info(agreements)").fetchall()}:
+            conn.execute("PRAGMA foreign_keys = ON")
+            return
+        conn.execute("ALTER TABLE agreements RENAME TO agreements_legacy")
+        conn.execute(
+            """CREATE TABLE agreements (
+                row_id TEXT PRIMARY KEY, agreement_id TEXT NOT NULL, title TEXT NOT NULL, client_name TEXT NOT NULL,
+                payer_name TEXT, partner_name TEXT, partner_percent REAL, status TEXT NOT NULL,
+                created_at TEXT NOT NULL, updated_at TEXT NOT NULL, is_active INTEGER NOT NULL DEFAULT 1)"""
+        )
+        for old in conn.execute("SELECT * FROM agreements_legacy").fetchall():
+            conn.execute(
+                "INSERT INTO agreements (row_id, agreement_id, title, client_name, payer_name, partner_name, "
+                "partner_percent, status, created_at, updated_at, is_active) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                (uuid.uuid4().hex, old["agreement_id"], old["title"], old["client_name"], old["payer_name"],
+                 old["partner_name"], old["partner_percent"], old["status"], old["created_at"], old["updated_at"],
+                 old["is_active"]),
+            )
+        conn.execute("DROP TABLE agreements_legacy")
+        conn.execute("PRAGMA foreign_keys = ON")
 
     def _require_ledger_slots(self, needed: int, message_timestamp: Optional[int] = None) -> None:
         """Refuses (before anything is written) when the current minute cannot hold `needed`
@@ -252,11 +306,13 @@ class AgreementsManager:
         }
 
     def _agreement_dict(self, conn: sqlite3.Connection, agreement_id: str) -> Dict[str, Any]:
-        row = conn.execute("SELECT * FROM agreements WHERE agreement_id = ?", (agreement_id,)).fetchone()
+        row = conn.execute("SELECT * FROM agreements WHERE agreement_id = ? AND is_active = 1",
+                           (agreement_id,)).fetchone()
         if row is None:
             raise NotFoundError(f"agreement {agreement_id!r} not found")
         comps = conn.execute(
-            "SELECT * FROM components WHERE agreement_id = ? ORDER BY sort_order, rowid", (agreement_id,)
+            "SELECT * FROM components WHERE agreement_id = ? AND is_active = 1 ORDER BY sort_order, rowid",
+            (agreement_id,)
         ).fetchall()
         return {
             "agreement_id": row["agreement_id"],
@@ -273,7 +329,7 @@ class AgreementsManager:
 
     def _component_row(self, conn: sqlite3.Connection, agreement_id: str, component_key: str) -> sqlite3.Row:
         row = conn.execute(
-            "SELECT * FROM components WHERE agreement_id = ? AND component_key = ?",
+            "SELECT * FROM components WHERE agreement_id = ? AND component_key = ? AND is_active = 1",
             (agreement_id, component_key),
         ).fetchone()
         if row is None:
@@ -293,7 +349,8 @@ class AgreementsManager:
         wanted = (client_name or "").strip()
         with self._connect() as conn:
             ids = [r["agreement_id"] for r in conn.execute(
-                "SELECT agreement_id FROM agreements WHERE TRIM(client_name) = ? ORDER BY created_at, rowid",
+                "SELECT agreement_id FROM agreements WHERE TRIM(client_name) = ? AND is_active = 1 "
+                "ORDER BY created_at, rowid",
                 (wanted,),
             ).fetchall()]
             return [self._agreement_dict(conn, i) for i in ids]
@@ -301,7 +358,7 @@ class AgreementsManager:
     def list_agreements(self) -> List[Dict[str, Any]]:
         with self._connect() as conn:
             ids = [r["agreement_id"] for r in conn.execute(
-                "SELECT agreement_id FROM agreements ORDER BY client_name, created_at, rowid"
+                "SELECT agreement_id FROM agreements WHERE is_active = 1 ORDER BY client_name, created_at, rowid"
             ).fetchall()]
             return [self._agreement_dict(conn, i) for i in ids]
 
@@ -313,7 +370,7 @@ class AgreementsManager:
                 """
                 SELECT TRIM(a.client_name) AS client_name, SUM(c.amount) AS total
                 FROM components c JOIN agreements a ON a.agreement_id = c.agreement_id
-                WHERE c.status != ? AND c.amount IS NOT NULL
+                WHERE c.status != ? AND c.amount IS NOT NULL AND c.is_active = 1 AND a.is_active = 1
                 GROUP BY TRIM(a.client_name)
                 """,
                 (CANCELLED,),
@@ -322,11 +379,12 @@ class AgreementsManager:
 
     def revisions(self, agreement_id: str) -> List[Dict[str, Any]]:
         with self._connect() as conn:
-            if conn.execute("SELECT 1 FROM agreements WHERE agreement_id = ?", (agreement_id,)).fetchone() is None \
-                    and conn.execute("SELECT 1 FROM revisions WHERE agreement_id = ?", (agreement_id,)).fetchone() is None:
+            if conn.execute("SELECT 1 FROM agreements WHERE agreement_id = ? AND is_active = 1",
+                            (agreement_id,)).fetchone() is None:
                 raise NotFoundError(f"agreement {agreement_id!r} not found")
             rows = conn.execute(
-                "SELECT * FROM revisions WHERE agreement_id = ? ORDER BY revision_id", (agreement_id,)
+                "SELECT * FROM revisions WHERE agreement_id = ? AND is_active = 1 ORDER BY revision_id",
+                (agreement_id,),
             ).fetchall()
         return [{
             "revision_id": r["revision_id"],
@@ -377,7 +435,7 @@ class AgreementsManager:
         ledger-style component_id for the label."""
         component_id = f"{agreement_id}-{_slugify(label)}"
         rows = conn.execute(
-            "SELECT component_key FROM components WHERE agreement_id = ? AND component_id = ?",
+            "SELECT component_key FROM components WHERE agreement_id = ? AND component_id = ? AND is_active = 1",
             (agreement_id, component_id),
         ).fetchall()
         if any(r["component_key"] != except_key for r in rows):
@@ -533,15 +591,16 @@ class AgreementsManager:
         with self._lock, self._connect() as conn:
             self._require_ledger_slots(len(cleaned), message_timestamp)
             agreement_id = agreement_id or self._make_agreement_id(client_name, title)
-            if conn.execute("SELECT 1 FROM agreements WHERE agreement_id = ?", (agreement_id,)).fetchone():
+            if conn.execute("SELECT 1 FROM agreements WHERE agreement_id = ? AND is_active = 1",
+                            (agreement_id,)).fetchone():
                 raise ValidationError(f"agreement {agreement_id!r} already exists",
                                       {"title": "an agreement with this title already exists for the client this month"})
             now = local_isoformat()
             conn.execute(
-                "INSERT INTO agreements (agreement_id, title, client_name, payer_name, partner_name, "
-                "partner_percent, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
-                (agreement_id, title, client_name, _clean_text(payer_name), _clean_text(partner_name),
-                 percent, ACTIVE, now, now),
+                "INSERT INTO agreements (row_id, agreement_id, title, client_name, payer_name, partner_name, "
+                "partner_percent, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (uuid.uuid4().hex, agreement_id, title, client_name, _clean_text(payer_name),
+                 _clean_text(partner_name), percent, ACTIVE, now, now),
             )
             keys: List[str] = []
             for order, fields in enumerate(cleaned):
@@ -585,7 +644,7 @@ class AgreementsManager:
                 return current, []
             self._require_ledger_slots(len(current["components"]), ledger_kwargs.get("message_timestamp"))
             sets = ", ".join(f"{k} = ?" for k in changed)
-            conn.execute(f"UPDATE agreements SET {sets}, updated_at = ? WHERE agreement_id = ?",  # noqa: S608
+            conn.execute(f"UPDATE agreements SET {sets}, updated_at = ? WHERE agreement_id = ? AND is_active = 1",  # noqa: S608
                          [new_values[k] for k in changed] + [local_isoformat(), agreement_id])
             snapshot = self._agreement_dict(conn, agreement_id)
             revision_id = self._add_revision(conn, agreement_id, None, actor, "edit_agreement", snapshot, changed, [])
@@ -615,7 +674,7 @@ class AgreementsManager:
                  fields.get("trigger_condition"), fields.get("vat_status"), fields.get("txn_date"),
                  self._default_status(fields.get("trigger_condition")), None, order),
             )
-            conn.execute("UPDATE agreements SET updated_at = ? WHERE agreement_id = ?",
+            conn.execute("UPDATE agreements SET updated_at = ? WHERE agreement_id = ? AND is_active = 1",
                          (local_isoformat(), agreement_id))
             snapshot = self._component_snapshot(conn, agreement_id, key)
             revision_id = self._add_revision(conn, agreement_id, key, actor, "add_component", snapshot,
@@ -657,7 +716,7 @@ class AgreementsManager:
             sets = ", ".join(f"{k} = ?" for k in updates)
             conn.execute(f"UPDATE components SET {sets} WHERE component_key = ?",  # noqa: S608
                          list(updates.values()) + [component_key])
-            conn.execute("UPDATE agreements SET updated_at = ? WHERE agreement_id = ?",
+            conn.execute("UPDATE agreements SET updated_at = ? WHERE agreement_id = ? AND is_active = 1",
                          (local_isoformat(), agreement_id))
             snapshot = self._component_snapshot(conn, agreement_id, component_key)
             revision_id = self._add_revision(conn, agreement_id, component_key, actor, "edit_component",
@@ -679,7 +738,7 @@ class AgreementsManager:
             target = self._component_target(current, action)
             self._require_ledger_slots(1, ledger_kwargs.get("message_timestamp"))
             conn.execute("UPDATE components SET status = ? WHERE component_key = ?", (target, component_key))
-            conn.execute("UPDATE agreements SET updated_at = ? WHERE agreement_id = ?",
+            conn.execute("UPDATE agreements SET updated_at = ? WHERE agreement_id = ? AND is_active = 1",
                          (local_isoformat(), agreement_id))
             snapshot = self._component_snapshot(conn, agreement_id, component_key)
             revision_id = self._add_revision(conn, agreement_id, component_key, actor, "set_component_status",
@@ -728,7 +787,7 @@ class AgreementsManager:
                         conn.execute("UPDATE components SET status = ? WHERE component_key = ?",
                                      (new_status, comp["component_key"]))
                         changed[comp["component_key"]] = [comp["status"], new_status]
-            conn.execute("UPDATE agreements SET status = ?, updated_at = ? WHERE agreement_id = ?",
+            conn.execute("UPDATE agreements SET status = ?, updated_at = ? WHERE agreement_id = ? AND is_active = 1",
                          (target, local_isoformat(), agreement_id))
             snapshot = self._agreement_dict(conn, agreement_id)
             revision_id = self._add_revision(
@@ -750,7 +809,8 @@ class AgreementsManager:
 
     def delete_component(self, agreement_id: str, component_key: str, actor: str,
                          **ledger_kwargs: Any) -> Tuple[Dict[str, Any], List[str]]:
-        """Hard delete; pushes one `ביטול` event referencing the component's original event."""
+        """Soft delete (is_active = 0, the row stays); pushes one `ביטול` event referencing the
+        component's original event."""
         self._check_actor(actor)
         with self._lock, self._connect() as conn:
             agreement = self._agreement_dict(conn, agreement_id)
@@ -759,8 +819,8 @@ class AgreementsManager:
             if comp["locked"]:
                 raise LockedError("the component is locked")
             self._require_ledger_slots(1, ledger_kwargs.get("message_timestamp"))
-            conn.execute("DELETE FROM components WHERE component_key = ?", (component_key,))
-            conn.execute("UPDATE agreements SET updated_at = ? WHERE agreement_id = ?",
+            conn.execute("UPDATE components SET is_active = 0 WHERE component_key = ?", (component_key,))
+            conn.execute("UPDATE agreements SET updated_at = ? WHERE agreement_id = ? AND is_active = 1",
                          (local_isoformat(), agreement_id))
             revision_id = self._add_revision(conn, agreement_id, component_key, actor, "delete_component",
                                              comp, {"deleted": True}, [])
@@ -789,6 +849,22 @@ class AgreementsManager:
             conn.commit()
             return after, event_ids
 
+    def delete_agreement(self, agreement_id: str, actor: str) -> None:
+        """Soft delete of a whole agreement (is_active = 0 on the agreement and all its components;
+        nothing is removed). Reachable only through the Agreements API - neither the UI nor
+        WhatsApp offers it. Writes NO ledger events (the ledger keeps what it recorded)."""
+        self._check_actor(actor)
+        with self._lock, self._connect() as conn:
+            snapshot = self._agreement_dict(conn, agreement_id)  # NotFoundError if absent/already deleted
+            conn.execute("UPDATE components SET is_active = 0 WHERE agreement_id = ? AND is_active = 1", (agreement_id,))
+            conn.execute("UPDATE agreements SET is_active = 0, updated_at = ? WHERE agreement_id = ? AND is_active = 1",
+                         (local_isoformat(), agreement_id))
+            self._add_revision(conn, agreement_id, None, actor, "delete_agreement", snapshot, {"deleted": True}, [])
+            # Every row of the deleted agreement goes inactive together, so a later agreement that
+            # reuses this agreement_id starts with a clean history.
+            conn.execute("UPDATE revisions SET is_active = 0 WHERE agreement_id = ? AND is_active = 1",
+                         (agreement_id,))
+
     # ------------------------------------------------------------------ #
     # Capture (WhatsApp / documents) and migration entry points
     # ------------------------------------------------------------------ #
@@ -805,14 +881,15 @@ class AgreementsManager:
             raise ValidationError("invalid agreement", {"status": f"must be one of {list(AGREEMENT_STATUSES)}"})
         percent = _to_percent(partner_percent, "partner_percent")
         with self._lock, self._connect() as conn:
-            if conn.execute("SELECT 1 FROM agreements WHERE agreement_id = ?", (agreement_id,)).fetchone():
+            if conn.execute("SELECT 1 FROM agreements WHERE agreement_id = ? AND is_active = 1",
+                            (agreement_id,)).fetchone():
                 raise ValidationError(f"agreement {agreement_id!r} already exists", {"agreement_id": "duplicate"})
             now = local_isoformat()
             conn.execute(
-                "INSERT INTO agreements (agreement_id, title, client_name, payer_name, partner_name, "
-                "partner_percent, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
-                (agreement_id, title, client_name, _clean_text(payer_name), _clean_text(partner_name),
-                 percent, status, now, now),
+                "INSERT INTO agreements (row_id, agreement_id, title, client_name, payer_name, partner_name, "
+                "partner_percent, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (uuid.uuid4().hex, agreement_id, title, client_name, _clean_text(payer_name),
+                 _clean_text(partner_name), percent, status, now, now),
             )
             for order, data in enumerate(components):
                 if data.get("status") not in COMPONENT_STATUSES:

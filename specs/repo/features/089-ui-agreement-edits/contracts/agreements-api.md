@@ -60,9 +60,10 @@ Served by `apps/denidin-app/src/services/agreements_api.py` (Starlette). Consume
 | `POST /agreements/{agreement_id}/components` | add a component (default status per UAT 3.1) | 2.3 |
 | `PATCH /agreements/{agreement_id}/components/{component_key}` | edit component fields (`label`, `description`, `amount`, `percent`, `percent_base`, `trigger_condition`, `vat_status`, `txn_date`) | 2.2, 2.2b |
 | `POST /agreements/{agreement_id}/components/{component_key}/status` | body `{"action": "activate"\|"complete"\|"cancel"\|"reopen"}` | 3.2-3.4, 3.6 |
-| `DELETE /agreements/{agreement_id}/components/{component_key}` | hard delete + `ביטול` ledger event | 2.5 |
+| `DELETE /agreements/{agreement_id}/components/{component_key}` | soft delete (`is_active = 0`) + `ביטול` ledger event | 2.5 |
+| `DELETE /agreements/{agreement_id}?actor=webapp` | **API-only** soft delete of a whole agreement (`is_active = 0` on the agreement, its components and its revisions); writes **no** ledger events; `200 {"deleted": true, "agreement_id": ...}`, `404` if absent or already deleted. Neither the UI nor WhatsApp exposes it - it exists for test cleanup and admin use. | tests |
 
-Request validation: `POST /agreements` requires `client_name`, `title` (the agreement id is derived as `MMYY-client-title`, a duplicate id is `422`) and a non-empty `components` array; component labels must be unique within an agreement (`422`);
+Request validation: `POST /agreements` requires `client_name`, `title` (the agreement id is derived as `MMYY-client-title`, an id already held by an ACTIVE agreement is `422`; the id of a deleted agreement can be reused) and a non-empty `components` array; component labels must be unique within an agreement (`422`);
 each component needs `label` and an `amount` or `percent`; a `PATCH` accepts only the whitelisted
 fields (unknown field -> `422 validation`; status is never settable through a field `PATCH`).
 

@@ -9,7 +9,9 @@ ledger (`_normalize_amount`).
 ### `agreements`
 | Column | Type | Notes |
 |---|---|---|
-| `agreement_id` | TEXT PK | `MMYY-<client slug>-<title slug>` (`_slugify`), derived at creation; a duplicate id is refused. Migrated rows keep their ledger value. |
+| `row_id` | TEXT PK | Internal uuid hex, never exposed. |
+| `agreement_id` | TEXT NOT NULL | Public id `MMYY-<client slug>-<title slug>` (`_slugify`), derived at creation; unique only among ACTIVE rows (partial unique index), so the id of a deleted agreement can be reused. Migrated rows keep their ledger value. |
+| `is_active` | INTEGER NOT NULL DEFAULT 1 | `0` = soft-deleted; nothing is ever physically deleted and every query filters `is_active = 1`. |
 | `title` | TEXT NOT NULL | Short agreement title (human decision 2026-10-09), part of the id. |
 | `client_name` | TEXT NOT NULL | Official Morning client name (resolved upfront; migration resolves from the Clients-tab mapping). |
 | `payer_name` | TEXT NULL | Only when different from the client. |
@@ -23,7 +25,8 @@ ledger (`_normalize_amount`).
 |---|---|---|
 | `component_key` | TEXT PK | Immutable uuid hex; the identifier used in API paths. |
 | `component_id` | TEXT NOT NULL | Ledger convention (`agreement_id` + label slug). **Labels are unique within an agreement** (human decision 2026-10-09), so this is unique per agreement. |
-| `agreement_id` | TEXT FK | |
+| `agreement_id` | TEXT NOT NULL | The public agreement id (no FK: it is not unique across deleted rows). |
+| `is_active` | INTEGER NOT NULL DEFAULT 1 | `0` = soft-deleted; every query filters `is_active = 1`. Nothing is ever physically deleted. |
 | `label` | TEXT NOT NULL | |
 | `description` | TEXT NULL | The wording. |
 | `amount` | INTEGER NULL | |
@@ -44,6 +47,7 @@ enter this table (REQ-089-13).
 |---|---|---|
 | `revision_id` | INTEGER PK AUTOINCREMENT | Total order = chronological order. |
 | `agreement_id` | TEXT NOT NULL | Kept after a component delete. |
+| `is_active` | INTEGER NOT NULL DEFAULT 1 | Set to 0 for every revision of a deleted agreement. |
 | `component_key` | TEXT NULL | Null for agreement-level revisions. |
 | `actor` | TEXT NOT NULL | `webapp` / `whatsapp` / `migration`. |
 | `action` | TEXT NOT NULL | `create_agreement`, `edit_agreement`, `add_component`, `edit_component`, `set_component_status`, `set_agreement_status`, `delete_component`, `cascade`. |

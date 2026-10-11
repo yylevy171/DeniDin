@@ -192,3 +192,27 @@ class TestWritesAndErrors:
         assert response.status_code == 503
         assert response.json()["error"]["code"] == "ledger_busy"
         assert client.get("/agreements", params={"client_name": "לקוח חדש"}, headers=AUTH).json()["agreements"] == []
+
+
+class TestDeleteAgreement:
+    def test_delete_is_soft_and_the_agreement_is_gone_for_every_reader(self, client):
+        agreement_id = _new_agreement(client)["agreement"]["agreement_id"]
+        response = client.delete(f"/agreements/{agreement_id}", headers=AUTH, params={"actor": "webapp"})
+        assert response.status_code == 200
+        assert response.json() == {"deleted": True, "agreement_id": agreement_id}
+        assert client.get(f"/agreements/{agreement_id}", headers=AUTH).status_code == 404
+        assert client.get(f"/agreements/{agreement_id}/revisions", headers=AUTH).status_code == 404
+        assert client.get("/agreements", params={"client_name": "ישראל ישראלי"}, headers=AUTH).json()["agreements"] == []
+        assert client.get("/agreements/totals", headers=AUTH).json()["totals"] == {}
+
+    def test_delete_twice_is_404(self, client):
+        agreement_id = _new_agreement(client)["agreement"]["agreement_id"]
+        client.delete(f"/agreements/{agreement_id}", headers=AUTH, params={"actor": "webapp"})
+        assert client.delete(f"/agreements/{agreement_id}", headers=AUTH, params={"actor": "webapp"}).status_code == 404
+
+    def test_delete_needs_the_token_and_a_valid_actor(self, client):
+        agreement_id = _new_agreement(client)["agreement"]["agreement_id"]
+        assert client.delete(f"/agreements/{agreement_id}", params={"actor": "webapp"}).status_code == 401
+        bad = client.delete(f"/agreements/{agreement_id}", headers=AUTH, params={"actor": "x"})
+        assert bad.status_code == 422
+        assert client.get(f"/agreements/{agreement_id}", headers=AUTH).status_code == 200

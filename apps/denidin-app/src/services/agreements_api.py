@@ -154,6 +154,12 @@ def build_app(manager: AgreementsManager, auth_token: str) -> Starlette:
         return _written(manager.delete_component(
             request.path_params["agreement_id"], request.path_params["component_key"], actor))
 
+    async def delete_agreement(request: Request) -> Response:
+        # Test-cleanup / admin only: soft delete, actor in the query string like delete_component.
+        actor = request.query_params.get("actor", "")
+        manager.delete_agreement(request.path_params["agreement_id"], actor)
+        return JSONResponse({"deleted": True, "agreement_id": request.path_params["agreement_id"]})
+
     routes = [
         Route("/is_alive", guarded(is_alive), methods=["GET"]),
         Route("/agreements/totals", guarded(totals), methods=["GET"]),
@@ -161,6 +167,7 @@ def build_app(manager: AgreementsManager, auth_token: str) -> Starlette:
         Route("/agreements", guarded(create), methods=["POST"]),
         Route("/agreements/{agreement_id}", guarded(get_one), methods=["GET"]),
         Route("/agreements/{agreement_id}", guarded(edit), methods=["PATCH"]),
+        Route("/agreements/{agreement_id}", guarded(delete_agreement), methods=["DELETE"]),
         Route("/agreements/{agreement_id}/revisions", guarded(revisions), methods=["GET"]),
         Route("/agreements/{agreement_id}/status", guarded(agreement_status), methods=["POST"]),
         Route("/agreements/{agreement_id}/components", guarded(add_component), methods=["POST"]),
