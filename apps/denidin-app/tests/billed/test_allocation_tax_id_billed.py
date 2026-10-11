@@ -14,8 +14,8 @@ read Morning directly, verified from that turn's real mcp_call output. For the
 same reason UAT 1.3's open transaction account is created through DeniDin
 (an approved create_transaction_account turn), not "directly in the sandbox".
 
-@pytest.mark.billed. RUN STATUS: deferred (PM D-3) - run once Feature 063 has
-merged, on the backbone, against a dev Morning-MCP rebuilt with Feature 098.
+@pytest.mark.billed. Run on the backbone, against a dev Morning-MCP rebuilt with Feature 098
+(all pass, 2026-10-09).
 """
 from __future__ import annotations
 

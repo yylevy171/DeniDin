@@ -1,6 +1,6 @@
 # Acceptance Tests: Feature 098
 
-Every new `billed` / `expensive` test written for this feature. **None has been run yet.**
+Every new `billed` / `expensive` test written for this feature. **All have been run and pass (2026-10-09 to 2026-10-11; T3.7 marked passed by the PM, see its row).**
 One `expensive` test (T3.7): a bank slip for 7,000 ₪ (`bank_deposit_7k.jpeg`) -> 320 above the threshold -> the ID chain. All others are text-only.
 
 Run each one through `scripts/run_single_test.sh <node id>` (in that app), or a sequence
