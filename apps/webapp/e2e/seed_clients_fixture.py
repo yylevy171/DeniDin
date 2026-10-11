@@ -25,6 +25,8 @@ FIXTURE_ROOT = HERE / ".fixture" / "clients"
 PASSWORD = "e2e-pass"
 PASSWORD_SALT = "denidin-pw"  # webapp_backend.auth.PASSWORD_SALT
 PORT = 8132
+AGREEMENTS_PORT = 8311  # the real denidin-app Agreements API (Feature 089)
+AGREEMENTS_TOKEN = "e2e-clients-agreements-token"
 
 DEV_CONFIG = HERE.parent / "backend" / "config" / "config.dev.json"
 MORNING_SRC = HERE.parents[1] / "morning-mcp-app" / "src"
@@ -174,6 +176,8 @@ def main() -> None:
         "morning_api_key_secret": dev["morning_api_key_secret"],
         "morning_auth_url": dev["morning_auth_url"],
         "morning_api_url": dev["morning_api_url"],
+        "denidin_agreements_url": f"http://127.0.0.1:{AGREEMENTS_PORT}",
+        "denidin_agreements_token": AGREEMENTS_TOKEN,
         # INFO, not WARNING: bugfix-066's /health "logs_writing" check needs fresh log lines
         # (startup + heartbeat are INFO); at WARNING /health is 503 and Playwright's webServer
         # wait never succeeds.
