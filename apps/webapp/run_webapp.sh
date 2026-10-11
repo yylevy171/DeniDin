@@ -1,8 +1,8 @@
 #!/bin/bash
 # Single entrypoint for the Feature 068 Ledger Web UI. One argument selects the mode:
 #
-#   ./run_webapp.sh host                    host processes, no Docker: uvicorn :8100 +
-#                                           Vite dev server :5173, live-reload, Ctrl-C stops
+#   ./run_webapp.sh host                    host processes, no Docker: uvicorn :8110 +
+#                                           Vite dev server :5183 (distinct from dev Docker's 8100/5100), live-reload, Ctrl-C stops
 #                                           both. Backend uses backend/config/config.json
 #                                           resolution. localhost only.
 #
@@ -41,19 +41,19 @@ case "$MODE" in
     [ -d venv ] || python3 -m venv venv
     ./venv/bin/pip -q install -r requirements.txt
     PYTHONPATH=src ./venv/bin/python -m uvicorn \
-      webapp_backend.server:app_factory --factory --host 127.0.0.1 --port 8100 &
+      webapp_backend.server:app_factory --factory --host 127.0.0.1 --port 8110 &
     BACKEND_PID=$!
 
     cd "$SCRIPT_DIR/frontend"
     [ -d node_modules ] || npm install
-    npx vite --port 5173 &
+    VITE_API_TARGET=http://127.0.0.1:8110 npx vite --port 5183 &
     FRONTEND_PID=$!
 
     trap 'kill $BACKEND_PID $FRONTEND_PID 2>/dev/null' INT TERM EXIT
     echo ""
     echo "  mode    : host (no Docker, live-reload)"
-    echo "  backend : http://127.0.0.1:8100/health   (config: $BACKEND_CONFIG)"
-    echo "  frontend: http://localhost:5173"
+    echo "  backend : http://127.0.0.1:8110/health   (config: backend/config/config.dev.json)"
+    echo "  frontend: http://localhost:5183"
     echo ""
     wait
     ;;

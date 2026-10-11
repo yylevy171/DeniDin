@@ -443,7 +443,7 @@ make test            # or: python3 -m pytest tests/ -v --tb=short
 ### webapp (self-contained, own backend/frontend/e2e)
 ```bash
 cd apps/webapp
-./run_webapp.sh host             # no Docker: uvicorn backend :8100 + Vite dev server :5173,
+./run_webapp.sh host             # no Docker: uvicorn backend :8110 + Vite dev server :5183,
                                   # live-reload, Ctrl-C stops both, localhost only
 ./run_webapp.sh dev|prod         # Docker Compose: webapp-backend-<env> + webapp-frontend-<env>
                                   # nginx; dev :8100/:5100, prod :8101/:5101, bound 0.0.0.0

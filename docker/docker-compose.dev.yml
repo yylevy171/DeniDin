@@ -110,8 +110,9 @@ services:
     ports:
       - "8100:8100"
     volumes:
-      # 2026-09-24: mounts the SAME config.dev.json host mode reads (no more separate
-      # ".container.json" file) — its paths are relative to CWD (/app/apps/webapp/backend,
+      # 2026-09-24: mounts the canonical ROOT clone's config.dev.json (this path resolves against
+      # --project-directory, which dev forces to the root clone); host mode reads each clone's OWN
+      # config.dev.json instead - same name, different files (no more separate ".container.json") — its paths are relative to CWD (/app/apps/webapp/backend,
       # matching the repo tree, which the Dockerfile COPYs in at build time — never git),
       # so mount targets below mirror that same repo-relative layout instead of a flat
       # /app/denidin-data / /app/webapp-data convention.

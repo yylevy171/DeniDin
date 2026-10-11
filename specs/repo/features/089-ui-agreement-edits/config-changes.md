@@ -33,8 +33,15 @@ Add (top level, next to the existing `denidin_data_root` etc.):
 | prod, in Docker (`run_webapp.sh prod`) | `http://denidin-app-prod:8300` |
 | host mode (`run_webapp.sh host`, dev denidin-app running in Docker) | `http://127.0.0.1:8300` (dev compose publishes it on 127.0.0.1 only) |
 
-One file serves one mode at a time: `config.dev.json` is read both by Docker dev and by host mode, so
-change the URL when you switch between them (container name vs `127.0.0.1`). Prod is Docker-only.
+Dev Docker and host mode use DIFFERENT physical files (same name, different clone):
+
+- **Dev in Docker** (`run_webapp.sh dev`) refuses to run outside the canonical root clone and mounts
+  `<root clone>/apps/webapp/backend/config/config.dev.json`. Put the Docker URL
+  (`http://denidin-app-dev:8300`) in THAT file.
+- **Host mode** (`run_webapp.sh host`) reads `config/config.dev.json` relative to the working clone's own
+  `apps/webapp/backend/`. Put `http://127.0.0.1:8300` in THAT clone's file.
+
+They are never shared. Prod is Docker-only (`config.prod.json` on the prod box).
 
 ## 3. Already in the repo (nothing to do)
 
