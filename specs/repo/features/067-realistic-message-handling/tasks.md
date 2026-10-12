@@ -28,7 +28,7 @@ files, no unfinished dependency). Paths are relative to `apps/denidin-app/` unle
 
 ## Phase 1: Setup
 
-- [ ] T001 Add a `message_queues` config block with defaults to `config/config.example.json` and `src/models/config.py` (`AppConfiguration` + `validate()`): `intake_max_per_chat` 500, `intake_max_total` 2000, `session_max` 200, `warn_fraction` 0.5, `stall_seconds` 30, `monitor_interval_seconds` 10, `supervisor_interval_seconds` 5, `supervisor_max_restarts` 3, `supervisor_window_seconds` 600, `session_call_timeout_seconds` 60, `slow_call_seconds` 5. Absent block = these defaults (existing configs keep working)
+- [ ] T001 Add a `message_queues` config block with defaults to `config/config.example.json` and `src/models/config.py` (`AppConfiguration` + `validate()`): `intake_max_per_chat` 500, `intake_max_total` 2000, `session_max` 200, `warn_fraction` 0.5, `stall_seconds` 30, `queue_check_interval_seconds` 10, `thread_check_interval_seconds` 5, `thread_max_restarts` 3, `thread_restart_window_seconds` 600, `session_call_timeout_seconds` 60, `slow_call_seconds` 5. Absent block = these defaults (existing configs keep working)
 - [ ] T002 **[HUMAN GATE]** Ask the human to approve adding those keys to `config/config.dev.json`, `config/config.prod.json`, `config/config.test.json` (gitignored) *before any test run*; do not edit them without that approval
 - [ ] T003 [P] Create package skeletons `src/intake/__init__.py`, `tests/unit/intake/__init__.py`, `tests/integration/intake/__init__.py`
 

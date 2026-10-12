@@ -23,7 +23,7 @@ class Fake:
 
 
 def _sup(max_restarts=2, window=100.0, clock=None):
-    return ThreadSupervisor(QueueSettings(supervisor_max_restarts=max_restarts, supervisor_window_seconds=window),
+    return ThreadSupervisor(QueueSettings(thread_max_restarts=max_restarts, thread_restart_window_seconds=window),
                             clock=clock or Clock())
 
 

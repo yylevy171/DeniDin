@@ -4,7 +4,7 @@ Something has to notice when the dispatcher thread or the SessionManager actor t
 dies - otherwise the poller keeps storing and queuing while nothing is ever handled.
 Each supervised thread registers an ``is_alive`` probe and a ``restart`` callable; a
 dead thread is logged CRITICAL and restarted (the queues survive, so nothing queued is
-lost). More than ``supervisor_max_restarts`` deaths inside ``supervisor_window_seconds``
+lost). More than ``thread_max_restarts`` deaths inside ``thread_restart_window_seconds``
 makes ``healthy()`` False, which ``/health`` reports so the existing prober restarts
 the container.
 """
@@ -52,7 +52,7 @@ class ThreadSupervisor:
         return dead
 
     def _trim(self) -> None:
-        horizon = self._clock() - self._settings.supervisor_window_seconds
+        horizon = self._clock() - self._settings.thread_restart_window_seconds
         while self._deaths and self._deaths[0] < horizon:
             self._deaths.popleft()
 
@@ -61,7 +61,7 @@ class ThreadSupervisor:
         self._trim()
         if self._restart_failed:
             return False
-        return len(self._deaths) <= self._settings.supervisor_max_restarts
+        return len(self._deaths) <= self._settings.thread_max_restarts
 
     def all_alive(self) -> bool:
         """Health check: every supervised thread is alive now AND the death budget holds."""
@@ -71,7 +71,7 @@ class ThreadSupervisor:
 def start_thread_supervisor_scheduler(supervisor: ThreadSupervisor, settings: QueueSettings,
                                       scheduler: Optional[Any] = None) -> BackgroundScheduler:
     sched = scheduler or BackgroundScheduler()
-    sched.add_job(supervisor.check, IntervalTrigger(seconds=settings.supervisor_interval_seconds),
+    sched.add_job(supervisor.check, IntervalTrigger(seconds=settings.thread_check_interval_seconds),
                   id=THREAD_SUPERVISOR_JOB_ID, replace_existing=True, max_instances=1, coalesce=True)
     if scheduler is None:
         sched.start()

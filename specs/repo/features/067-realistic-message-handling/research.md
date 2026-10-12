@@ -195,7 +195,7 @@ None (product owner, 2026-10-12). Rollback is the previous release.
   limit, item id; dropped counter++); `last_get_at`; `size()`; high-water mark. All queues
   (per-chat intake, `arrival`, `SessionManager`'s) are `BoundedQueue`s — one tech, one set of behavior.
 - Config (names settled in tasks.md): per-queue max, a warning size, a stall-seconds threshold,
-  defaults in `config.example.json` — a `message_queues` block: `intake_max_per_chat` 500, `intake_max_total` 2000, `session_max` 200, `warn_fraction` 0.5, `stall_seconds` 30, `monitor_interval_seconds` 10, `supervisor_interval_seconds` 5, `supervisor_max_restarts` 3, `supervisor_window_seconds` 600, `session_call_timeout_seconds` 60, `slow_call_seconds` 5.
+  defaults in `config.example.json` — a `message_queues` block: `intake_max_per_chat` 500, `intake_max_total` 2000, `session_max` 200, `warn_fraction` 0.5, `stall_seconds` 30, `queue_check_interval_seconds` 10, `thread_check_interval_seconds` 5, `thread_max_restarts` 3, `thread_restart_window_seconds` 600, `session_call_timeout_seconds` 60, `slow_call_seconds` 5.
 - A `QueueMonitor` (an existing APScheduler job style, every ~10 s) logs WARNING when a queue's
   size ≥ warning size or `size > 0` and `now - last_get_at` > stall seconds (rate-limited), logs INFO
   depths when non-empty, and publishes **boolean** fields into `/health`'s info (`build_health_info_fns` fields are pass/fail strings): `queues_within_limits` and `queues_not_stalled`, report-only like `whatsapp_authorized`; numeric depths/limits/dropped go to the INFO log line. Thread liveness is a real `build_health_check_fns` check (flips `status`).

@@ -75,9 +75,9 @@ class QueueMonitor:
 
 def start_queue_monitor_scheduler(monitor: QueueMonitor, settings: QueueSettings,
                                   scheduler: Optional[Any] = None) -> BackgroundScheduler:
-    """Runs ``monitor.check`` every ``monitor_interval_seconds`` on a BackgroundScheduler."""
+    """Runs ``monitor.check`` every ``queue_check_interval_seconds`` on a BackgroundScheduler."""
     sched = scheduler or BackgroundScheduler()
-    sched.add_job(monitor.check, IntervalTrigger(seconds=settings.monitor_interval_seconds),
+    sched.add_job(monitor.check, IntervalTrigger(seconds=settings.queue_check_interval_seconds),
                   id=QUEUE_MONITOR_JOB_ID, replace_existing=True, max_instances=1, coalesce=True)
     if scheduler is None:
         sched.start()

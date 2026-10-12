@@ -29,10 +29,10 @@ class QueueSettings:
     session_max: int = 50
     warn_fraction: float = 0.3
     stall_seconds: float = 120.0
-    monitor_interval_seconds: float = 2.0
-    supervisor_interval_seconds: float = 60.0
-    supervisor_max_restarts: int = 1
-    supervisor_window_seconds: float = 100.0
+    queue_check_interval_seconds: float = 10.0
+    thread_check_interval_seconds: float = 60.0
+    thread_max_restarts: int = 1
+    thread_restart_window_seconds: float = 100.0
     session_call_timeout_seconds: float = 10.0
     slow_call_seconds: float = 5.0
 
