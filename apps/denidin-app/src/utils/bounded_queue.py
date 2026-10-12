@@ -24,16 +24,16 @@ class QueueLimitExceeded(Exception):
 class QueueSettings:
     """The ``message_queues`` config block, defaults applied (Feature 067)."""
 
-    intake_max_per_chat: int = 500
-    intake_max_total: int = 2000
-    session_max: int = 200
-    warn_fraction: float = 0.5
-    stall_seconds: float = 30.0
-    monitor_interval_seconds: float = 10.0
-    supervisor_interval_seconds: float = 5.0
-    supervisor_max_restarts: int = 3
-    supervisor_window_seconds: float = 600.0
-    session_call_timeout_seconds: float = 60.0
+    intake_max_per_chat: int = 50
+    intake_max_total: int = 100
+    session_max: int = 50
+    warn_fraction: float = 0.3
+    stall_seconds: float = 120.0
+    monitor_interval_seconds: float = 2.0
+    supervisor_interval_seconds: float = 60.0
+    supervisor_max_restarts: int = 1
+    supervisor_window_seconds: float = 100.0
+    session_call_timeout_seconds: float = 10.0
     slow_call_seconds: float = 5.0
 
     @classmethod

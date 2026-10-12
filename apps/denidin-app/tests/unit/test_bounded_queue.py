@@ -71,8 +71,8 @@ def test_settings_defaults_and_partial_override(tmp_path):
     cfg = AppConfiguration.from_file(str(path))
     settings = QueueSettings.from_config(cfg)
     assert settings.session_max == 7 and settings.stall_seconds == 1
-    assert settings.intake_max_per_chat == 500
-    assert settings.warn_size(200) == 100
+    assert settings.intake_max_per_chat == 50
+    assert settings.warn_size(100) == 30
 
 
 def test_settings_absent_block_gives_defaults():

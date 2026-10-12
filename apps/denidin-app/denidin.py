@@ -1881,10 +1881,10 @@ def main() -> None:
             morning_mcp_locator=denidin.morning_mcp_locator,
             memory_manager=denidin.memory_manager,
             log_path=resolve_log_path(),
-            thread_supervisor=denidin.thread_supervisor,
         )
         # bugfix-069: report-only fields (e.g. whatsapp_authorized) - never fail status.
-        info_fns = build_health_info_fns(green_api=live_bot.api, queue_monitor=denidin.queue_monitor)
+        info_fns = build_health_info_fns(
+            green_api=live_bot.api, queue_monitor=denidin.queue_monitor, thread_supervisor=denidin.thread_supervisor)
         start_health_server(denidin.config.health_check_port, check_fns, info_fns)
         start_heartbeat_thread()
 
