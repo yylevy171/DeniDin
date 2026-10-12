@@ -1666,6 +1666,8 @@ def main() -> None:
     config_dict = {
         'green_api_instance_id': startup_config.green_api_instance_id,
         'green_api_token': startup_config.green_api_token,
+        'green_api_host_mode': startup_config.green_api_host_mode,
+        'green_api_media_host': startup_config.green_api_media_host,
         'ai_api_key': startup_config.ai_api_key,
         'ai_model': startup_config.ai_model,
         'ai_vision_model': startup_config.ai_vision_model,
