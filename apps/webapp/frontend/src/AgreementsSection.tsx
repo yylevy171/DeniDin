@@ -79,6 +79,15 @@ function amountText(c: AgreementComponent): string {
   return parts.join(" + ");
 }
 
+/** The VAT column: "included" / "not included" / "unspecified" (nothing stored). */
+export function vatText(c: AgreementComponent): string {
+  const raw = (c.vat_status || "").trim();
+  if (!raw || raw === "לא צוין") return "מע״מ: לא צוין";
+  if (raw.startsWith("לא כולל")) return "לא כולל מע״מ";
+  if (raw.startsWith("כולל")) return "כולל מע״מ";
+  return `מע״מ: ${raw}`;
+}
+
 function StatusBadge({ status, label, testID }: { status: string; label: string; testID: string }) {
   return (
     <Text testID={testID} style={{ color: STATUS_COLOR[status], fontWeight: "700", fontSize: 12 }}>
@@ -263,6 +272,7 @@ function ComponentRow({
       <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
         <Text testID={`component-label-${key}`} style={{ color: theme.text, fontWeight: "700", minWidth: 120 }}>{component.label}</Text>
         <Text testID={`component-amount-${key}`} style={{ color: theme.text }}>{amountText(component)}</Text>
+        <Text testID={`component-vat-${key}`} style={{ color: theme.textDim, fontSize: 12, minWidth: 90 }}>{vatText(component)}</Text>
         <Text style={{ color: theme.textDim, fontSize: 12 }}>{component.trigger_condition || ""}</Text>
         <StatusBadge status={status} label={COMPONENT_STATUS_LABEL[status]} testID={`component-status-${key}`} />
       </View>

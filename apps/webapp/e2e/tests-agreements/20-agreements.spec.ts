@@ -118,6 +118,15 @@ test.describe("US1 - view agreements and components", () => {
     expect(newEvents()).toHaveLength(0);
   });
 
+  test("UAT 1.2b - every component shows its VAT: included / not included / unspecified", async ({ page, request }) => {
+    await openClient(page, C.view);
+    const a = byTitle(await agreementsOf(request, C.view), M.titles.view);
+    await expect(page.getByTestId(`component-vat-${comp(a, "ריטיינר").component_key}`)).toHaveText("לא כולל מע״מ");
+    await expect(page.getByTestId(`component-vat-${comp(a, "שכר הצלחה").component_key}`)).toHaveText("מע״מ: לא צוין");
+    await expect(page.locator('[data-testid^="component-vat-"]')).toHaveCount(a.components.length);
+    expect(newEvents()).toHaveLength(0);
+  });
+
   test("UAT 1.3 - hours-worked lines are not components but still count in the agreed total", async ({ page, request }) => {
     await openClient(page, C.view);
     const a = byTitle(await agreementsOf(request, C.view), M.titles.view);
