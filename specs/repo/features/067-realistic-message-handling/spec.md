@@ -275,7 +275,10 @@ retired.)*
    and attach **all** user messages received since to the next message sent to the model.
 3. *(Resolved 2026-10-11)* Scope is the **backbone only**; the legacy `AIHandler` path is not
    touched.
-4. **Media-burst handling** and **`contactsArrayMessage`** remain a separate future decision.
+4. **Media is left out of this feature** (product owner, 2026-10-12): it keeps its existing handling,
+   is not merged and does not interrupt. Multiple media (e.g. two bank slips a second apart) and
+   other "multiple independent requests" in one stream are **Feature 102**
+   (`specs/repo/features/102-multiple-media-images/`); `contactsArrayMessage` likewise.
 5. **To verify during `speckit.plan`** (no decision needed): that when a model call returns, every
    server-side Morning tool call it made is fully present in the response (nothing still running),
    confirmed against a real logged response (CONSTITUTION: no unverified third-party assumptions).
