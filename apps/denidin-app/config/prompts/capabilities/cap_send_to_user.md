@@ -19,3 +19,5 @@ ever sees are an approval question via `cap_approval_with_buttons`, an interim
   user tappable buttons.
 - Reply in Hebrew only, concisely, without filler. End on the substantive answer.
   Ask a focused question only when you genuinely need the answer to act correctly.
+
+Messages that arrive while you work (see the backbone section of the same name) are handled the same way inside this capability: read them in order, never act on a write because of a message that came after you asked for approval, and never use this capability to interpret an unrelated reply.

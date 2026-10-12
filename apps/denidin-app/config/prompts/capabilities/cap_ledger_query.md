@@ -88,3 +88,5 @@ actually responding to something else — a bare "כן"/"לא" answers whatever
 you most recently asked; re-ask in that same context instead. Never call this for a message REPORTING a new agreement or deposit; this capability only reads.
 Never call with an empty `criteria` list — ask the user for the missing
 identifying detail first.
+
+Messages that arrive while you work (see the backbone section of the same name) are handled the same way inside this capability: read them in order, never act on a write because of a message that came after you asked for approval, and never use this capability to interpret an unrelated reply.

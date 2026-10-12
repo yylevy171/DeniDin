@@ -89,6 +89,11 @@ WHATSAPP_MAX_REPLY_CHARS = 4000
 # "cancelled", "added" - all "successfully").
 _CONFIRMATION_PHRASES = ("הוצאה בהצלחה", "סומנה כשולמה", "בוטלה בהצלחה", "נוסף בהצלחה")
 
+# Plain "no" replies to a pending approval (Feature 067, REQ-RMH-017): answering the approval
+# clears its button-tap guard. Same matching rule as AFFIRMATIVE_REPLIES (whole message or
+# leading word). Anything else - including "cancel"-style wording - is left to the model.
+NEGATIVE_REPLIES = {"no", "nope", "n", "לא"}
+
 # Free-form affirmative replies recognized as approval of a pending write (Feature
 # 022) - matched against the trimmed, casefolded message (or its leading token), not
 # as a substring-anywhere check, to avoid false positives on unrelated longer sentences.
@@ -546,7 +551,8 @@ class AIManager(ABC):  # pylint: disable=too-many-instance-attributes,too-many-p
     # ------------------------------------------------------------------
 
     def load_rolling_window(self, chat_id: Optional[str], *, window_days: int, max_tokens: int,
-                            exclude_message_ids: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+                            exclude_message_ids: Optional[List[str]] = None,
+                            with_timestamps: bool = False) -> List[Dict[str, Any]]:
         """Feature 070: the chat's rolling verbatim window (oldest-first
         {"role", "content"} dicts, trimmed oldest-first to `max_tokens`, read-only).
         `exclude_message_ids`: the current turn's own inbound message (already stored on
@@ -559,6 +565,7 @@ class AIManager(ABC):  # pylint: disable=too-many-instance-attributes,too-many-p
             history = self.session_manager.get_rolling_window(
                 chat_id, window_days=window_days, max_tokens=max_tokens,
                 exclude_message_ids=[m for m in (exclude_message_ids or []) if m],
+                with_timestamps=with_timestamps,
             )
             if history:
                 logger.info(f"Retrieved {len(history)} messages from session history")
@@ -699,6 +706,18 @@ class AIManager(ABC):  # pylint: disable=too-many-instance-attributes,too-many-p
         if leading_match is None:
             return False
         return leading_match.group(0) in AFFIRMATIVE_REPLIES
+
+    @staticmethod
+    def is_negative_reply(text: str) -> bool:
+        """Whether `text` reads as a plain no (see NEGATIVE_REPLIES) - whole trimmed message
+        or its leading word, like is_affirmative_reply."""
+        normalized = (text or "").strip().casefold()
+        if not normalized:
+            return False
+        if normalized in NEGATIVE_REPLIES:
+            return True
+        leading_match = re.search(r"\w+", normalized, flags=re.UNICODE)
+        return leading_match is not None and leading_match.group(0) in NEGATIVE_REPLIES
 
     @staticmethod
     def mcp_error_text(call: Any) -> str:

@@ -163,3 +163,39 @@ def test_without_an_intake_the_loop_is_todays_synchronous_router_path(app):
     bot.run_forever()
     bot.router.route_event.assert_called_once()
     assert _stored(app) == []
+
+
+# ---------------------------------------------------------------- media fits in (US6)
+
+def test_media_arriving_while_a_text_request_is_handled_is_noted_then_handled_on_its_own(app):
+    import threading
+    inside = threading.Event()
+    release = threading.Event()
+    log = []
+
+    def dispatch(type_message, notification):
+        message = app.receive(notification)
+        log.append((type_message, message.text_content))
+        if type_message == "textMessage" and message.text_content == "msg 1":
+            inside.set()
+            assert release.wait(3)
+            # the model hands back to the app: what arrived meanwhile
+            drained = app.receive_pending(message.chat_id)
+            log.append(("drained", [i.type_message for i in drained.ordered]))
+    disp = DeniDinDispatcher(app.intake, dispatch, poll_seconds=0.01)
+    disp.start()
+    try:
+        first_only = _bot(app, [_body(1)])
+        first_only.run_forever()
+        assert inside.wait(3)
+        later = _bot(app, [_body(2, "imageMessage"), _body(3)])
+        later.run_forever()
+        release.set()
+        assert _wait(lambda: len(log) >= 3)
+        time.sleep(0.1)  # nothing else may be dispatched
+    finally:
+        release.set()
+        disp.stop()
+    assert log[1] == ("drained", ["imageMessage", "textMessage"])
+    assert log[2][0] == "imageMessage"  # the image is dispatched on its own after the current work
+    assert len(log) == 3  # the text was attached, not dispatched a second time

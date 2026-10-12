@@ -21,6 +21,7 @@ from src.backbone.backbone_tools import (
 from src.backbone.capability_tags import ALWAYS_PRESENT_CAPABILITIES, CapabilityTag, capability_catalog_text
 from src.backbone.flow_tags import FlowTag, flow_catalog_text
 from src.backbone.loading import apply_loading, describe_loading, parse_requested
+from src.backbone.pending_messages import format_pending_items
 from src.backbone.prompt_cache import MtimePromptCache
 from src.backbone.resolution_tools import RESOLUTION_TOOLS, extract_resolution_tool_calls
 from src.capabilities.toolsets import (
@@ -498,7 +499,13 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
                     self.session_manager.get_session(effective_chat_id).approval_message_id)
                 self._turn_is_approved_write = (
                     approval_was_pending and self.is_affirmative_reply(request.user_prompt))
-                self.session_manager.set_approval_message_id(effective_chat_id, None)
+                # Feature 067 (REQ-RMH-017): the stale-tap guard is cleared only when the
+                # approval itself is answered here (a typed or tapped yes/no); unrelated
+                # messages leave it alone, and a newer approval overwrites it when sent
+                # (record_sent_message_id).
+                if approval_was_pending and (
+                        self._turn_is_approved_write or self.is_negative_reply(request.user_prompt)):
+                    self.session_manager.set_approval_message_id(effective_chat_id, None)
             final_text = self._run_resolution_loop(request, turn_context)
             final_text = self._apply_write_guards(request, final_text)
 
@@ -594,6 +601,13 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
     # ------------------------------------------------------------------
 
     @staticmethod
+    def _timestamp_label(request: AIRequest) -> str:
+        """`[HH:MM:SS dd/mm] ` - the message's send time, Israel local (REQ-RMH-007); "" when
+        the request carries no timestamp."""
+        epoch = request.timestamp
+        return f"[{local_from_timestamp(epoch).strftime('%H:%M:%S %d/%m')}] " if epoch else ""
+
+    @staticmethod
     def _first_round_user_content(request: AIRequest) -> str:
         """The user message the first round sends. For a media turn (2026-09-30) the
         model gets NO media bytes here - only a marker saying a file is attached (type +
@@ -620,7 +634,12 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
         chat_id: str = turn_context["chat_id"]  # every turn has a chat
         tags, instructions, tools = self._build_round_inputs(request, chat_id, turn_context)
         input_items = list(self._turn_conversation_history)
-        input_items.append({"role": "user", "content": self._first_round_user_content(request)})
+        input_items.append({
+            "role": "user",
+            # A media request's first-round text is pinned by an approved test (no
+            # timestamp) - a human decision is pending on stamping it (Feature 067 open point).
+            "content": ("" if request.media is not None else self._timestamp_label(request))
+            + self._first_round_user_content(request)})
 
         response = self._call_model("_run_resolution_loop (first round)", {
             "model": request.model,
@@ -630,6 +649,7 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
             "tools": tools,
         })
 
+        last_output_at = now_local()  # when the model's most recent output came back
         reminded_of_send_to_user = False
         for _loop_round in range(MAX_BACKBONE_TOOL_LOOP_ITERATIONS):
             # Feature 080 telemetry, matching AIHandler._run_local_tool_dispatch_loop: each
@@ -668,11 +688,12 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
                     response = self._call_model("_run_resolution_loop (follow-up)", {
                         "model": request.model,
                         "instructions": instructions,
-                        "input": outputs,
+                        "input": self._compose_follow_up_input(chat_id, outputs, last_output_at),
                         "previous_response_id": getattr(response, "id", None),
                         "max_output_tokens": request.max_tokens,
                         "tools": tools,
                     })
+                    last_output_at = now_local()
                 except Exception as exc:  # pylint: disable=broad-except
                     logger.error("Resolution-loop follow-up call failed (non-fatal): %s", exc)
                     return self.reply_or_fallback(getattr(response, "output_text", ""),
@@ -684,6 +705,24 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
             MAX_BACKBONE_TOOL_LOOP_ITERATIONS, request.request_id,
         )
         return self.reply_or_fallback(getattr(response, "output_text", ""), BACKBONE_UNEXPECTED_ERROR)
+
+    def _compose_follow_up_input(self, chat_id: str, outputs: List[Dict[str, Any]],
+                                 last_output_at: Any) -> List[Dict[str, Any]]:
+        """The model's next input at a hand-back (Feature 067, REQ-RMH-001): (A) what the
+        app did for the model - its tool results - and (B) the user messages that arrived
+        since, each with its send time and whether it came before or after the model's last
+        output. The model's own work is never aborted; it just sees the new messages next.
+        Nothing is attached while an approved write is being handled (REQ-RMH-014) - those
+        messages are handled afterwards."""
+        if self._turn_is_approved_write:
+            return outputs
+        drained = self.denidin.receive_pending(chat_id)
+        if drained is None or not drained.ordered:
+            return outputs
+        logger.info("[067] %d message(s) arrived while working in %s - handed to the model with its tool results",
+                    len(drained.ordered), chat_id)
+        self.denidin.refresh_typing_indicator(chat_id)
+        return outputs + format_pending_items(drained, last_output_at)
 
     def _execute_round_calls(self, request: AIRequest, turn_context: Dict[str, Any], *, chat_id: str,
                               tags: List[CapabilityTag], response: Any
@@ -976,6 +1015,7 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
             window_days=session_config.get('window_days', 14),
             max_tokens=session_config.get('max_tokens_by_role', {}).get('godfather', 100000),
             exclude_message_ids=[exclude_message_id] if exclude_message_id else None,
+            with_timestamps=True,  # Feature 067 (REQ-RMH-007): the model reads the timeline
         )
 
     def _recall_memory(self, user_prompt: str, chat_id: Optional[str],

@@ -108,6 +108,7 @@ def test_restart_after_stop_works_and_idle_loop_does_not_busy_spin():
 
 def test_dispatcher_module_knows_nothing_about_green_api():
     import src.intake.denidin_dispatcher as mod
-    source = open(mod.__file__, encoding="utf-8").read().lower()
-    for forbidden in ("import requests", "greenapi", "whatsapp_chatbot", "router"):
-        assert forbidden not in source, forbidden
+    imports = [line.lower() for line in open(mod.__file__, encoding="utf-8").read().splitlines()
+               if line.startswith(("import ", "from "))]
+    for forbidden in ("requests", "green", "whatsapp", "router", "session"):
+        assert not any(forbidden in line for line in imports), forbidden

@@ -47,3 +47,5 @@ data) and retry the SAME call once. Only if that second attempt also fails,
 tell the user plainly that the action didn't go through — never silently
 give up after one failure, and never retry more than once without a new,
 different reason to believe it will work.
+
+Messages that arrive while you work (see the backbone section of the same name) are handled the same way inside this capability: read them in order, never act on a write because of a message that came after you asked for approval, and never use this capability to interpret an unrelated reply.

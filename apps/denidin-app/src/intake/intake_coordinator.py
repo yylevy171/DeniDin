@@ -12,7 +12,7 @@ Single-thread parts: ``deferred`` and ``_current`` belong to the dispatcher thre
 """
 import queue
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Deque, Dict, List, Optional
 
 from whatsapp_chatbot_python import Notification
@@ -46,6 +46,7 @@ class Drained:
     """What a hand-back drain pulled out of one chat's queue (arrival order kept in each list)."""
     attachable: List[PendingItem]  # text/contact from non-blocked senders -> go to the model now
     media: List[PendingItem]       # stored; the model is told, handled afterwards
+    ordered: List[PendingItem] = field(default_factory=list)  # attachable + media, in arrival order
 
 
 def _event_chat_id(event: dict) -> str:
@@ -151,9 +152,11 @@ class IntakeCoordinator:
             if item.type_message in ATTACHABLE_TYPES and item.message is not None \
                     and not self._sender_blocked(item.message):
                 drained.attachable.append(item)
+                drained.ordered.append(item)
             elif item.type_message in MEDIA_TYPES and item.message is not None \
                     and not self._sender_blocked(item.message):
                 drained.media.append(item)
+                drained.ordered.append(item)
                 self.deferred.append(item)
             else:
                 self.deferred.append(item)

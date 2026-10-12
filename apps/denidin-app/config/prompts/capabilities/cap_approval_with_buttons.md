@@ -30,3 +30,5 @@ capability you are about to use defines which details the approval must state.
   after the approved write runs, ask for the next one's approval. Never perform
   a later write on an earlier write's yes, and never skip an approval.
 - Reply in Hebrew only.
+
+Messages that arrive while you work (see the backbone section of the same name) are handled the same way inside this capability: read them in order, never act on a write because of a message that came after you asked for approval, and never use this capability to interpret an unrelated reply.
