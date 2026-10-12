@@ -99,7 +99,7 @@ class TestEndToEndRBACEnforcement:
         request = handler.create_request(message, user_phone=client_phone)
         
         # Act: Get response (stores in session with token limit)
-        response = handler.single_turn(
+        response = handler.handle_message(
             request,
             user_phone=client_phone,
             sender=client_phone,
@@ -143,7 +143,7 @@ class TestEndToEndRBACEnforcement:
         # No user_phone= override - matches denidin.py's real call shape exactly
         # (get_response(ai_request, sender=message.sender_id, recipient="AI")).
         request = handler.create_request(message)
-        response = handler.single_turn(
+        response = handler.handle_message(
             request,
             sender=godfather_whatsapp_id,
             recipient="AI"
@@ -201,7 +201,7 @@ class TestEndToEndRBACEnforcement:
         )
         
         with pytest.raises(PermissionError, match="User is blocked"):
-            handler.single_turn(request, user_phone=blocked_phone, sender=blocked_phone)
+            handler.handle_message(request, user_phone=blocked_phone, sender=blocked_phone)
 
 
 
@@ -529,7 +529,7 @@ class TestErrorHandling:
         
         # Act & Assert
         with pytest.raises(PermissionError) as exc_info:
-            handler.single_turn(request, user_phone=blocked_phone, sender=blocked_phone)
+            handler.handle_message(request, user_phone=blocked_phone, sender=blocked_phone)
         
         assert "User is blocked" in str(exc_info.value)
     

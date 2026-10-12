@@ -9,7 +9,7 @@ Flow (entry point is the real Green API webhook, dispatched through the actual
     Green API contactMessage webhook (godfather sender)
       -> handle_contact_message (real router handler, not a direct internal call)
       -> WhatsAppMessage.from_notification (vCard framed into text_content)
-      -> AIHandler.single_turn
+      -> AIHandler.handle_message
            -> client.responses.create (real OpenAI Responses API call)
               with the real Morning MCP server registered as a remote tool
       -> bot replies in Hebrew

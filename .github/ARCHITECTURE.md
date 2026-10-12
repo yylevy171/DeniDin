@@ -184,6 +184,8 @@ Blocked (lowest)
 
 ### 3. Session Manager (`src/managers/session_manager.py`)
 
+*Feature 067: `SessionManager` is a thread-safe actor facade (one bounded queue, one thread) over `SessionStore` (`session_store.py`, single-thread-only); public signatures are unchanged.*
+
 **Tier 1 Memory - the rolling verbatim conversation window (Feature 070)**
 
 **Responsibilities:**
@@ -356,7 +358,7 @@ DeniDin degrades instead of crashing.
 - `DeniDin` coordinates the two by value: `receive()` (parse + store the moment a message arrives),
   `send_text()` / `send_response()` (send, then store what was sent), `store_inbound()` /
   `store_outbound()` / `update_message()`, `send_document()`, `send_reaction()`. A turn is bracketed
-  by `begin_turn()` / `end_turn()`; `send_progress_update(chat_id, text)` sends (and stores) an interim
+  by `mark_chat_busy()` / `mark_chat_idle()`; `send_progress_update(chat_id, text)` sends (and stores) an interim
   message in that chat's turn in progress — text, media and button-tap turns alike. Tools call these
   DeniDin methods directly (progress updates, reactions, sending a generated document).
 
@@ -370,7 +372,7 @@ config fields they and the nightly roll read) and `WebappDeniDin`
 **The shared contract — `AIManager` (`src/core/ai_manager.py`).** Abstract base both implement.
 denidin.py talks to `ai_manager` identically for both:
 
-- `single_turn(request, chat_id, *, user_role, sender, recipient, user_phone, is_group, chat_name,
+- `handle_message(request, chat_id, *, user_role, sender, recipient, user_phone, is_group, chat_name,
   sender_phone) -> AIResponse` — one inbound message, one reply (or a deliberate
   `[[NO_REPLY]]` no-reply).
 - `resolve_button_tap(...)` — a Feature 047 interactive-button tap; `None` for a stale tap.
@@ -520,6 +522,8 @@ summary_memory_id, source(daily-roll|catch-up|migration)`.
 
 ### Message Processing Flow
 
+*Feature 067: the poller stores each message on receipt, acknowledges it and queues it (`IntakeCoordinator`); a single `DeniDinDispatcher` thread hands items to the handlers one at a time; at every model hand-back the backbone merges the messages that arrived meanwhile into the model's next input. No model call is ever aborted.*
+
 ```
 1. User sends WhatsApp message
    ↓
@@ -531,7 +535,7 @@ summary_memory_id, source(daily-roll|catch-up|migration)`.
    ↓
 5. Session Manager loads/creates session
    ↓
-6. ai_manager.single_turn() — AIHandler (flag off) or Backbone (flag on):
+6. ai_manager.handle_message() — AIHandler (flag off) or Backbone (flag on):
    a. Recalls relevant memories
    b. Builds context (legacy: constitution; backbone: backbone prompt + loaded
       flows/capabilities, reloaded each round)

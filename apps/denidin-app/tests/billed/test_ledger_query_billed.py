@@ -648,7 +648,7 @@ class TestLedgerQueryBilled:
     # ------------------------------------------------------------------
 
     @pytest.mark.sanity
-    def test_or_across_two_identities_single_turn(self, denidin_app, config):
+    def test_or_across_two_identities_handle_message(self, denidin_app, config):
         """T017: explicit OR across two distinct, unambiguous identities named
         up front in ONE request (distinct from T009's ambiguity-then-"both/
         all" two-turn flow - no ambiguity here at all, just a direct OR)."""

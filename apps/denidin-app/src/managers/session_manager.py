@@ -1,3 +1,4 @@
+# mypy: disable-error-code="no-any-return"
 """
 Session Manager (Feature 067, REQ-RMH-029): a serialized actor in front of ``SessionStore``.
 

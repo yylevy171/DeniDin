@@ -90,7 +90,7 @@ class TestTheUsersMessageIsStoredEvenWhenTheTurnCrashes:
     def test_crash_after_receipt_keeps_the_user_message_and_stores_the_error_sent(self, app, monkeypatch):
         def _crash(*_args, **_kwargs):
             raise RuntimeError("boom")
-        monkeypatch.setattr(app.ai_manager, "single_turn", _crash)
+        monkeypatch.setattr(app.ai_manager, "handle_message", _crash)
         notification = _notification()
 
         denidin_module._process_conversational_message(notification)

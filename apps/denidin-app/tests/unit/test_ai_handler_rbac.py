@@ -260,7 +260,7 @@ class TestAIHandlerRBACTokenLimits:
         )
         
         # Act
-        response = handler.single_turn(
+        response = handler.handle_message(
             request,
             chat_id="1234567890@c.us",
             user_phone="+972501111111",
@@ -335,7 +335,7 @@ class TestAIHandlerRBACTokenLimits:
         )
         
         # Act
-        response = handler.single_turn(
+        response = handler.handle_message(
             request,
             chat_id="1234567890@c.us",
             user_phone="+972501234567",
@@ -440,7 +440,7 @@ class TestAIHandlerRBACBlockedUsers:
         
         # Act & Assert
         with pytest.raises(PermissionError, match="User is blocked"):
-            handler.single_turn(
+            handler.handle_message(
                 request,
                 chat_id="5555555555@c.us",
                 user_phone="+972505555555",

@@ -111,7 +111,7 @@ def _ask(app, chat, text):
     m = WhatsAppMessage(message_id="q", chat_id=chat, sender_id=chat, sender_name="Avi",
                         text_content=text, timestamp=0, message_type="text")
     req = app.ai_manager.create_request(m, chat_id=chat, user_phone=chat)
-    return app.ai_manager.single_turn(req, chat_id=chat, user_phone=chat, sender="Avi",
+    return app.ai_manager.handle_message(req, chat_id=chat, user_phone=chat, sender="Avi",
                                       recipient="DeniDin")
 
 
@@ -157,7 +157,7 @@ class TestAC1RollThenRecall:
 def _ask_via_denidin(app, chat, text, message_id):
     """One real turn through DeniDin's WhatsApp entry point (handle_text_message), so the
     message and reply are stored the way production stores them - REQ-063-08 moved storing
-    out of ai_manager.single_turn and onto DeniDin. Returns the reply the user would see."""
+    out of ai_manager.handle_message and onto DeniDin. Returns the reply the user would see."""
     import denidin
     from tests.billed.denidin_mcp_e2e_helpers import build_text_webhook
     from tests.e2e_helpers import create_real_notification, get_response

@@ -60,7 +60,7 @@ def test_small_talk_turn_never_loads_domain_capability_content(prompts_root):
 
     backbone.load_capability_prompt = tracking_load
 
-    response = backbone.single_turn(_request(), user_role="client")
+    response = backbone.handle_message(_request(), user_role="client")
 
     assert response.response_text == "This is ordinary small talk with no action needed."
     # No load_capabilities tool call was made, so no domain

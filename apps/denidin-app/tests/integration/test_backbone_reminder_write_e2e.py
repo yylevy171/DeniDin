@@ -80,7 +80,7 @@ def test_flag_on_turn_creates_reminder_directly_and_response_shape_matches_legac
         model="gpt-5.6-luna", chat_id="chat1", message_id="msg1",
     )
 
-    response = backbone.single_turn(request, chat_id="chat1", user_role="godfather")
+    response = backbone.handle_message(request, chat_id="chat1", user_role="godfather")
 
     # Same AIResponse shape denidin.py's existing callers already expect.
     assert isinstance(response, AIResponse)

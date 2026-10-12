@@ -76,7 +76,7 @@ def _approved_turn(prompts_root, responses):
     client.with_options.return_value.responses.create.side_effect = responses
     backbone = _backbone(prompts_root, client)
     backbone.session_manager.set_approval_message_id("chat1", "approval-msg")
-    return client, backbone.single_turn(_request("כן"), chat_id="chat1")
+    return client, backbone.handle_message(_request("כן"), chat_id="chat1")
 
 
 # --- Item4 -------------------------------------------------------------------
@@ -155,7 +155,7 @@ def test_no_write_note_is_appended_after_a_reminder_reply_too(prompts_root):
     ]
     backbone = _backbone(prompts_root, client)
     backbone.session_manager.set_approval_message_id("chat1", "approval-msg")
-    response = backbone.single_turn(_request("כן"), chat_id="chat1")
+    response = backbone.handle_message(_request("כן"), chat_id="chat1")
     assert response.response_text == f"נוצרה\n\n{APPROVED_WRITE_NOT_PERFORMED_NOTE}"
 
 
@@ -170,7 +170,7 @@ def test_never_ran_message_is_hebrew_only():
 def test_a_yes_without_outstanding_approval_buttons_is_an_ordinary_turn(prompts_root):
     client = MagicMock()
     client.responses.create.return_value = _response([_send("בסדר")])
-    response = _backbone(prompts_root, client).single_turn(_request("כן"), chat_id="chat1")
+    response = _backbone(prompts_root, client).handle_message(_request("כן"), chat_id="chat1")
     assert response.response_text == "בסדר"
     client.with_options.assert_not_called()
 
@@ -208,7 +208,7 @@ def test_approved_turn_still_retries_once_on_a_424(prompts_root):
 def test_empty_send_to_user_text_replies_with_an_error_not_silence(prompts_root):
     client = MagicMock()
     client.responses.create.return_value = _response([_send("   ")])
-    response = _backbone(prompts_root, client).single_turn(_request(), chat_id="chat1")
+    response = _backbone(prompts_root, client).handle_message(_request(), chat_id="chat1")
     assert response.response_text == BACKBONE_UNEXPECTED_ERROR
     assert response.should_reply is True
 
@@ -219,7 +219,7 @@ def test_failed_follow_up_call_replies_with_try_again(prompts_root):
         _response([_call("record_planning_status", {"where_i_was": "x"}, "c1")]),
         RuntimeError("network down"),
     ]
-    response = _backbone(prompts_root, client).single_turn(_request(), chat_id="chat1")
+    response = _backbone(prompts_root, client).handle_message(_request(), chat_id="chat1")
     assert response.response_text == LEDGER_FOLLOWUP_FAILED_TRY_AGAIN
 
 
@@ -227,7 +227,7 @@ def test_hitting_the_round_limit_replies_with_an_error(prompts_root):
     client = MagicMock()
     client.responses.create.return_value = _response(
         [_call("record_planning_status", {"where_i_was": "x"}, "c1")])
-    response = _backbone(prompts_root, client).single_turn(_request(), chat_id="chat1")
+    response = _backbone(prompts_root, client).handle_message(_request(), chat_id="chat1")
     assert response.response_text == BACKBONE_UNEXPECTED_ERROR
 
 
@@ -244,7 +244,7 @@ def test_a_malformed_tool_call_gets_an_error_output_and_the_turn_continues(promp
         _response([_malformed_call("send_to_user", "bad1")], response_id="r1"),
         _response([_send("תשובה מלאה")], response_id="r2"),
     ]
-    response = _backbone(prompts_root, client).single_turn(_request(), chat_id="chat1")
+    response = _backbone(prompts_root, client).handle_message(_request(), chat_id="chat1")
 
     assert response.response_text == "תשובה מלאה"
     follow_up_input = client.responses.create.call_args_list[1].kwargs["input"]
@@ -259,7 +259,7 @@ def test_a_call_to_an_unattached_tool_gets_an_error_output(prompts_root):
                    _call("react_to_message", {"emoji": "👍"}, "c2")], response_id="r1"),
         _response([_send("בסדר")], response_id="r2"),
     ]
-    _backbone(prompts_root, client).single_turn(_request(), chat_id="chat1")
+    _backbone(prompts_root, client).handle_message(_request(), chat_id="chat1")
 
     follow_up_input = client.responses.create.call_args_list[1].kwargs["input"]
     assert {o["call_id"] for o in follow_up_input} == {"c1", "c2"}
@@ -288,14 +288,14 @@ def test_each_kind_of_model_call_failure_gets_its_own_reply(prompts_root, make_e
     from src.constants import error_messages
     client = MagicMock()
     client.responses.create.side_effect = make_error()
-    response = _backbone(prompts_root, client).single_turn(_request(), chat_id="chat1")
+    response = _backbone(prompts_root, client).handle_message(_request(), chat_id="chat1")
     assert response.response_text == getattr(error_messages, expected)
 
 
 def test_a_deliberate_no_reply_stays_silent(prompts_root):
     client = MagicMock()
     client.responses.create.return_value = _response([_send(NO_REPLY_SENTINEL)])
-    response = _backbone(prompts_root, client).single_turn(_request(), chat_id="chat1")
+    response = _backbone(prompts_root, client).handle_message(_request(), chat_id="chat1")
     assert response.should_reply is False
 
 
@@ -305,7 +305,7 @@ def test_a_deliberate_no_reply_stays_silent(prompts_root):
 def test_group_etiquette_is_in_the_instructions_only_in_a_group(prompts_root, is_group):
     client = MagicMock()
     client.responses.create.return_value = _response([_send("שלום")])
-    _backbone(prompts_root, client).single_turn(_request(), chat_id="chat1", is_group=is_group)
+    _backbone(prompts_root, client).handle_message(_request(), chat_id="chat1", is_group=is_group)
     instructions = client.responses.create.call_args.kwargs["instructions"]
     assert (GROUP_MARKER in instructions) is is_group
 

@@ -206,7 +206,7 @@ class TestDeniDinStoresAtTheBoundary:
 
     def test_a_progress_update_is_sent_in_the_turn_in_progress_and_stored(self, app, session_manager):
         notification = _notification()
-        app.begin_turn(notification, _message(), is_blocked=False)
+        app.mark_chat_busy(notification, _message(), is_blocked=False)
 
         assert app.send_progress_update(CHAT_ID, "רגע, בודק") is True
         notification.answer.assert_called_once_with("רגע, בודק")
@@ -214,8 +214,8 @@ class TestDeniDinStoresAtTheBoundary:
         assert (stored["content"], stored["whatsapp_id_message"]) == ("רגע, בודק", None)
 
     def test_no_progress_update_outside_a_turn(self, app, session_manager):
-        app.begin_turn(_notification(), _message(), is_blocked=False)
-        app.end_turn(CHAT_ID)
+        app.mark_chat_busy(_notification(), _message(), is_blocked=False)
+        app.mark_chat_idle(CHAT_ID)
 
         assert app.send_progress_update(CHAT_ID, "רגע") is False
         assert _stored(session_manager) == []

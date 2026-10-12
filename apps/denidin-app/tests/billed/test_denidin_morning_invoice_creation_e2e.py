@@ -24,7 +24,7 @@ actual @bot.router.message-decorated `handle_text_message` - CONSTITUTION
     Green API textMessage webhook (godfather sender)
       -> handle_text_message (real router handler, not a direct internal call)
       -> WhatsAppHandler.process_notification
-      -> AIHandler.single_turn
+      -> AIHandler.handle_message
            -> client.responses.create (real OpenAI Responses API call)
               with the real Morning MCP server registered as a remote tool
               (reached over its already-open ngrok tunnel, bearer-authenticated)
@@ -401,7 +401,7 @@ def test_godfather_approval_survives_intervening_small_talk(denidin_app):
 def test_godfather_add_client_requires_approval(denidin_app):
     """🚨 CONSTITUTION §VIII flagged exception (spec.md Clarifications round 1,
     explicitly human-approved): replaces test_godfather_add_client_still_
-    single_turn's regression guard. add_client now creates a real, persisted
+    handle_message's regression guard. add_client now creates a real, persisted
     client record - Feature 026 moves it into APPROVAL_REQUIRED_MCP_TOOLS,
     reversing its prior single-turn behavior.
 

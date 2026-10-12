@@ -96,7 +96,7 @@ def test_backbone_turn_records_round_spans_and_mcp_calls(prompts_root, tmp_path)
     request = AIRequest(user_prompt="מי הלקוח?", constitution="", max_tokens=1000,
                         model="gpt-5.6-luna", chat_id="chat1", message_id="msg1")
 
-    backbone.single_turn(request, chat_id="chat1", user_role="godfather")
+    backbone.handle_message(request, chat_id="chat1", user_role="godfather")
 
     row = telemetry_manager.get_latest_by_chat("chat1")
     assert row["llm_turns_count"] == 2

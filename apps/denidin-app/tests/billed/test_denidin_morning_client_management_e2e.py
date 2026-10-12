@@ -673,7 +673,7 @@ def test_client_role_gets_no_client_management_tools(denidin_app):
 @pytest.mark.billed
 def test_blocked_role_gets_no_client_management_tools(denidin_app):
     """A blocked-role sender asking about clients never even reaches
-    AIHandler.single_turn (create_request raises PermissionError first,
+    AIHandler.handle_message (create_request raises PermissionError first,
     per existing Feature 018 behavior) - the bot still replies (the generic
     fallback message, denidin.py's global exception handler), no crash, and
     no new AIResponse/mcp_calls is ever produced for this request."""
@@ -689,7 +689,7 @@ def test_blocked_role_gets_no_client_management_tools(denidin_app):
 
     assert response is not None, "CRITICAL: blocked-role user got NO RESPONSE (silent drop)"
     assert denidin.denidin_app.last_response is last_response_before, (
-        "A blocked user's message must never reach AIHandler.single_turn at "
+        "A blocked user's message must never reach AIHandler.handle_message at "
         "all (rejected earlier, in create_request) - last_response changing "
         "means a real AI/tool call happened for a blocked user."
     )

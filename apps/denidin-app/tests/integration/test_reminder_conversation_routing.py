@@ -3,7 +3,7 @@ Component-Integration Test: Reminder Creation Conversation Routing (Feature 054,
 
 Verifies the full real router-dispatch path for creating a reminder: a real
 textMessage-shaped Green API notification -> bot.router -> handle_text_message ->
-WhatsAppHandler -> AIHandler.single_turn -> _finalize_response ->
+WhatsAppHandler -> AIHandler.handle_message -> _finalize_response ->
 _handle_reminder_creation_proposal -> a PendingLocalToolApproval is set and an
 interactive-buttons approval prompt is sent - all real internal objects and
 real router dispatch (CONSTITUTION SS V), only the OpenAI client's

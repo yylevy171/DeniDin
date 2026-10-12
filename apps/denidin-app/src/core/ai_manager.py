@@ -11,7 +11,7 @@ Logic both implementations need lives here once, as methods of this class: build
 AIRequest for an inbound message, the Morning MCP connection, every model call (explicit
 retry + telemetry timing), the per-turn context (rolling window, memory recall), the
 turn-result helpers and the approved-write safeguards. Each implementation provides its
-own turn (`single_turn`), button-tap resolution, sent-approval bookkeeping, and the two
+own turn (`handle_message`), button-tap resolution, sent-approval bookkeeping, and the two
 hooks the media extractors call.
 """
 import contextlib
@@ -267,7 +267,7 @@ class AIManager(ABC):  # pylint: disable=too-many-instance-attributes,too-many-p
     # ------------------------------------------------------------------
 
     @abstractmethod
-    def single_turn(self, request: AIRequest, chat_id: Optional[str] = None, *,
+    def handle_message(self, request: AIRequest, chat_id: Optional[str] = None, *,
                     user_role: Optional[str] = None, sender: Optional[str] = None,
                     recipient: Optional[str] = None, user_phone: Optional[str] = None,
                     is_group: bool = False, chat_name: Optional[str] = None,

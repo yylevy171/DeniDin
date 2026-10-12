@@ -70,7 +70,7 @@ def _turn(handler, text, message_id="m-new"):
     )
     app.store_inbound(m)
     request = handler.create_request(m, chat_id=CHAT, user_phone=CHAT)
-    response = handler.single_turn(request, chat_id=CHAT, user_phone=CHAT, sender="Avi", recipient="DeniDin")
+    response = handler.handle_message(request, chat_id=CHAT, user_phone=CHAT, sender="Avi", recipient="DeniDin")
     app.store_outbound(m, response.response_text)
     return response
 

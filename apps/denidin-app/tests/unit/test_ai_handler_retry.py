@@ -106,7 +106,7 @@ class TestAIHandlerCallsOpenAIExactlyOnce:
         )
 
         request = ai_handler.create_request(sample_whatsapp_message)
-        response = ai_handler.single_turn(request)
+        response = ai_handler.handle_message(request)
 
         assert mock_ai_client.responses.create.call_count == 1
         assert response.response_text == "Success response"
@@ -127,7 +127,7 @@ class TestAIHandlerCallsOpenAIExactlyOnce:
         mock_ai_client.responses.create.side_effect = exception_factory()
 
         request = ai_handler.create_request(sample_whatsapp_message)
-        ai_handler.single_turn(request)
+        ai_handler.handle_message(request)
 
         assert mock_ai_client.responses.create.call_count == 1
 
@@ -146,7 +146,7 @@ class TestAIHandlerFallbackOnFailure:
         )
 
         request = ai_handler.create_request(sample_whatsapp_message)
-        response = ai_handler.single_turn(request)
+        response = ai_handler.handle_message(request)
 
         assert "capacity" in response.response_text.lower()
 
@@ -156,7 +156,7 @@ class TestAIHandlerFallbackOnFailure:
         mock_ai_client.responses.create.side_effect = APITimeoutError(request=Mock())
 
         request = ai_handler.create_request(sample_whatsapp_message)
-        response = ai_handler.single_turn(request)
+        response = ai_handler.handle_message(request)
 
         assert "trouble connecting" in response.response_text.lower()
 
@@ -166,7 +166,7 @@ class TestAIHandlerFallbackOnFailure:
         mock_ai_client.responses.create.side_effect = APIError("API Error", request=Mock(), body={})
 
         request = ai_handler.create_request(sample_whatsapp_message)
-        response = ai_handler.single_turn(request)
+        response = ai_handler.handle_message(request)
 
         assert "encountered an error" in response.response_text.lower()
 
@@ -176,6 +176,6 @@ class TestAIHandlerFallbackOnFailure:
         mock_ai_client.responses.create.side_effect = RuntimeError("something else entirely")
 
         request = ai_handler.create_request(sample_whatsapp_message)
-        response = ai_handler.single_turn(request)
+        response = ai_handler.handle_message(request)
 
         assert "unexpected error" in response.response_text.lower()

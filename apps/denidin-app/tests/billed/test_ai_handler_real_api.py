@@ -75,7 +75,7 @@ class TestBotExceptionHandlingWithRealAPI:
             request = real_ai_manager.create_request(message)
 
             # This makes 1 REAL API call that will fail
-            response = real_ai_manager.single_turn(request)
+            response = real_ai_manager.handle_message(request)
 
             # Should return the error fallback (retry logic will have run) - recognized
             # by its own marker, not by wording (the backbone's is Hebrew, legacy's English).

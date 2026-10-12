@@ -109,7 +109,7 @@ NO_REPLY_SENTINEL = _NO_REPLY_SENTINEL
 
 
 # Feature 080 (REQ-080-04, research.md R3 as revised during implementation): the active
-# turn's TelemetryBuilder, if any. Set once at the top of single_turn() (try/finally around
+# turn's TelemetryBuilder, if any. Set once at the top of handle_message() (try/finally around
 # the whole turn), read by every instrumented responses.create()/tool-dispatch call site via
 # .get() (defaults to None - "no telemetry this call", the correct behavior whenever the
 # feature flag is off or telemetry_manager was never configured). Thread-local by default
@@ -954,7 +954,7 @@ class AIHandler(AIManager):
         debug_wire("openai", "in", "_call_openai_api (initial call)", response)
         return response
 
-    def single_turn(self, request: AIRequest, chat_id: Optional[str] = None, *,
+    def handle_message(self, request: AIRequest, chat_id: Optional[str] = None, *,
                      user_role: Optional[str] = None, sender: Optional[str] = None,
                      recipient: Optional[str] = None, user_phone: Optional[str] = None,
                      is_group: bool = False, chat_name: Optional[str] = None,
@@ -965,7 +965,7 @@ class AIHandler(AIManager):
         row on the way out - success OR exception alike, complete no-op when
         self.telemetry_manager is None) is now the ONE shared
         AIManager.telemetry_span implementation, also used by
-        Backbone.single_turn - the two were byte-for-byte identical in shape
+        Backbone.handle_message - the two were byte-for-byte identical in shape
         before this change, just stored the active builder differently (this class's
         module-level contextvar vs. the backbone's instance attribute), which
         telemetry_span is agnostic to.
@@ -1051,7 +1051,7 @@ class AIHandler(AIManager):
         # processed as a normal new request. Returns None only for the decline
         # case, meaning: fall through and process this message as a fresh turn.
         logger.info(
-            f"[022] single_turn: effective_chat_id={effective_chat_id!r}, "
+            f"[022] handle_message: effective_chat_id={effective_chat_id!r}, "
             f"user_obj={'present' if user_obj else None}, "
             f"user_prompt={request.user_prompt!r}"
         )
@@ -1155,7 +1155,7 @@ class AIHandler(AIManager):
 
         except Exception as e:
             logger.error(
-                f"Unexpected error in single_turn for request {request.request_id}: {e}",
+                f"Unexpected error in handle_message for request {request.request_id}: {e}",
                 exc_info=True
             )
             return self._fallback_response_for(
@@ -1431,7 +1431,7 @@ class AIHandler(AIManager):
         perspective (writes nothing persistent except telemetry), dispatched immediately
         - same shape as _handle_list_reminders. The actual WhatsApp send happens here,
         through DeniDin.send_progress_update (nothing is sent when no turn is in progress in
-        the chat, e.g. a test calling single_turn directly - the turn still proceeds
+        the chat, e.g. a test calling handle_message directly - the turn still proceeds
         normally via the follow-up call below).
 
         Standalone single-tool-type entry point, kept for direct callers/tests
@@ -2200,7 +2200,7 @@ class AIHandler(AIManager):
         Shared post-API-call logic: extract mcp_calls, detect a new pending
         approval (Feature 022), fill ledger_event_ids into the already-stored user
         message, build the final AIResponse. Used by both the normal turn path and the pending-approval
-        resolution path in `single_turn`/`_resolve_pending_approval`.
+        resolution path in `handle_message`/`_resolve_pending_approval`.
         """
         # Extract response
         response_text = response.output_text
@@ -2905,7 +2905,7 @@ class AIHandler(AIManager):
         try:
             # Feature 084 fix (2026-09-12): _assemble_tools already includes
             # react_to_message unconditionally regardless of RBAC (see its own
-            # docstring) - same call as the main turn path (single_turn) uses,
+            # docstring) - same call as the main turn path (handle_message) uses,
             # so this follow-up call is no longer sent with an empty tool list.
             followup_tools = self._assemble_tools(user_obj, request.request_id)
             followup = self._call_openai_reminder_followup_api(request, pending, result, tools=followup_tools)
@@ -3005,10 +3005,10 @@ class AIHandler(AIManager):
 
         Deliberately does NOT reimplement approve/decline resolution: once the
         stanza_id match below confirms this tap is live (not stale/superseded -
-        the one check `single_turn`/`_resolve_pending_approval` has no concept of,
+        the one check `handle_message`/`_resolve_pending_approval` has no concept of,
         since neither knows about individual WhatsApp message ids), this
         synthesizes a plain "כן"/"לא" `AIRequest` and delegates to the existing
-        `single_turn`/`_resolve_pending_approval` pipeline verbatim - same
+        `handle_message`/`_resolve_pending_approval` pipeline verbatim - same
         duplicate-execution guards, same decline behavior (falls through to a
         fresh turn, exactly like a genuine typed "לא" does today - a button
         decline is byte-for-byte the same experience as a typed one, per US2's
@@ -3018,12 +3018,12 @@ class AIHandler(AIManager):
         scalar fields pulled out of it by the caller - `chat_id`/`message_id`/
         `sender_id`/`sender_display_name`/`is_group`/`chat_name` all come from
         it directly (including the `is_group`/`chat_name`/`sender_phone` fields
-        Feature 043's merge added to `single_turn`'s own signature - derived
+        Feature 043's merge added to `handle_message`'s own signature - derived
         here from `message` rather than accepted as yet more threaded params),
         and AIRequest.original_message carries the same object further
         downstream (e.g. into a reminder's created_by_phone) without yet
         another parameter threaded through
-        single_turn/_resolve_pending_local_tool_approval.
+        handle_message/_resolve_pending_local_tool_approval.
 
         Returns:
             None if there's no pending approval, or its sent_message_id doesn't
@@ -3045,7 +3045,7 @@ class AIHandler(AIManager):
                 return None
 
         # Reminders (Feature 054): checked MCP-first-then-local-tool, same
-        # deterministic order as single_turn's dual-check dispatch - at most
+        # deterministic order as handle_message's dual-check dispatch - at most
         # one of the two managers is ever populated for a given chat_id in
         # practice.
         pending = self.pending_approval_manager.get(chat_id) if user_obj else None
@@ -3086,7 +3086,7 @@ class AIHandler(AIManager):
             message_id=message.message_id,
             original_message=message,
         )
-        return self.single_turn(
+        return self.handle_message(
             synthetic_request, chat_id=chat_id, user_role=user_obj.role,
             sender=sender, recipient=None, user_phone=user_phone,
             is_group=message.is_group, chat_name=message.chat_name,

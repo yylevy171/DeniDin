@@ -246,7 +246,7 @@ class DeniDin:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         # R1) - started by initialize_app.
         self.typing_keepalive_scheduler: Any = None
         # The turn in progress per chat - what send_progress_update sends through.
-        self._turns_in_progress: Dict[str, Tuple[Notification, Any, bool]] = {}
+        self._busy_chats: Dict[str, Tuple[Notification, Any, bool]] = {}
         # Feature 067: what the poller received and the dispatcher has not handled yet
         # (IntakeCoordinator), the dispatcher thread, and the queue monitor / thread
         # supervisor. All None until __main__ builds them (tests, the player: none).
@@ -464,7 +464,7 @@ class DeniDin:  # pylint: disable=too-many-instance-attributes,too-many-public-m
     def refresh_typing_indicator(self, chat_id: str) -> None:
         """Re-fires WhatsApp's typing indicator for the message in progress in `chat_id`
         (it is cleared client-side whenever a message is delivered). No-op without one."""
-        turn = self._turns_in_progress.get(chat_id)
+        turn = self._busy_chats.get(chat_id)
         if turn is not None and self.green_api_bot is not None:
             send_typing_indicator(self.green_api_bot, chat_id, turn[2])
 
@@ -488,13 +488,13 @@ class DeniDin:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         )
         return sent.whatsapp_id_message if sent.as_buttons else None
 
-    def begin_turn(self, notification: Notification, message: Any, is_blocked: bool) -> None:
+    def mark_chat_busy(self, notification: Notification, message: Any, is_blocked: bool) -> None:
         """Marks `message`'s turn as in progress in its chat - send_progress_update
-        sends through it until end_turn."""
-        self._turns_in_progress[message.chat_id] = (notification, message, is_blocked)
+        sends through it until mark_chat_idle."""
+        self._busy_chats[message.chat_id] = (notification, message, is_blocked)
 
-    def end_turn(self, chat_id: str) -> None:
-        self._turns_in_progress.pop(chat_id, None)
+    def mark_chat_idle(self, chat_id: str) -> None:
+        self._busy_chats.pop(chat_id, None)
 
     def send_progress_update(self, chat_id: Optional[str], text: str) -> bool:
         """Feature 080: sends an interim message in the turn in progress in `chat_id`,
@@ -502,7 +502,7 @@ class DeniDin:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         typing indicator - WhatsApp clears it client-side the instant a message is
         delivered (bugfix 2026-09-13). False when no turn is in progress there (nothing
         sent); an exception propagates."""
-        turn = self._turns_in_progress.get(chat_id) if chat_id else None
+        turn = self._busy_chats.get(chat_id) if chat_id else None
         if turn is None or self.whatsapp_handler is None:
             logger.debug(f"[080] No turn in progress in {chat_id!r} - progress update not sent")
             return False
@@ -857,7 +857,7 @@ def _process_conversational_message(notification: Notification, *, internal: boo
         # present among the group's members, not the individual sender alone.
         # None for 1:1 and for any resolution failure - AIHandler.create_request
         # itself falls back to message.sender_id when user_phone is None, so 1:1
-        # RBAC there is unaffected. single_turn has no such message-aware
+        # RBAC there is unaffected. handle_message has no such message-aware
         # fallback (it only knows `sender`, which Feature 039 repurposed to hold
         # the display name, not the phone - see the comment below), so its call
         # must always resolve to a real phone explicitly.
@@ -896,19 +896,19 @@ def _process_conversational_message(notification: Notification, *, internal: boo
         # sender, so Message.sender/recipient hold a readable name, not a phone
         # number - see SessionManager.add_message for the "AI" sentinel retirement.
         # user_phone must be the real phone (group_user_phone for a group, else
-        # message.sender_id) - single_turn's own RBAC fallback is `user_phone or
+        # message.sender_id) - handle_message's own RBAC fallback is `user_phone or
         # sender`, and `sender` is now a display name, not a phone (found
         # 2026-08-04: this silently broke RBAC-gated Morning MCP tool attachment
         # for every 1:1 conversation, resolving the display name as an unknown
         # phone -> defaulting to CLIENT role).
         # Feature 080: send_progress_update (a tool) sends through the turn in progress.
-        denidin_app.begin_turn(notification, message, is_blocked)
+        denidin_app.mark_chat_busy(notification, message, is_blocked)
         # Feature 063 / REQ-063-08: one call, whichever AI implementation the flag
         # selected at startup - each resolves the turn's RBAC role itself from
         # user_phone.
         effective_user_phone = group_user_phone or message.sender_id
         try:
-            ai_response = denidin_app.ai_manager.single_turn(
+            ai_response = denidin_app.ai_manager.handle_message(
                 ai_request,
                 chat_id=message.chat_id,
                 sender=message.sender_display_name,
@@ -918,7 +918,7 @@ def _process_conversational_message(notification: Notification, *, internal: boo
                 chat_name=message.chat_name,
             )
         finally:
-            denidin_app.end_turn(message.chat_id)
+            denidin_app.mark_chat_idle(message.chat_id)
         # The most recent turn's AIResponse, for observability / E2E test
         # verification (e.g. its mcp_calls) - kept on DeniDin, both paths.
         denidin_app.last_response = ai_response
@@ -971,7 +971,7 @@ def _process_conversational_message(notification: Notification, *, internal: boo
     except Exception as e:
         # Feature 080: safety net - stop any still-running keep-alive job even if the try
         # block raised before reaching its own stop_typing_keepalive call above (e.g.
-        # single_turn itself raised). NameError guards the case the job was never started
+        # handle_message itself raised). NameError guards the case the job was never started
         # (exception before keepalive_job_id was assigned).
         try:
             if denidin_app.typing_keepalive_scheduler is not None:
@@ -1161,15 +1161,15 @@ def _process_media_message_via_backbone(notification: Notification, message, kee
         media=media,
     )
     is_blocked = denidin_app.user_manager.get_user(message.sender_id).is_blocked
-    denidin_app.begin_turn(notification, message, is_blocked)
+    denidin_app.mark_chat_busy(notification, message, is_blocked)
     try:
-        response = denidin_app.ai_manager.single_turn(
+        response = denidin_app.ai_manager.handle_message(
             request, chat_id=message.chat_id,
             sender=message.sender_display_name, user_phone=message.sender_id,
             sender_phone=message.sender_id, is_group=message.is_group, chat_name=message.chat_name,
         )
     finally:
-        denidin_app.end_turn(message.chat_id)
+        denidin_app.mark_chat_idle(message.chat_id)
     denidin_app.last_response = response
     # Same send as a text turn (plain text or approval buttons), stored once sent.
     if response.should_reply:
@@ -1524,7 +1524,7 @@ def handle_button_tap(notification: Notification) -> None:
         )
 
     # A tap is a turn like any other: same progress-update delivery as a typed reply.
-    denidin_app.begin_turn(notification, message, is_blocked)
+    denidin_app.mark_chat_busy(notification, message, is_blocked)
     try:
         # Feature 063 / REQ-063-08: one call, whichever AI implementation the flag
         # selected - None for a stale/superseded tap.
@@ -1532,7 +1532,7 @@ def handle_button_tap(notification: Notification) -> None:
         if ai_response is not None:
             denidin_app.last_response = ai_response
     finally:
-        denidin_app.end_turn(message.chat_id)
+        denidin_app.mark_chat_idle(message.chat_id)
         # DeniDin's turn is over the instant resolve_button_tap returns (or raises) -
         # matching feature 048/080's "stop the instant the turn ends" semantics.
         if denidin_app.typing_keepalive_scheduler is not None:

@@ -206,7 +206,7 @@ class TestStoreMedia:
 
 class _RecordingBackbone(Backbone):
     """Records what a turn is run with instead of calling the model."""
-    def single_turn(self, request, **kwargs):  # pylint: disable=arguments-differ
+    def handle_message(self, request, **kwargs):  # pylint: disable=arguments-differ
         self.turn_kwargs = kwargs
         return "ran"
 

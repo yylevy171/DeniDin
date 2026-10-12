@@ -67,7 +67,7 @@ class TestNoReplySentinelDetection:
         handler.session_manager.add_message_with_tokens = Mock()
         handler.session_manager.get_conversation_history = Mock(return_value=[])
 
-        response = handler.single_turn(_make_request(), chat_id="chat_123", sender="Godfather")
+        response = handler.handle_message(_make_request(), chat_id="chat_123", sender="Godfather")
 
         assert response.should_reply is False
         assert response.response_text == NO_REPLY_SENTINEL
@@ -79,7 +79,7 @@ class TestNoReplySentinelDetection:
         handler.session_manager.add_message_with_tokens = Mock()
         handler.session_manager.get_conversation_history = Mock(return_value=[])
 
-        handler.single_turn(_make_request(), chat_id="chat_123", sender="Godfather")
+        handler.handle_message(_make_request(), chat_id="chat_123", sender="Godfather")
 
         # 2026-09-30: messages are stored at the WhatsApp boundary (DeniDin.store_inbound/store_outbound) -
         # the user's on receipt, a reply only once it's sent - so AIHandler itself stores
@@ -95,7 +95,7 @@ class TestNoReplySentinelDetection:
         handler.session_manager.add_message_with_tokens = Mock()
         handler.session_manager.get_conversation_history = Mock(return_value=[])
 
-        response = handler.single_turn(_make_request(), chat_id="chat_123", sender="Godfather")
+        response = handler.handle_message(_make_request(), chat_id="chat_123", sender="Godfather")
 
         assert response.should_reply is False
 
@@ -108,7 +108,7 @@ class TestNoReplySentinelDetection:
         handler.session_manager.add_message_with_tokens = Mock()
         handler.session_manager.get_conversation_history = Mock(return_value=[])
 
-        response = handler.single_turn(_make_request(), chat_id="chat_123", sender="Godfather")
+        response = handler.handle_message(_make_request(), chat_id="chat_123", sender="Godfather")
 
         assert response.should_reply is True
 
@@ -119,6 +119,6 @@ class TestNoReplySentinelDetection:
         handler.session_manager.add_message_with_tokens = Mock()
         handler.session_manager.get_conversation_history = Mock(return_value=[])
 
-        response = handler.single_turn(_make_request(), chat_id="chat_123", sender="Godfather")
+        response = handler.handle_message(_make_request(), chat_id="chat_123", sender="Godfather")
 
         assert response.should_reply is True

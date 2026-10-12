@@ -103,7 +103,7 @@ def test_ledger_query_loaded_then_real_manager_queried(env):
         _fc("query_ledger_events", {"criteria": [{"text": "יוסי", "hint": "identity"}]}, rid="r2"),
         _fc("send_to_user", {"text": "לא נמצא"}, rid="r3"),
     ]
-    response = env.make().single_turn(_request(), chat_id="chat1", user_role="godfather")
+    response = env.make().handle_message(_request(), chat_id="chat1", user_role="godfather")
     kws = _sent_kwargs(env)
     assert "query_ledger_events" not in _tool_names(kws[0]) and "query_ledger_events" in _tool_names(kws[1])
     tool_output = kws[2]["input"][0]
@@ -123,7 +123,7 @@ def test_reminders_read_lists_real_reminders(env):
         _fc("list_reminders", {}, rid="r2"),
         _fc("send_to_user", {"text": "הנה"}, rid="r3"),
     ]
-    env.make().single_turn(_request(), chat_id="chat1", user_role="godfather")
+    env.make().handle_message(_request(), chat_id="chat1", user_role="godfather")
     kws = _sent_kwargs(env)
     assert "list_reminders" in _tool_names(kws[1])
     assert kws[2]["input"][0]["type"] == "function_call_output"
@@ -135,7 +135,7 @@ def test_invoicing_write_attaches_its_never_approval_mcp_entry(env):
         _fc("load_capabilities", {"capabilities": ["cap_invoicing_write"]}),
         _fc("approval_with_yes_no_buttons", {"text": "להפיק חשבונית?"}, rid="r2"),
     ]
-    response = env.make().single_turn(_request("תפיק חשבונית"), chat_id="chat1", user_role="godfather")
+    response = env.make().handle_message(_request("תפיק חשבונית"), chat_id="chat1", user_role="godfather")
     kws = _sent_kwargs(env)
     assert _mcp_entry(kws[0]) is None
     entry = _mcp_entry(kws[1])
@@ -160,7 +160,7 @@ def test_live_button_tap_resolves_as_ordinary_turn_and_capability_stays_loaded(e
     approved_create = env.client.with_options.return_value.responses.create
     approved_create.side_effect = [reply]
     orch = env.make()
-    orch.single_turn(_request("תפיק"), chat_id="chat1", user_role="godfather")
+    orch.handle_message(_request("תפיק"), chat_id="chat1", user_role="godfather")
     orch.record_sent_message_id("chat1", "STANZA-1")  # what denidin.py does after the buttons send
     tap = orch.resolve_button_tap(_tap("chat1"), "denidin_approve", "STANZA-1", user_role="godfather")
     assert tap.response_text == "הופקה חשבונית 123."
@@ -198,7 +198,7 @@ def test_any_new_typed_turn_supersedes_outstanding_approval_buttons(env):
     env.client.responses.create.side_effect = [_text("אוקיי", rid="r1")]
     orch = env.make()
     orch.record_sent_message_id("chat1", "STANZA-1")
-    orch.single_turn(_request("כן"), chat_id="chat1", user_role="godfather")  # typed reply
+    orch.handle_message(_request("כן"), chat_id="chat1", user_role="godfather")  # typed reply
     assert orch.resolve_button_tap(_tap("chat1"), "denidin_approve", "STANZA-1", user_role="godfather") is None
 
 
@@ -234,7 +234,7 @@ def test_each_morning_capability_gets_its_own_fixed_mcp_entry(env):
         _fc("load_capabilities", {"capabilities": ["cap_client_write"]}, rid="r2"),
         _text("סיימתי", rid="r3"),
     ]
-    env.make().single_turn(_request(), chat_id="chat1", user_role="godfather")
+    env.make().handle_message(_request(), chat_id="chat1", user_role="godfather")
     sent = _sent_kwargs(env)
     second = {t["server_label"]: t for t in sent[1]["tools"] if t.get("type") == "mcp"}
     last = {t["server_label"]: t for t in sent[-1]["tools"] if t.get("type") == "mcp"}
@@ -261,7 +261,7 @@ def test_media_analysis_reads_the_file_attached_to_the_request(env):
     request = _request("מה זה")
     request.media = Media(data=b"fake jpeg bytes", mime_type="image/jpeg",
                           filename="slip.jpg", media_type="image")
-    env.make().single_turn(request, chat_id="chat1", user_role="godfather")
+    env.make().handle_message(request, chat_id="chat1", user_role="godfather")
     kws = _sent_kwargs(env)
     assert kws[0]["input"][-1]["content"] == "[מדיה מצורפת: תמונה, קובץ: slip.jpg]\nמה זה"
     assert "analyze_media" in _tool_names(kws[1])
@@ -276,7 +276,7 @@ def test_docx_write_tools_attached_when_loaded(env):
         _fc("load_capabilities", {"capabilities": ["cap_docx_write"]}),
         _text("ok", rid="r2"),
     ]
-    env.make(fee_agreement_tools=fee, whatsapp_handler=MagicMock()).single_turn(
+    env.make(fee_agreement_tools=fee, whatsapp_handler=MagicMock()).handle_message(
         _request(), chat_id="chat1", user_role="godfather")
     assert "get_fee_agreement_template" in _tool_names(_sent_kwargs(env)[1])
 
@@ -288,7 +288,7 @@ def test_loaded_set_survives_restart_then_idle_reset_clears_it_for_the_next_turn
         _fc("load_capabilities", {"capabilities": ["cap_reminders_write"]}),
         _fc("send_to_user", {"text": "נטען"}, rid="r2"),
     ]
-    env.make().single_turn(_request(), chat_id="chat1", user_role="godfather")
+    env.make().handle_message(_request(), chat_id="chat1", user_role="godfather")
 
     restarted = make_session_manager(storage_dir=str(env.tmp_path / "sessions"))
     assert restarted.get_session("chat1").active_capabilities == ["cap_reminders_write"]
@@ -296,7 +296,7 @@ def test_loaded_set_survives_restart_then_idle_reset_clears_it_for_the_next_turn
     assert sweep_idle_capabilities(restarted, 60, now=now_local() + timedelta(minutes=61)) == 1
 
     env.client.responses.create.side_effect = [_fc("send_to_user", {"text": "שלום"}, rid="r3")]
-    make_backbone(env.client, env.config, session_manager=restarted).single_turn(
+    make_backbone(env.client, env.config, session_manager=restarted).handle_message(
         _request("היי"), chat_id="chat1", user_role="godfather")
     kw = _sent_kwargs(env)[-1]
     assert "(none - plain backbone)" in kw["instructions"] and "create_reminder" not in _tool_names(kw)
@@ -375,7 +375,7 @@ def test_every_capability_tag_is_loadable_end_to_end(env):
     for tag in CapabilityTag:
         env.client.responses.create.side_effect = [_fc("load_capabilities", {"capabilities": [tag.value]}), _text("ok")]
         env.make(fee_agreement_tools=MagicMock(build_tools=lambda u: []),
-                 whatsapp_handler=MagicMock()).single_turn(_request(chat=f"c-{tag.value}"),
+                 whatsapp_handler=MagicMock()).handle_message(_request(chat=f"c-{tag.value}"),
                                                             chat_id=f"c-{tag.value}", user_role="godfather")
         assert env.sessions.get_session(f"c-{tag.value}").active_capabilities == [tag.value]
 
@@ -391,7 +391,7 @@ def test_flow_then_its_capabilities_loaded_together_end_to_end(env):
         _fc("load_capabilities", {"capabilities": ["cap_client_read", "cap_invoicing_write"]}, rid="r2"),
         _text("ok"),
     ]
-    env.make(whatsapp_handler=MagicMock()).single_turn(_request(), chat_id="chat1", user_role="godfather")
+    env.make(whatsapp_handler=MagicMock()).handle_message(_request(), chat_id="chat1", user_role="godfather")
     first, second, third = _sent_kwargs(env)
     assert "# Flow: Issue invoice for payment due" not in first["instructions"]
     assert "# Flow: Issue invoice for payment due" in second["instructions"]
@@ -407,7 +407,7 @@ def test_every_flow_tag_is_loadable_end_to_end(env):
     from src.backbone.flow_tags import FlowTag
     for flow in FlowTag:
         env.client.responses.create.side_effect = [_fc("load_flows", {"flows": [flow.value]}), _text("ok")]
-        env.make(whatsapp_handler=MagicMock()).single_turn(
+        env.make(whatsapp_handler=MagicMock()).handle_message(
             _request(chat=f"f-{flow.value}"), chat_id=f"f-{flow.value}", user_role="godfather")
         assert env.sessions.get_session(f"f-{flow.value}").active_flows == [flow.value]
         assert f"# Flow:" in _sent_kwargs(env)[-1]["instructions"]

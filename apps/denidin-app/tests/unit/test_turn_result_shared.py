@@ -100,7 +100,7 @@ def test_backbone_reports_the_turns_real_tokens_model_and_mcp_errors_as_strings(
                    _call("record_planning_status", {"status": "x"}, "c1")], "r1", total=15, inp=10, out=5),
         _response([_call("send_to_user", {"text": "שלום"}, "c2")], "r2", total=30, inp=20, out=10),
     ]
-    response = _backbone(prompts_root, client).single_turn(_request(), chat_id="chat1")
+    response = _backbone(prompts_root, client).handle_message(_request(), chat_id="chat1")
 
     assert (response.tokens_used, response.prompt_tokens, response.completion_tokens) == (45, 30, 15)
     assert response.model == "gpt-real-model"
@@ -112,7 +112,7 @@ def test_backbone_cuts_a_long_reply_for_whatsapp(prompts_root):
     client = MagicMock()
     client.responses.create.return_value = _response(
         [_call("send_to_user", {"text": "א" * 5000}, "c1")], "r1", total=1, inp=1, out=0)
-    response = _backbone(prompts_root, client).single_turn(_request(), chat_id="chat1")
+    response = _backbone(prompts_root, client).handle_message(_request(), chat_id="chat1")
     assert response.is_truncated and len(response.response_text) == 4003
 
 

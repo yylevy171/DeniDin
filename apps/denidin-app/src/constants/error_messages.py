@@ -69,7 +69,7 @@ REMINDER_CAP_EXCEEDED = "כבר יש 20 תזכורות פעילות - המספר
 BACKBONE_CAPABILITY_NOT_CONFIGURED = "היכולת הזו לא זמינה כרגע. אנא נסה שוב מאוחר יותר."
 BACKBONE_NO_MEDIA_ATTACHED = "לא זוהה קובץ מצורף להודעה הזו, אין מה לחלץ."
 BACKBONE_UNEXPECTED_ERROR = "אני נתקלתי בשגיאה בעיבוד הודעתך. אנא נסה שוב."
-# The legacy single_turn's per-error fallbacks (AIHandler._get_response_impl's
+# The legacy handle_message's per-error fallbacks (AIHandler._get_response_impl's
 # APITimeoutError / RateLimitError / APIError replies), in Hebrew (C8, 2026-10-04).
 BACKBONE_AI_TIMEOUT = "יש לי בעיה להתחבר לשירות ה-AI כרגע. אנא נסה שוב מאוחר יותר."
 BACKBONE_AI_RATE_LIMITED = "אני עמוס כרגע. אנא נסה שוב בעוד דקה."

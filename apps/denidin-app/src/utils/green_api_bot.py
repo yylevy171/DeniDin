@@ -338,15 +338,17 @@ class DeniDinGreenAPIBot(GreenAPIBot):
         (REQ-RMH-033); a failed store raises, so it is not acknowledged and Green API
         redelivers it (REQ-RMH-021)."""
         body = data["body"]
+        intake = self.intake
+        assert intake is not None
         try:
-            self.intake.check_room(body)
+            intake.check_room(body)
         except QueueLimitExceeded:
             self.api.receiving.deleteNotification(data["receiptId"])
             return
         notification = Notification(body, self.api, self.router.message.state_manager)
-        item = self.intake.prepare(notification)
+        item = intake.prepare(notification)
         self.api.receiving.deleteNotification(data["receiptId"])
-        self.intake.submit(item)
+        intake.submit(item)
 
     def run_forever(self) -> None:
         self.api.session.headers["Connection"] = "keep-alive"

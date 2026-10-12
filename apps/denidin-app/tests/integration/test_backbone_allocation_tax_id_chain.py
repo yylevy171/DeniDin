@@ -74,7 +74,7 @@ def _id_given_offers_save_approval(env):
                                                                    "cap_approval_with_buttons"]})),
         _response("r3", _fc("approval_with_yes_no_buttons", {"text": SAVE_ID_PROMPT})),
     ]
-    response = env.backbone.single_turn(_request("308253681"), chat_id=CHAT, user_role="godfather")
+    response = env.backbone.handle_message(_request("308253681"), chat_id=CHAT, user_role="godfather")
     assert response.offer_approval_buttons is True
     assert response.response_text == SAVE_ID_PROMPT
     env.backbone.record_sent_message_id(CHAT, "STANZA-SAVE")
@@ -106,7 +106,7 @@ def test_yes_on_id_save_chains_into_the_document_approval_then_issues_it(env, an
     if answer == "tap":
         saved = env.backbone.resolve_button_tap(_tap(), "denidin_approve", "STANZA-SAVE", user_role="godfather")
     else:
-        saved = env.backbone.single_turn(_request("כן"), chat_id=CHAT, user_role="godfather")
+        saved = env.backbone.handle_message(_request("כן"), chat_id=CHAT, user_role="godfather")
 
     _assert_document_approval_offered(saved)
     env.backbone.record_sent_message_id(CHAT, "STANZA-DOC")  # what denidin.py does after sending
@@ -117,7 +117,7 @@ def test_yes_on_id_save_chains_into_the_document_approval_then_issues_it(env, an
                                                user_role="godfather") is None
         issued = env.backbone.resolve_button_tap(_tap(), "denidin_approve", "STANZA-DOC", user_role="godfather")
     else:
-        issued = env.backbone.single_turn(_request("כן"), chat_id=CHAT, user_role="godfather")
+        issued = env.backbone.handle_message(_request("כן"), chat_id=CHAT, user_role="godfather")
 
     assert issued.response_text == "הופקה חשבונית מס/קבלה 98."
     assert [c["name"] for c in issued.mcp_calls] == ["create_combo_document"]

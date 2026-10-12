@@ -50,13 +50,13 @@ def test_flag_on_media_dispatch_calls_backbone_not_legacy_handler():
     # 2026-09-15: the flag-on path now only downloads+validates raw media (REQ-063-04a's
     # real design - see denidin.py's own comment) instead of running the full legacy
     # extraction pipeline, so these two MediaFileManager calls need real-shaped return
-    # values for the dispatch to reach backbone.single_turn at all.
+    # values for the dispatch to reach backbone.handle_message at all.
     file_manager = fake_denidin.media_handler.media_file_manager
     file_manager.download_file.return_value = (b"fake jpeg bytes", True)
     file_manager.validate_format.return_value = "image"
 
     from src.models.message import AIResponse
-    fake_denidin.ai_manager.single_turn.return_value = AIResponse(
+    fake_denidin.ai_manager.handle_message.return_value = AIResponse(
         request_id="r1", response_text="נותח בהצלחה.", tokens_used=0,
         prompt_tokens=0, completion_tokens=0, model="gpt-5.6-luna",
         finish_reason="stop", timestamp=1735689600,
@@ -69,7 +69,7 @@ def test_flag_on_media_dispatch_calls_backbone_not_legacy_handler():
     finally:
         denidin_module.denidin_app = original_app
 
-    fake_denidin.ai_manager.single_turn.assert_called_once()
+    fake_denidin.ai_manager.handle_message.assert_called_once()
     fake_denidin.media_handler.process_media_message.assert_not_called()
 
 

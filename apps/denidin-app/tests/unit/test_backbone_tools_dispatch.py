@@ -57,7 +57,7 @@ def _resp(items, rid, text=""):
 
 
 def _run(backbone):
-    return backbone.single_turn(_request(), chat_id="chat1", user_role="godfather")
+    return backbone.handle_message(_request(), chat_id="chat1", user_role="godfather")
 
 
 def test_backbone_tools_attached_every_round(prompts_root):

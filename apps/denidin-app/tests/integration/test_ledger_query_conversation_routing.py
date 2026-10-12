@@ -4,7 +4,7 @@ Component-Integration Test: Ledger Event Querying Conversation Routing
 
 Verifies the full real router-dispatch path for querying ledger events: a
 real textMessage-shaped Green API notification -> bot.router ->
-handle_text_message -> WhatsAppHandler -> AIHandler.single_turn ->
+handle_text_message -> WhatsAppHandler -> AIHandler.handle_message ->
 _finalize_response -> _handle_query_ledger_events -> a real
 LedgerEventManager.query_events call -> a real follow-up round-trip whose
 reply is what actually gets sent - all real internal objects and real router

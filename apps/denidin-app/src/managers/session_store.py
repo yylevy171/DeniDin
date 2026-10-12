@@ -156,7 +156,7 @@ class Session:
     # and is cleared by the capabilities_reset_minutes idle sweep - see
     # Backbone's own docstring for the full contract. Deliberately a
     # Session field, not a Backbone instance attribute: it must
-    # survive across separate single_turn() calls for the same chat (a button
+    # survive across separate handle_message() calls for the same chat (a button
     # tap is a new webhook, not a new conversation), and persisting it here reuses
     # the exact save path every other message write already goes through - no new
     # data model, no new file, per explicit user instruction to not maintain a

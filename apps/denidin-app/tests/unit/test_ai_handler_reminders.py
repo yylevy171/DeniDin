@@ -371,7 +371,7 @@ class TestDualCheckDispatch:
 
         request = AIRequest(user_prompt="כן", constitution="", max_tokens=500,
                              model="gpt-5.6-luna", chat_id=GODFATHER_PHONE, message_id="m2")
-        result = ai_handler.single_turn(
+        result = ai_handler.handle_message(
             request, chat_id=GODFATHER_PHONE, user_role="GODFATHER",
             sender=GODFATHER_PHONE, recipient=None, user_phone=GODFATHER_PHONE,
         )
@@ -404,7 +404,7 @@ class TestDualCheckDispatch:
                              model="gpt-5.6-luna", chat_id=GODFATHER_PHONE, message_id="m2")
         mock_ai_client.responses.create.return_value = _response([], text="")
 
-        ai_handler.single_turn(
+        ai_handler.handle_message(
             request, chat_id=GODFATHER_PHONE, user_role="GODFATHER",
             sender=GODFATHER_PHONE, recipient=None, user_phone=GODFATHER_PHONE,
         )

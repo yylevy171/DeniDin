@@ -45,6 +45,7 @@ def _format_item(item: PendingItem, last_output_at: datetime) -> Dict[str, str]:
         caption = file_data.get("caption", "")
         body = f"{header} {caption}".rstrip() + f"\n{MEDIA_HANDLED_SEPARATELY}"
         return {"role": "user", "content": body}
+    assert message is not None  # text/contact items are always stored on receipt
     text = message.text_content
     if getattr(message, "is_group", False) and getattr(message, "sender_display_name", ""):
         text = f"[{message.sender_display_name}] {text}"

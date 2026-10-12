@@ -15,7 +15,7 @@ Nothing was run during planning.
 |---|------|-------|
 | F1 | The live loop is serial: `run_forever` polls one notification, runs the hook, calls `router.route_event(body)` (which runs the whole handler **synchronously on the polling thread**), then `deleteNotification`. While a message is handled, nothing is polled. | `src/utils/green_api_bot.py` `DeniDinGreenAPIBot.run_forever` |
 | F2 | A message is stored the moment it is received (`DeniDin.receive` → `store_inbound`), before any AI work. Each message is its own file; `SessionManager.add_message` also updates `session.json` (message ids, counters) — shared state. | `denidin.py:393`, `src/managers/session_manager.py:383` |
-| F3 | The reply is sent **after** `single_turn` returns. `send_to_user` / `approval_with_yes_no_buttons` end the resolution loop and hand back the final text; `_process_conversational_message` then sends it. Progress updates go out inline through `DeniDin.send_progress_update`. | `denidin.py:741+`, `backbone.py:_execute_round_calls` |
+| F3 | The reply is sent **after** `handle_message` returns. `send_to_user` / `approval_with_yes_no_buttons` end the resolution loop and hand back the final text; `_process_conversational_message` then sends it. Progress updates go out inline through `DeniDin.send_progress_update`. | `denidin.py:741+`, `backbone.py:_execute_round_calls` |
 | F4 | Backbone rounds: first call = rolling 14-day window + the new message; follow-up calls chain with `previous_response_id` and send only `function_call_output` items. Instructions and tools are rebuilt every round. | `backbone.py:609-680` |
 | F5 | The backbone's approval is stateless buttons; `Session.approval_message_id` (one per chat) holds the id of the last approval-buttons message; `resolve_button_tap` ignores a tap whose `stanzaId` differs. | `backbone.py:996-1040` |
 | F6 | Media enters the backbone raw as an `AIRequest` carrying **one** `Media`; `analyze_media` reads `turn_context["media"]` (that one file). | `denidin.py:_process_media_message_via_backbone`, `capabilities/media_analysis/handler.py:147` |
@@ -88,14 +88,14 @@ handler must not store it a second time: the dispatcher passes the already-recei
 `analyze_media` is untouched (one file at a time). Several media at once = Feature 102.
 
 ### D7 — Approved-write handling does not drain (REQ-RMH-014)
-`Backbone.single_turn` already computes `_turn_is_approved_write` = (an approval was pending) AND
+`Backbone.handle_message` already computes `_turn_is_approved_write` = (an approval was pending) AND
 (the incoming message is an affirmative reply — a typed "כן" or a button tap, which is
 synthesised as "כן") (`backbone.py:496-500`). When it is true that handling runs with draining
 **off**: messages arriving meanwhile stay queued and are handled next. A "לא" is not a
 write, so it drains normally. No new state. *(V4 resolved by reading.)*
 
 ### D14 — The stale-tap guard must stop clearing on every new message (REQ-RMH-017)
-**Conflict found:** `single_turn` clears `Session.approval_message_id` at the start of *every*
+**Conflict found:** `handle_message` clears `Session.approval_message_id` at the start of *every*
 incoming message (`backbone.py:501`, "any new turn supersedes whatever approval buttons were
 outstanding"). So today an unrelated message already makes an older approval's buttons stale —
 the opposite of REQ-RMH-017 and acceptance scenario A7. Change: clear it only when
@@ -137,7 +137,7 @@ can write (`cap_invoicing_write`, reminders, ledger) gets a one-line cross-refer
 
 ### D11 — No turn vocabulary in new code
 New names: `IntakeCoordinator`, `DeniDinDispatcher`, `drain_attachable`, `HandBack`, `pending
-messages`. Existing `begin_turn`/`end_turn`/`single_turn`/`_turn_*` names are **not** renamed in
+messages`. Existing `mark_chat_busy`/`mark_chat_idle`/`handle_message`/`_turn_*` names are **not** renamed in
 this feature (a rename is a separate, mechanical change; flagged to the product owner).
 
 ### D12 — Flag
@@ -217,3 +217,14 @@ None (product owner, 2026-10-12). Rollback is the previous release.
   `/health` report non-ok so the existing prober (bugfix-043) restarts the container — the same
   recovery path prod already relies on. The poller is the process's main loop and is unchanged
   (its loop already survives item errors; if it ends the process ends).
+
+
+## Audit results recorded during implementation
+- **T017 - `message_integrity.py`**: an offline checker with no writers on the live message path. Nothing there
+  needed changing; sessions are written only through the SessionManager actor.
+- **V6 - post-turn ledger recognition**: `LedgerEventRecognizer.recognize_after_turn` reads the chat's last
+  `ledger_recognition_context_window_hours` from the session (every stored user message, individually),
+  so one reply covering several merged user messages is recognized from all of them. No change needed.
+- **V1 - Gate Zero (user item beside `function_call_output`)**: NOT verified. The probe is
+  `tests/billed/test_067_gate_zero.py` (authored, not run). The single composition seam is
+  `Backbone._compose_follow_up_input`; if the API rejects the mix, switch to the plan's fallback D4 there.

@@ -107,7 +107,7 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
     def __init__(self, denidin: Any):
         super().__init__(denidin)
         config = self.config
-        # The telemetry builder of the turn in progress (set in single_turn).
+        # The telemetry builder of the turn in progress (set in handle_message).
         self._turn_telemetry_builder: Optional[Any] = None
         # _app_version (2026-09-17, closing a real gap found by direct user
         # review: build_instructions never told the model its own version at
@@ -126,7 +126,7 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
         # new persisted cross-turn state the resolution redesign adds: a plain
         # internal-note history entry, threaded back into the next turn purely
         # via the existing rolling-window conversation history (no new store, no
-        # schema). Reset every turn in single_turn.
+        # schema). Reset every turn in handle_message.
         self._turn_planning_status: Optional[str] = None
 
         self._backbone_content: str = ""
@@ -139,7 +139,7 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
         self._user_memory_content: str = ""
         self._user_memory_mtime: Optional[float] = None
 
-        # Set once per single_turn() call, read by the resolution loop for
+        # Set once per handle_message() call, read by the resolution loop for
         # every round within that SAME turn (2026-09-14). Deliberately a plain
         # instance attribute, not threaded as an explicit parameter through
         # every one of the ~6 call sites across src/capabilities/* + planning.py
@@ -147,14 +147,14 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
         # concurrent-turn clobbering risk in practice.
         self._turn_conversation_history: List[Dict[str, Any]] = []
 
-        # Set once per single_turn() call, same lifecycle/reasoning as
+        # Set once per handle_message() call, same lifecycle/reasoning as
         # _turn_conversation_history above - read by the loop's
         # backbone-tool resolution (send_progress_update/react_to_message) for
         # every round this turn makes.
         self._turn_chat_id: Optional[str] = None
         self._turn_message_id: Optional[str] = None
 
-        # Set False at the top of every single_turn() call; flipped True by
+        # Set False at the top of every handle_message() call; flipped True by
         # ApprovalCapability.handle() iff the approval capability was used
         # THIS turn (2026-09-16) - _finalize_response reads this instead of
         # checking pending-approval managers to decide whether to offer
@@ -162,7 +162,7 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
         # pending-approval record of its own.
         self._turn_offered_approval: bool = False
 
-        # Set once per single_turn() call (2026-09-15) - the ChromaDB
+        # Set once per handle_message() call (2026-09-15) - the ChromaDB
         # daily_summary semantic recall for this turn's own query, appended into
         # every round's instructions the same way AIHandler appends it to
         # `constitution` (see _recall_memory's own docstring for the exact
@@ -362,13 +362,13 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
     # The resolution loop (contracts/capability-resolution-loop.md)
     # ------------------------------------------------------------------
 
-    def single_turn(  # pylint: disable=too-many-locals
+    def handle_message(  # pylint: disable=too-many-locals
             self, request: AIRequest, chat_id: Optional[str] = None, *,
             user_role: Optional[str] = None, sender: Optional[str] = None,
             recipient: Optional[str] = None, user_phone: Optional[str] = None,
             is_group: bool = False, chat_name: Optional[str] = None,
             sender_phone: Optional[str] = None) -> AIResponse:
-        """The backbone's AIManager.single_turn (REQ-063-08): resolves one WhatsApp turn
+        """The backbone's AIManager.handle_message (REQ-063-08): resolves one WhatsApp turn
         (one incoming message → one final reply) via one or more OpenAI call "rounds" -
         see `_call_model`'s "first round"/"follow-up round" context labels: a turn is
         NOT guaranteed to be a single OpenAI call, since the model may spend a round
@@ -395,7 +395,7 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
         # lifecycle itself (one TelemetryBuilder per turn, recorded on the way out -
         # success OR exception alike, complete no-op when self.telemetry_manager is
         # None) is now the ONE shared AIManager.telemetry_span
-        # implementation, also used by AIHandler.single_turn - the two were
+        # implementation, also used by AIHandler.handle_message - the two were
         # byte-for-byte identical in shape before this change, just stored the
         # active builder differently (this class's own instance attribute vs.
         # AIHandler's module-level contextvar), which telemetry_span is agnostic to.
@@ -407,7 +407,7 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
         effective_chat_id_for_telemetry = chat_id or request.chat_id
         with self.telemetry_span(request.request_id, effective_chat_id_for_telemetry) as builder:
             self._turn_telemetry_builder = builder
-            return self._single_turn_body(
+            return self._handle_message_body(
                 request, chat_id=chat_id, user_role=user_role, sender=sender, recipient=recipient,
                 user_phone=user_phone, is_group=is_group, chat_name=chat_name, sender_phone=sender_phone,
             )
@@ -419,11 +419,11 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
         user = self.user_manager.get_user(phone)
         return user.role if user else "godfather"
 
-    def _single_turn_body(  # pylint: disable=too-many-locals,too-many-arguments
+    def _handle_message_body(  # pylint: disable=too-many-locals,too-many-arguments
             self, request: AIRequest, *, chat_id: Optional[str], user_role: str,
             sender: Optional[str], recipient: Optional[str], user_phone: Optional[str],
             is_group: bool, chat_name: Optional[str], sender_phone: Optional[str]) -> AIResponse:
-        """The actual per-turn logic, split out of single_turn so the telemetry_span
+        """The actual per-turn logic, split out of handle_message so the telemetry_span
         context manager above wraps it cleanly (a context manager's body can't easily
         `return` from inside a try/except/finally spanning the whole call otherwise)."""
         # Message addressing (sender/recipient/group) is no longer needed here - every
@@ -531,7 +531,7 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
             return self._create_fallback_response(request.request_id, BACKBONE_AI_API_ERROR)
         except Exception as exc:  # pylint: disable=broad-except
             logger.error(
-                "Unexpected error in Backbone.single_turn for request %s: %s",
+                "Unexpected error in Backbone.handle_message for request %s: %s",
                 request.request_id, exc, exc_info=True,
             )
             # Nothing to store here: the user's message was stored on receipt, every
@@ -1048,7 +1048,7 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
         is currently offering (Session.approval_message_id). A stale/superseded/
         already-used tap returns None - the caller sends nothing at all. A live
         tap is consumed and resolved like a typed "כן"/"לא": a synthetic AIRequest
-        carrying that answer runs through the ordinary single_turn() loop, where the
+        carrying that answer runs through the ordinary handle_message() loop, where the
         model reads its own history and acts on it - with the same progress updates and
         sender/chat details a typed reply gets (2026-09-30)."""
         chat_id = message.chat_id
@@ -1068,7 +1068,7 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
             message_id=message.message_id,
             original_message=message,
         )
-        return self.single_turn(
+        return self.handle_message(
             request, chat_id=chat_id, user_role=user_role,
             sender=message.sender_display_name, user_phone=message.sender_id,
             sender_phone=message.sender_id, is_group=message.is_group,

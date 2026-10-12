@@ -1,4 +1,4 @@
-"""Feature 080 — telemetry instrumentation wiring inside AIHandler.single_turn().
+"""Feature 080 — telemetry instrumentation wiring inside AIHandler.handle_message().
 
 The feature flag that used to gate this has been removed (2026-09-12, explicit operator
 instruction - never gated by request); telemetry is now always active whenever a
@@ -84,7 +84,7 @@ class TestTelemetryWiring:
         )
 
         request = ai_handler.create_request(sample_whatsapp_message)
-        ai_handler.single_turn(request)
+        ai_handler.handle_message(request)
 
         row = telemetry_manager.get(request.request_id)
         assert row is not None
@@ -107,7 +107,7 @@ class TestTelemetryWiring:
         )
 
         request = handler.create_request(sample_whatsapp_message)
-        handler.single_turn(request)
+        handler.handle_message(request)
 
         assert telemetry_manager.get(request.request_id) is None
 
@@ -120,7 +120,7 @@ class TestTelemetryWiring:
         mock_ai_client.responses.create.side_effect = RuntimeError("simulated failure")
 
         request = ai_handler.create_request(sample_whatsapp_message)
-        ai_handler.single_turn(request)  # AIHandler's own error handling returns a fallback,
+        ai_handler.handle_message(request)  # AIHandler's own error handling returns a fallback,
                                            # never raises out to the caller - see test_ai_handler_retry.py
 
         row = telemetry_manager.get(request.request_id)

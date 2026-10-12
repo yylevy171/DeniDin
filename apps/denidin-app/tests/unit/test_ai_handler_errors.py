@@ -74,7 +74,7 @@ class TestAIHandlerTimeoutHandling:
         )
         
         request = ai_handler.create_request(sample_whatsapp_message)
-        response = ai_handler.single_turn(request)
+        response = ai_handler.handle_message(request)
         
         # Should return fallback response
         assert "trouble connecting" in response.response_text.lower()
@@ -91,7 +91,7 @@ class TestAIHandlerTimeoutHandling:
         )
         
         request = ai_handler.create_request(sample_whatsapp_message)
-        ai_handler.single_turn(request)
+        ai_handler.handle_message(request)
         
         # Verify error was logged
         assert mock_logger.error.called
@@ -109,7 +109,7 @@ class TestAIHandlerTimeoutHandling:
         )
         
         request = ai_handler.create_request(sample_whatsapp_message)
-        response = ai_handler.single_turn(request)
+        response = ai_handler.handle_message(request)
         
         # Verify response structure
         assert response.request_id == request.request_id
@@ -133,7 +133,7 @@ class TestAIHandlerRateLimitHandling:
         )
         
         request = ai_handler.create_request(sample_whatsapp_message)
-        response = ai_handler.single_turn(request)
+        response = ai_handler.handle_message(request)
         
         # Should return rate limit fallback message
         assert "capacity" in response.response_text.lower() or "rate limit" in response.response_text.lower()
@@ -149,7 +149,7 @@ class TestAIHandlerRateLimitHandling:
         )
         
         request = ai_handler.create_request(sample_whatsapp_message)
-        ai_handler.single_turn(request)
+        ai_handler.handle_message(request)
         
         # Verify error was logged
         assert mock_logger.error.called
@@ -166,7 +166,7 @@ class TestAIHandlerRateLimitHandling:
         )
         
         request = ai_handler.create_request(sample_whatsapp_message)
-        response = ai_handler.single_turn(request)
+        response = ai_handler.handle_message(request)
         
         # Message should be helpful and not technical
         assert "Sorry" in response.response_text or "currently" in response.response_text

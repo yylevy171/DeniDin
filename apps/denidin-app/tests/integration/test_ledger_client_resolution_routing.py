@@ -3,7 +3,7 @@ Component-Integration Tests: post-turn ledger recognition through the real route
 (Feature 069 — the mechanism move + mandatory client resolution).
 
 A real Green API notification → `bot.router` → `handle_text_message` →
-`_process_conversational_message` → `AIHandler.single_turn` (normal reply) → **the
+`_process_conversational_message` → `AIHandler.handle_message` (normal reply) → **the
 post-turn recognition call** → the zero-AI ledgerer → `LedgerEvent` file(s) on disk,
 back-linked from the completing `Message`.
 

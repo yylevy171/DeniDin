@@ -4,7 +4,7 @@ Component-Integration Test: Media Path Stays Outside Group Etiquette (Feature 03
 Verifies the architectural boundary documented in HANDOFF.md and denidin.py's
 handle_image_message: media messages route straight to
 denidin._handle_media_message -> MediaHandler, NEVER through
-_process_conversational_message / AIHandler.single_turn - so none of US1
+_process_conversational_message / AIHandler.handle_message - so none of US1
 (no-mention-gate), US4a (should_reply sentinel), or US5/US7 (named-addressee
 etiquette) can apply to media, regardless of what the caption says.
 
@@ -187,7 +187,7 @@ class TestMediaPathBypassesGroupEtiquette:
         """A caption that would trigger US5/US7's [[NO_REPLY]] path if it were plain
         text (naming someone other than DeniDin) is NOT etiquette-filtered on the
         media path - proving the scope boundary from research.md Sec 9: media never
-        reaches AIHandler.single_turn / the no-reply sentinel at all."""
+        reaches AIHandler.handle_message / the no-reply sentinel at all."""
         from denidin import handle_image_message
 
         self._stub_external_boundaries(

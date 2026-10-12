@@ -71,7 +71,7 @@ Green API queue
   └─ DISPATCHER (one thread; knows nothing about Green API)  DeniDinDispatcher.run
        next item (deferred first, then arrival order) → dispatch(type, notification)   # injected, same as the player's;
                                                           # handlers unchanged; DeniDin.receive() returns the pre-stored message
-          → _process_conversational_message → Backbone.single_turn → _run_resolution_loop
+          → _process_conversational_message → Backbone.handle_message → _run_resolution_loop
                each round: run the model's tool calls
                            ├─ send_to_user / approval round  → return final text (sent as is)
                            └─ otherwise → drain_attachable(chat)  → (already stored) build user items
@@ -91,7 +91,7 @@ Green API queue
 | `src/sources/green_api_source.py` + `denidin.py` `__main__` | the source owns all Green API; builds each `Notification` from the event with the existing bot client; builds coordinator + dispatcher (given `dispatch`), attaches `bot.intake`, starts the dispatcher before the poll loop; `DeniDin.intake` for the AI side (None-guarded) |
 | `DeniDin` (`denidin.py`) | `prestore(notification)` (poller: same content rules each handler uses today); `receive()` returns the pre-stored message instead of storing twice; `receive_pending(chat_id)` → stored messages + media notes |
 | `src/utils/bounded_queue.py` (new) · `src/services/queue_monitor_service.py` (new) · `src/services/thread_supervisor.py` (new) · `/health` info | `BoundedQueue` (D16), `QueueMonitor`, `ThreadSupervisor` (D17); depths/limits/dropped/thread liveness in `/health`; config: queue limits, warning size, stall seconds, restart window (`config.example.json` + dev/prod) |
-| Rename "turn" (REQ-RMH-030) | proposed: `single_turn`→`handle_message`, `begin_turn`/`end_turn`→`mark_chat_busy`/`mark_chat_idle`, `_turns_in_progress`→`_busy_chats`, backbone `_turn_*`→descriptive per-message names; also `turn_context`, tests, prompts, docs (not `specs/done/`, release records, logs); final names settled in `tasks.md` |
+| Rename "turn" (REQ-RMH-030) | proposed: `handle_message`→`handle_message`, `mark_chat_busy`/`mark_chat_idle`→`mark_chat_busy`/`mark_chat_idle`, `_busy_chats`→`_busy_chats`, backbone `_turn_*`→descriptive per-message names; also `turn_context`, tests, prompts, docs (not `specs/done/`, release records, logs); final names settled in `tasks.md` |
 | Existing docs (REQ-RMH-031) | `CLAUDE.md`, `.github/ARCHITECTURE.md`, `.github/*` mentions, app README/docs |
 | `src/backbone/backbone.py` | `_run_resolution_loop`: drain at each non-final hand-back (off when `_turn_is_approved_write`, REQ-RMH-014); record `last_output_at`; D14 — stop clearing `approval_message_id` on unrelated messages |
 | `src/backbone/pending_messages.py` (new) | format user items: timestamp + before/after marker; media note |

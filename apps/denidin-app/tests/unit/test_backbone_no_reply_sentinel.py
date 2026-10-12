@@ -48,7 +48,7 @@ def test_no_reply_sentinel_suppresses_reply(prompts_root):
     client.responses.create.return_value = _send_to_user_response(NO_REPLY_SENTINEL)
     backbone = _backbone(prompts_root, client)
 
-    response = backbone.single_turn(_request(), user_role="client")
+    response = backbone.handle_message(_request(), user_role="client")
 
     assert response.should_reply is False
     assert response.response_text == NO_REPLY_SENTINEL
@@ -59,7 +59,7 @@ def test_ordinary_reply_is_sent(prompts_root):
     client.responses.create.return_value = _send_to_user_response("בוקר טוב!")
     backbone = _backbone(prompts_root, client)
 
-    response = backbone.single_turn(_request(), user_role="client")
+    response = backbone.handle_message(_request(), user_role="client")
 
     assert response.should_reply is True
     assert response.response_text == "בוקר טוב!"

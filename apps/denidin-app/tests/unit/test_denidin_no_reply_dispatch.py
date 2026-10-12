@@ -81,7 +81,7 @@ def mocked_denidin_app(monkeypatch):
 
 class TestNoReplyDispatchSkipsSend:
     def test_should_reply_false_skips_send_response(self, mocked_denidin_app):
-        mocked_denidin_app.ai_manager.single_turn.return_value = _make_ai_response(should_reply=False)
+        mocked_denidin_app.ai_manager.handle_message.return_value = _make_ai_response(should_reply=False)
 
         denidin_module._process_conversational_message(_make_notification())
 
@@ -89,7 +89,7 @@ class TestNoReplyDispatchSkipsSend:
         mocked_denidin_app.send_text.assert_not_called()
 
     def test_should_reply_true_sends_response(self, mocked_denidin_app):
-        mocked_denidin_app.ai_manager.single_turn.return_value = _make_ai_response(should_reply=True)
+        mocked_denidin_app.ai_manager.handle_message.return_value = _make_ai_response(should_reply=True)
 
         denidin_module._process_conversational_message(_make_notification())
 
@@ -98,7 +98,7 @@ class TestNoReplyDispatchSkipsSend:
     def test_should_reply_false_does_not_raise_or_send_fallback(self, mocked_denidin_app):
         """no-reply is a first-class successful outcome, not an error path - no
         fallback error message should be sent either."""
-        mocked_denidin_app.ai_manager.single_turn.return_value = _make_ai_response(should_reply=False)
+        mocked_denidin_app.ai_manager.handle_message.return_value = _make_ai_response(should_reply=False)
 
         # Should not raise
         denidin_module._process_conversational_message(_make_notification())

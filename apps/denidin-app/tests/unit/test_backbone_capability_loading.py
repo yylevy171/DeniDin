@@ -65,7 +65,7 @@ def test_load_attaches_prompt_and_tools_to_the_very_next_round(env):
         _call("send_to_user", {"text": "בוצע"}, resp_id="r3"),
     ]
     orch = _orch(env, client)
-    response = orch.single_turn(_request(), chat_id="chat1", user_role="godfather")
+    response = orch.handle_message(_request(), chat_id="chat1", user_role="godfather")
 
     first, second, third = [c.kwargs for c in client.responses.create.call_args_list]
     assert "PROMPT[cap_reminders_write]" not in first["instructions"] and "create_reminder" not in _tool_names(first)
@@ -87,10 +87,10 @@ def test_loaded_set_persists_on_the_session_and_across_turns(env):
         _call("send_to_user", {"text": "שוב"}, resp_id="r3"),
     ]
     orch = _orch(env, client)
-    orch.single_turn(_request(), chat_id="chat1", user_role="godfather")
+    orch.handle_message(_request(), chat_id="chat1", user_role="godfather")
     assert env.sessions.get_session("chat1").active_capabilities == ["cap_reminders_write"]
 
-    orch.single_turn(_request("עוד"), chat_id="chat1", user_role="godfather")
+    orch.handle_message(_request("עוד"), chat_id="chat1", user_role="godfather")
     third = client.responses.create.call_args_list[2].kwargs
     assert "PROMPT[cap_reminders_write]" in third["instructions"] and "create_reminder" in _tool_names(third)
 
@@ -100,7 +100,7 @@ def test_state_survives_a_process_restart(env, tmp_path):
     restarted = make_session_manager(storage_dir=str(tmp_path / "sessions"))
     client = MagicMock()
     client.responses.create.return_value = _call("send_to_user", {"text": "ok"})
-    make_backbone(client, env.config, session_manager=restarted).single_turn(
+    make_backbone(client, env.config, session_manager=restarted).handle_message(
         _request(), chat_id="chat1", user_role="godfather")
     first = client.responses.create.call_args_list[0].kwargs
     assert "PROMPT[cap_ledger_query]" in first["instructions"] and "query_ledger_events" in _tool_names(first)
@@ -116,7 +116,7 @@ def test_capabilities_accumulate_then_unload_one_then_reset_all(env):
         _call("send_to_user", {"text": "סיימתי"}, resp_id="r5"),
     ]
     orch = _orch(env, client)
-    orch.single_turn(_request(), chat_id="chat1", user_role="godfather")
+    orch.handle_message(_request(), chat_id="chat1", user_role="godfather")
     kws = [c.kwargs for c in client.responses.create.call_args_list]
 
     assert "create_reminder" in _tool_names(kws[2]) and "query_ledger_events" in _tool_names(kws[2])  # both loaded
@@ -139,7 +139,7 @@ def test_load_is_idempotent_and_rejects_unknown_tags(env):
 def test_no_use_capability_tool_is_ever_offered(env):
     client = MagicMock()
     client.responses.create.return_value = _call("send_to_user", {"text": "x"})
-    _orch(env, client).single_turn(_request(), chat_id="chat1", user_role="godfather")
+    _orch(env, client).handle_message(_request(), chat_id="chat1", user_role="godfather")
     names = _tool_names(client.responses.create.call_args.kwargs)
     assert "use_capability" not in names
     assert {"load_capabilities", "unload_capabilities", "reset_to_backbone"} <= names
@@ -171,7 +171,7 @@ def test_next_turn_after_idle_reset_sees_a_plain_backbone_no_notice_needed(env):
     sweep_idle_capabilities(env.sessions, 60, now=now_local() + timedelta(minutes=120))
     client = MagicMock()
     client.responses.create.return_value = _call("send_to_user", {"text": "hi"})
-    _orch(env, client).single_turn(_request(), chat_id="chat1", user_role="godfather")
+    _orch(env, client).handle_message(_request(), chat_id="chat1", user_role="godfather")
     first = client.responses.create.call_args.kwargs
     assert "(none - plain backbone)" in first["instructions"] and "create_reminder" not in _tool_names(first)
 

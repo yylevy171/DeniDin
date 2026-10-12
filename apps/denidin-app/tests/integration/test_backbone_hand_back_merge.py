@@ -73,7 +73,7 @@ def test_messages_waiting_at_a_hand_back_join_the_tool_results_in_order(env):
     _load_then_reply(env)
     env.queue(_event(1, text="ללקוח דנה"))
     env.queue(_event(2, text="על 500 שקל"))
-    env.backbone.single_turn(env.request(), chat_id=CHAT, user_role="godfather")
+    env.backbone.handle_message(env.request(), chat_id=CHAT, user_role="godfather")
     follow_up = _inputs(env)[1]
     assert follow_up[0]["type"] == "function_call_output"
     assert [i["role"] for i in follow_up[1:]] == ["user", "user"]
@@ -83,7 +83,7 @@ def test_messages_waiting_at_a_hand_back_join_the_tool_results_in_order(env):
 
 def test_the_first_message_and_history_carry_timestamps(env):
     _load_then_reply(env)
-    env.backbone.single_turn(env.request("שלום"), chat_id=CHAT, user_role="godfather")
+    env.backbone.handle_message(env.request("שלום"), chat_id=CHAT, user_role="godfather")
     first_input = _inputs(env)[0]
     import re
     assert re.match(r"\[\d\d:\d\d:\d\d \d\d/\d\d\] שלום", first_input[-1]["content"])
@@ -92,7 +92,7 @@ def test_the_first_message_and_history_carry_timestamps(env):
 def test_nothing_is_attached_on_the_round_that_sends_the_reply(env):
     env.client.responses.create.side_effect = [_reply("תשובה")]
     env.queue(_event(1))
-    env.backbone.single_turn(env.request(), chat_id=CHAT, user_role="godfather")
+    env.backbone.handle_message(env.request(), chat_id=CHAT, user_role="godfather")
     assert len(_inputs(env)) == 1
     assert env.app.intake.next_work_item(0.01).id_message == "ID1"  # still waiting: handled next
 
@@ -100,7 +100,7 @@ def test_nothing_is_attached_on_the_round_that_sends_the_reply(env):
 def test_without_an_intake_the_follow_up_input_is_just_the_tool_results(env):
     env.app.intake = None
     _load_then_reply(env)
-    env.backbone.single_turn(env.request(), chat_id=CHAT, user_role="godfather")
+    env.backbone.handle_message(env.request(), chat_id=CHAT, user_role="godfather")
     follow_up = _inputs(env)[1]
     assert [i.get("type") for i in follow_up] == ["function_call_output"]
 
@@ -108,7 +108,7 @@ def test_without_an_intake_the_follow_up_input_is_just_the_tool_results(env):
 def test_media_is_mentioned_to_the_model_and_left_for_its_own_handling(env):
     _load_then_reply(env)
     env.queue(_event(1, "imageMessage"))
-    env.backbone.single_turn(env.request(), chat_id=CHAT, user_role="godfather")
+    env.backbone.handle_message(env.request(), chat_id=CHAT, user_role="godfather")
     follow_up = _inputs(env)[1]
     assert follow_up[1]["content"].startswith("[קובץ התקבל")
     assert env.app.intake.next_work_item(0.01).id_message == "ID1"  # handled on its own right after
@@ -120,7 +120,7 @@ def test_an_approved_write_is_not_interrupted_by_waiting_messages(env):
     create = env.client.with_options.return_value.responses.create
     create.side_effect = [_fc("load_capabilities", {"capabilities": ["cap_ledger_query"]}), _reply("סבבה", rid="r2")]
     env.queue(_event(1, text="רגע, תבטל"))
-    env.backbone.single_turn(env.request("כן"), chat_id=CHAT, user_role="godfather")
+    env.backbone.handle_message(env.request("כן"), chat_id=CHAT, user_role="godfather")
     follow_up = create.call_args_list[1].kwargs["input"]
     assert [i.get("type") for i in follow_up] == ["function_call_output"]
     assert env.app.intake.next_work_item(0.01).id_message == "ID1"  # handled after
@@ -130,14 +130,14 @@ def test_a_no_does_not_block_attaching(env):
     env.sessions.set_approval_message_id(CHAT, "BTN-1")
     _load_then_reply(env)
     env.queue(_event(1, text="ובעצם משהו אחר"))
-    env.backbone.single_turn(env.request("לא"), chat_id=CHAT, user_role="godfather")
+    env.backbone.handle_message(env.request("לא"), chat_id=CHAT, user_role="godfather")
     assert len(_inputs(env)[1]) == 2
 
 
 def test_approval_guard_survives_unrelated_messages(env):
     env.sessions.set_approval_message_id(CHAT, "BTN-1")
     env.client.responses.create.side_effect = [_reply("אין בעיה")]
-    env.backbone.single_turn(env.request("מה השעה?"), chat_id=CHAT, user_role="godfather")
+    env.backbone.handle_message(env.request("מה השעה?"), chat_id=CHAT, user_role="godfather")
     assert env.sessions.get_session(CHAT).approval_message_id == "BTN-1"
 
 
@@ -145,7 +145,7 @@ def test_approval_guard_survives_unrelated_messages(env):
 def test_approval_guard_is_cleared_when_answered(env, answer):
     env.sessions.set_approval_message_id(CHAT, "BTN-1")
     env.client.responses.create.side_effect = [_reply("בסדר")]
-    env.backbone.single_turn(env.request(answer), chat_id=CHAT, user_role="godfather")
+    env.backbone.handle_message(env.request(answer), chat_id=CHAT, user_role="godfather")
     assert env.sessions.get_session(CHAT).approval_message_id is None
 
 
@@ -166,7 +166,7 @@ def test_a_burst_reaches_the_model_once_each_in_order_and_nothing_is_left_behind
     ]
     for n in range(1, 5):
         env.queue(_event(n, text=f"fact {n}"))
-    env.backbone.single_turn(env.request("fact 0"), chat_id=CHAT, user_role="godfather")
+    env.backbone.handle_message(env.request("fact 0"), chat_id=CHAT, user_role="godfather")
     # more arrive while the model is still working: queue the rest before its next hand-back
     inputs = _inputs(env)
     first_wave = [i["content"] for i in inputs[1][1:]]
@@ -178,7 +178,7 @@ def test_a_burst_reaches_the_model_once_each_in_order_and_nothing_is_left_behind
 
 def test_messages_arriving_after_the_reply_become_the_next_handling_not_lost(env):
     env.client.responses.create.side_effect = [_reply("תשובה")]
-    env.backbone.single_turn(env.request("א"), chat_id=CHAT, user_role="godfather")
+    env.backbone.handle_message(env.request("א"), chat_id=CHAT, user_role="godfather")
     env.queue(_event(9, text="עוד אחד"))
     item = env.app.intake.next_work_item(0.01)
     assert item.id_message == "ID9" and item.message.text_content == "עוד אחד"
@@ -193,7 +193,7 @@ def test_history_user_items_carry_their_clock_time_assistant_items_do_not(env):
     env.app.store_outbound(SimpleNamespace(chat_id=CHAT, sender_id=CHAT, sender_display_name="Dana",
                                            is_group=False, chat_name=None), "תשובה ישנה")
     env.client.responses.create.side_effect = [_reply("טוב")]
-    env.backbone.single_turn(env.request("חדש"), chat_id=CHAT, user_role="godfather")
+    env.backbone.handle_message(env.request("חדש"), chat_id=CHAT, user_role="godfather")
     history = _inputs(env)[0][:-1]
     import re
     users = [h["content"] for h in history if h["role"] == "user"]
@@ -213,7 +213,7 @@ def test_a_second_group_member_is_attached_with_their_name(env):
         _fc("load_capabilities", {"capabilities": ["cap_ledger_query"]}), _reply("ok", rid="r2")]
     request = AIRequest(user_prompt="בקשה", constitution="", max_tokens=500, model="m", chat_id=group,
                         message_id="m0", timestamp=int(now_local().timestamp()))
-    env.backbone.single_turn(request, chat_id=group, user_role="godfather", is_group=True)
+    env.backbone.handle_message(request, chat_id=group, user_role="godfather", is_group=True)
     assert _inputs(env)[1][1]["content"].endswith("[Yossi] עוד פרט")
 
 
@@ -222,7 +222,7 @@ def test_a_second_group_member_is_attached_with_their_name(env):
 def test_a_button_tap_after_unrelated_chatter_is_honoured_once_then_ignored(env):
     env.sessions.set_approval_message_id(CHAT, "BTN-1")
     env.client.responses.create.side_effect = [_reply("שיחה"), _reply("בוצע")]
-    env.backbone.single_turn(env.request("שאלה אחרת"), chat_id=CHAT, user_role="godfather")
+    env.backbone.handle_message(env.request("שאלה אחרת"), chat_id=CHAT, user_role="godfather")
     tap = SimpleNamespace(chat_id=CHAT, sender_id=CHAT, message_id="TAP-1", sender_display_name="Dana",
                           is_group=False, chat_name=None)
     first = env.backbone.resolve_button_tap(tap, "denidin_decline", "BTN-1", user_role="godfather")
