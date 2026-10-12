@@ -135,3 +135,7 @@ no change
 ## denidin-app v0.8.0 — 2026-10-06
 
 bugfix-071: VAT is stated and enforced per Morning document type - VAT-included documents are no longer stored as exempt/VAT 0, and every document approval states its VAT. Feature 063: dynamic capability backbone (flag-gated), with its prompts baked into the image. bugfix-069: WhatsApp link state (whatsapp_authorized) reported in /health.
+
+## denidin-app v0.8.1 — 2026-10-12
+
+Feature 101: config switch green_api_host_mode (fixed default | instance) to call Green API via the instance's own host, plus optional green_api_media_host
