@@ -565,7 +565,7 @@ class TestLedgerEventCaptureE2E:
         godfather sends it as a WhatsApp image with the payer ALREADY an exact
         Morning client, Then:
         1. it routes as a synthetic turn, resolves the client, and the post-turn
-           recognition call persists ONE בנק event - source_type=בנק,
+           recognition call persists ONE בנק event - source_type=הפקדה (method בנק),
            event_subtype=הפקדה, amount normalized to the exact integer 554,
            B-prefixed event_id, bank_number/branch/account, payer_name forced
            null, client_name carrying the account-holder name, vat_status=כולל,
@@ -618,7 +618,7 @@ class TestLedgerEventCaptureE2E:
             captured = events[0]
             logger.info(f"THEN captured event: {captured}")
 
-            assert captured["source_type"] == "בנק"
+            assert captured["source_type"] == "הפקדה"
             assert captured["event_subtype"] == "הפקדה"
             assert captured["amount"] == 554, (
                 f"expected amount normalized to int 554, got {captured['amount']!r}"

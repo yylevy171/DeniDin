@@ -73,7 +73,7 @@ class TestExtractFunctionCall:
         assert extract_function_call(response, "capture_ledger_event") is None
 
     def test_finds_the_right_item_among_others(self):
-        args = {"source_type": "בנק"}
+        args = {"source_type": "הפקדה"}
         response = _response([
             _other_item("message"),
             _function_call_item("capture_ledger_event", json.dumps(args)),
@@ -306,7 +306,7 @@ class TestExtractAllFunctionCalls:
         rejects with 400 ("No tool output found for function call ..."),
         which in turn left the user with a silently empty reply (the actual
         2026-07-30 incident, req_0f4656c9bd90)."""
-        args = {"source_type": "בנק"}
+        args = {"source_type": "הפקדה"}
         response = _response([
             _function_call_item("capture_ledger_event", "{not valid json", call_id="call_bad"),
             _function_call_item("capture_ledger_event", json.dumps(args), call_id="call_good"),

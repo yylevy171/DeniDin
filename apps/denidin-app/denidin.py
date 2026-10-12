@@ -25,6 +25,7 @@ from src.constants.error_messages import (
     APP_NOT_READY_RETRY_LATER,
     ERROR_PROCESSING_MESSAGE_TRY_AGAIN,
     FAILED_TO_PROCESS_FILE_DEFAULT,
+    FILE_TOO_LARGE_REFUSAL,
     CONTACT_CARD_ONE_AT_A_TIME,
     UNSUPPORTED_MESSAGE_TYPE_SUPPORTED_TYPES,
 )
@@ -42,6 +43,7 @@ from src.managers.ledger_event_recognizer import LedgerEventRecognizer
 from src.handlers.whatsapp_handler import WhatsAppHandler
 from src.handlers.media_handler import MediaHandler
 from src.managers.group_membership_resolver import GroupMembershipResolver
+from src.managers.media_file_manager import FileTooLargeError
 from src.services.reminder_delivery_service import (
     run_startup_reminder_sweep, start_reminder_scheduler,
 )
@@ -988,7 +990,8 @@ def _handle_media_message(notification: Notification, message) -> Optional[Dict]
 
     if not result.get("success", False):
         logger.warning(f"Media processing failed: {result.get('error_message', 'Unknown error')}")
-        denidin_app.send_text(notification, FAILED_TO_PROCESS_FILE_DEFAULT)
+        denidin_app.send_text(
+            notification, FILE_TOO_LARGE_REFUSAL if result.get("too_large") else FAILED_TO_PROCESS_FILE_DEFAULT)
         return None
 
     # Feature 069 (Phase 9/10): a recognised fee-agreement / bank-deposit image or DOCX
@@ -1050,7 +1053,8 @@ def _process_media_message_via_backbone(notification: Notification, message, kee
         logger.warning(f"Media download/validation failed (flag-on path): {exc}")
         if denidin_app.typing_keepalive_scheduler is not None:
             stop_typing_keepalive(denidin_app.typing_keepalive_scheduler, keepalive_job_id)
-        denidin_app.send_text(notification, FAILED_TO_PROCESS_FILE_DEFAULT)
+        denidin_app.send_text(
+            notification, FILE_TOO_LARGE_REFUSAL if isinstance(exc, FileTooLargeError) else FAILED_TO_PROCESS_FILE_DEFAULT)
         return
 
     if denidin_app.typing_keepalive_scheduler is not None:

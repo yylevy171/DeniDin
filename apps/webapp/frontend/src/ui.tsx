@@ -553,18 +553,22 @@ function ChatImage({
 }: {
   path: string;
   theme: Theme;
-  onOpen: (url: string) => void;
+  onOpen: (url: string, isPdf: boolean) => void;
 }) {
   const [url, setUrl] = useState<string | null>(null);
+  const [isPdf, setIsPdf] = useState(false);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     let live = true;
     let created: string | null = null;
     fetchMediaObjectUrl(path)
-      .then((u) => {
+      .then(({ url: u, isPdf: pdf }) => {
         if (live) {
           created = u;
+          setIsPdf(pdf);
           setUrl(u);
+        } else {
+          URL.revokeObjectURL(u);
         }
       })
       .catch(() => live && setFailed(true));
@@ -580,9 +584,23 @@ function ChatImage({
         [מדיה לא זמינה]
       </Text>
     );
-  if (!url) return <Text style={{ color: theme.textDim }}>…טוען תמונה</Text>;
+  if (!url) return <Text style={{ color: theme.textDim }}>…טוען קובץ</Text>;
+  if (isPdf)
+    return (
+      <Pressable
+        testID="chat-pdf"
+        onPress={() => onOpen(url, true)}
+        style={{
+          width: 160, height: 90, borderRadius: 8, backgroundColor: theme.surfaceAlt,
+          alignItems: "center", justifyContent: "center", gap: 4,
+        }}
+      >
+        <Text style={{ fontSize: 28 }}>📄</Text>
+        <Text style={{ color: theme.text, fontSize: 12 }}>PDF — לחצו לפתיחה</Text>
+      </Pressable>
+    );
   return (
-    <Pressable testID="chat-image" onPress={() => onOpen(url)}>
+    <Pressable testID="chat-image" onPress={() => onOpen(url, false)}>
       <Image
         source={{ uri: url }}
         style={{ width: 160, height: 160, borderRadius: 8, backgroundColor: theme.surfaceAlt }}
@@ -594,10 +612,12 @@ function ChatImage({
 
 export function ImageOverlay({
   url,
+  isPdf = false,
   onClose,
   theme,
 }: {
   url: string;
+  isPdf?: boolean;
   onClose: () => void;
   theme: Theme;
 }) {
@@ -625,7 +645,16 @@ export function ImageOverlay({
         zIndex: 200,
       }}
     >
-      <Image source={{ uri: url }} style={{ width: "94%", height: "86%" }} resizeMode="contain" />
+      {isPdf ? (
+        <iframe
+          data-testid="pdf-viewer"
+          title="pdf"
+          src={url}
+          style={{ width: "94%", height: "86%", border: "none", backgroundColor: "#fff" }}
+        />
+      ) : (
+        <Image source={{ uri: url }} style={{ width: "94%", height: "86%" }} resizeMode="contain" />
+      )}
       <Button label="סגירה" onPress={onClose} theme={theme} testID="image-overlay-close" />
     </View>
   );
@@ -640,7 +669,7 @@ export function ChatPanel({
   messages: ContextMessage[] | undefined;
   error?: string;
   theme: Theme;
-  onOpenImage: (url: string) => void;
+  onOpenImage: (url: string, isPdf: boolean) => void;
 }) {
   if (error)
     return (

@@ -113,7 +113,7 @@ class TestConstitutionUsage:
         assert call_args is not None
     
     def test_pdf_extractor_passes_caption_to_image_extractor(self):
-        """PDFExtractor must pass caption through to ImageExtractor for page analysis."""
+        """PDFExtractor puts the caption in the (single) analysis prompt."""
         mock_denidin = Mock()
         mock_denidin.ai_manager = make_extractor_ai_manager()
         mock_denidin.config.vision_model = "gpt-4o"
@@ -125,19 +125,8 @@ class TestConstitutionUsage:
         mock_denidin.ai_manager.client.responses.create = Mock(return_value=mock_response)
 
         extractor = PDFExtractor(mock_denidin)
-
-        with patch('src.handlers.extractors.pdf_extractor.fitz') as mock_fitz:
-            mock_pdf = MagicMock()
-            mock_page = MagicMock()
-            mock_pixmap = MagicMock()
-            mock_pixmap.tobytes.return_value = b"fake_png"
-            mock_page.get_pixmap.return_value = mock_pixmap
-            mock_pdf.__iter__.return_value = [mock_page]
-            mock_pdf.__len__.return_value = 1
-            mock_fitz.open.return_value = mock_pdf
-
-            media = Media(data=b"fake_pdf", mime_type="application/pdf")
-            extractor.analyze_media(media, caption="What's the total amount?")
+        media = Media(data=b"fake_pdf", mime_type="application/pdf")
+        extractor.analyze_media(media, caption="What's the total amount?")
 
         # Verify caption in prompt
         call_args = mock_denidin.ai_manager.client.responses.create.call_args
@@ -289,40 +278,27 @@ class TestCaptionContext:
         # Verify the standalone analysis call was made
         assert mock_denidin.ai_manager.client.responses.create.call_count == 1
     
-    def test_pdf_extractor_passes_caption_to_all_pages(self):
-        """PDFExtractor should pass same caption to all page extractions."""
+    def test_pdf_extractor_passes_caption_in_its_single_call(self):
+        """Feature 071: the whole PDF is one call, and it carries the caption."""
         mock_denidin = Mock()
         mock_denidin.ai_manager = make_extractor_ai_manager()
         mock_denidin.config.vision_model = "gpt-4o"
         mock_denidin.config.ai_reply_max_tokens = 4000
         mock_denidin.ai_manager.extraction_prompt_prefix = Mock(return_value="")
-        
-        # Track calls
-        call_count = [0]
+
+        calls = []
         def mock_create(**kwargs):
-            call_count[0] += 1
+            calls.append(kwargs)
             mock_resp = Mock()
             mock_resp.output_text = "TEXT:\nPage\n\nDOCUMENT_TYPE: invoice\nSUMMARY: Test\nKEY_POINTS:\n- Item\n\nCONFIDENCE: high\n"
+            mock_resp.output = []
             return mock_resp
 
         mock_denidin.ai_manager.client.responses.create = mock_create
-        
-        extractor = PDFExtractor(mock_denidin)
-        
-        with patch('src.handlers.extractors.pdf_extractor.fitz') as mock_fitz:
-            mock_pdf = MagicMock()
-            mock_pages = [MagicMock() for _ in range(3)]
-            for page in mock_pages:
-                mock_pixmap = MagicMock()
-                mock_pixmap.tobytes.return_value = b"png"
-                page.get_pixmap.return_value = mock_pixmap
-            
-            mock_pdf.__iter__.return_value = mock_pages
-            mock_pdf.__len__.return_value = 3
-            mock_fitz.open.return_value = mock_pdf
-            
-            media = Media(data=b"pdf", mime_type="application/pdf")
-            extractor.analyze_media(media, caption="Find the invoice number")
-        
-        # All 3 pages should have been called
-        assert call_count[0] == 3
+
+        media = Media(data=b"pdf", mime_type="application/pdf")
+        PDFExtractor(mock_denidin).analyze_media(media, caption="Find the invoice number")
+
+        assert len(calls) == 1
+        text_part = next(c for c in calls[0]["input"][0]["content"] if c["type"] == "input_text")
+        assert "Find the invoice number" in text_part["text"]

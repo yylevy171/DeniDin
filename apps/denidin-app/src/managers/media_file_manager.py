@@ -17,6 +17,10 @@ import requests
 logger = logging.getLogger(__name__)
 
 
+class FileTooLargeError(ValueError):
+    """The file is over the size limit; the user gets a friendly "send a smaller file" reply."""
+
+
 class MediaFileManager:
     """Handles file download, storage, and validation."""
 
@@ -105,7 +109,7 @@ class MediaFileManager:
             raise ValueError("File is empty (0 bytes)")
 
         if file_size > self.MAX_FILE_SIZE_BYTES:
-            raise ValueError(
+            raise FileTooLargeError(
                 f"File too large: {file_size} bytes "
                 f"(max {self.MAX_FILE_SIZE_BYTES})"
             )

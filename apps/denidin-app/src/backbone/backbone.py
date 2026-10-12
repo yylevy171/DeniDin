@@ -33,7 +33,7 @@ from src.capabilities.toolsets import (
 from openai import APIError, APITimeoutError, RateLimitError
 
 from src.constants.error_messages import (
-    APPROVED_WRITE_NOT_PERFORMED_NOTE, APPROVED_WRITE_POSSIBLY_DUPLICATED_NOTE, BACKBONE_AI_API_ERROR,
+    APPROVED_WRITE_POSSIBLY_DUPLICATED_NOTE, BACKBONE_AI_API_ERROR,
     BACKBONE_AI_RATE_LIMITED, BACKBONE_AI_TIMEOUT, BACKBONE_UNEXPECTED_ERROR,
     LEDGER_FOLLOWUP_FAILED_TRY_AGAIN,
 )
@@ -185,13 +185,14 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
         self._turn_last_response: Optional[Any] = None
 
         # Item4 (2026-10-01): True when this turn answers an approval-buttons prompt
-        # with a yes - the turn that runs the approved write. Its model calls are
-        # run with the SDK's own retries off (as legacy's approval call), and what it
-        # executed is checked (_apply_write_guards).
+        # with a yes. An approval asks about WHATEVER the model asked (a write, an
+        # offer, any question) - the app never assumes it was a write. The turn's model
+        # calls are run with the SDK's own retries off (as legacy's approval call), and
+        # a write it ran twice with identical arguments is flagged (_apply_write_guards).
         # _turn_write_calls collects what it executed: every raw Morning mcp_call item
         # (any tool - a read's output can be the failure detail, as in legacy) and each
         # local write ({name, output, error}); only writes are counted.
-        self._turn_is_approved_write: bool = False
+        self._turn_answers_approval: bool = False
         self._turn_write_calls: List[Any] = []
 
         # The inbound WhatsAppMessage this turn answers (request.original_message) -
@@ -488,15 +489,15 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
             # driven by load_capabilities/unload_capabilities/load_flows/unload_flows/reset_to_backbone/
             # record_planning_status/approval_with_yes_no_buttons/send_to_user.
             self._turn_planning_status = None
-            # A yes to outstanding approval buttons makes this the approved-write
-            # turn (Item4). Any new turn supersedes whatever approval buttons were
-            # outstanding.
+            # A yes to outstanding approval buttons makes this the turn that answers
+            # an approval (Item4). Any new turn supersedes whatever approval buttons
+            # were outstanding.
             self._turn_write_calls = []
-            self._turn_is_approved_write = False
+            self._turn_answers_approval = False
             if effective_chat_id:
                 approval_was_pending = bool(
                     self.session_manager.get_session(effective_chat_id).approval_message_id)
-                self._turn_is_approved_write = (
+                self._turn_answers_approval = (
                     approval_was_pending and self.is_affirmative_reply(request.user_prompt))
                 self.session_manager.set_approval_message_id(effective_chat_id, None)
             final_text = self._run_resolution_loop(request, turn_context)
@@ -736,18 +737,38 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
         outputs: List[Dict[str, Any]] = []
         final_text: Optional[str] = None
         for call_id, tool_name, args in calls:
-            if tool_name in ("send_to_user", "approval_with_yes_no_buttons"):
-                final_text = str(args.get("text", "")).strip()
-                if tool_name == "approval_with_yes_no_buttons":
-                    # Stateless, domain-agnostic: just asks WhatsAppHandler to
-                    # render the reply as tappable buttons - _finalize_response
-                    # reads this flag.
-                    self._turn_offered_approval = True
-                result_text = "ok"
+            if tool_name == "send_to_user":
+                text = str(args.get("text", "")).strip()
+                if args.get("end_turn") is False:
+                    result_text = (self._continue_turn() if self._send_to_user(text)
+                                   else "error: the message was not sent.")
+                else:
+                    final_text, result_text = self._end_turn(text), "ok"
+            elif tool_name == "approval_with_yes_no_buttons":
+                # Stateless, domain-agnostic: just asks WhatsAppHandler to
+                # render the reply as tappable buttons - _finalize_response
+                # reads this flag.
+                self._turn_offered_approval = True
+                final_text, result_text = self._end_turn(str(args.get("text", "")).strip()), "ok"
             else:
                 result_text = self._dispatch_resolution_tool(tool_name, args, chat_id)
             outputs.append({"type": "function_call_output", "call_id": call_id, "output": result_text})
         return outputs, final_text
+
+    def _send_to_user(self, text: Optional[str]) -> bool:
+        """Sends `text` to the user now, in the turn in progress. Only sends: whether the
+        turn then ends or continues is `_end_turn` / `_continue_turn`'s business. (The
+        turn's final reply is delivered by the caller from the turn's result.)"""
+        return send_progress_update_message(
+            self.denidin, self._turn_telemetry_builder, self._turn_chat_id, text)
+
+    def _end_turn(self, text: str) -> str:
+        """Ends the turn: `text` is its final reply, which stops the resolution loop."""
+        return text
+
+    def _continue_turn(self) -> str:
+        """Keeps the turn going: the tool result that tells the model to carry on."""
+        return "ok"
 
     def _run_domain_calls(self, calls: List[Tuple[str, str, Dict[str, Any], CapabilityTag]],
                            turn_context: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -771,11 +792,8 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
         outputs: List[Dict[str, Any]] = []
         for call_id, tool_name, args in calls:
             if tool_name == "send_progress_update":
-                sent = send_progress_update_message(
-                    self.denidin, self._turn_telemetry_builder, self._turn_chat_id, args.get("text"),
-                )
                 # Stored by the send itself (DeniDin.send_progress_update), like every message.
-                payload = {"sent": sent}
+                payload = {"sent": self._send_to_user(args.get("text"))}
             else:
                 payload = build_react_to_message_payload(
                     self.denidin, request, self._turn_chat_id, args, call_id,
@@ -794,7 +812,7 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
         debug_wire("openai", "out", context, kwargs)
         # Retry + Feature 080 timing via the shared AIManager.timed_model_call (also
         # AIHandler._timed_llm_call's): a failed call is timed and counted too.
-        if self._turn_is_approved_write:
+        if self._turn_answers_approval:
             # Same as legacy _call_openai_approval_api (Item4): the OpenAI SDK's own
             # retries are off (max_retries=0) for the turn that runs the approved write;
             # the shared explicit 424 retry still applies.
@@ -888,16 +906,17 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
                                 flows_now=flows_now, capabilities_now=capabilities_now)
 
     def _apply_write_guards(self, request: AIRequest, final_text: str) -> str:
-        """Item4 (2026-10-01, revised 2026-10-04): the approved-write checks, on the turn
-        that answers approval buttons with a yes (shared AIManager). The model's reply
-        is ALWAYS sent as is - the app only ever appends a short factual note after it:
-        - the same write succeeded twice with identical arguments (the approved call run
-          twice): APPROVED_WRITE_POSSIBLY_DUPLICATED_NOTE;
-        - no write was even attempted: APPROVED_WRITE_NOT_PERFORMED_NOTE.
-        Failed attempts append nothing - the model saw each error and reports it itself
-        (ST14, 2026-10-03: three failed creates were once replaced with a "may have run
-        twice" message although nothing was created)."""
-        if not self._turn_is_approved_write:
+        """Item4 (2026-10-01, revised 2026-10-04 and 2026-10-12): on the turn that answers
+        approval buttons with a yes (shared AIManager), the model's reply is ALWAYS sent
+        as is - the app only ever appends a short factual note after it, and only for a
+        double execution: the same write succeeded twice with identical arguments (the
+        approved call run twice): APPROVED_WRITE_POSSIBLY_DUPLICATED_NOTE.
+
+        An approval is a plain yes/no on whatever was asked - not necessarily a write
+        (an offer, a question) - so "no write ran" is never a defect and adds no note.
+        Failed attempts append nothing either: the model saw each error and reports it
+        itself (ST14, 2026-10-03)."""
+        if not self._turn_answers_approval:
             return final_text
         executions = self.tally_write_executions(self._turn_write_calls, WRITE_TOOL_NAMES)
         if executions.duplicated:
@@ -907,12 +926,6 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
                 self._turn_chat_id, request.request_id, executions.duplicated, self._turn_write_calls)
             self._turn_offered_approval = False
             return f"{final_text}\n\n{APPROVED_WRITE_POSSIBLY_DUPLICATED_NOTE}"
-        if not executions.ran_any:
-            logger.error(
-                "[022] APPROVED TOOL NEVER RAN: approved turn for chat=%r request=%s attempted no write. "
-                "Reply sent with a note appended: %r", self._turn_chat_id, request.request_id, final_text)
-            self._turn_offered_approval = False
-            return f"{final_text}\n\n{APPROVED_WRITE_NOT_PERFORMED_NOTE}"
         return final_text
 
     def _finalize_response(self, request: AIRequest, final_text: str) -> AIResponse:

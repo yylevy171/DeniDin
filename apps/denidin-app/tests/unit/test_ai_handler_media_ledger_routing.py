@@ -15,7 +15,7 @@ class TestBuildLedgerStashText:
         # Real shape from capture_ledger_events_from_text: amount / txn_date are
         # nested on the single component, not top-level.
         analysis = {
-            "event_subtype": "הפקדה",
+            "event_subtype": "בנק",
             "bank_number": "12",
             "bank_branch": "345",
             "bank_account": "678901",
@@ -26,10 +26,10 @@ class TestBuildLedgerStashText:
             ],
         }
         stash = build_ledger_stash_text(
-            "אישור העברה בנקאית\nסכום: 9,440 ₪", analysis, "בנק", source_medium="image"
+            "אישור העברה בנקאית\nסכום: 9,440 ₪", analysis, "הפקדה", source_medium="image"
         )
         assert stash.startswith("📸 התקבלה תמונה של אסמכתת העברה/הפקדה בנקאית.")
-        assert "פעולה: הפקדה" in stash
+        assert "אמצעי תשלום: בנק" in stash
         assert "סכום: 9,440₪" in stash
         assert "תאריך הפקדה: 12/07/2026" in stash
         assert "מספר סניף: 345" in stash
@@ -63,7 +63,7 @@ class TestBuildLedgerStashText:
         assert "סכום קבוע: 1,500 שקל — מקדמה" in stash
 
     def test_missing_fields_render_as_placeholder(self):
-        stash = build_ledger_stash_text(None, {}, "בנק")
+        stash = build_ledger_stash_text(None, {}, "הפקדה")
         assert f"סכום: {_STASH_MISSING}" in stash
         # verbatim frame still present, body is the placeholder
         assert stash.rstrip().endswith(_STASH_MISSING)

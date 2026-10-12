@@ -229,9 +229,9 @@ export async function hideUnmatched(rawName: string): Promise<void> {
 
 // <img> can't carry an Authorization header, so fetch the bytes with auth and hand back an
 // object URL. Callers should revoke it when the element unmounts.
-export async function fetchMediaObjectUrl(path: string): Promise<string> {
+export async function fetchMediaObjectUrl(path: string): Promise<{ url: string; isPdf: boolean }> {
   const resp = await request(path);
   if (!resp.ok) throw new Error(`media ${resp.status}`);
   const blob = await resp.blob();
-  return URL.createObjectURL(blob);
+  return { url: URL.createObjectURL(blob), isPdf: blob.type === "application/pdf" };
 }

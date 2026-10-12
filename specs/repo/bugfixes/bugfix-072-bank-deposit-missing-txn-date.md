@@ -1,7 +1,7 @@
 # Bugfix 072: Bank Deposit Missing txn_date
 
 **Bugfix Branch**: `bugfix/072-bank-deposit-missing-txn-date`
-**Status**: Backlog
+**Status**: Obsolete (2026-10-09) - not reproducible as described: prod bank events do carry `txn_date`; the one null seen was a cash transaction with no date on it. REQ-072-03 (Morning document uses the slip date) was not examined.
 
 ## 1. Description & Business Impact
 

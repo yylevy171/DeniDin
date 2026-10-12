@@ -131,25 +131,19 @@ class TestPDFExtractorThreadsReferenceTimestamp:
         denidin.config.ai_reply_max_tokens = 1000
         return denidin
 
-    def test_today_timestamp_passed_through_to_image_extractor(self, mock_denidin):
-        pdf_extractor = PDFExtractor(mock_denidin)
-        pdf_extractor.image_extractor = Mock()
-        pdf_extractor.image_extractor.analyze_media.return_value = {
-            "raw_response": "page text", "extraction_quality": "high",
-            "warnings": [], "model_used": "gpt-4o", "ledger_events": [],
-        }
-        # A minimal real PDF (single blank page) so PyMuPDF can open it.
-        import fitz
-        doc = fitz.open()
-        doc.new_page()
-        pdf_bytes = doc.tobytes()
-        doc.close()
-        media = Media.from_bytes(pdf_bytes, "application/pdf", "test.pdf")
+    def test_today_timestamp_passed_through_to_capture_ledger_events(self, mock_denidin):
+        """Feature 071: the PDF is one call; the reference timestamp reaches the ledger step."""
+        mock_response = Mock()
+        mock_response.output_text = "TEXT:\nsome text\nCONFIDENCE: high\nNOTES: none"
+        mock_response.output = []
+        mock_denidin.ai_manager.client.responses.create.return_value = mock_response
+        media = Media.from_bytes(b"%PDF-1.4 fake", "application/pdf", "test.pdf")
 
-        pdf_extractor.analyze_media(media, today_timestamp=1706600034)
+        PDFExtractor(mock_denidin).analyze_media(media, today_timestamp=1706600034)
 
-        _args, kwargs = pdf_extractor.image_extractor.analyze_media.call_args
-        assert kwargs.get("today_timestamp") == 1706600034
+        mock_denidin.ai_manager.capture_ledger_events_from_text.assert_called_once_with(
+            mock_response.output_text, today_timestamp=1706600034
+        )
 
 
 class TestMediaHandlerThreadsTimestampAsReferenceTimestamp:

@@ -197,7 +197,7 @@ class TestSingleCallDispatch:
         directly) also carries a number criterion through unchanged."""
         ai_handler.ledger_event_manager.add_ledger_event(
             session_id="s", event={
-                "source_type": "בנק", "event_subtype": "הפקדה", "client_name": "אלי אבירם",
+                "source_type": "הפקדה", "event_subtype": "בנק", "client_name": "אלי אבירם",
                 "payer_name": None, "description": None, "amount": "100",
                 "percent": None, "percent_base": None, "hours": None, "hourly_rate": None,
                 "txn_date": None, "vat_status": "לא צוין", "trigger_condition": None,

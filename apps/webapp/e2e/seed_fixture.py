@@ -166,7 +166,7 @@ def build_full(root: Path) -> dict:
             hours=None, hourly_rate=None, reference=None, reference_hint=None,
             payer_name=None, split_partner=None, split_percent=None)
 
-    # ---- E2: בנק/הפקדה, 8 days back (out of default 7, in 14) --------------------------
+    # ---- E2: הפקדה/בנק, 8 days back (out of default 7, in 14) --------------------------
     d8 = b.day(8, 9, 30)
     b.session("S2", [
         _msg("M20", "user", "הפקדה של בר רפאלי", d8 - timedelta(minutes=4), sender="דוד"),
@@ -174,7 +174,7 @@ def build_full(root: Path) -> dict:
         _msg("M2B", "user", "העברה בנקאית עבור שכר טרחה", d8 - timedelta(minutes=2), sender="דוד"),
         _msg("M2C", "assistant", "הפקדה נרשמה.", d8 + timedelta(minutes=2)),
     ])
-    b.event("E2", source_type="בנק", event_subtype="הפקדה", client_name="דנה כהן",
+    b.event("E2", source_type="הפקדה", event_subtype="בנק", client_name="דנה כהן",
             amount=1200, description="העברה בנקאית עבור שכר טרחה",
             event_date=_ddmmyyyy(d8), event_time="09:30", txn_date=_ddmmyyyy(d8),
             session_id="S2", message_id="M2B",
@@ -219,9 +219,9 @@ def build_full(root: Path) -> dict:
             accounting_document_status_label="שולם",
             accounting_document_payment_method="מזומן", vat_status="כולל מע\"מ")
 
-    # ---- E7: בנק / מבוטל (subtype != הפקדה) -> bank fields IF-EXISTS (absent here) -----
+    # ---- E7: הפקדה / מבוטל (subtype not בנק/צ׳ק) -> bank fields IF-EXISTS (absent here) -----
     d0 = b.day(0, 8, 0)
-    b.event("E7", source_type="בנק", event_subtype="מבוטל", client_name="רון גל",
+    b.event("E7", source_type="הפקדה", event_subtype="מבוטל", client_name="רון גל",
             amount=400, description="הפקדה שבוטלה", event_date=_ddmmyyyy(d0),
             event_time="08:00", session_id=None, message_id=None,
             bank_number=None, bank_branch=None, bank_account=None, vat_status=None)

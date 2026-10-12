@@ -1,150 +1,41 @@
-# Feature Specification: Bank Deposit Full Cycle
+# Feature Specification: Bank Deposit Full Cycle (offer a 320 after bank evidence)
 
-**Feature Branch**: `feature/064-bank-deposit-full-cycle`  
-**Created**: 2026-08-27  
-**Status**: Placeholder — not yet fleshed out, do not implement against this file yet  
-**Dependency**: Blocked by Feature 063 (Dynamic Capability Backbone)
-**Input**: User description: "When an incoming bank deposit image is received, offer to do the full cycle: add a new client if necessary, and create the invoice plus receipt combo that should follow the bank deposit."
+**Feature Branch**: `feature/f64-f66-f71-f99-f100-b72-b73` (bundle with 066, 071, 099 - see `bundle-064-066-071-099/`)
+**Created**: 2026-08-27 · **Specified**: 2026-10-09
+**Status**: Specified (acceptance scenarios approved 2026-10-09) - `speckit.clarify` / `plan` pending
+**Dependency**: Feature 063 (Backbone). Bit / PayBox / cheque images join the trigger once Feature 066 ships.
+**Input**: "After the bot has read and recorded a bank payment image, offer to create the חשבונית מס / קבלה that follows it almost every time - instead of waiting for the user to ask."
 
----
+## Problem
+Today: the user uploads a bank slip image -> the bot extracts and classifies it -> ledger capture records it (resolving the client, adding one if needed) -> the user then, almost every time, asks for a 320 -> the 320 flow runs, resolving everything again. The follow-up request is nearly always the same, so the bot should offer it.
 
-**CRITICAL - MANDATORY REQUIREMENT**:
-🚨 **This feature MUST have a separate `user-stories.md` file** before spec approval:
-- Spec approval is BLOCKED if `user-stories.md` does not exist
-- If user stories are not provided, STOP and request them: "Please provide user stories in Given-When-Then format"
-- See example structure in this section below and in `.github/METHODOLOGY.md §I`
+## Terminology
+- **Bank evidence image**: an image classified as proof of money received (a bank deposit slip today; Bit, PayBox, cheque images after Feature 066).
+- **320**: Morning "חשבונית מס / קבלה" (combined tax invoice + receipt).
+- **The offer**: one closed yes/no question asking whether to create that document from this evidence.
 
-**IMPORTANT**: This spec MUST comply with:
-- **CONSTITUTION.md** (§I-III, §V): Coding standards, UTC timestamps, version control workflow, NO environment variables, Integration tests as E2E
-- **METHODOLOGY.md** (§I, II, VIII, IX, X): Specification-first development, User stories mandatory, Terminology Glossary, Technology Choices, Requirement IDs
+## Requirements
+- **REQ-064-01 (Unchanged flow)**: Extraction, classification, ledger capture, client resolution and adding a new client behave exactly as today. This feature only adds the offer at the end.
+- **REQ-064-02 (When)**: The offer is made once all resolutions of the turn are complete - at the point where the ledger recording is due - and only if the client is resolved. Client resolution may take several turns; the offer waits for the last one.
+- **REQ-064-03 (No offer)**: No offer when the client remains unresolved (ambiguous, or the user declined to add them), when the sender is not godfather/admin, or when the file is not an image.
+- **REQ-064-04 (Offer content)**: A model-written message asking whether to create the 320 from this evidence. It carries no amounts, names or dates - those appear later in the 320 flow's own approval. It is sent with yes/no interactive buttons; a typed yes/no is also accepted (same behaviour as the Feature 047 approval buttons).
+- **REQ-064-05 (Yes)**: Yes starts the existing 320 flow with the evidence's details; that flow's own approval message is still shown and nothing is created before it is approved.
+- **REQ-064-06 (No)**: No gets a short acknowledgement (wording is the model's choice). No document is created; the ledger recording is unaffected.
+- **REQ-064-07 (Anything else)**: If the user ignores the buttons and asks for something else, the offer counts as declined and the new request is handled normally; a typed yes still counts as yes.
+- **REQ-064-08 (Always offer)**: The offer is made every time the conditions hold, with no duplicate detection (the user decides).
+- **REQ-064-09 (Who)**: Godfather/admin in 1:1 chats and in groups (a group turn uses the group's most-permissive member role).
+- **REQ-064-11 (User wins)**: Any explicit instruction from the user that conflicts with the offer (e.g. "don't create a document") takes precedence over it.
+- **REQ-064-10 (Scope)**: Backbone pipeline only; no feature flag (rollback = previous release).
 
-**Required Files & Sections** (per METHODOLOGY.md):
-- ✅ **`user-stories.md`** (MANDATORY) - Given-When-Then format, end-to-end flows, router/integration requirements explicit
-- ✅ **`spec.md`** (this file) - Terminology Glossary, Technology Choices, Requirements with REQ-* identifiers
-- ✅ **`plan.md`** - Phase-based implementation plan
-- ✅ **`tasks.md`** - Dependency-ordered task list
+## Edge cases
+- The user's caption already asks for something: the bot does what the user asks AND the whole of this feature as well, including the offer. If the caption already asks for the 320, that only reinforces the offer (no special case). If the user explicitly says NOT to create a document, the user wins and no offer is made (human decision, 2026-10-09).
+- Two slips in a row: the newer offer supersedes the older; a tap on the older one is ignored by the existing stale-tap guard (assumption).
+- The user taps a button after the offer was superseded or answered: ignored silently (existing guard).
 
----
+## Success criteria
+- **SC-001**: After a slip for a known client, the admin gets the 320 approval message with the slip's details in two taps/messages (yes, then approve), without typing a request.
+- **SC-002**: Declining costs the admin one tap and produces no document.
+- **SC-003**: No offer is ever made for an unresolved client.
 
-## User Stories Reference
-
-**NOTE**: Complete user stories are defined in **`user-stories.md`** file (SEPARATE from this spec).
-
-This section is a QUICK REFERENCE ONLY. The authoritative user stories document has:
-- Complete Given-When-Then acceptance criteria
-- Explicit routing/dispatcher requirements (e.g., "@bot.router.message(type_message='imageMessage')")
-- Complete system flow descriptions (webhook → router → handler → response)
-- Integration test requirements for each story
-
-Example structure (see `user-stories.md` for full version):
-
----
-
-## User Scenarios & Testing *(mandatory)*
-
-<!--
-  IMPORTANT: User stories should be PRIORITIZED as user journeys ordered by importance.
-  Each user story/journey must be INDEPENDENTLY TESTABLE - meaning if you implement just ONE of them,
-  you should still have a viable MVP (Minimum Viable Product) that delivers value.
-  
-  Assign priorities (P1, P2, P3, etc.) to each story, where P1 is the most critical.
-  Think of each story as a standalone slice of functionality that can be:
-  - Developed independently
-  - Tested independently
-  - Deployed independently
-  - Demonstrated to users independently
--->
-
-### User Story 1 - [Brief Title] (Priority: P1)
-
-[Describe this user journey in plain language]
-
-**Why this priority**: [Explain the value and why it has this priority level]
-
-**Independent Test**: [Describe how this can be tested independently - e.g., "Can be fully tested by [specific action] and delivers [specific value]"]
-
-**Acceptance Scenarios**:
-
-1. **Given** [initial state], **When** [action], **Then** [expected outcome]
-2. **Given** [initial state], **When** [action], **Then** [expected outcome]
-
----
-
-### User Story 2 - [Brief Title] (Priority: P2)
-
-[Describe this user journey in plain language]
-
-**Why this priority**: [Explain the value and why it has this priority level]
-
-**Independent Test**: [Describe how this can be tested independently]
-
-**Acceptance Scenarios**:
-
-1. **Given** [initial state], **When** [action], **Then** [expected outcome]
-
----
-
-### User Story 3 - [Brief Title] (Priority: P3)
-
-[Describe this user journey in plain language]
-
-**Why this priority**: [Explain the value and why it has this priority level]
-
-**Independent Test**: [Describe how this can be tested independently]
-
-**Acceptance Scenarios**:
-
-1. **Given** [initial state], **When** [action], **Then** [expected outcome]
-
----
-
-[Add more user stories as needed, each with an assigned priority]
-
-### Edge Cases
-
-<!--
-  ACTION REQUIRED: The content in this section represents placeholders.
-  Fill them out with the right edge cases.
--->
-
-- What happens when [boundary condition]?
-- How does system handle [error scenario]?
-
-## Requirements *(mandatory)*
-
-<!--
-  ACTION REQUIRED: The content in this section represents placeholders.
-  Fill them out with the right functional requirements.
--->
-
-### Functional Requirements
-
-- **FR-001**: System MUST [specific capability, e.g., "allow users to create accounts"]
-- **FR-002**: System MUST [specific capability, e.g., "validate email addresses"]  
-- **FR-003**: Users MUST be able to [key interaction, e.g., "reset their password"]
-- **FR-004**: System MUST [data requirement, e.g., "persist user preferences"]
-- **FR-005**: System MUST [behavior, e.g., "log all security events"]
-
-*Example of marking unclear requirements:*
-
-- **FR-006**: System MUST authenticate users via [NEEDS CLARIFICATION: auth method not specified - email/password, SSO, OAuth?]
-- **FR-007**: System MUST retain user data for [NEEDS CLARIFICATION: retention period not specified]
-
-### Key Entities *(include if feature involves data)*
-
-- **[Entity 1]**: [What it represents, key attributes without implementation]
-- **[Entity 2]**: [What it represents, relationships to other entities]
-
-## Success Criteria *(mandatory)*
-
-<!--
-  ACTION REQUIRED: Define measurable success criteria.
-  These must be technology-agnostic and measurable.
--->
-
-### Measurable Outcomes
-
-- **SC-001**: [Measurable metric, e.g., "Users can complete account creation in under 2 minutes"]
-- **SC-002**: [Measurable metric, e.g., "System handles 1000 concurrent users without degradation"]
-- **SC-003**: [User satisfaction metric, e.g., "90% of users successfully complete primary task on first attempt"]
-- **SC-004**: [Business metric, e.g., "Reduce support tickets related to [X] by 50%"]
+## Assumptions
+Edge-case assumptions above; the offer's tone is left to the model. Whether the interactive-buttons plumbing is reused as-is or extended is a planning matter.

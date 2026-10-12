@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from src.constants.error_messages import (
-    APPROVED_WRITE_NOT_PERFORMED_NOTE, APPROVED_WRITE_POSSIBLY_DUPLICATED_NOTE,
+    APPROVED_WRITE_POSSIBLY_DUPLICATED_NOTE,
 )
 from src.models.config import AppConfiguration
 from src.models.message import AIRequest
@@ -89,7 +89,6 @@ def _save_turn_reply():
 def _assert_document_approval_offered(response):
     assert response.offer_approval_buttons is True
     assert response.response_text == DOC_PROMPT
-    assert APPROVED_WRITE_NOT_PERFORMED_NOTE not in response.response_text
     assert APPROVED_WRITE_POSSIBLY_DUPLICATED_NOTE not in response.response_text
     assert [c["name"] for c in response.mcp_calls] == ["update_client"]
 
