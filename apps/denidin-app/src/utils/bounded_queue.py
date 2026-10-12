@@ -66,14 +66,18 @@ class BoundedQueue(Generic[T]):
         try:
             self._queue.put_nowait(item)
         except queue.Full:
-            self.dropped += 1
-            logger.error(
-                "QUEUE LIMIT EXCEEDED: queue=%s size=%d limit=%d item=%s - item dropped (dropped so far: %d)",
-                self.name, self._queue.qsize(), self.maxsize, item_id or "?", self.dropped)
+            self.note_drop(item_id)
             raise QueueLimitExceeded(f"queue {self.name!r} is full ({self.maxsize})") from None
         if was_empty:
             self.last_progress_at = time.monotonic()
         self.high_water = max(self.high_water, self._queue.qsize())
+
+    def note_drop(self, item_id: str = "") -> None:
+        """Record (ERROR log + counter) that an item was dropped because this queue is full."""
+        self.dropped += 1
+        logger.error(
+            "QUEUE LIMIT EXCEEDED: queue=%s size=%d limit=%d item=%s - item dropped (dropped so far: %d)",
+            self.name, self._queue.qsize(), self.maxsize, item_id or "?", self.dropped)
 
     def put_control(self, item: T) -> None:
         """Enqueue a control item (shutdown sentinel) ignoring the limit, blocking if full."""

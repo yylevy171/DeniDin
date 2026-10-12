@@ -46,6 +46,11 @@ from src.services.reminder_delivery_service import (
     run_startup_reminder_sweep, start_reminder_scheduler,
 )
 from src.services.capability_reset_service import start_capability_reset_scheduler
+from src.intake.denidin_dispatcher import DeniDinDispatcher
+from src.intake.intake_coordinator import IntakeCoordinator
+from src.services.queue_monitor_service import QueueMonitor, start_queue_monitor_scheduler
+from src.services.thread_supervisor import ThreadSupervisor, start_thread_supervisor_scheduler
+from src.utils.bounded_queue import QueueSettings
 from src.services.accounting_reconciliation_service import (
     run_startup_accounting_reconciliation_sweep, start_accounting_reconciliation_scheduler,
 )
@@ -242,6 +247,15 @@ class DeniDin:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         self.typing_keepalive_scheduler: Any = None
         # The turn in progress per chat - what send_progress_update sends through.
         self._turns_in_progress: Dict[str, Tuple[Notification, Any, bool]] = {}
+        # Feature 067: what the poller received and the dispatcher has not handled yet
+        # (IntakeCoordinator), the dispatcher thread, and the queue monitor / thread
+        # supervisor. All None until __main__ builds them (tests, the player: none).
+        self.intake: Any = None
+        self.dispatcher: Any = None
+        self.queue_monitor: Any = None
+        self.thread_supervisor: Any = None
+        self.queue_monitor_scheduler: Any = None
+        self.thread_supervisor_scheduler: Any = None
         self._logger = get_logger(__name__)
 
     def get_collection(self):
@@ -293,7 +307,7 @@ class DeniDin:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         return "godfather"
 
     def store_inbound(self, message: Any, *, content: Optional[str] = None,
-                      internal: bool = False) -> Optional[str]:
+                      internal: bool = False, raise_on_error: bool = False) -> Optional[str]:
         """Stores a message received from the user (a WhatsAppMessage), under its own
         `message.message_id`. `content` defaults to message.text_content. A group
         message is addressed to the group itself.
@@ -303,7 +317,10 @@ class DeniDin:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         it isn't the user's WhatsApp message itself.
 
         A Green API redelivery of a message already stored (same idMessage) is not
-        stored twice. Returns the stored message_id, or None if nothing was stored."""
+        stored twice. Returns the stored message_id, or None if nothing was stored.
+
+        ``raise_on_error`` (Feature 067): the poller must not acknowledge a message it
+        failed to store, so it asks for the failure instead of the usual log-and-None."""
         if self.session_manager is None or not message.chat_id:
             return None
         try:
@@ -326,6 +343,8 @@ class DeniDin:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         except Exception as e:  # pylint: disable=broad-except
             logger.error(f"Failed to store inbound message for {getattr(message, 'chat_id', None)}: {e}",
                          exc_info=True)
+            if raise_on_error:
+                raise
             return None
 
     def store_outbound(self, reply_to: Any, content: str, *,
@@ -396,9 +415,58 @@ class DeniDin:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         received - before any processing, so it's in the session whatever happens to
         the rest of the turn. Returns the WhatsAppMessage, whose message_id is the
         stored message's id."""
+        if self.intake is not None and not internal:
+            # Feature 067: the poller already parsed and stored this message (same
+            # message_id) before acknowledging it - hand the handler that one.
+            prestored = self.intake.prestored_for(notification)
+            if prestored is not None:
+                return prestored
         message = self.whatsapp_handler.process_notification(notification)
         self.store_inbound(message, content=content, internal=internal)
         return message
+
+    # Feature 067: message types the poller stores before acknowledging them, and the
+    # content each is stored with - exactly what its handler stores (a handler's later
+    # receive() then finds it already stored). Types not listed (button taps, edits,
+    # deletes, unsupported types) are stored by their own handler as before.
+    @staticmethod
+    def _prestore_content(type_message: str, notification: Notification) -> Tuple[bool, Optional[str]]:
+        if type_message in ("textMessage", "extendedTextMessage", "contactMessage"):
+            return True, None
+        if type_message in ("imageMessage", "documentMessage", "videoMessage"):
+            file_data = notification.event.get('messageData', {}).get('fileMessageData', {})
+            return True, file_data.get('caption', '') or f"[{file_data.get('fileName', 'file')} sent]"
+        if type_message == "contactsArrayMessage":
+            return True, "[contacts sent]"
+        return False, None
+
+    def prestore(self, notification: Notification) -> Any:
+        """Called by the poller, before it acknowledges the webhook: parses and stores the
+        message when its type is stored at receipt, and returns the WhatsAppMessage (None
+        for other types). A storing failure raises - the poller then does not acknowledge
+        and the webhook is redelivered (REQ-RMH-021)."""
+        type_message = notification.event.get('messageData', {}).get('typeMessage', '')
+        stored_type, content = self._prestore_content(type_message, notification)
+        if not stored_type or self.whatsapp_handler is None:
+            return None
+        message = self.whatsapp_handler.process_notification(notification)
+        self.store_inbound(message, content=content, raise_on_error=True)
+        return message
+
+    def receive_pending(self, chat_id: str) -> Any:
+        """Feature 067, at a model hand-back: the messages that arrived in `chat_id` while
+        the model was working (already stored) - a ``Drained`` (text to attach, media to
+        mention) or None when there is no intake (tests, the player)."""
+        if self.intake is None:
+            return None
+        return self.intake.drain_attachable(chat_id)
+
+    def refresh_typing_indicator(self, chat_id: str) -> None:
+        """Re-fires WhatsApp's typing indicator for the message in progress in `chat_id`
+        (it is cleared client-side whenever a message is delivered). No-op without one."""
+        turn = self._turns_in_progress.get(chat_id)
+        if turn is not None and self.green_api_bot is not None:
+            send_typing_indicator(self.green_api_bot, chat_id, turn[2])
 
     def send_text(self, notification: Notification, text: str, *, wire_context: str = "text") -> Any:
         """Sends a canned/notice reply in `notification`'s chat, and stores it once sent
@@ -477,6 +545,13 @@ class DeniDin:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         billed-test failure (2026-08-03, "attempt to write a readonly
         database") traced to exactly that gap.
         """
+        for sched_name in ("queue_monitor_scheduler", "thread_supervisor_scheduler"):
+            sched = getattr(self, sched_name)
+            if sched is not None:
+                sched.shutdown(wait=False)
+        if self.dispatcher is not None:
+            self._logger.info("Stopping dispatcher thread...")
+            self.dispatcher.stop()
         if self.cleanup_thread:
             self._logger.info("Stopping session cleanup thread...")
             self.cleanup_thread.stop()
@@ -500,6 +575,8 @@ class DeniDin:  # pylint: disable=too-many-instance-attributes,too-many-public-m
             self._logger.info("Stopping typing keep-alive scheduler...")
             self.typing_keepalive_scheduler.shutdown(wait=False)
             self._logger.info("Typing keep-alive scheduler stopped")
+        if self.session_manager is not None and hasattr(self.session_manager, "close"):
+            self.session_manager.close()
         if self.memory_manager is not None:
             self._logger.info("Closing ChromaDB client...")
             self.memory_manager.client.close()
@@ -1693,6 +1770,7 @@ def main() -> None:
         'accounting_ledger_update_freq': startup_config.accounting_ledger_update_freq,
         # Feature 063: idle-reset threshold (minutes) - same must-be-listed-here rule.
         'capabilities_reset_minutes': startup_config.capabilities_reset_minutes,
+        'message_queues': startup_config.message_queues,
         # Feature 069: context-window size for the post-turn ledger recognition call.
         'ledger_recognition_context_window_hours': startup_config.ledger_recognition_context_window_hours,
         # Feature 098: fills the constitution's {{ALLOCATION_THRESHOLD_NIS}} -
@@ -1753,6 +1831,27 @@ def main() -> None:
         lambda chat_id: denidin.user_manager.get_user(chat_id).is_blocked
     )
 
+    # Feature 067: the poller (live_bot) only receives, stores and acknowledges; the
+    # DeniDinDispatcher thread handles what it queued, one message at a time, through the
+    # same dispatch_notification the replay player uses. Queue limits/warnings and thread
+    # supervision (REQ-RMH-033..036) are built here too - started HERE, never inside
+    # initialize_app() (tests call that and must not get background threads).
+    queue_settings = QueueSettings.from_config(denidin.config)
+    denidin.intake = IntakeCoordinator(denidin)
+    live_bot.intake = denidin.intake
+    denidin.dispatcher = DeniDinDispatcher(denidin.intake, dispatch_notification)
+    denidin.queue_monitor = QueueMonitor(queue_settings)
+    denidin.queue_monitor.register(denidin.intake.queues)
+    denidin.queue_monitor.register(lambda: [denidin.session_manager.queue])
+    denidin.thread_supervisor = ThreadSupervisor(queue_settings)
+    denidin.thread_supervisor.register("dispatcher", denidin.dispatcher.is_alive, denidin.dispatcher.start)
+    denidin.thread_supervisor.register(
+        "session-manager-actor", denidin.session_manager.is_alive, denidin.session_manager.start)
+    denidin.dispatcher.start()
+    denidin.queue_monitor_scheduler = start_queue_monitor_scheduler(denidin.queue_monitor, queue_settings)
+    denidin.thread_supervisor_scheduler = start_thread_supervisor_scheduler(
+        denidin.thread_supervisor, queue_settings)
+
     # bugfix-076 (2026-09-07): localhost-only /health server + heartbeat writer, for the
     # prod-only external health-check prober. Started FIRST among this block - deliberately
     # BEFORE the reminder/accounting-reconciliation/daily-roll startup sweeps below, which is a
@@ -1780,9 +1879,10 @@ def main() -> None:
             morning_mcp_locator=denidin.morning_mcp_locator,
             memory_manager=denidin.memory_manager,
             log_path=resolve_log_path(),
+            thread_supervisor=denidin.thread_supervisor,
         )
         # bugfix-069: report-only fields (e.g. whatsapp_authorized) - never fail status.
-        info_fns = build_health_info_fns(green_api=live_bot.api)
+        info_fns = build_health_info_fns(green_api=live_bot.api, queue_monitor=denidin.queue_monitor)
         start_health_server(denidin.config.health_check_port, check_fns, info_fns)
         start_heartbeat_thread()
 
@@ -1864,6 +1964,13 @@ def main() -> None:
             if denidin.daily_roll_scheduler is not None:
                 logger.info("Stopping daily-summary roll scheduler...")
                 denidin.daily_roll_scheduler.shutdown(wait=False)
+
+            # Feature 067: stop the dispatcher thread and the queue monitor / thread supervisor
+            for scheduler in (denidin.queue_monitor_scheduler, denidin.thread_supervisor_scheduler):
+                if scheduler is not None:
+                    scheduler.shutdown(wait=False)
+            if denidin.dispatcher is not None:
+                denidin.dispatcher.stop()
 
             # Raise KeyboardInterrupt to break out of message_source.start()'s
             # blocking bot.run_forever() call, below.
