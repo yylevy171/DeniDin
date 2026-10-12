@@ -5,8 +5,8 @@
 **Revised**: 2026-10-11 — Feature 090 ("Removing the Concept of a Turn") folded in; the design was
 re-clarified one question at a time with the product owner (see Clarifications, Session
 2026-10-11). This revision **supersedes** the 2026-08-30 discard-and-merge-turn design.
-**Status**: In progress — spec revised 2026-10-11; acceptance scenarios approved and `speckit.plan`
-completed 2026-10-12 (`plan.md`, `research.md`, `data-model.md`, `contracts/`, `quickstart.md`). Next: `speckit.tasks`.
+**Status**: In progress — spec revised 2026-10-11; acceptance scenarios approved; `speckit.plan`, `speckit.tasks`
+and `speckit.analyze` (all findings fixed) completed 2026-10-12. Implementation in progress.
 **Priority**: P2 (first-pass estimate)
 **Absorbs**: Feature 090 (obsolete, folded in — `specs/repo/features/090-remove-turn-concept/`).
 **Input**: User description (2026-08-30): "Today the denidin bot responds 1:1 to any message
@@ -30,7 +30,7 @@ works."
   new behavior.
 
 **Required Files**: `user-stories.md` ✅ · `spec.md` (this file) ✅ · `plan.md` ✅ · `data-model.md` ✅ ·
-`contracts/` ✅ · `research.md` ✅ · `quickstart.md` ✅ · `tasks.md` ⏳
+`contracts/` ✅ · `research.md` ✅ · `quickstart.md` ✅ · `tasks.md` ✅
 
 ---
 
@@ -284,7 +284,8 @@ Authoritative stories with Given-When-Then criteria are in **`user-stories.md`**
   queue, then enqueue the stored message for the dispatcher. A message whose store fails MUST NOT be
   acknowledged (the upstream redelivers it).
 - **REQ-RMH-022**: The replay/export player path MUST remain synchronous and unchanged.
-- **REQ-RMH-023**: At most one message MUST be handled by the model at a time per chat.
+- **REQ-RMH-023**: At most one message MUST be handled at a time (a single dispatcher thread, so
+  also at most one per chat).
 - **REQ-RMH-024**: A failure while handling one item MUST be logged (sleep 5s, continue) and MUST
   NOT stop handling of later messages.
 - **REQ-RMH-025**: Thread safety MUST come from `queue.Queue` (whose internal locks are approved,
@@ -302,13 +303,13 @@ Authoritative stories with Given-When-Then criteria are in **`user-stories.md`**
   stored** in the chat history (product owner, 2026-10-12: a full intake means something is very
   wrong). The poller therefore checks for room **before** storing.
 - **REQ-RMH-034**: A queue MUST raise a WARNING when its size reaches a configurable warning size
-  (default well below the limit), and when it has had items waiting without any being taken for
+  (default 50% of the limit), and when it has had items waiting without any being taken for
   longer than a configurable number of seconds (a stall). Warnings repeat at a bounded rate, not
   once per item.
 - **REQ-RMH-035**: Queue depths, limits, last-taken times and dropped counts for **both** queues
-  MUST be observable (logged periodically at INFO when non-empty, and reported in `/health`), so a
+  MUST be observable: numeric depths, limits and counts are logged periodically at INFO when non-empty, and `/health` carries report-only boolean fields (queues within limits, no stalled queue) because `/health` fields are pass/fail, so a
   growing or stalled queue is noticed without anyone having to look.
-- **REQ-RMH-036**: A supervisor MUST check every second-scale interval that the dispatcher thread and
+- **REQ-RMH-036**: A supervisor MUST check every few seconds (configurable, default 5 s) that the dispatcher thread and
   the `SessionManager` actor thread are alive. A thread that dies MUST be logged at CRITICAL and
   restarted (the queue survives, so nothing queued is lost; the item in flight fails loudly, never
   hangs its caller). Repeated deaths (a configurable count within a configurable time) MUST make

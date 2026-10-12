@@ -61,7 +61,7 @@ machinery (D16). The dispatcher-private `deferred` list and media backlog are no
 ### D4 — Hand-back merge
 In `Backbone._run_resolution_loop`, after a round's tool calls have run and before the follow-up
 `responses.create`, the loop asks the coordinator (through `DeniDin`) to **drain** that chat's
-attachable pending bodies. For each: `receive()` it (stores it), then append a user input item to
+attachable pending bodies. For each: take the message the poller already stored (`receive()` returns the pre-stored message, it does not store again), then append a user input item to
 the round's `input`, **after** the `function_call_output` items:
 `outputs + pending_user_items`. The item text carries the message timestamp and a before/after
 marker relative to the model's last output (contract `hand-back-merge.md`).
@@ -195,11 +195,10 @@ None (product owner, 2026-10-12). Rollback is the previous release.
   limit, item id; dropped counter++); `last_get_at`; `size()`; high-water mark. All queues
   (per-chat intake, `arrival`, `SessionManager`'s) are `BoundedQueue`s — one tech, one set of behavior.
 - Config (names settled in tasks.md): per-queue max, a warning size, a stall-seconds threshold,
-  defaults in `config.example.json` (intake e.g. 500 / session e.g. 200 / warn at 50% / stall 30 s).
+  defaults in `config.example.json` — a `message_queues` block: `intake_max_per_chat` 500, `intake_max_total` 2000, `session_max` 200, `warn_fraction` 0.5, `stall_seconds` 30, `monitor_interval_seconds` 10, `supervisor_interval_seconds` 5, `supervisor_max_restarts` 3, `supervisor_window_seconds` 600, `session_call_timeout_seconds` 60, `slow_call_seconds` 5.
 - A `QueueMonitor` (an existing APScheduler job style, every ~10 s) logs WARNING when a queue's
   size ≥ warning size or `size > 0` and `now - last_get_at` > stall seconds (rate-limited), logs INFO
-  depths when non-empty, and publishes depths/limits/dropped counts into `/health`'s info
-  (report-only fields; they do **not** by themselves flip `status`, like `whatsapp_authorized`).
+  depths when non-empty, and publishes **boolean** fields into `/health`'s info (`build_health_info_fns` fields are pass/fail strings): `queues_within_limits` and `queues_not_stalled`, report-only like `whatsapp_authorized`; numeric depths/limits/dropped go to the INFO log line. Thread liveness is a real `build_health_check_fns` check (flips `status`).
 - The `SessionManager` facade waits on its `Future` with a bounded timeout and raises loudly;
   operations slower than a threshold are logged at WARNING with their name.
 - *Why this answers "the store queue blows up unnoticed":* it is bounded (hard stop + ERROR),
