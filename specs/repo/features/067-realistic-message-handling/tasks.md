@@ -2,7 +2,6 @@
 
 **Feature Branch**: `feature/067-realistic-message-handling` | **Spec**: `./spec.md` | **Plan**: `./plan.md`
 
-
 **Format**: `- [ ] Txxx [P?] [USn?] Description with file path` — `[P]` = parallelizable (different
 files, no unfinished dependency). Paths are relative to `apps/denidin-app/` unless they start with
 `specs/`, `apps/`, `.github/` or `scripts/`.
@@ -29,7 +28,7 @@ files, no unfinished dependency). Paths are relative to `apps/denidin-app/` unle
 
 ## Phase 1: Setup
 
-- [ ] T001 Add the queue-safety config keys with documented defaults to `config/config.example.json` and `src/models/config.py` (`AppConfiguration` fields + `validate()`): intake max messages per chat (e.g. 500), arrival max, `SessionManager` queue max (e.g. 200), warning size (fraction/number), stall seconds (30), supervisor restart window and max restarts, `SessionManager` call timeout, slow-operation threshold
+- [ ] T001 Add a `message_queues` config block with defaults to `config/config.example.json` and `src/models/config.py` (`AppConfiguration` + `validate()`): `intake_max_per_chat` 500, `intake_max_total` 2000, `session_max` 200, `warn_fraction` 0.5, `stall_seconds` 30, `monitor_interval_seconds` 10, `supervisor_interval_seconds` 5, `supervisor_max_restarts` 3, `supervisor_window_seconds` 600, `session_call_timeout_seconds` 60, `slow_call_seconds` 5. Absent block = these defaults (existing configs keep working)
 - [ ] T002 **[HUMAN GATE]** Ask the human to approve adding those keys to `config/config.dev.json`, `config/config.prod.json`, `config/config.test.json` (gitignored) *before any test run*; do not edit them without that approval
 - [ ] T003 [P] Create package skeletons `src/intake/__init__.py`, `tests/unit/intake/__init__.py`, `tests/integration/intake/__init__.py`
 
@@ -46,9 +45,9 @@ files, no unfinished dependency). Paths are relative to `apps/denidin-app/` unle
 - [ ] T007 [P] **Task A** Unit tests for `BoundedQueue` in `tests/unit/test_bounded_queue.py`: full queue raises `QueueLimitExceeded` and the item is dropped; every further put fails until room; `last_get_at`, `size`, high-water mark, dropped counter; ERROR log content (RED) — **await human approval**
 - [ ] T008 **Task B** Implement `src/utils/bounded_queue.py` (`BoundedQueue` wrapping `queue.Queue(maxsize)`, `put_or_raise`, `get`, `get_nowait`, `QueueLimitExceeded`) until T007 is GREEN
 - [ ] T009 [P] **Task A** Unit tests for `QueueMonitor` in `tests/unit/test_queue_monitor_service.py`: WARNING at warning size; WARNING when `size>0` and no `get` for the stall seconds; rate-limited repeats; periodic INFO depths when non-empty (RED) — **await human approval**
-- [ ] T010 **Task B** Implement `src/services/queue_monitor_service.py` (scheduler job in the style of `reminder_delivery_service.py`; reads registered queues) and publish depths/limits/dropped/last-taken into `/health` info via `src/services/health_server.py` / `build_health_info_fns` (report-only; does not flip `status`)
+- [ ] T010 **Task B** Implement `src/services/queue_monitor_service.py` (scheduler job in the style of `reminder_delivery_service.py`; reads registered queues) and add boolean report-only fields `queues_within_limits` / `queues_not_stalled` via `build_health_info_fns` in `src/services/health_server.py` (its fields are pass/fail strings); numeric depths/limits/dropped/last-taken are INFO log lines
 - [ ] T011 [P] **Task A** Unit tests for `ThreadSupervisor` in `tests/unit/test_thread_supervisor.py`: a dead thread is logged CRITICAL and restarted; the in-flight item's future is failed, not left hanging; more than N deaths in the window makes the health info report non-ok; a per-item exception never ends a loop (RED) — **await human approval**
-- [ ] T012 **Task B** Implement `src/services/thread_supervisor.py` and wire its health signal into `/health` so the existing prober restarts the container on repeated deaths
+- [ ] T012 **Task B** Implement `src/services/thread_supervisor.py` and add a `threads_alive` check to `build_health_check_fns` in `src/services/health_server.py` (flips `status`) so the existing prober restarts the container on repeated deaths
 
 ### 2c — `SessionManager` as an actor (REQ-RMH-029)
 
@@ -56,7 +55,7 @@ files, no unfinished dependency). Paths are relative to `apps/denidin-app/` unle
 - [ ] T014 **Task A** Concurrency integration test `tests/integration/test_session_manager_concurrency.py`: two threads hammer `add_message` and `set_approval_message_id`/`set_active_capabilities` on one chat — assert no lost update, no duplicate `order_num`, no half-read `session.json` (RED against the current class, GREEN after T016) — **await human approval**
 - [ ] T015 **Task B** Move the current `SessionManager` body to `src/managers/session_store.py` as `SessionStore` (behavior unchanged, single-thread-only; internal calls stay direct)
 - [ ] T016 **Task B** Rewrite `src/managers/session_manager.py` as the actor facade: same constructor `SessionManager(denidin)` and public signatures, explicit forwarding methods (no `__getattr__`), one `BoundedQueue` of `(operation, args, kwargs, Future)`, one daemon thread, bounded wait, slow-operation WARNING, `close()`; register its queue with the monitor and its thread with the supervisor
-- [ ] T017 Enumerate every other component that touches session files and route it through the facade: audit `src/managers/message_integrity.py` (reads `session.json` directly), `src/services/daily_summary_roll_service.py`, `src/services/capability_reset_service.py`, `player/`, backfill/migration scripts under `scripts/`; list findings in `research.md`. (`apps/webapp/backend` is a separate read-only process and is out of scope.)
+- [ ] T017 Route every other direct session-file reader/writer through the facade: `src/managers/message_integrity.py` (reads `session.json` directly → use `get_session`), and audit `src/services/daily_summary_roll_service.py`, `src/services/capability_reset_service.py`, `player/`, backfill/migration scripts under `scripts/`; list findings in `research.md`. (`apps/webapp/backend` is a separate read-only process, out of scope.)
 - [ ] T018 [P] Make sure every place that constructs `SessionManager` (`denidin.py:554`, tests' fixtures in `conftest.py`, `BackfillDeniDin`, `WebappDeniDin`) starts/stops the thread cleanly (`close()` in `DeniDin.shutdown`, fixtures' teardown)
 - [ ] T019 Run the full unit + integration suite through `scripts/run_unit_integration_tests.sh` and fix regressions caused by T015–T018 only (stop and report at the first failure)
 
@@ -73,7 +72,7 @@ files, no unfinished dependency). Paths are relative to `apps/denidin-app/` unle
 - [ ] T021 [P] [US1] **Task A** Unit tests `tests/unit/intake/test_denidin_dispatcher.py`: calls only the injected `dispatch(type, notification)`; sets the pre-stored message before dispatch; an exception is logged, sleeps 5 s, loop continues; never exits on an item error (RED) — **await human approval**
 - [ ] T022 [P] [US1] **Task A** Unit tests `tests/unit/test_pending_messages.py`: item text format with timestamp and "before"/"after" the model's last output; group `[sender]` prefix; media note line; empty list → no items (RED) — **await human approval**
 - [ ] T023 [US1] **Task A** Integration test `tests/integration/intake/test_producer_dispatcher_flow.py`: real webhook bodies through the real producer (`DeniDinGreenAPIBot.run_forever` with a local fake Green API HTTP layer), coordinator, dispatcher and router: order preserved, message stored **before** `deleteNotification`, a failed store is **not** acknowledged, a full intake drops the message **without storing**, nothing lost, the player path (no coordinator) unchanged (RED) — **await human approval**
-- [ ] T024 [US1] **Task A** Integration test `tests/integration/test_backbone_hand_back_merge.py`: a fake model client returns a tool call then `send_to_user`; messages queued after the first call appear in the follow-up `input` after the `function_call_output`; none are attached on the `send_to_user` round; nothing attached when no coordinator (RED) — **await human approval**
+- [ ] T024 [US1] **Task A** Integration test `tests/integration/test_backbone_hand_back_merge.py`: an OpenAI-SDK-boundary fake (the only mock; CONSTITUTION §I/§V) returns a tool call then `send_to_user`; messages queued after the first call appear in the follow-up `input` after the `function_call_output`; none are attached on the `send_to_user` round; nothing attached when no coordinator (RED) — **await human approval**
 - [ ] T025 [US1] **Task B** Implement `src/intake/intake_coordinator.py` (`IntakeCoordinator(denidin)`; per-chat `BoundedQueue`s + `arrival`; classification per D5) until T020 is GREEN
 - [ ] T026 [US1] **Task B** Implement `src/intake/denidin_dispatcher.py` (`DeniDinDispatcher`; thread; supervised) until T021 is GREEN
 - [ ] T027 [US1] **Task B** Implement `DeniDin.prestore(notification)` (same content rules each handler uses today), make `DeniDin.receive()` return the pre-stored message instead of storing twice, add `DeniDin.receive_pending(chat_id)` and the `denidin.intake` attribute — in `denidin.py`
@@ -114,9 +113,9 @@ files, no unfinished dependency). Paths are relative to `apps/denidin-app/` unle
 
 **Goal**: timestamps and before/after markers are visible; the model may ask when confused; it finishes a pending approval before the next request.
 
-- [ ] T041 [US5] Write the "Messages that arrive while you work" section in `config/prompts/backbone.md` (REQ-RMH-009/026/028: how to read timestamps and before/after, combine messages, ask when confusing, finish a pending approval before starting the next request, short replies answer the most recent pending question)
-- [ ] T042 [P] [US5] Add one-line cross-references in `config/prompts/capabilities/cap_invoicing_write.md`, `cap_reminders_write.md`, `cap_ledger_query.md`, `cap_approval_with_buttons.md`, `cap_send_to_user.md` (REQ-RMH-027)
-- [ ] T043 [US5] Unit test `tests/unit/test_backbone_prompt_boundaries.py` asserting the section and the cross-references exist (Task A/B in one: documentation guard) — **human approval of the test**
+- [ ] T041 [US5] **Task A** Unit test `tests/unit/test_backbone_prompt_boundaries.py` asserting the backbone section and cross-references exist (RED) — **await human approval**
+- [ ] T041b [US5] **Task B** Write the "Messages that arrive while you work" section in `config/prompts/backbone.md` (REQ-RMH-009/026/028: read timestamps and before/after, combine messages, ask when confusing, finish a pending approval before the next request, short replies answer the most recent pending question)
+- [ ] T042 [P] [US5] **Task B** Add one-line cross-references in `config/prompts/capabilities/cap_invoicing_write.md`, `cap_reminders_write.md`, `cap_ledger_query.md`, `cap_approval_with_buttons.md`, `cap_send_to_user.md` (REQ-RMH-027)
 
 ## Phase 8: User Story 6 — A single image fits in (P2)
 
@@ -155,12 +154,36 @@ Scenarios A1–A8 in `user-stories.md` are approved; this phase turns them into 
 ## Phase 13: Polish & cross-cutting
 
 - [ ] T057 [P] Update existing documentation to this model (REQ-RMH-031): `CLAUDE.md` (message flow, Architecture, test notes), `.github/ARCHITECTURE.md`, `.github/CONSTITUTION.md`/`METHODOLOGY.md` mentions of "turn" and the "no locks / queue" rule, `apps/denidin-app/README.md` and `docs/`
-- [ ] T058 **Rename "turn"** (REQ-RMH-030) in separate, reviewable steps, running the suite after each: (a) `single_turn`→`handle_message`, `begin_turn`/`end_turn`→`mark_chat_busy`/`mark_chat_idle`, `_turns_in_progress`→`_busy_chats` in `src/` + `denidin.py`; (b) the backbone's `_turn_*` attributes → descriptive per-message names; (c) `turn_context` and other identifiers; (d) test names, fixtures and comments across `tests/` (111 files); (e) prompts under `config/prompts/` and `config/*.md`; (f) remaining docs. **Not** touched: `specs/done/`, `CHANGELOG.md`/`RELEASES.md`, logs, persisted data, git history. Final check: `grep -rniw turn` over code, tests, prompts and docs returns only the exclusions above
+- [ ] T058 **Rename "turn"** (REQ-RMH-030; renaming inside approved tests is covered by the product owner's explicit 2026-10-12 instruction, names only, no assertion changes) in separate, reviewable steps, running the suite after each: (a) `single_turn`→`handle_message`, `begin_turn`/`end_turn`→`mark_chat_busy`/`mark_chat_idle`, `_turns_in_progress`→`_busy_chats` in `src/` + `denidin.py`; (b) the backbone's `_turn_*` attributes → descriptive per-message names; (c) `turn_context` and other identifiers; (d) test names, fixtures and comments across `tests/` (111 files); (e) prompts under `config/prompts/` and `config/*.md`; (f) remaining docs. **Not** touched: `specs/done/`, `CHANGELOG.md`/`RELEASES.md`, logs, persisted data, git history. Final check: `grep -rniw turn` over code, tests, prompts and docs returns only the exclusions above
 - [ ] T059 [P] Run lint and type checks (`python3 -m pylint src/ --fail-under=7.0 --rcfile=.pylintrc`, `python3 -m mypy src/ --config-file=mypy.ini`) and fix findings in the new modules
+- [ ] T059b Guard test `tests/unit/test_067_no_flag_no_abort.py` (REQ-RMH-010/015/020): no 067 feature flag in `AppConfiguration`/`config.example.json`; no cancel/abort of a model call and no end-of-handling marker in the backbone/dispatcher modules — **human approval of the test**
 - [ ] T060 Re-check the spec's requirement list (REQ-RMH-001…036) against the implementation; mark any gap; update `spec.md` Status and the "Required Files" line
 - [ ] T061 Close out per the finish-up flow **only when the human says "haleluya"** (never on my own): spec symlink moves, PR, merge — no release, no deploy
 
 ---
+
+## Requirement traceability
+
+| Requirements | Tasks |
+|---|---|
+| RMH-001/002/003/004/005 | T020–T031 |
+| RMH-006 | T046–T047 |
+| RMH-007/008 | T022, T030, T035–T036 |
+| RMH-009/026/027/028 | T041–T042 |
+| RMH-010/015/020 | T059b |
+| RMH-011/012 | T039–T040 |
+| RMH-013/018 | T024, T031 |
+| RMH-014 | T048–T049 |
+| RMH-016 | T050–T051 |
+| RMH-017 | T037–T038 |
+| RMH-019/019a/019b | T044–T045 |
+| RMH-021/022/023/024/032 | T021, T023, T026–T029, T056 |
+| RMH-025/029 | T013–T019 |
+| RMH-033/034/035/036 | T007–T012, T020–T021 |
+| RMH-030 | T058 |
+| RMH-031 | T057 |
+
+Plan phases → task phases: 0 → 2a, 0b → 2c, 0c → 2b, 1 → 3, 2 → 3/4, 3 → 5/10/11, 4 → 8, 5 → 7, 5b → 13, 6 → 12.
 
 ## Dependencies & order
 
