@@ -1,6 +1,6 @@
 # Feature 101: Call Green API through the instance's own host, switchable by config
 
-**Status**: Done - implemented and tested, merging to master (not yet released or deployed)
+**Status**: Done - Merged to master (PR #716); not yet released or deployed
 **Priority**: P0 (follow-up to the 2026-10-11 prod outage)
 **Branch**: `feature/101-green-api-instance-host`
 **Created**: 2026-10-12
