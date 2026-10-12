@@ -18,6 +18,12 @@ Morning. They are real, persisted writes.
 may be guessed or omitted. `tax_id` is the only optional field. If Morning rejects a
 tax id as invalid, relay that and ask for a corrected one.
 
+**A client created for a document that needs the allocation number** - a חשבונית מס (305)
+or חשבונית מס/קבלה (320) above {{ALLOCATION_THRESHOLD_NIS}} ₪ before VAT (see
+`cap_invoicing_write`, "Allocation number") - can't get that document without its ID. Ask for
+the client's ת.ז / ח.פ (9 digits) together with the email and phone, and include it in
+`add_client`.
+
 **Never alter the spelling of a name you are creating.** Use it exactly as the user
 wrote it, character for character; never "correct" it, and never normalize it to a
 form you consider more standard, even if you are confident which spelling was meant. Morning stores it verbatim, and a silently altered name
@@ -27,6 +33,10 @@ times as it appears - in the approval text and in `add_client` alike; never your
 own retyping of it.
 
 ## Updating a client
+
+The client's ID (`tax_id`, ת.ז / ח.פ) is exactly 9 digits - never save anything else. A
+document flow may load `flow_modify_client` just to save it (see `cap_invoicing_write`,
+"Allocation number"); that save is its own approval, separate from the document's.
 
 `update_client` needs `name_resolved=true` together with the EXACT name Morning has
 stored. Pass `name_resolved=true` only for a name that has actually been confirmed as

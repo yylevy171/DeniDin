@@ -3,15 +3,17 @@
 Real text-only OpenAI + real Morning sandbox. NO MOCKING.
 
 US2: when the operator has DeniDin create a Morning document in-conversation, the
-resulting `חשבונית` ledger event is captured **synchronously** that turn (spec
-US2/US3), against the exact resolved (seeded) client, carrying the real Morning
-document number — and NO VAT clarifying question is asked (a type-320 combo
-document carries VAT by definition).
+resulting `חשבונית` ledger event is captured after the create (spec US2/US3),
+against the exact resolved (seeded) client, carrying the real Morning document
+number — and NO VAT clarifying question is asked (a type-320 combo document
+carries VAT by definition). The amount is above the allocation threshold and the
+client has no ID (Feature 098): the ID is asked for and saved first, each write
+with its own approval.
 
 Same three steps as every Feature 069 acceptance test — seed / drive / assert —
 against the static `morning_create_us2` manifest (`resolution.mode: none`: no
-client-resolution detour, only the mutation-approval gate the shared driver
-answers itself).
+client-resolution detour; the driver answers the ID question and the
+mutation-approval gates).
 
 Run:
     scripts/run_single_test.sh "tests/billed/test_e2e_ledger_069_morning_create_billed.py::<node>"
@@ -42,16 +44,17 @@ class TestLedgerPostTurnCaptureMorningCreate:
 
     def test_us2_morning_create_is_captured_synchronously(self, denidin_app):
         """A type-320 `create_combo_document` in-conversation → exactly one
-        `חשבונית` ledger event that turn, against the exact resolved client, with
-        the document's own Morning number — no VAT question anywhere."""
+        `חשבונית` ledger event, against the exact resolved client, with the
+        document's own Morning number — no VAT question anywhere. 11,800 ₪ is
+        above the allocation threshold: the client's ID is saved first."""
         manifest = seed_scenario(denidin_app, "morning_create_us2")
         name = manifest["resolution"]["name"]
         trigger_epoch = int(time.time())
-        events, transcript, _ = drive_capture(
+        events, transcript, event_epoch = drive_capture(
             denidin_app, "morning_create_us2", id_prefix="F069_US2",
-            base_ts=trigger_epoch, max_turns=6,
+            base_ts=trigger_epoch, max_turns=8,
             first_text=(
-                f"תפיק ל{name} חשבונית מס-קבלה על סך 1,200 ש\"ח עבור ייעוץ משפטי. "
+                f"תפיק ל{name} חשבונית מס-קבלה על סך 11,800 ש\"ח עבור ייעוץ משפטי. "
                 f"שולם היום בהעברה בנקאית."
             ),
         )
@@ -72,7 +75,7 @@ class TestLedgerPostTurnCaptureMorningCreate:
         ), f"DeniDin must NOT ask a VAT clarifying question for a type-320 combo document"
 
         # bugfix-071: the 320's approval states VAT as included, and Morning
-        # stores the 1,200 with the VAT inside it (it was stored VAT-exempt).
+        # stores the 11,800 with the VAT inside it (it was stored VAT-exempt).
         approval_labels = [
             approval_vat_label(t.get("reply")) for t in transcript
             if approval_vat_label(t.get("reply")) is not None
@@ -82,7 +85,7 @@ class TestLedgerPostTurnCaptureMorningCreate:
         )
         combo_calls = [c for c in create_calls if c["name"] == "create_combo_document"]
         assert combo_calls, f"expected a create_combo_document (320), got {create_calls!r}"
-        assert_stored_vat(combo_calls[0], 1200)
+        assert_stored_vat(combo_calls[0], 11800)
 
         events = persisted_ledger_events_for_chat(denidin_app, GODFATHER_CHAT_ID)
         invoice_events = [e for e in events if e["source_type"] == "חשבונית"]
@@ -90,5 +93,5 @@ class TestLedgerPostTurnCaptureMorningCreate:
             f"exactly one חשבונית ledger event expected, got {len(invoice_events)}: {events!r}"
         )
         assert_ledger_event_matches_manifest(
-            denidin_app, invoice_events, "morning_create_us2", trigger_epoch,
+            denidin_app, invoice_events, "morning_create_us2", event_epoch,
         )

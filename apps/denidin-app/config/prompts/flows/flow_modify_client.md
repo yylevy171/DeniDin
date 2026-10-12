@@ -1,6 +1,6 @@
 # Flow: Modify client
 
-Goal: change an existing client's own details in Morning, on the one client the user really means.
+Goal: change an existing client's own details in Morning (name, email, phone, ID - ת.ז / ח.פ), on the one client the user really means.
 
 Capabilities: `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons`.
 
@@ -15,4 +15,4 @@ Follow these steps in order, to the letter.
 3. Changing a client MUST be approved by the user first. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Act only on a clear yes. On a no, do nothing, and use `cap_send_to_user` to ask what to change.
 4. On a yes, make the change. If the action fails, use `cap_send_to_user` to tell the user plainly what happened. Retry once only if the reason is fixable; otherwise stop.
 5. If the user drops the request or changes the subject mid-way, do nothing further and treat the flow as complete.
-6. End. Use `cap_send_to_user` to report the outcome. Then unload `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
+6. End. Use `cap_send_to_user` to report the outcome - unless another flow loaded this one to save a detail it needs (e.g. the client's ID before issuing a document): then don't report separately; return to that flow, which continues in the same turn and mentions the saved detail in its next message. Then unload `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.

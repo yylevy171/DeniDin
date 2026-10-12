@@ -21,6 +21,15 @@ class AppConfiguration:
     # for one environment was silently reachable while the other was
     # supposed to be exclusively active). 'dev', 'prod', or 'test'.
     environment: Optional[str] = None
+    # Feature 101: which Green API host the app calls. 'fixed' (default) = the shared generic host
+    # the library hardcodes (https://api.green-api.com), i.e. the behavior before this feature;
+    # 'instance' = the instance's own host, derived from the first four digits of
+    # green_api_instance_id (src/utils/green_api_bot.py's instance_api_host). Lives in
+    # config.<env>.json so it can be flipped either way with a restart, no release.
+    green_api_host_mode: str = 'fixed'
+    # Feature 101: optional override for Green API's media host (file uploads, i.e.
+    # sendFileByUpload). None = the library default.
+    green_api_media_host: Optional[str] = None
     ai_model: str = 'gpt-5.6-luna'
     # Vision model for image/document processing - not a mini/lightweight variant
     # (Feature 024: gpt-4o-mini silently declined to call the ledger-event tool
@@ -86,6 +95,14 @@ class AppConfiguration:
     # call sees as its context window (float; DI only, never an env var). Older
     # messages are excluded from the recognition input. Default 1.0.
     ledger_recognition_context_window_hours: float = 1.0
+
+    # Feature 098: a tax invoice (305) or tax invoice/receipt (320) whose amount
+    # before VAT EXCEEDS this needs an allocation number (מספר הקצאה), so the
+    # client must have an ID. Used ONLY to fill the runtime constitution's
+    # {{ALLOCATION_THRESHOLD_NIS}} placeholder. morning-mcp-app enforces the rule
+    # from its OWN copy of this value (its config's allocation_threshold_nis) -
+    # DeniDin never calls or imports it. Change both together.
+    allocation_threshold_nis: float = 5000
 
     # Health monitoring (bugfix-043) - localhost-only /health HTTP endpoint for
     # the prod-only external health-check prober. 0 = disabled (no server
@@ -161,6 +178,8 @@ class AppConfiguration:
             'ai_embedding_model': 'text-embedding-3-large',
             'ai_reply_max_tokens': 1000,
             'max_retries': 1,
+            'green_api_host_mode': 'fixed',
+            'green_api_media_host': None,
             'log_level': 'INFO',
             'data_root': 'data',
             'godfather_phone': None,
@@ -174,6 +193,7 @@ class AppConfiguration:
             'accounting_ledger_update_freq': 0,
             'capabilities_reset_minutes': 0,
             'ledger_recognition_context_window_hours': 1.0,
+            'allocation_threshold_nis': 5000,
             'logging': {}
         }
 
@@ -300,6 +320,11 @@ class AppConfiguration:
         if not isinstance(self.max_retries, int) or isinstance(self.max_retries, bool) or self.max_retries < 0:
             raise ValueError(f"max_retries must be a non-negative integer, got {self.max_retries!r}")
 
+        # Validate green_api_host_mode (Feature 101) - a typo must fail loudly at startup, not
+        # silently pick one of the two hosts
+        if self.green_api_host_mode not in ('instance', 'fixed'):
+            raise ValueError(f"green_api_host_mode must be 'instance' or 'fixed', got {self.green_api_host_mode!r}")
+
         # Validate log_level is INFO or DEBUG
         if self.log_level not in ['INFO', 'DEBUG']:
             raise ValueError(f"log_level must be 'INFO' or 'DEBUG', got '{self.log_level}'")
@@ -327,6 +352,14 @@ class AppConfiguration:
             raise ValueError(
                 "ledger_recognition_context_window_hours must be a positive number, "
                 f"got {self.ledger_recognition_context_window_hours!r}"
+            )
+
+        # Validate allocation_threshold_nis is a positive number (Feature 098)
+        if (not isinstance(self.allocation_threshold_nis, (int, float))
+                or isinstance(self.allocation_threshold_nis, bool)
+                or self.allocation_threshold_nis <= 0):
+            raise ValueError(
+                f"allocation_threshold_nis must be a positive number, got {self.allocation_threshold_nis!r}"
             )
 
         # Validate reminders.max_active_reminders is a positive integer, if configured

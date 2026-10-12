@@ -127,3 +127,13 @@ def test_mask_secret_handles_short_values():
 
 def test_mask_secret_handles_empty_value():
     assert mask_secret("") == "***"
+
+
+def test_client_tax_id_required_error_returns_its_own_message_verbatim():
+    """Feature 098: ClientTaxIdRequiredError is a ValueError too - it must be
+    caught before the generic branch, which would replace its actionable
+    Hebrew "ask for the client's ID" message with "❌ הבקשה אינה תקינה"."""
+    from denidin_mcp_morning.tools import ClientTaxIdRequiredError
+
+    exc = ClientTaxIdRequiredError("❌ לא ניתן להפיק את המסמך: ללקוח X אין ת.ז / ח.פ במערכת.")
+    assert friendly_error_message(exc, "corr-1") == str(exc)

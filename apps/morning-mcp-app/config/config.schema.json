@@ -33,7 +33,17 @@
       "description": "Which environment this container/process IS - read by watchdog.py against shared/active_env.json to detect a stale/mismatched container (2026-07-21 incident: a container for one environment stayed silently reachable while only the other was supposed to be active)."
     },
     "default_currency": { "type": "string", "default": "ILS" },
-    "default_vat_rate": { "type": "number", "default": 0.17 },
+    "default_vat_rate": {
+      "type": "number",
+      "default": 0.18,
+      "description": "VAT rate as a fraction (0.18 = 18%). Feature 098 uses it to derive a document's pre-VAT amount for the allocation check."
+    },
+    "allocation_threshold_nis": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "default": 5000,
+      "description": "Feature 098: a tax invoice (305) or tax invoice/receipt (320) whose amount before VAT EXCEEDS this needs an allocation number (מספר הקצאה), so it is refused for a client with no 9-digit ID. denidin-app keeps its own copy of this value (its config's allocation_threshold_nis) - change both together."
+    },
     "refresh_before_seconds": {
       "type": "integer",
       "default": 300,

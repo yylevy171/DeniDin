@@ -21,7 +21,10 @@ from typing import Any, Callable, List, Optional
 from whatsapp_chatbot_python import Notification
 
 from src.sources.message_source import MessageSource
-from src.utils.green_api_bot import DeniDinGreenAPIBot, mark_message_read
+from src.utils.green_api_bot import DeniDinGreenAPIBot, instance_api_host, mark_message_read
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 # The full set of message types denidin.py's live dispatch table registers
 # (see denidin.py's handler functions) - kept here so a caller that doesn't
@@ -127,9 +130,22 @@ class GreenAPIMessageSource(MessageSource):
         shutdown.
         """
         if self.bot is None:
+            # Feature 101: green_api_host_mode picks the API host. 'instance' = the instance's own
+            # host (None -> the library default for a placeholder/test id); 'fixed' (the config
+            # default) = always the library default. The media host stays on the library default
+            # unless configured.
+            host = (instance_api_host(self._config.green_api_instance_id)
+                    if self._config.green_api_host_mode == 'instance' else None)
+            media = self._config.green_api_media_host
+            logger.info(
+                f"Green API hosts: mode={self._config.green_api_host_mode}, "
+                f"api={host or 'library default'}, media={media or 'library default'}"
+            )
             self.bot = self._bot_factory(
                 self._config.green_api_instance_id,
                 self._config.green_api_token,
+                host=host,
+                media=media,
             )
         return self.bot
 

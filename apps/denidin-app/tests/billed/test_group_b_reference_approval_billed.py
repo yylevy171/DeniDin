@@ -39,12 +39,15 @@ from __future__ import annotations
 import json
 import logging
 import re
+from typing import Optional
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 import pytest
 
 from tests.billed.denidin_mcp_e2e_helpers import (  # noqa: F401
+    VALID_TAX_ID,
+    _seed_client,
     GODFATHER_CHAT_ID,
     VAT_FROM_ORIGINAL,
     _calls_for,
@@ -98,12 +101,14 @@ def _seed_invoice_305(amount: int, description: str) -> tuple[str, str]:
     return client_name, str(invoice_number)
 
 
-def _seed_transaction_account_300(amount: int, description: str) -> tuple[str, str]:
+def _seed_transaction_account_300(amount: int, description: str,
+                                  client_name: Optional[str] = None) -> tuple[str, str]:
     """Seed a fresh type-300 חשבון עסקה for a brand-new client, VAT-inclusion
     stated explicitly up front (sidesteps the model's own mandatory VAT
     question - this test is about the approval's reference-data content, not
-    that separate flow). Returns (client_name, document_number)."""
-    client_name = pick_existing_client()["name"]  # Feature 059 item 5: any valid client works here
+    that separate flow). `client_name`: an already-seeded client to use instead
+    (Feature 098: one whose ID is on file). Returns (client_name, document_number)."""
+    client_name = client_name or pick_existing_client()["name"]  # Feature 059 item 5: any valid client works here
     _, ai_response = _send_turn(
         GODFATHER_CHAT_ID,
         f"תפתח חשבון עסקה עבור {client_name} על סך {amount} ₪ כולל מע״מ, עבור {description}",
@@ -259,9 +264,15 @@ class TestGroupBReferenceApprovalBilled:
     def test_combo_document_against_existing_transaction_account_shows_reference_data(self, denidin_app):
         """create_combo_document_as_reference (320) closing an existing type-300 חשבון
         עסקה. Uses today's tool name - will be updated to
-        create_combo_document_as_reference by this bugfix's rename task."""
-        amount = _random_amount()
-        client_name, doc_number = _seed_transaction_account_300(amount, _random_description())
+        create_combo_document_as_reference by this bugfix's rename task.
+
+        Feature 098: the account is above the allocation threshold (11,8xx ₪
+        including VAT) and its client has an ID on file, so closing it asks
+        nothing about the ID."""
+        amount = 11800 + _random_amount()
+        client_name = _seed_client(GODFATHER_CHAT_ID, "B038_BILLED_COMBOREF_SEED", tax_id=VALID_TAX_ID)[0]
+        client_name, doc_number = _seed_transaction_account_300(
+            amount, _random_description(), client_name=client_name)
 
         approval_text, approve_ai_response = _send_turn_and_approve_capturing_approval(
             GODFATHER_CHAT_ID,
@@ -270,8 +281,9 @@ class TestGroupBReferenceApprovalBilled:
             tool_name="create_combo_document_as_reference",
         )
 
+        assert "הקצאה" not in approval_text, f"asked about the ID although it is on file: {approval_text!r}"
         _assert_reference_data_present(
-            approval_text, client_name=client_name, doc_number=doc_number, amount=amount
+            approval_text.replace(",", ""), client_name=client_name, doc_number=doc_number, amount=amount
         )
         close_calls = _calls_for(approve_ai_response, "create_combo_document_as_reference")
         assert close_calls and close_calls[0]["error"] is None, (
