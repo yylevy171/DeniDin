@@ -26,7 +26,9 @@ from tests.e2e_helpers import create_real_notification, get_response, sanity_wor
 
 logger = logging.getLogger(__name__)
 
-CLIENT = "ישראל ישראלי"
+# A real client of the Morning sandbox (tests/fixtures/morning_sandbox_clients.json): the flow resolves
+# the client in Morning before reading the Agreements DB, so an invented name is "not found".
+CLIENT = "אדיר זריהון"
 APPEAL = "ייצוג בבית הדין הארצי"
 DAMAGES = "תביעת נזיקין"
 
@@ -189,7 +191,7 @@ class TestAgreementsWhatsAppBilled:
         events_before = len(self._agreement_events(config, agreement_id))
 
         self._say(chat, phone, f"בערעור של {CLIENT} תוסיף את עו״ד כהן כשותף ב-25%, "
-                                "והמשלם הוא בעצם ההסתדרות ולא ישראל", "t1")
+                                "והמשלם הוא בעצם ההסתדרות ולא אדיר", "t1")
         assert denidin_app.agreements_manager.get_agreement(agreement_id)["partner_name"] is None, "wrote before approval"
 
         self._say(chat, phone, "כן", "t1_yes")
@@ -204,7 +206,7 @@ class TestAgreementsWhatsAppBilled:
         agreement = self._seed(denidin_app)
         agreement_id = agreement["agreement_id"]
 
-        self._say(chat, phone, f"תוסיף רכיב חדש להסכם הערעור של {CLIENT}: 1,500 ש״ח על כל דיון נוסף "
+        self._say(chat, phone, f"תוסיף רכיב חדש להסכם הערעור של {CLIENT}: 1,500 ש״ח כולל מע״מ על כל דיון נוסף "
                                 "מעבר לקבוע מראש", "a1")
         assert len(denidin_app.agreements_manager.get_agreement(agreement_id)["components"]) == 2, "wrote before approval"
 
@@ -215,6 +217,7 @@ class TestAgreementsWhatsAppBilled:
         assert added["amount"] == 1500
         assert added["trigger_condition"], "the per-hearing condition must be stored as the trigger"
         assert added["status"] == "Pending"
+        assert added["vat_status"] and "לא" not in added["vat_status"], "the stated VAT (included) must be stored"
 
     def test_uat_5_5a_complete_single_component(self, denidin_app, config):
         phone, chat = self._godfather(config)
