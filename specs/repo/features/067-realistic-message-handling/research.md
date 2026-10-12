@@ -1,269 +1,164 @@
-> **⛔ SUPERSEDED (2026-10-11):** written for the turn-based discard-and-merge design (with a feature flag). `spec.md` was revised when Feature 090 was folded in — no turns, hand-back merging, no flag. Redo with `speckit.plan` against the Feature 063 backbone; reuse only what still applies (e.g. research D4's finding that a running model call cannot be safely aborted).
+# Research: Realistic Message Handling — Conversation Without "Turns"
 
-# Phase 0 Research: Realistic Message Handling — Multiple Interfering Messages
+**Date**: 2026-10-12 | **Spec**: `./spec.md` | **Plan**: `./plan.md`
 
-**Feature**: `feature/067-realistic-message-handling` · **Date**: 2026-08-30
-
-This document records the design decisions that need a rationale, the third-party behaviours the
-design leans on and their verification status (CONSTITUTION "NO UNVERIFIED THIRD-PARTY
-ASSUMPTIONS"), and every accepted residual risk (REQ-RMH-021a, REQ-RMH-025).
-
----
-
-## D1 — Producer/consumer split instead of a debounce timer
-
-**Decision**: A background producer thread drains the Green API queue continuously; a single
-consumer thread runs turns one at a time. No "wait N milliseconds for more messages" timer.
-
-**Rationale**: The user explicitly rejected a debounce window ("No window… a follow-up only
-matters if it arrives before the reply to the earlier message has been sent"). The only thing
-that makes an interfering message noticeable is that polling never stops during a turn — today's
-`run_forever` does not fetch the next notification until the current turn fully returns. Splitting
-poll (producer) from process (consumer) is the minimal change that gives us a live view of the
-queue while a turn runs, without introducing artificial latency on the common no-burst case.
-
-**Alternatives considered**:
-- *Debounce timer* — rejected by the user; also adds latency to every single-message turn.
-- *Async/await rewrite of the whole path* — far larger blast radius; `AIHandler`, the Green API
-  library, and every handler are synchronous; out of scope.
-- *Second worker for parallelism* — violates REQ-RMH-023 (at most one turn per chat) and every
-  existing "no parallel turns" assumption in session/approval handling.
+Findings are from the code as of 2026-10-12 (master `1ebbe55a` merged). Anything about a
+third-party system (OpenAI, Green API) that has not been seen in a real response is listed under
+"Verification items" and is **not** assumed (CONSTITUTION: no unverified third-party assumptions).
+Nothing was run during planning.
 
 ---
 
-## D2 — Lock-free concurrency (`threading.Event` + `collections.deque`, no `Lock`/`queue.Queue`)
+## Facts established from the code
 
-**Decision**: The only cross-thread primitives are:
-- one `threading.Event` per in-flight turn (`active_turn[chat_id].cancelled`) — producer calls
-  `.set()`, the turn thread calls `.is_set()` at round boundaries. One-way, monotonic.
-- one `collections.deque` as the producer→consumer work handoff — producer `.append(...)`,
-  consumer `.popleft()`; consumer blocks on a short `Event.wait(timeout=...)` / poll when empty.
-- plain dict/list state inside `IntakeCoordinator` (`pending_text`, `active_turn`, `carryover`),
-  keyed by `chat_id`.
+| # | Fact | Where |
+|---|------|-------|
+| F1 | The live loop is serial: `run_forever` polls one notification, runs the hook, calls `router.route_event(body)` (which runs the whole handler **synchronously on the polling thread**), then `deleteNotification`. While a message is handled, nothing is polled. | `src/utils/green_api_bot.py` `DeniDinGreenAPIBot.run_forever` |
+| F2 | A message is stored the moment it is received (`DeniDin.receive` → `store_inbound`), before any AI work. Each message is its own file; `SessionManager.add_message` also updates `session.json` (message ids, counters) — shared state. | `denidin.py:393`, `src/managers/session_manager.py:383` |
+| F3 | The reply is sent **after** `single_turn` returns. `send_to_user` / `approval_with_yes_no_buttons` end the resolution loop and hand back the final text; `_process_conversational_message` then sends it. Progress updates go out inline through `DeniDin.send_progress_update`. | `denidin.py:741+`, `backbone.py:_execute_round_calls` |
+| F4 | Backbone rounds: first call = rolling 14-day window + the new message; follow-up calls chain with `previous_response_id` and send only `function_call_output` items. Instructions and tools are rebuilt every round. | `backbone.py:609-680` |
+| F5 | The backbone's approval is stateless buttons; `Session.approval_message_id` (one per chat) holds the id of the last approval-buttons message; `resolve_button_tap` ignores a tap whose `stanzaId` differs. | `backbone.py:996-1040` |
+| F6 | Media enters the backbone raw as an `AIRequest` carrying **one** `Media`; `analyze_media` reads `turn_context["media"]` (that one file). | `denidin.py:_process_media_message_via_backbone`, `capabilities/media_analysis/handler.py:147` |
+| F7 | The model's own Morning tool results are in its call chain (`mcp_call` items in `response.output`); the backbone already collects them (`_turn_mcp_calls`). | `backbone.py:812`, `ai_manager.py:616` |
+| F8 | The replay/export player calls `dispatch_notification` synchronously and never constructs the live bot. | `denidin.py`, Feature 043 |
+| F9 | `DeniDin` is the object every manager/AI implementation takes as its only constructor argument; cross-references are read at use time and None-guarded (REQ-063-08). | `CLAUDE.md` Feature 063 |
 
-No `threading.Lock`, `RLock`, `Semaphore`, or `queue.Queue` — per the user's explicit standing
-instruction (spec Clarifications; memory `feedback_tdd_gate_only_billed_no_locks`: "never add
-threading.Lock without asking first").
+## Decisions
 
-**Rationale**: The topology is strict single-producer / single-consumer. Under CPython the GIL
-makes `deque.append` / `deque.popleft` individually atomic, and a dict insert/lookup/delete on
-distinct keys is atomic — the coordinator never does a read-modify-write across threads that
-would need a critical section. This mirrors the project's established precedent:
-`send_proactive_message` documents its shared-`requests.Session` race as "an accepted, unmitigated
-residual risk" (explicit user decision 2026-08-16); `SessionCleanupThread` uses a plain bool
-`_running`; the APScheduler services run lock-free against shared conversation state.
+### D1 — Producer / worker split behind the live bot only
+`run_forever` becomes a **producer**: poll → hook → hand the raw body to an `IntakeCoordinator` →
+acknowledge immediately. A single **worker thread** pulls bodies and calls the same
+`router.route_event(body)` the loop calls today, so every existing handler runs unchanged on the
+worker. When no coordinator is attached (player, tests that build a bot without one) `run_forever`
+is the current synchronous code, byte-for-byte.
+*Why*: it is the smallest change that lets polling continue during a model call (F1). The worker
+stays **single and global**, exactly as serial as today (one chat's long exchange still delays
+another chat — unchanged, out of scope).
+*Rejected*: per-chat worker threads (new concurrency surface, no requirement for it); making
+handlers async (large rewrite).
 
-**Enumerated shared-state accesses and their accepted outcomes**:
+### D2 — The producer never touches session state
+The producer only parses `chatId`/`typeMessage`, appends the raw body to that chat's deque and
+sets a wake-up `threading.Event`. Persisting happens on the worker (F2: `add_message` mutates
+`session.json`; two writers without a lock would lose updates).
+*Consequence*: REQ-RMH-003's "persisted immediately" is satisfied at the **next hand-back /
+exchange start**, not at the instant of receipt. Combined with ack-immediately this is the
+accepted crash window (D8).
 
-| Interaction | Threads | Outcome without a lock | Accepted? |
-|---|---|---|---|
-| Producer `.append` to the work `deque` while consumer `.popleft`s | P + C | atomic under GIL; no item lost or duplicated | ✅ |
-| Producer sets `active_turn[chat_id].cancelled` while the turn thread reads `.is_set()` | P + C | `Event` is designed for exactly this; worst case the check is one round late (still a round boundary, still before the reply is sent) | ✅ |
-| Producer appends to `pending_text[chat_id]` (a list) while consumer drains it after cancel | P + C | `list.append` is atomic under GIL; consumer drains by swapping the list reference out first (`buf, self.pending_text[cid] = self.pending_text[cid], []`) — a message appended in the swap window lands in the fresh list and is folded into the *next* turn, never dropped | ✅ |
-| Burst message lands in the exact instant the turn transitions "in flight" → "reply sent" | P + C | if `active_turn[chat_id]` is still set, `cancelled` is raised but the turn has already passed its last round boundary → the reply is sent AND the burst message starts a fresh turn (one extra reply, never a lost message, never a double action) | ✅ — same "one extra reply" outcome as flag-OFF |
-| Consumer clears all per-chat state in `on_turn_finished` while producer submits a new message for that chat | P + C | producer either sees `active_turn=None` (→ new work item, correct) or the just-cleared state (→ new work item, correct); the clear is a sequence of atomic dict ops, no torn read that matters | ✅ |
+### D3 — Lock-free structures
+Per chat: a `collections.deque` of raw bodies (producer `append`, worker `popleft` — each end is
+touched by exactly one thread, operations are atomic under the GIL). A global `arrival` deque of
+chat ids preserves cross-chat arrival order; the worker skips a chat id whose deque is already
+empty (its bodies were drained at a hand-back). No `Lock`/`RLock`/`Semaphore`/`queue.Queue`
+(REQ-RMH-025). The wake-up is a `threading.Event` (the permitted one-way flag).
+Worker-only structures (the per-chat `deferred` list, the media backlog) need no protection.
 
-**Residual risk explicitly accepted**: the "burst message in the send-transition instant" row —
-it can produce one extra reply (the fresh-turn reply) in a sub-millisecond window. This is
-strictly no worse than flag-OFF behaviour (which always replies per message) and never causes a
-double side effect or a lost message. Documented here per REQ-RMH-025.
+### D4 — Hand-back merge
+In `Backbone._run_resolution_loop`, after a round's tool calls have run and before the follow-up
+`responses.create`, the loop asks the coordinator (through `DeniDin`) to **drain** that chat's
+attachable pending bodies. For each: `receive()` it (stores it), then append a user input item to
+the round's `input`, **after** the `function_call_output` items:
+`outputs + pending_user_items`. The item text carries the message timestamp and a before/after
+marker relative to the model's last output (contract `hand-back-merge.md`).
+- A `send_to_user` / approval round does **not** drain: the reply is sent as is (spec). Bodies
+  still queued simply become the next exchange, which starts from the rolling window — it already
+  contains the sent reply and (once persisted) everything else.
+- Plain-text-only rounds (reminded once to use `send_to_user`) also drain on the follow-up.
+- Progress updates are not a separate case: they are a tool call → a round → a drain.
 
-**If this proves insufficient in practice**: the fallback is a single `threading.Lock` around the
-`IntakeCoordinator` state transitions — but that requires separate explicit human approval before
-being added (REQ-RMH-025), and is not part of this plan.
+### D5 — What is attachable
+Only text-bearing types from non-blocked senders: `textMessage`, `extendedTextMessage`,
+`contactMessage`. Everything else (`interactiveButtonsResponse` taps, `contactsArrayMessage`,
+edited/deleted, error types, a blocked sender) is **deferred**: moved, in order, to the worker's
+per-chat `deferred` list and dispatched later through the normal `route_event` path. Order
+within a chat is preserved (deferred items run before newer queued ones).
 
----
+### D6 — Media (REQ-RMH-019/019a/019b)
+At a drain, a media body is `receive()`d (stored as `[<filename> sent]` or its caption, with
+timestamp), **noted** to the model (a one-line "a file arrived at HH:MM:SS" item), and moved to
+the chat's **media backlog** (worker-only). When the current exchange has nothing more owed, the
+worker dispatches the backlog item through the normal media path, in arrival order. The media
+handler must not store it a second time: the worker passes the already-received
+`WhatsAppMessage` (looked up by `message_id`) so `_process_media_message` skips `receive`.
+`analyze_media` is untouched (one file at a time). Multi-media in one exchange = Feature 102.
 
-## D3 — Acknowledge (`deleteNotification`) immediately, before the turn
+### D7 — Approved-write exchanges do not drain (REQ-RMH-014)
+`Backbone.single_turn` already computes `_turn_is_approved_write` = (an approval was pending) AND
+(the incoming message is an affirmative reply — a typed "כן" or a button tap, which is
+synthesised as "כן") (`backbone.py:496-500`). When it is true the exchange runs with draining
+**off**: messages arriving meanwhile stay queued and become the next exchange. A "לא" is not a
+write, so it drains normally. No new state. *(V4 resolved by reading.)*
 
-**Decision**: On the flag-ON path the producer calls `deleteNotification(receiptId)` as soon as
-it has read the notification and handed the body to the coordinator — not after the turn
-completes (which is today's order in `run_forever`).
+### D14 — The stale-tap guard must stop clearing on every new message (REQ-RMH-017)
+**Conflict found:** `single_turn` clears `Session.approval_message_id` at the start of *every*
+exchange (`backbone.py:501`, "any new turn supersedes whatever approval buttons were
+outstanding"). So today an unrelated message already makes an older approval's buttons stale —
+the opposite of REQ-RMH-017 and acceptance scenario A7. Change: clear it only when
+(a) the exchange is the answer to it (a typed or tapped affirmative/negative reply — the existing
+`approval_was_pending` branch), or (b) a newer approval-buttons message is sent
+(`record_sent_message_id` overwrites it, as now). An unrelated message no longer clears it.
+Cancelled-by-the-model has no mechanism today; see Open Question Q1.
 
-**Rationale**: (a) A burst is exactly the case where a turn takes many seconds; holding the ack
-that long keeps the notification eligible for Green API redelivery (~32s, per
-`RecentNotificationDeduper`'s existing TTL comment) and inflates the deduper's job. (b) The
-consumer may discard the turn that "owns" a given `receiptId` and re-process its text inside a
-merged turn — there is no longer a clean 1:1 "this turn finished, ack its notification" mapping,
-so acking per-turn-completion is not even well-defined once coalescing is in play. Acking on
-receipt is the only order that stays coherent.
+### D13 — Timestamps in history (REQ-RMH-007)
+`SessionManager._render_history_item` returns `{role, content}` with **no timestamp** (V5
+resolved). The backbone's rolling-window call gets an opt-in parameter that prefixes each user
+item's content with its Israel-local time (`[HH:MM:SS dd/mm]`); the default stays off so the legacy
+`AIHandler` path is byte-identical. Hand-back items carry the same format plus the before/after
+marker. Because a message's rendered text never changes once stored, the prefix is stable for
+prompt caching.
 
-**Accepted residual risk (REQ-RMH-021a)**: if the process crashes between the ack and the turn
-completing, that message (and any buffered burst siblings already acked) is lost — Green API will
-NOT redeliver it. Today's order loses nothing in that window because the ack hasn't happened yet.
-This is a real regression in crash-recovery for a narrow window, accepted by explicit clarify
-decision. Mitigations already in place: the consumer mirrors the live loop's log-sleep-5s-continue
-posture (REQ-RMH-024) so a *turn* exception does not crash the process; only a hard process kill
-hits this window. Messages not yet acked (still in the producer's hand or mid-read) are
-redelivered and handled as new messages on restart (spec Edge Cases).
+### D8 — Acknowledge on receipt; crash window accepted
+`deleteNotification` is called right after the body is handed to the coordinator. A process crash
+before the worker has persisted that body loses the message with no redelivery. The window is the
+length of the exchange in progress (up to ~a minute), larger than serial mode's. Accepted by the
+product owner (2026-08-30 clarification, restated in the spec); no extra journal file is added
+(it would be a new durable-state mechanism for a case the spec already accepts). Logged at INFO
+on enqueue and drain so a loss is at least traceable.
+*Alternative kept for the record*: acknowledge only after the worker persists — safer, but it
+means the unacknowledged notification is redelivered by Green API on every poll while the worker
+is busy, which the existing notification deduper would have to absorb; rejected as a larger
+behavior change.
 
-**Verification status**: Green API's redelivery-of-un-acked-notification behaviour is already
-relied on by `RecentNotificationDeduper` (documented ~32s redelivery). **OPEN**: confirm that
-figure still holds and that an *acked* notification is definitively not redelivered — a single
-observation during Phase 0 or the `quickstart.md` manual run suffices (send a message, ack it,
-confirm it never reappears in `receiveNotification`).
+### D9 — Typing indicator
+When a drain attaches messages, `send_typing_indicator` is re-fired (REQ-RMH-018), as
+`send_progress_update` already does after each progress message.
 
----
+### D10 — Model-facing instructions (REQ-RMH-009/026/027/028)
+A new section in `config/prompts/backbone.md`, "Messages that arrive while you work": how to read
+the timestamp/before-after markers; combined messages are one conversation; ask when the
+sequence is confusing; **finish a pending approval before starting the next request**; a short
+reply answers the most recent pending question in the same context. Each capability prompt that
+can write (`cap_invoicing_write`, reminders, ledger) gets a one-line cross-reference. The legacy
+`runtime_constitution.md` is untouched (backbone only).
 
-## D4 — Round-boundary cancellation only; a single model HTTP call is allowed to return
+### D11 — No turn vocabulary in new code
+New names: `IntakeCoordinator`, `IntakeWorker`, `drain_attachable`, `HandBack`, `pending
+messages`. Existing `begin_turn`/`end_turn`/`single_turn`/`_turn_*` names are **not** renamed in
+this feature (a rename is a separate, mechanical change; flagged to the product owner).
 
-**Decision**: `cancel_check` is consulted only between discrete steps — before the first
-`responses.create`, at the top of each `_run_local_tool_dispatch_loop` iteration (before
-dispatching any local tool and before the follow-up `responses.create`), and before
-`_finalize_response`. A `responses.create` call already in flight is never aborted mid-request.
+### D12 — Flag
+None (product owner, 2026-10-12). Rollback is the previous release.
 
-**Rationale**: The OpenAI Responses API path here is a code-controlled loop of discrete blocking
-`responses.create` calls (`timeout=30.0`, `max_retries` at client level), no streaming. There is
-no safe way to cancel a running `responses.create` from another thread without tearing down the
-shared client. A 30s worst-case wait for one in-flight call to return before the merged turn
-starts is acceptable — the common burst case is messages arriving 1–5s apart while the model is
-still on its *first* call, which we catch at the very next boundary.
+## Verification items (Gate Zero — before building on them; none were run in planning)
 
-**Server-side tool execution nuance**: remote MCP tools (Morning invoicing) are executed
-**server-side by OpenAI, atomically within one `responses.create`**. We cannot interrupt that.
-What we *can* do is detect, on return, what was executed — see D5.
+| # | Question | How to verify | Blocks |
+|---|----------|---------------|--------|
+| V1 | Does `responses.create` accept a **user message item alongside `function_call_output` items** in one `input` array when chaining with `previous_response_id`? | One real `billed` probe call (text only) | D4 |
+| V2 | When a call returns, is every server-side Morning tool call fully present in `response.output` and nothing still running? | Inspect an existing logged real `mcp_call` response, or one billed run | D4 summary, SC-004 |
+| V3 | *(Mostly resolved by reading.)* `Router.route_event(event: dict)` takes a plain dict and builds the `Notification` inside the observers, so the worker can run a stored body. Still open: `api.session` (a `requests.Session`) is then used by the poller (receive/delete) and the worker (sends) concurrently. | One local integration test with a concurrent poll + send; see R5 | D1 |
+| V4 | *(Resolved — see D7/D14.)* | — | — |
+| V5 | *(Resolved — see D13.)* History items have no timestamps. | — | — |
+| V6 | Does post-reply `_run_post_turn_ledger_recognition` behave correctly when an exchange covered several user messages (it takes one `reply_text`)? | Read it; one integration test | A1/A2 |
 
-**Alternatives considered**:
-- *Kill the HTTP call* — no clean mechanism; risks a half-read response and a poisoned client.
-- *Check a flag inside a streaming loop* — would require switching to streaming; larger change;
-  still can't un-execute a server-side MCP call.
+## Residual risks (documented, not locked away)
 
----
-
-## D5 — Detecting side effects a discarded turn already caused
-
-**Decision**: On a positive `cancel_check` after a `responses.create` has returned, the journal is
-built from:
-1. **Server-side MCP calls** — `response.output` items with `type == "mcp_call"` (the same list
-   `_finalize_response` already builds into `AIResponse.mcp_calls` at `ai_handler.py:2936-2945`),
-   each carrying `name` / `arguments` / `output` / `error`. An item present with no `error` is a
-   real document/action created in Morning.
-2. **Local ledger events already persisted this turn** — `_handle_ledger_event_capture` writes one
-   immutable JSON file per event mid-turn; any file already written before the interruption is
-   real and stays. The journal records its `event_id` + a human summary.
-3. **Reminder writes** — only happen on a "כן" approval-execution turn, which is
-   **non-interruptible** (D7), so in practice a reminder write is never in a discarded turn. If
-   that ever changes, the same "already committed → journal it" rule applies.
-
-Items that mean **nothing executed** and are therefore NOT journalled: `response.output` items
-with `type == "mcp_approval_request"` (`ai_handler.py:2967-2970`) — the model is *asking* to run
-a tool, it has not run. Proposed local tool calls not yet dispatched — likewise.
-
-**Verification status — OPEN**: confirm that once `responses.create` returns, every server-side
-MCP call it performed is fully represented in `response.output` and nothing is still executing
-server-side ("the call can return, but … we KNOW what it did when it returns"). This is almost
-certainly true (the Responses API is request/response, not a background job), but per CONSTITUTION
-it must be confirmed against a real response — achievable by inspecting an existing
-`billed`/`expensive` test log that already captured a real `mcp_call` output item, or one fresh
-`billed` run of an existing Morning-tool test. No new test needed just for this.
-
----
-
-## D6 — Journal delivery via a dedicated `AIRequest.system_note` field, after the date line
-
-**Decision**: The journal reaches the merged turn's model call through a new
-`AIRequest.system_note: str = ""` field. `ai_handler.py` assembles `instructions` as it does
-today — constitution text, then recalled memory context, then a `---` separator, then the
-per-call Israel-local date line — and **then**, only if `system_note` is non-empty, appends it.
-
-**Rationale**: `instructions` today is ordered specifically so the constitution (~4.0K tokens,
-byte-identical every call) is the stable prefix that OpenAI's automatic prompt caching keys on;
-everything that varies (memories, date) comes after. The date line already breaks the cached
-prefix, so appending `system_note` *after* it costs nothing more in cache terms — the
-constitution + memories bytes stay identical to a non-`system_note` call. Putting the journal in
-`user_prompt` instead would work but muddies "what the user said" with "what the system is
-telling the model", and the user chose the dedicated field in clarify.
-
-**Journal text shape**: built from the structured records in D5, never free model text, e.g.
-
-```
-[מערכת — פעולות שכבר בוצעו בתור קודם שבוטל, ואי אפשר לבטלן. דווח עליהן למשתמש אם רלוונטי, ואל תנסה לבצע אותן שוב:
-- נוצרה קבלה מס' 1234 עבור לקוח X על סך ₪500 (בוצע במערכת החשבוניות)
-- נרשם אירוע יומן: הסכם שכ"ט 10% מול Y]
-```
-
-The model's obligations around this note (factor it in, report if relevant, do NOT re-attempt)
-are specified in the new `runtime_constitution.md` section (REQ-RMH-014/026).
-
-**Lifecycle**: `carryover[chat_id]` holds the structured records; it is set when a cancelled
-result comes back and cleared by `on_turn_finished(chat_id)` once the merged turn's reply is
-actually sent (REQ-RMH-015).
-
----
-
-## D7 — The "כן"/"לא" approval-execution turn is non-interruptible
-
-**Decision**: `cancel_check` is NOT passed into `_resolve_pending_approval`,
-`_resolve_pending_local_tool_approval`, or `_call_openai_approval_api`. When `get_response` takes
-the approval-resolution branch, it runs to completion and returns a normal reply regardless of
-any burst.
-
-**Rationale**: `_call_openai_approval_api` runs with `.with_options(max_retries=0)` specifically
-because of the past double-invoice incident (bugfix-022) — it is the one path where a retry could
-double-charge a client. Making it interruptible would reintroduce exactly the class of risk that
-guard exists to prevent: a burst mid-execution could leave the approval half-resolved, or trigger
-a re-resolution that runs the invoicing action twice. The user chose non-interruptible in clarify
-as "the safest choice against double-execution of a real invoicing action."
-
-**Consequence**: burst messages that arrive during an approval-execution turn are buffered by the
-coordinator and coalesced into the **next** fresh turn (they do not merge into the approval turn,
-and no journal is produced because nothing was discarded). Verified by IT-2b / SC-007.
-
----
-
-## D8 — Feature flag read once at process start
-
-**Decision**: `config.feature_flags.realistic_message_handling` is read once in `denidin.py`
-`__main__` and passed into `GreenAPIMessageSource`. `run_forever` branches on the value the
-`DeniDinGreenAPIBot` was given; it is never re-read mid-session.
-
-**Rationale**: The flag decides the *thread topology* of the process (one loop vs. producer +
-consumer). Re-reading it mid-run would mean tearing down and rebuilding threads live — pointless
-complexity for a flag that changes only on a deliberate operator redeploy. `runtime_constitution.md`
-hot-reloads on mtime; a *feature flag* does not, and shouldn't. When OFF, no `IntakeCoordinator`
-is constructed and `run_forever` executes its current body verbatim (REQ-RMH-021).
-
-**Verification status**: N/A — this is an internal wiring decision, no third-party behaviour.
-
----
-
-## D9 — Typing indicator re-fired on a merged turn
-
-**Decision**: When the consumer starts a merged turn, `_process_conversational_message` calls
-`send_typing_indicator(...)` again for that chat (REQ-RMH-017a).
-
-**Rationale**: `sendTyping` has a fixed ~20s window (`typingTime=20000`) and no renewal (Feature
-048, reverted to single-call). A discarded turn's typing indicator may well have lapsed by the
-time the merged turn starts; re-firing is one cheap best-effort call (already never raises) and
-keeps the UX honest that DeniDin is still working. No downside — `sendTyping` is idempotent from
-the user's view.
-
-**Verification status**: `sendTyping` behaviour is already established in the codebase (Feature
-048). No new assumption.
-
----
-
-## D10 — Worker-thread exception posture
-
-**Decision**: The consumer loop wraps each work item in `try/except Exception` → log → `time.sleep(5.0)`
-→ `continue`, mirroring `run_forever`'s existing `except Exception` arm verbatim
-(`green_api_bot.py:192-197`). `KeyboardInterrupt` breaks the loop for clean shutdown. The
-consumer thread never exits on a turn error.
-
-**Rationale**: Today a turn exception in `run_forever` logs, sleeps 5s, and continues — message
-processing is never silently dead. The consumer must preserve exactly that property (REQ-RMH-024,
-spec Edge Cases). The producer thread gets the same treatment for its own poll/ack loop.
-
-**Verification status**: N/A — mirrors existing in-repo behaviour.
-
----
-
-## Open items summary (must close before the dependent code is "done")
-
-| # | Item | How to close | Blocks |
-|---|---|---|---|
-| O1 | Server-side MCP calls fully represented in `response.output` on return; nothing still executing server-side | Inspect an existing real-MCP `billed`/`expensive` test log, or one fresh `billed` run of a Morning-tool test | Phase 3 (journal assembly) considered done |
-| O2 | Green API: un-acked notification redelivery timing still ~32s; acked notification never redelivered | One observation in Phase 0 or the `quickstart.md` manual dev run | Ack-immediately (Phase 5) considered done |
-
-Neither open item blocks writing the Tier-1 tests or the non-dependent phases; each blocks
-marking its own dependent phase complete.
+- **R1** Ack-before-persist crash window (D8).
+- **R2** The worker is global-serial: a long exchange in one chat delays all others (unchanged
+  from today).
+- **R3** Producer and worker share only the per-chat deques, the arrival deque and the Event; a
+  message appended in the instant a drain finishes lands in the deque and is picked up by the next
+  drain or as the next exchange — never dropped (the worker re-checks `has_work` before it
+  sleeps).
+- **R5** The poller and the worker share one `requests.Session` (`bot.api.session`); `requests.Session` is not formally thread-safe. Mitigation if V3's test shows trouble: the producer uses its own `GreenAPI` instance for receive/delete.
+- **R4** Models may still mishandle a burst; the safeguard is the prompt rules plus the right to
+  ask the user (spec).
