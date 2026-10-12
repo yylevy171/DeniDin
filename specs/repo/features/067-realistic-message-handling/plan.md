@@ -27,7 +27,7 @@ Today a message is handled start-to-finish on the polling thread; nothing is rea
 while the model works (F1). This plan lets polling continue, queues what arrives per chat, and
 **merges queued user messages into the model's input at every hand-back** (the points where the
 model returns control: every round of the backbone's resolution loop). A reply that comes back
-is sent as is; whatever is still queued becomes the next exchange. There is no turn boundary,
+is sent as is; whatever is still queued is handled next. There is no turn boundary,
 no reset, no end state: a single worker keeps reacting to whatever is queued.
 
 Backbone only. The legacy `AIHandler`, the replay player and `HANDLER_REGISTRY` are untouched.
@@ -67,16 +67,16 @@ Green API queue
        receive → read-receipt hook → store via SessionManager (actor) → deleteNotification
               → intake.submit(body, stored_message)
   └─ SessionManager ACTOR  (own thread; ONE thread-safe queue for reads + writes; sole owner of session files)
-  └─ IntakeCoordinator  (per-chat deque of (body, stored message) + global arrival deque + wake Event)
-  └─ WORKER (one thread, own Green API client)  IntakeWorker.run
-       next item (deferred first, then arrival order) → router.route_event(body)   # unchanged handlers;
-                                                          # DeniDin.receive() returns the pre-stored message
+  └─ IntakeCoordinator  (per-chat deque of (notification, stored message) + global arrival deque + wake Event)
+  └─ WORKER (one thread; knows nothing about Green API)  IntakeWorker.run
+       next item (deferred first, then arrival order) → dispatch(type, notification)   # injected, same as the player's;
+                                                          # handlers unchanged; DeniDin.receive() returns the pre-stored message
           → _process_conversational_message → Backbone.single_turn → _run_resolution_loop
                each round: run the model's tool calls
                            ├─ send_to_user / approval round  → return final text (sent as is)
                            └─ otherwise → drain_attachable(chat)  → (already stored) build user items
                                          → responses.create(input = outputs + pending items)
-       reply sent; worker loops: anything queued is simply the next exchange
+       reply sent; worker loops: anything queued is simply handled next
        media items seen at a drain → noted, parked in the media backlog → dispatched after
 ```
 
@@ -87,10 +87,10 @@ Green API queue
 | `src/managers/session_store.py` (new) / `session_manager.py` | today's `SessionManager` body becomes `SessionStore` (single-thread-only); `SessionManager` becomes the actor facade — same public signatures, one thread, one `queue.Queue`, `Future` results (D15) |
 | `src/utils/green_api_bot.py` | `DeniDinGreenAPIBot.run_forever`: when `self.intake` is set → producer path (store → delete → submit); else today's code unchanged |
 | `src/intake/intake_coordinator.py` (new) | `submit`, `drain_attachable(chat_id)`, `next_work_item()`, `park_media`, `has_work()`; classification (D5) |
-| `src/intake/intake_worker.py` (new) | thread; own Green API client (REQ-RMH-032); `route_event` per item; log + sleep 5 + continue on error (REQ-RMH-024); media backlog dispatch |
-| `src/sources/green_api_source.py` + `denidin.py` `__main__` | build coordinator + worker, attach `bot.intake`, start worker before the poll loop; `DeniDin.intake` for the AI side (None-guarded) |
+| `src/intake/intake_worker.py` (new) | thread; calls only the injected `dispatch(type, notification)` — no Green API knowledge (REQ-RMH-032); log + sleep 5 + continue on error (REQ-RMH-024); media backlog dispatch |
+| `src/sources/green_api_source.py` + `denidin.py` `__main__` | the source owns all Green API: receive client (poller) + separate send client; builds each `Notification` bound to the send client; builds coordinator + worker (given `dispatch`), attaches `bot.intake`, starts the worker before the poll loop; `DeniDin.intake` for the AI side (None-guarded) |
 | `DeniDin` (`denidin.py`) | `prestore(notification)` (poller: same content rules each handler uses today); `receive()` returns the pre-stored message instead of storing twice; `receive_pending(chat_id)` → stored messages + media notes |
-| Rename "turn" (REQ-RMH-030) | `begin_turn`/`end_turn`/`single_turn`/`_turn_*`/`_turns_in_progress`/`turn_context`… in code and tests; prompts; docs — vocabulary pending (O3) |
+| Rename "turn" (REQ-RMH-030) | proposed: `single_turn`→`handle_message`, `begin_turn`/`end_turn`→`mark_chat_busy`/`mark_chat_idle`, `_turns_in_progress`→`_busy_chats`, backbone `_turn_*`→descriptive per-message names; also `turn_context`, tests, prompts, docs (not `specs/done/`, release records, logs); final names settled in `tasks.md` |
 | Existing docs (REQ-RMH-031) | `CLAUDE.md`, `.github/ARCHITECTURE.md`, `.github/*` mentions, app README/docs |
 | `src/backbone/backbone.py` | `_run_resolution_loop`: drain at each non-final hand-back (off when `_turn_is_approved_write`, REQ-RMH-014); record `last_output_at`; D14 — stop clearing `approval_message_id` on unrelated messages |
 | `src/backbone/pending_messages.py` (new) | format user items: timestamp + before/after marker; media note |
@@ -146,14 +146,13 @@ apps/denidin-app/
 - D1–D14 approved; D2/D3/D8 revised and D15 added the same day (see `research.md`).
 - Poller stores via `SessionManager`, then acknowledges, then enqueues; `SessionManager` is an
   actor with one thread-safe queue for reads and writes (approved `queue.Queue`).
-- The worker has its own Green API client; it never uses the poller's HTTP session.
+- The worker knows nothing about Green API: the message source owns a receive client and a separate send client and hands the worker ready notifications; the worker calls only `dispatch`.
 - Cancelling a pending approval: rely on the model.
-- Rename every "turn" (code, tests, prompts, docs), except history; update existing docs.
+- Rename every "turn" (code, tests, prompts, docs), except history and `specs/done/`; no umbrella noun, each thing named after what it does; update existing docs.
 
 ## Open items before `speckit.tasks`
 
-- **O3** The replacement vocabulary for "turn" and the exact scope of the rename (e.g. do closed
-  specs under `specs/done/` count as history?). *Pending the product owner.*
+None. (O3 closed 2026-10-12: rename per function, no umbrella noun; `specs/done/` untouched.)
 
 ## Complexity Tracking
 

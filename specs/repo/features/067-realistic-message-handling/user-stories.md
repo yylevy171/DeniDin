@@ -70,7 +70,7 @@ The user sends ~10 messages in a row, very quickly.
    once, exactly as today.
 2. **Given** the model is busy with a text request, **When** an image arrives, **Then** it is
    saved and acknowledged immediately, the model is told at its next hand-back that a file
-   arrived (timestamp, caption), and the image is analyzed in its own exchange as soon as the
+   arrived (timestamp, caption), and the image is analyzed on its own as soon as the
    current work is finished.
 3. **Given** an image is being analyzed, **When** text arrives, **Then** the text is attached at
    the next hand-back like any other text.
@@ -158,7 +158,7 @@ resolved, tapping the same button again does nothing.
 **A8 — Image sent while a text request is being handled (`expensive` — vision call; needs its
 own per-run approval) — US6.**
 The owner sends a text request and, a moment later, an image. *They should see:* the text request
-is answered normally; the image is then analyzed in its own exchange right after, and its content
+is answered normally; the image is then analyzed on its own right after, and its content
 is not mixed into the text request; nothing is lost or analyzed twice.
 
 *Not covered by a `billed`/`expensive` scenario (existing or unit/integration coverage instead):*

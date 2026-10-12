@@ -25,14 +25,15 @@ Nothing was run during planning.
 
 ## Decisions
 
-### D1 — Producer / worker split behind the live bot only
+### D1 — Producer / worker split behind the live bot only (revised 2026-10-12)
+The worker knows nothing about Green API: the Green API message source owns a receive client (poller) and a separate send client, builds each `Notification` bound to the send client, and gives the worker only `(notification, stored message)` plus the injected `dispatch(type, notification)` (the contract the player already uses) — so no HTTP session is shared (resolves R5).
 `run_forever` becomes a **producer**: poll → hook → hand the raw body to an `IntakeCoordinator` →
 acknowledge immediately. A single **worker thread** pulls bodies and calls the same
-`router.route_event(body)` the loop calls today, so every existing handler runs unchanged on the
+`dispatch(type, notification)` the router's handler calls today, so every existing handler runs unchanged on the
 worker. When no coordinator is attached (player, tests that build a bot without one) `run_forever`
 is the current synchronous code, byte-for-byte.
 *Why*: it is the smallest change that lets polling continue during a model call (F1). The worker
-stays **single and global**, exactly as serial as today (one chat's long exchange still delays
+stays **single and global**, exactly as serial as today (one chat's long-running handling still delays
 another chat — unchanged, out of scope).
 *Rejected*: per-chat worker threads (new concurrency surface, no requirement for it); making
 handlers async (large rewrite).
@@ -61,7 +62,7 @@ the round's `input`, **after** the `function_call_output` items:
 `outputs + pending_user_items`. The item text carries the message timestamp and a before/after
 marker relative to the model's last output (contract `hand-back-merge.md`).
 - A `send_to_user` / approval round does **not** drain: the reply is sent as is (spec). Bodies
-  still queued simply become the next exchange, which starts from the rolling window — it already
+  still queued are simply handled next, starting from the rolling window — it already
   contains the sent reply and (once persisted) everything else.
 - Plain-text-only rounds (reminded once to use `send_to_user`) also drain on the follow-up.
 - Progress updates are not a separate case: they are a tool call → a round → a drain.
@@ -70,31 +71,31 @@ marker relative to the model's last output (contract `hand-back-merge.md`).
 Only text-bearing types from non-blocked senders: `textMessage`, `extendedTextMessage`,
 `contactMessage`. Everything else (`interactiveButtonsResponse` taps, `contactsArrayMessage`,
 edited/deleted, error types, a blocked sender) is **deferred**: moved, in order, to the worker's
-per-chat `deferred` list and dispatched later through the normal `route_event` path. Order
+per-chat `deferred` list and dispatched later through the normal `dispatch` path. Order
 within a chat is preserved (deferred items run before newer queued ones).
 
 ### D6 — Media (REQ-RMH-019/019a/019b)
 At a drain, a media body is `receive()`d (stored as `[<filename> sent]` or its caption, with
 timestamp), **noted** to the model (a one-line "a file arrived at HH:MM:SS" item), and moved to
-the chat's **media backlog** (worker-only). When the current exchange has nothing more owed, the
+the chat's **media backlog** (worker-only). When the current work has nothing more owed, the
 worker dispatches the backlog item through the normal media path, in arrival order. The media
 handler must not store it a second time: the worker passes the already-received
 `WhatsAppMessage` (looked up by `message_id`) so `_process_media_message` skips `receive`.
-`analyze_media` is untouched (one file at a time). Multi-media in one exchange = Feature 102.
+`analyze_media` is untouched (one file at a time). Several media at once = Feature 102.
 
-### D7 — Approved-write exchanges do not drain (REQ-RMH-014)
+### D7 — Approved-write handling does not drain (REQ-RMH-014)
 `Backbone.single_turn` already computes `_turn_is_approved_write` = (an approval was pending) AND
 (the incoming message is an affirmative reply — a typed "כן" or a button tap, which is
-synthesised as "כן") (`backbone.py:496-500`). When it is true the exchange runs with draining
-**off**: messages arriving meanwhile stay queued and become the next exchange. A "לא" is not a
+synthesised as "כן") (`backbone.py:496-500`). When it is true that handling runs with draining
+**off**: messages arriving meanwhile stay queued and are handled next. A "לא" is not a
 write, so it drains normally. No new state. *(V4 resolved by reading.)*
 
 ### D14 — The stale-tap guard must stop clearing on every new message (REQ-RMH-017)
 **Conflict found:** `single_turn` clears `Session.approval_message_id` at the start of *every*
-exchange (`backbone.py:501`, "any new turn supersedes whatever approval buttons were
+incoming message (`backbone.py:501`, "any new turn supersedes whatever approval buttons were
 outstanding"). So today an unrelated message already makes an older approval's buttons stale —
 the opposite of REQ-RMH-017 and acceptance scenario A7. Change: clear it only when
-(a) the exchange is the answer to it (a typed or tapped affirmative/negative reply — the existing
+(a) the incoming message is the answer to it (a typed or tapped affirmative/negative reply — the existing
 `approval_was_pending` branch), or (b) a newer approval-buttons message is sent
 (`record_sent_message_id` overwrites it, as now). An unrelated message no longer clears it.
 Cancelled-by-the-model has no mechanism today; see Open Question Q1.
@@ -143,20 +144,20 @@ None (product owner, 2026-10-12). Rollback is the previous release.
 |---|----------|---------------|--------|
 | V1 | Does `responses.create` accept a **user message item alongside `function_call_output` items** in one `input` array when chaining with `previous_response_id`? | One real `billed` probe call (text only) | D4 |
 | V2 | When a call returns, is every server-side Morning tool call fully present in `response.output` and nothing still running? | Inspect an existing logged real `mcp_call` response, or one billed run | D4 summary, SC-004 |
-| V3 | *(Mostly resolved by reading.)* `Router.route_event(event: dict)` takes a plain dict and builds the `Notification` inside the observers, so the worker can run a stored body. Still open: `api.session` (a `requests.Session`) is then used by the poller (receive/delete) and the worker (sends) concurrently. | One local integration test with a concurrent poll + send; see R5 | D1 |
+| V3 | *(Resolved by reading.)* `Notification(event, api, state_manager)` is constructible directly (`whatsapp_chatbot_python/manager/handler.py:16-28`), so the source builds notifications bound to its separate send client; the worker needs no router or session. | — | — |
 | V4 | *(Resolved — see D7/D14.)* | — | — |
 | V5 | *(Resolved — see D13.)* History items have no timestamps. | — | — |
-| V6 | Does post-reply `_run_post_turn_ledger_recognition` behave correctly when an exchange covered several user messages (it takes one `reply_text`)? | Read it; one integration test | A1/A2 |
+| V6 | Does post-reply `_run_post_turn_ledger_recognition` behave correctly when one reply covers several user messages (it takes one `reply_text`)? | Read it; one integration test | A1/A2 |
 
 ## Residual risks (documented, not locked away)
 
 - **R1** *(closed by D8)* ack-before-persist window. Remaining: a stored-but-unhandled message
   after a crash (see D8).
-- **R2** The worker is global-serial: a long exchange in one chat delays all others (unchanged
+- **R2** The worker is global-serial: long-running handling in one chat delays all others (unchanged
   from today).
 - **R3** Producer and worker share only the per-chat deques, the arrival deque and the Event; a
   message appended in the instant a drain finishes lands in the deque and is picked up by the next
-  drain or as the next exchange — never dropped (the worker re-checks `has_work` before it
+  drain or as the next message to handle — never dropped (the worker re-checks `has_work` before it
   sleeps).
 - **R5** *(resolved by product decision, REQ-RMH-032)* the worker uses its own Green API client; the poller's session is private to it.
 - **R4** Models may still mishandle a burst; the safeguard is the prompt rules plus the right to

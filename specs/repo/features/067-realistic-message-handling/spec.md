@@ -100,11 +100,16 @@ works."
   whole `session.json` on every call), so **`SessionManager` becomes a database-style actor with
   its own thread and a single thread-safe queue for both reads and writes**, executing requests
   one at a time. This is the **explicit human approval** for a `queue.Queue` in this one place.
-- Q: Worker access to the poller's HTTP session? → A: **No.** The poller owns its HTTP session;
-  the worker gets its own Green API client / anything else it needs is provided to it.
+- Q: Worker access to the poller's HTTP session? → A: **No — and the worker knows nothing about
+  Green API at all.** The message source owns everything Green API (a receive client for the
+  poller, a separate send client) and hands the worker a ready `Notification` plus the stored
+  message; the worker only calls the injected `dispatch(type, notification)` (the same contract the
+  replay player uses).
 - Q: Cancelling a pending approval? → A: **Rely on the model**; no invalidation tool.
 - Q: The word "turn" in existing code and docs? → A: **Rename every reference** (code, tests,
-  prompts, docs), except history (git history, persisted data, logs, cut-release records).
+  prompts, docs), except history (git history, persisted data, logs, cut-release records, and the
+  closed specs under `specs/done/`, which stay as they are). No replacement umbrella noun: each
+  thing is renamed after what it does.
 - Q: Existing documentation? → A: **Adjust it** to this model.
 
 ### Session 2026-08-30 (still in force unless contradicted above)
@@ -112,7 +117,7 @@ works."
 - Media (image/document/video/audio) **fits in without being merged** (confirmed 2026-10-12): a
   single media message keeps working as today; if it arrives while the model is busy it is saved
   and acknowledged at once, the model is told a file arrived, and it is analyzed in its own
-  exchange right after the current work, in arrival order. Several media at once are Feature 102.
+  handling of its own right after the current work, in arrival order. Several media at once are Feature 102.
 - **Group chats: per chat.** A new message from anyone in the group is treated as part of that
   chat's single stream (one shared history, one typing indicator, one pending-approval slot).
 - ~~Acknowledge immediately on receipt~~ (superseded 2026-10-12: store first, then acknowledge) (`deleteNotification` as soon as the message is read and
@@ -154,7 +159,7 @@ Detailed design (threading model, class seams, exact hand-back points) is deferr
 - The **replay/export player path** (`PlayerExportSource`) and the shared dispatch/handler code it
   runs through MUST remain synchronous and behaviorally unchanged — any producer/hand-back
   machinery lives behind the **live** message source only.
-- Handling stays **single-threaded per chat** — at most one model exchange runs at a time for a
+- Handling stays **single-threaded per chat** — at most one message is being handled by the model at a time for a
   given chat.
 - **Backbone only** (Feature 063, the live path); the legacy `AIHandler` path is not touched
   (product owner, 2026-10-11).
@@ -247,7 +252,7 @@ Authoritative stories with Given-When-Then criteria are in **`user-stories.md`**
   today. When nothing else is being handled it is handled at once. When it arrives while the
   model is busy, it MUST be received, saved with its timestamp and acknowledged immediately; the
   model MUST be told at its next hand-back that a file arrived (timestamp and caption), but the
-  file MUST NOT be analyzed in the current exchange. It gets its own exchange, in arrival order,
+  file MUST NOT be analyzed during the current handling. It is handled on its own, in arrival order,
   as soon as the current work is finished. A queued media message counts as work owed, so the
   system is not idle while one waits.
 - **REQ-RMH-019a**: Text arriving while a media message is being analyzed MUST be attached at the
@@ -263,7 +268,7 @@ Authoritative stories with Given-When-Then criteria are in **`user-stories.md`**
   queue, then enqueue the stored message for the worker. A message whose store fails MUST NOT be
   acknowledged (the upstream redelivers it).
 - **REQ-RMH-022**: The replay/export player path MUST remain synchronous and unchanged.
-- **REQ-RMH-023**: At most one model exchange MUST run at a time per chat.
+- **REQ-RMH-023**: At most one message MUST be handled by the model at a time per chat.
 - **REQ-RMH-024**: A failure while handling one item MUST be logged (sleep 5s, continue) and MUST
   NOT stop handling of later messages.
 - **REQ-RMH-025**: No `threading.Lock`/`RLock`/`Semaphore` anywhere. The **only** thread-safe queue
@@ -277,7 +282,9 @@ Authoritative stories with Given-When-Then criteria are in **`user-stories.md`**
   records such as `CHANGELOG.md`/`RELEASES.md`).
 - **REQ-RMH-031**: Existing documentation (`CLAUDE.md`, `.github/ARCHITECTURE.md`, app docs,
   prompts) MUST be updated to describe this model.
-- **REQ-RMH-032**: The worker MUST NOT use the poller's HTTP session; it uses its own client.
+- **REQ-RMH-032**: The worker MUST know nothing about Green API and MUST NOT use the poller's HTTP
+  session. The message source supplies a separate send client (notifications are bound to it) and
+  the worker calls only the injected `dispatch(type, notification)`.
 
 **Constitution boundary**
 
