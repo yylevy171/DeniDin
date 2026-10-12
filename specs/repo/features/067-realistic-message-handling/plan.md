@@ -88,7 +88,7 @@ Green API queue
 | `src/utils/green_api_bot.py` | `DeniDinGreenAPIBot.run_forever`: when `self.intake` is set → producer path (store → delete → submit); else today's code unchanged |
 | `src/intake/intake_coordinator.py` (new) | `submit`, `drain_attachable(chat_id)`, `next_work_item()`, `park_media`, `has_work()`; classification (D5) |
 | `src/intake/intake_worker.py` (new) | thread; calls only the injected `dispatch(type, notification)` — no Green API knowledge (REQ-RMH-032); log + sleep 5 + continue on error (REQ-RMH-024); media backlog dispatch |
-| `src/sources/green_api_source.py` + `denidin.py` `__main__` | the source owns all Green API: receive client (poller) + separate send client; builds each `Notification` bound to the send client; builds coordinator + worker (given `dispatch`), attaches `bot.intake`, starts the worker before the poll loop; `DeniDin.intake` for the AI side (None-guarded) |
+| `src/sources/green_api_source.py` + `denidin.py` `__main__` | the source owns all Green API; builds each `Notification` from the event with the existing bot client; builds coordinator + worker (given `dispatch`), attaches `bot.intake`, starts the worker before the poll loop; `DeniDin.intake` for the AI side (None-guarded) |
 | `DeniDin` (`denidin.py`) | `prestore(notification)` (poller: same content rules each handler uses today); `receive()` returns the pre-stored message instead of storing twice; `receive_pending(chat_id)` → stored messages + media notes |
 | Rename "turn" (REQ-RMH-030) | proposed: `single_turn`→`handle_message`, `begin_turn`/`end_turn`→`mark_chat_busy`/`mark_chat_idle`, `_turns_in_progress`→`_busy_chats`, backbone `_turn_*`→descriptive per-message names; also `turn_context`, tests, prompts, docs (not `specs/done/`, release records, logs); final names settled in `tasks.md` |
 | Existing docs (REQ-RMH-031) | `CLAUDE.md`, `.github/ARCHITECTURE.md`, `.github/*` mentions, app README/docs |
@@ -146,7 +146,7 @@ apps/denidin-app/
 - D1–D14 approved; D2/D3/D8 revised and D15 added the same day (see `research.md`).
 - Poller stores via `SessionManager`, then acknowledges, then enqueues; `SessionManager` is an
   actor with one thread-safe queue for reads and writes (approved `queue.Queue`).
-- The worker knows nothing about Green API: the message source owns a receive client and a separate send client and hands the worker ready notifications; the worker calls only `dispatch`.
+- The worker knows nothing about Green API: the message source hands it ready notifications; it calls only `dispatch`. Sends stay as today (shared bot client).
 - Cancelling a pending approval: rely on the model.
 - Rename every "turn" (code, tests, prompts, docs), except history and `specs/done/`; no umbrella noun, each thing named after what it does; update existing docs.
 

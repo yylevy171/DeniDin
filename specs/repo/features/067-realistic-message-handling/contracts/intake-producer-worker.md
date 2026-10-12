@@ -5,8 +5,8 @@ Replaces the 2026-08-30 producer-consumer contract.
 ## Producer — `DeniDinGreenAPIBot.run_forever` (only when `self.intake is not None`)
 1. `receiveNotification()`; unusable/empty → `continue` (as today).
 2. `on_notification_received(body)` read-receipt hook — errors logged, never fatal (as today).
-3. Build `notification = Notification(body, send_api, state_manager)` (the source's separate send
-   client — the worker's replies never use the poller's session). Only `incomingMessageReceived`
+3. Build `notification = Notification(body, bot.api, state_manager)` (the existing bot client, as
+   the router's handler does today). Only `incomingMessageReceived`
    webhooks are queued; other webhook types are ignored as today (no handlers are registered for
    them). `message = denidin.prestore(notification)` — for the message types whose handlers store at
    receipt, store exactly as the handler would (same content rules); other types: `None`.

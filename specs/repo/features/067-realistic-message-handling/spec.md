@@ -100,11 +100,12 @@ works."
   whole `session.json` on every call), so **`SessionManager` becomes a database-style actor with
   its own thread and a single thread-safe queue for both reads and writes**, executing requests
   one at a time. This is the **explicit human approval** for a `queue.Queue` in this one place.
-- Q: Worker access to the poller's HTTP session? → A: **No — and the worker knows nothing about
-  Green API at all.** The message source owns everything Green API (a receive client for the
-  poller, a separate send client) and hands the worker a ready `Notification` plus the stored
-  message; the worker only calls the injected `dispatch(type, notification)` (the same contract the
-  replay player uses).
+- Q: What does the worker know about Green API? → A: **Nothing.** The message source owns
+  everything Green API and hands the worker a ready `Notification` plus the stored message; the
+  worker only calls the injected `dispatch(type, notification)` (the same contract the replay
+  player uses). **Sends stay exactly as today** — `DeniDin` → `WhatsAppHandler` →
+  `notification.answer(...)` on the shared bot client; no separate send client (product owner,
+  2026-10-12).
 - Q: Cancelling a pending approval? → A: **Rely on the model**; no invalidation tool.
 - Q: The word "turn" in existing code and docs? → A: **Rename every reference** (code, tests,
   prompts, docs), except history (git history, persisted data, logs, cut-release records, and the
@@ -282,9 +283,9 @@ Authoritative stories with Given-When-Then criteria are in **`user-stories.md`**
   records such as `CHANGELOG.md`/`RELEASES.md`).
 - **REQ-RMH-031**: Existing documentation (`CLAUDE.md`, `.github/ARCHITECTURE.md`, app docs,
   prompts) MUST be updated to describe this model.
-- **REQ-RMH-032**: The worker MUST know nothing about Green API and MUST NOT use the poller's HTTP
-  session. The message source supplies a separate send client (notifications are bound to it) and
-  the worker calls only the injected `dispatch(type, notification)`.
+- **REQ-RMH-032**: The worker MUST know nothing about Green API, a router or an HTTP session: it
+  calls only the injected `dispatch(type, notification)`. Notifications are built by the message
+  source; sending is unchanged.
 
 **Constitution boundary**
 

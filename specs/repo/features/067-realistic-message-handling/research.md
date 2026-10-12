@@ -26,7 +26,7 @@ Nothing was run during planning.
 ## Decisions
 
 ### D1 — Producer / worker split behind the live bot only (revised 2026-10-12)
-The worker knows nothing about Green API: the Green API message source owns a receive client (poller) and a separate send client, builds each `Notification` bound to the send client, and gives the worker only `(notification, stored message)` plus the injected `dispatch(type, notification)` (the contract the player already uses) — so no HTTP session is shared (resolves R5).
+The worker knows nothing about Green API: the Green API message source builds each `Notification` and gives the worker only `(notification, stored message)` plus the injected `dispatch(type, notification)` (the contract the player already uses). Sends are unchanged (shared bot client — already used concurrently today by the reminder and typing-keepalive schedulers).
 `run_forever` becomes a **producer**: poll → hook → hand the raw body to an `IntakeCoordinator` →
 acknowledge immediately. A single **worker thread** pulls bodies and calls the same
 `dispatch(type, notification)` the router's handler calls today, so every existing handler runs unchanged on the
@@ -144,7 +144,7 @@ None (product owner, 2026-10-12). Rollback is the previous release.
 |---|----------|---------------|--------|
 | V1 | Does `responses.create` accept a **user message item alongside `function_call_output` items** in one `input` array when chaining with `previous_response_id`? | One real `billed` probe call (text only) | D4 |
 | V2 | When a call returns, is every server-side Morning tool call fully present in `response.output` and nothing still running? | Inspect an existing logged real `mcp_call` response, or one billed run | D4 summary, SC-004 |
-| V3 | *(Resolved by reading.)* `Notification(event, api, state_manager)` is constructible directly (`whatsapp_chatbot_python/manager/handler.py:16-28`), so the source builds notifications bound to its separate send client; the worker needs no router or session. | — | — |
+| V3 | *(Resolved by reading.)* `Notification(event, api, state_manager)` is constructible directly (`whatsapp_chatbot_python/manager/handler.py:16-28`), so the source builds notifications with the existing bot client; the worker needs no router or session. | — | — |
 | V4 | *(Resolved — see D7/D14.)* | — | — |
 | V5 | *(Resolved — see D13.)* History items have no timestamps. | — | — |
 | V6 | Does post-reply `_run_post_turn_ledger_recognition` behave correctly when one reply covers several user messages (it takes one `reply_text`)? | Read it; one integration test | A1/A2 |
@@ -159,7 +159,7 @@ None (product owner, 2026-10-12). Rollback is the previous release.
   message appended in the instant a drain finishes lands in the deque and is picked up by the next
   drain or as the next message to handle — never dropped (the worker re-checks `has_work` before it
   sleeps).
-- **R5** *(resolved by product decision, REQ-RMH-032)* the worker uses its own Green API client; the poller's session is private to it.
+- **R5** The poller and the sends share one bot client. Already true today (reminder/typing-keepalive scheduler threads send while the poller waits); no new exposure beyond sends now also coming from the worker thread. Accepted.
 - **R4** Models may still mishandle a burst; the safeguard is the prompt rules plus the right to
   ask the user (spec).
 
