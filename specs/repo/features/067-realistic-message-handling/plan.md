@@ -35,11 +35,11 @@ Backbone only. The legacy `AIHandler`, the replay player and `HANDLER_REGISTRY` 
 ## Technical Context
 
 - **Language/Version**: Python 3.9 (app venv); **no new dependency**.
-- **Storage**: no new durable state. In-memory per-chat deques (lock-free), existing session files.
+- **Storage**: no new durable state. In-memory bounded `queue.Queue`s, existing session files.
 - **Testing**: unit + integration (`scripts/run_unit_integration_tests.sh`), `billed` A1–A7,
   `expensive` A8 (own approval). Never a bare `pytest`.
-- **Threads**: poller (producer) + one worker. Shared state is limited to the per-chat deques, the
-  arrival deque and one `threading.Event`.
+- **Threads**: poller (producer) + one worker + the SessionManager actor (+ monitor/supervisor
+  jobs on the existing scheduler). Shared state is limited to the bounded queues.
 - **Unknowns**: none left as NEEDS CLARIFICATION; third-party behavior to confirm is listed as
   Gate Zero in `research.md` (V1, V2, V3-test, V6).
 
@@ -51,7 +51,7 @@ Backbone only. The legacy `AIHandler`, the replay player and `HANDLER_REGISTRY` 
 | No env vars | ✅ none introduced |
 | Israel local time | ✅ `now_local()`; timestamps formatted from stored message timestamps |
 | No monkey-patching | ✅ subclass override already exists; coordinator injected via an attribute set at startup, like `on_notification_received` |
-| No locks / queue.Queue | ✅ no locks; deque + Event for intake; the single `queue.Queue` is SessionManager's, human-approved (REQ-RMH-025/029) |
+| Locks | ✅ only inside `queue.Queue`, one technology for both queues, human-approved 2026-10-12 (REQ-RMH-025/029) |
 | Feature flag | ✅ none by human decision |
 | Tests immutable once approved | ✅ new tests only |
 | Player/registry unchanged | ✅ REQ-RMH-022; `HANDLER_REGISTRY` stays 8 types |
@@ -67,7 +67,7 @@ Green API queue
        receive → read-receipt hook → store via SessionManager (actor) → deleteNotification
               → intake.submit(body, stored_message)
   └─ SessionManager ACTOR  (own thread; ONE thread-safe queue for reads + writes; sole owner of session files)
-  └─ IntakeCoordinator  (per-chat deque of (notification, stored message) + global arrival deque + wake Event)
+  └─ IntakeCoordinator  (per-chat bounded queue of (notification, stored message) + bounded arrival queue)
   └─ WORKER (one thread; knows nothing about Green API)  IntakeWorker.run
        next item (deferred first, then arrival order) → dispatch(type, notification)   # injected, same as the player's;
                                                           # handlers unchanged; DeniDin.receive() returns the pre-stored message
@@ -90,6 +90,7 @@ Green API queue
 | `src/intake/intake_worker.py` (new) | thread; calls only the injected `dispatch(type, notification)` — no Green API knowledge (REQ-RMH-032); log + sleep 5 + continue on error (REQ-RMH-024); media backlog dispatch |
 | `src/sources/green_api_source.py` + `denidin.py` `__main__` | the source owns all Green API; builds each `Notification` from the event with the existing bot client; builds coordinator + worker (given `dispatch`), attaches `bot.intake`, starts the worker before the poll loop; `DeniDin.intake` for the AI side (None-guarded) |
 | `DeniDin` (`denidin.py`) | `prestore(notification)` (poller: same content rules each handler uses today); `receive()` returns the pre-stored message instead of storing twice; `receive_pending(chat_id)` → stored messages + media notes |
+| `src/utils/bounded_queue.py` (new) · `src/services/queue_monitor_service.py` (new) · `src/services/thread_supervisor.py` (new) · `/health` info | `BoundedQueue` (D16), `QueueMonitor`, `ThreadSupervisor` (D17); depths/limits/dropped/thread liveness in `/health`; config: queue limits, warning size, stall seconds, restart window (`config.example.json` + dev/prod) |
 | Rename "turn" (REQ-RMH-030) | proposed: `single_turn`→`handle_message`, `begin_turn`/`end_turn`→`mark_chat_busy`/`mark_chat_idle`, `_turns_in_progress`→`_busy_chats`, backbone `_turn_*`→descriptive per-message names; also `turn_context`, tests, prompts, docs (not `specs/done/`, release records, logs); final names settled in `tasks.md` |
 | Existing docs (REQ-RMH-031) | `CLAUDE.md`, `.github/ARCHITECTURE.md`, `.github/*` mentions, app README/docs |
 | `src/backbone/backbone.py` | `_run_resolution_loop`: drain at each non-final hand-back (off when `_turn_is_approved_write`, REQ-RMH-014); record `last_output_at`; D14 — stop clearing `approval_message_id` on unrelated messages |
@@ -133,6 +134,7 @@ apps/denidin-app/
 - **Phase 0b — SessionManager actor (D15)**: the data-integrity foundation; facade + store split,
   every existing caller unchanged; unit tests (serialization, exception propagation, timeout,
   shutdown), plus a stress test of concurrent writers proving no lost update.
+- **Phase 0c — Queue safety (D16/D17)**: `BoundedQueue`, monitor, supervisor, `/health` fields, config; unit tests for limit-raise-and-drop, warning on size and stall, thread death → restart → health non-ok.
 - **Phase 1 — Intake** (US stories 1,2,7): coordinator + producer + worker; unit + integration.
 - **Phase 2 — Hand-back merge** (US 1,2,3,5): drain, formatter, timestamps, typing indicator.
 - **Phase 3 — Guards & approvals** (US 8,9): D7, D14; reply-as-is path.

@@ -113,6 +113,20 @@ works."
   thing is renamed after what it does.
 - Q: Existing documentation? → A: **Adjust it** to this model.
 
+### Session 2026-10-12 (queues and thread safety, product owner)
+
+- **One queue technology for both queues:** `queue.Queue` (bounded) for the intake **and** for
+  the `SessionManager` actor. No second family of queues. **Locks inside the queues are approved.**
+  (Worker-private lists such as the deferred and media-backlog lists are not queues.)
+- **Hard, configurable limit** on the number of messages/requests in each queue. When the limit
+  is reached an **error is raised, and messages are dropped from then on** (until the queue has
+  room again).
+- **Warnings:** if a queue grows too big, or stays big/stalled for too long, a warning MUST be
+  raised.
+- **No silent blow-up** of the store queue (or any queue): sizes and stalls are observable.
+- **Thread supervision:** something MUST make sure the worker and the actor threads are always
+  up, and define what happens when one dies.
+
 ### Session 2026-08-30 (still in force unless contradicted above)
 
 - Media (image/document/video/audio) **fits in without being merged** (confirmed 2026-10-12): a
@@ -155,8 +169,9 @@ Detailed design (threading model, class seams, exact hand-back points) is deferr
 `plan.md` / `research.md`. Constraints fixed now:
 
 - **No new runtime dependency** is expected.
-- **No `threading.Lock`/`RLock`/`Semaphore`.** One approved `queue.Queue` (SessionManager's actor
-  queue, REQ-RMH-029); a one-way cross-thread flag (`threading.Event`) is permitted.
+- **`queue.Queue` is the one thread-safe building block**, used identically for the intake and the
+  `SessionManager` actor (locks inside it approved, 2026-10-12); no other lock, no second queue
+  technology.
 - The **replay/export player path** (`PlayerExportSource`) and the shared dispatch/handler code it
   runs through MUST remain synchronous and behaviorally unchanged — any producer/hand-back
   machinery lives behind the **live** message source only.
@@ -272,12 +287,32 @@ Authoritative stories with Given-When-Then criteria are in **`user-stories.md`**
 - **REQ-RMH-023**: At most one message MUST be handled by the model at a time per chat.
 - **REQ-RMH-024**: A failure while handling one item MUST be logged (sleep 5s, continue) and MUST
   NOT stop handling of later messages.
-- **REQ-RMH-025**: No `threading.Lock`/`RLock`/`Semaphore` anywhere. The **only** thread-safe queue
-  is the one owned by `SessionManager` (REQ-RMH-029, approved 2026-10-12); the intake structures
-  use plain deques and a `threading.Event`. Residual concurrency risk MUST be documented.
+- **REQ-RMH-025**: Thread safety MUST come from `queue.Queue` (whose internal locks are approved,
+  2026-10-12) used identically for the intake and for the `SessionManager` actor. No other
+  `Lock`/`RLock`/`Semaphore` and no second queue technology. Residual concurrency risk MUST be
+  documented.
 - **REQ-RMH-029**: `SessionManager` MUST run as a serialized actor: one thread, one thread-safe
   queue carrying **both reads and writes**; every public operation is executed by that thread, one
   at a time, and its result returned to the caller. No other thread may touch session files.
+- **REQ-RMH-033**: Each queue MUST have a hard maximum size, configurable (per environment
+  config; defaults in `config.example.json`). When a `put` finds the queue full the system MUST
+  raise a `QueueLimitExceeded` error (logged at ERROR with queue name, size, limit and the item's
+  identity), and the item MUST be dropped; every further `put` MUST fail the same way until room
+  is available. A dropped inbound message is acknowledged and discarded (see the Open Item on
+  whether it is still stored).
+- **REQ-RMH-034**: A queue MUST raise a WARNING when its size reaches a configurable warning size
+  (default well below the limit), and when it has had items waiting without any being taken for
+  longer than a configurable number of seconds (a stall). Warnings repeat at a bounded rate, not
+  once per item.
+- **REQ-RMH-035**: Queue depths, limits, last-taken times and dropped counts for **both** queues
+  MUST be observable (logged periodically at INFO when non-empty, and reported in `/health`), so a
+  growing or stalled queue is noticed without anyone having to look.
+- **REQ-RMH-036**: A supervisor MUST check every second-scale interval that the worker thread and
+  the `SessionManager` actor thread are alive. A thread that dies MUST be logged at CRITICAL and
+  restarted (the queue survives, so nothing queued is lost; the item in flight fails loudly, never
+  hangs its caller). Repeated deaths (a configurable count within a configurable time) MUST make
+  `/health` report non-ok so the existing health prober restarts the container. Each thread's
+  loop MUST catch every per-item exception so that an item error never ends the thread.
 - **REQ-RMH-030**: Every reference to "turn" (identifiers, tests, comments, prompts, docs) MUST be
   renamed to the new vocabulary, except history (git history, persisted data, logs, cut-release
   records such as `CHANGELOG.md`/`RELEASES.md`).
@@ -321,6 +356,10 @@ retired.)*
   aborted or run twice.
 
 ## Open Items
+
+0. **When the intake queue is full**, is the dropped inbound message still **stored in the chat
+   history** (so the next message's context contains it) or **discarded entirely**? *(Pending
+   the product owner.)*
 
 1. *(Resolved 2026-10-11)* A reply that comes back while newer user messages are waiting is
    **sent as is**.

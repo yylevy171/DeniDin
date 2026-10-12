@@ -17,13 +17,12 @@ Replaces the 2026-08-30 producer-consumer contract.
 With `intake is None` the loop is today's code, unchanged (player/tests).
 
 ## Coordinator
-- `submit(notification, message)`: `chats.setdefault(chat_id, ChatIntake()).items.append((notification, message))`;
-  `arrival.append(chat_id)`; `wake.set()`.
-- `next_work_item()` (worker): `deferred` first; then the oldest chat id in `arrival` whose
-  `bodies` is non-empty; media backlog item when that chat has nothing else queued; `None` if none.
-  Waits on `wake` with a short timeout when empty and clears it only **before** a final re-check
-  (R3: a body appended during the check is still seen).
-- `drain_attachable(chat_id)` (worker, at a hand-back): pops all of that chat's `bodies`;
+- `submit(notification, message)`: `chats.setdefault(chat_id, ChatIntake()).items.put_or_raise((notification, message))`;
+  `arrival.put_or_raise(chat_id)`. A full queue raises `QueueLimitExceeded`: the producer logs ERROR, acknowledges and drops the item (REQ-RMH-033).
+- `next_work_item()` (worker): `deferred` first; then `arrival.get(timeout)` → that chat's queue
+  `get_nowait()` (`queue.Empty` = a stale id already drained at a hand-back: skip); media backlog
+  item when that chat has nothing else queued; `None` on timeout.
+- `drain_attachable(chat_id)` (worker, at a hand-back): `get_nowait()` until `queue.Empty` on that chat's queue;
   text types from non-blocked senders → returned (already stored); media → noted, parked in
   `media_backlog`; everything else → `deferred`. Order preserved.
 
@@ -37,7 +36,7 @@ pre-stored message instead of storing again. Exception → log, `sleep(5)`, cont
 
 ## Invariants
 - At most one message is handled at a time (single worker) — REQ-RMH-023.
-- Producer and worker share only the deques and the Event; sessions are touched only through
+- Producer and worker share only the bounded queues; sessions are touched only through
   the SessionManager actor (REQ-RMH-025/029). No locks.
-- No body is dropped: bodies are removed from a deque only by the worker, and only into
-  `receive()`, `deferred`, `media_backlog`, or `dispatch`.
+- Nothing is dropped silently: an item leaves a queue only via the worker's `get`, and only into
+  `deferred`, `media_backlog`, or `dispatch` — except a `QueueLimitExceeded` drop, which is always logged at ERROR and counted.

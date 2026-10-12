@@ -48,11 +48,15 @@ half-written file. Decision (product owner): `SessionManager` is a **database-st
 own thread, one thread-safe queue for reads **and** writes, requests executed one at a time (D15).
 REQ-RMH-003 is now met literally: the message is durable before it is acknowledged.
 
-### D3 — Intake structures (revised)
-Per chat: a `collections.deque` of **pre-received items** `(body, WhatsAppMessage)` (producer
-`append`, worker `popleft` — one thread per end, atomic under the GIL), plus a global `arrival`
-deque of chat ids (stale ids with empty deques are skipped) and a `threading.Event` wake-up. No
-locks. The only `queue.Queue` is SessionManager's (D15, approved).
+### D3 — One queue technology: bounded `queue.Queue` (revised 2026-10-12)
+Per chat: a `queue.Queue(maxsize=…)` of **pre-received items** `(notification, WhatsAppMessage)`;
+plus one `arrival` `queue.Queue` of chat ids that preserves cross-chat order and is what the
+worker blocks on (`get(timeout)`) — no separate wake-up Event. The worker takes a chat id from
+`arrival`, then `get_nowait()` from that chat's queue (an empty queue = stale id, skip). A
+hand-back drain is `get_nowait()` until `queue.Empty` on that chat's queue. The hard limit is
+`maxsize` on the per-chat queue; a global ceiling is the `arrival` queue's `maxsize`. Both
+`SessionManager`'s queue (D15) and these use the same class and the same limit/warn/health
+machinery (D16). The worker-private `deferred` list and media backlog are not queues.
 
 ### D4 — Hand-back merge
 In `Backbone._run_resolution_loop`, after a round's tool calls have run and before the follow-up
@@ -155,7 +159,7 @@ None (product owner, 2026-10-12). Rollback is the previous release.
   after a crash (see D8).
 - **R2** The worker is global-serial: long-running handling in one chat delays all others (unchanged
   from today).
-- **R3** Producer and worker share only the per-chat deques, the arrival deque and the Event; a
+- **R3** Producer and worker share only the bounded queues; a
   message appended in the instant a drain finishes lands in the deque and is picked up by the next
   drain or as the next message to handle — never dropped (the worker re-checks `has_work` before it
   sleeps).
@@ -183,3 +187,33 @@ None (product owner, 2026-10-12). Rollback is the previous release.
 - Other writers of session files (daily roll, capability reset, reminders touching sessions) go
   through the facade — to be enumerated in tasks.md; any code that opens `session.json` directly
   is a bug to fix in this phase.
+
+### D16 — Limits, warnings and visibility for every queue (REQ-RMH-033/034/035)
+- A small `BoundedQueue` wrapper around `queue.Queue` (composition, no subclass tricks) adds:
+  `put_or_raise(item)` → `queue.Full` becomes `QueueLimitExceeded` (ERROR log with name, size,
+  limit, item id; dropped counter++); `last_get_at`; `size()`; high-water mark. All queues
+  (per-chat intake, `arrival`, `SessionManager`'s) are `BoundedQueue`s — one tech, one set of behavior.
+- Config (names settled in tasks.md): per-queue max, a warning size, a stall-seconds threshold,
+  defaults in `config.example.json` (intake e.g. 500 / session e.g. 200 / warn at 50% / stall 30 s).
+- A `QueueMonitor` (an existing APScheduler job style, every ~10 s) logs WARNING when a queue's
+  size ≥ warning size or `size > 0` and `now - last_get_at` > stall seconds (rate-limited), logs INFO
+  depths when non-empty, and publishes depths/limits/dropped counts into `/health`'s info
+  (report-only fields; they do **not** by themselves flip `status`, like `whatsapp_authorized`).
+- The `SessionManager` facade waits on its `Future` with a bounded timeout and raises loudly;
+  operations slower than a threshold are logged at WARNING with their name.
+- *Why this answers "the store queue blows up unnoticed":* it is bounded (hard stop + ERROR),
+  warned on at a fraction of the bound, warned on when stalled, logged periodically and in `/health`.
+
+### D17 — Keeping the threads alive (REQ-RMH-036)
+- Today nothing watches a thread. If the new worker or actor thread died, the poller would keep
+  storing and queuing and nothing would ever be handled/answered; if the actor died every session
+  call would time out — a silent outage.
+- Every thread loop wraps **each item** in `try/except Exception` (log, continue; the worker keeps
+  REQ-RMH-024's sleep-5 posture) and a last-resort `except BaseException` that logs CRITICAL before
+  the thread ends.
+- A `ThreadSupervisor` (same scheduler as the monitor, every ~5 s) checks `thread.is_alive()`;
+  a dead thread is logged at CRITICAL and replaced (the queues persist; the item in flight has its
+  `Future` failed). A restart counter within a window (configurable) that is exceeded makes
+  `/health` report non-ok so the existing prober (bugfix-043) restarts the container — the same
+  recovery path prod already relies on. The poller is the process's main loop and is unchanged
+  (its loop already survives item errors; if it ends the process ends).

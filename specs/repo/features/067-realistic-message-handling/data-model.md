@@ -3,13 +3,13 @@
 ## ChatIntake (per `chat_id`, in `IntakeCoordinator`)
 | Field | Type | Owner | Notes |
 |---|---|---|---|
-| `items` | `deque[(Notification, WhatsAppMessage)]` | producer appends, worker pops left | ready notification (bound to the send client) + the already-stored message |
+| `items` | `BoundedQueue[(Notification, WhatsAppMessage)]` | producer puts, worker gets | ready notification (bound to the send client) + the already-stored message |
 | `deferred` | `list[dict]` | worker only | non-attachable bodies (taps, edited/deleted, contactsArray, blocked sender…) kept in order; dispatched before newer bodies |
-| `media_backlog` | `deque[(dict, WhatsAppMessage)]` | worker only | media items seen at a drain, waiting to be handled on their own |
+| `media_backlog` | `list[(Notification, WhatsAppMessage)]` | worker only | media items seen at a drain, waiting to be handled on their own |
 
 ## IntakeCoordinator
-`chats: dict[str, ChatIntake]` (created with `setdefault`), `arrival: deque[str]` (chat ids in
-arrival order; stale ids with empty deques are skipped), `wake: threading.Event`.
+`chats: dict[str, ChatIntake]` (created with `setdefault`), `arrival: BoundedQueue[str]` (chat ids in
+arrival order; the worker blocks on it; stale ids with empty chat queues are skipped).
 
 ## PendingUserItem (built at a drain; never persisted — the stored `Message` already is)
 | Field | Meaning |
@@ -32,3 +32,6 @@ is cleared* changes, D14).
 `SessionManager` (facade) → one `queue.Queue` of `(operation, args, kwargs, Future)` → one thread →
 `SessionStore` (today's implementation, single-thread-only). No other component touches session
 files.
+
+## BoundedQueue (D16)
+`queue.Queue(maxsize)` + `put_or_raise` → `QueueLimitExceeded`, `last_get_at`, `size()`, high-water mark, dropped counter. Used for: each chat's intake queue, `arrival`, SessionManager's actor queue.
