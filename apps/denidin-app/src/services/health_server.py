@@ -163,6 +163,7 @@ def build_health_check_fns(
     morning_mcp_locator: Optional[MorningMcpLocator] = None,
     memory_manager=None,
     log_path: Optional[Path] = None,
+    thread_supervisor=None,
 ) -> Dict[str, Callable[[], bool]]:
     """Binds each live object to its check via closure, once, producing the
     zero-arg callables start_health_server actually calls per request. Any
@@ -180,10 +181,15 @@ def build_health_check_fns(
         checks["chromadb_connectivity"] = lambda: check_chromadb_connectivity(memory_manager)
     if log_path is not None:
         checks["logs_writing"] = lambda: check_log_freshness(log_path)
+    if thread_supervisor is not None:
+        # Feature 067 (REQ-RMH-036): dispatcher + SessionManager threads alive and the
+        # supervisor's restart budget not exhausted. Counts toward `status`: a restart
+        # of the container is exactly the right remedy for a repeatedly dying thread.
+        checks["threads_alive"] = thread_supervisor.all_alive
     return checks
 
 
-def build_health_info_fns(green_api=None) -> Dict[str, Callable[[], bool]]:
+def build_health_info_fns(green_api=None, queue_monitor=None) -> Dict[str, Callable[[], bool]]:
     """bugfix-069: report-only fields - shown in the /health body as "success"/"fail" but
     never counted toward `status`/the HTTP code. The prober (scripts/health_monitoring)
     restarts the environment whenever `status` is not "ok", and a restart cannot fix
@@ -192,6 +198,10 @@ def build_health_info_fns(green_api=None) -> Dict[str, Callable[[], bool]]:
     info: Dict[str, Callable[[], bool]] = {}
     if green_api is not None:
         info["whatsapp_authorized"] = lambda: check_whatsapp_authorized(green_api)
+    if queue_monitor is not None:
+        # Feature 067 (REQ-RMH-035): report-only - a restart cannot drain a flooded queue.
+        info["queues_within_limits"] = queue_monitor.within_limits
+        info["queues_not_stalled"] = queue_monitor.not_stalled
     return info
 
 
