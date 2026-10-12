@@ -21,6 +21,15 @@ class AppConfiguration:
     # for one environment was silently reachable while the other was
     # supposed to be exclusively active). 'dev', 'prod', or 'test'.
     environment: Optional[str] = None
+    # Feature 101: which Green API host the app calls. 'fixed' (default) = the shared generic host
+    # the library hardcodes (https://api.green-api.com), i.e. the behavior before this feature;
+    # 'instance' = the instance's own host, derived from the first four digits of
+    # green_api_instance_id (src/utils/green_api_bot.py's instance_api_host). Lives in
+    # config.<env>.json so it can be flipped either way with a restart, no release.
+    green_api_host_mode: str = 'fixed'
+    # Feature 101: optional override for Green API's media host (file uploads, i.e.
+    # sendFileByUpload). None = the library default.
+    green_api_media_host: Optional[str] = None
     ai_model: str = 'gpt-5.6-luna'
     # Vision model for image/document processing - not a mini/lightweight variant
     # (Feature 024: gpt-4o-mini silently declined to call the ledger-event tool
@@ -169,6 +178,8 @@ class AppConfiguration:
             'ai_embedding_model': 'text-embedding-3-large',
             'ai_reply_max_tokens': 1000,
             'max_retries': 1,
+            'green_api_host_mode': 'fixed',
+            'green_api_media_host': None,
             'log_level': 'INFO',
             'data_root': 'data',
             'godfather_phone': None,
@@ -309,6 +320,11 @@ class AppConfiguration:
         # Validate max_retries is a non-negative integer (0 is valid - no retries at all)
         if not isinstance(self.max_retries, int) or isinstance(self.max_retries, bool) or self.max_retries < 0:
             raise ValueError(f"max_retries must be a non-negative integer, got {self.max_retries!r}")
+
+        # Validate green_api_host_mode (Feature 101) - a typo must fail loudly at startup, not
+        # silently pick one of the two hosts
+        if self.green_api_host_mode not in ('instance', 'fixed'):
+            raise ValueError(f"green_api_host_mode must be 'instance' or 'fixed', got {self.green_api_host_mode!r}")
 
         # Validate log_level is INFO or DEBUG
         if self.log_level not in ['INFO', 'DEBUG']:
