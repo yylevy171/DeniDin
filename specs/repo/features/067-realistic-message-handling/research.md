@@ -225,6 +225,4 @@ None (product owner, 2026-10-12). Rollback is the previous release.
 - **V6 - post-turn ledger recognition**: `LedgerEventRecognizer.recognize_after_turn` reads the chat's last
   `ledger_recognition_context_window_hours` from the session (every stored user message, individually),
   so one reply covering several merged user messages is recognized from all of them. No change needed.
-- **V1 - Gate Zero (user item beside `function_call_output`)**: NOT verified. The probe is
-  `tests/billed/test_067_gate_zero.py` (authored, not run). The single composition seam is
-  `Backbone._compose_follow_up_input`; if the API rejects the mix, switch to the plan's fallback D4 there.
+- **V1 - Gate Zero (user item beside `function_call_output`)**: VERIFIED 2026-10-12 - the Responses API accepts a user message together with a `function_call_output` under `previous_response_id`, and the model reads it (`tests/billed/test_067_gate_zero.py` PASSED). Fallback D4 not needed.
