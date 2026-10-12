@@ -85,6 +85,10 @@ redo) · `data-model.md` ⛔ · `contracts/` ⛔ · `research.md` ⛔ (partly re
 - Q: At a hand-back with newer user messages waiting, what happens to the model's output? → A:
   **A reply is sent as is. Whatever else the model asked for is done, and the next message sent to
   the model carries ALL user messages received since.** Backbone only (not the legacy path).
+- Q: Two independent requests in one stream (e.g. "create a combo doc for X", then "create a
+  reminder for Y" before the first is answered)? → A: **Finish the pending approval before
+  starting the next request.** (Interim rule only, a prompt rule with no code change; the broader
+  design of several independent requests is Feature 102.)
 - Q: Feature flag? → A: **No flag.** (Supersedes the 2026-08-30 decision for
   `feature_flags.realistic_message_handling`; rollback is the previous release.)
 
@@ -242,6 +246,9 @@ Authoritative stories with Given-When-Then criteria are in **`user-stories.md`**
 - **REQ-RMH-026**: The backbone prompt / `runtime_constitution.md` MUST gain a section defining
   how to treat messages that arrive while it is working (timeline, before/after, may ask), and
   that a short trailing message answers the most recent pending question in the same context.
+- **REQ-RMH-028**: The model MUST be instructed that when a new request arrives while an approval
+  is pending, it finishes the pending approval first (gets the user's yes/no) and only then starts
+  the next request; when unsure which request a short reply answers, it asks.
 - **REQ-RMH-027**: Existing tool-bearing sections MUST cross-reference it.
 
 ### Key Entities
