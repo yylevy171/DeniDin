@@ -94,9 +94,10 @@ redo) · `data-model.md` ⛔ · `contracts/` ⛔ · `research.md` ⛔ (partly re
 
 ### Session 2026-08-30 (still in force unless contradicted above)
 
-- Media (image/document/video/audio) is **out of scope for merging**: a media message is handled
-  on its existing path, is not merged into text, and does not interrupt text handling. Full
-  media-burst handling is a separate future decision.
+- Media (image/document/video/audio) **fits in without being merged** (confirmed 2026-10-12): a
+  single media message keeps working as today; if it arrives while the model is busy it is saved
+  and acknowledged at once, the model is told a file arrived, and it is analyzed in its own
+  exchange right after the current work, in arrival order. Several media at once are Feature 102.
 - **Group chats: per chat.** A new message from anyone in the group is treated as part of that
   chat's single stream (one shared history, one typing indicator, one pending-approval slot).
 - **Acknowledge immediately on receipt** (`deleteNotification` as soon as the message is read and
@@ -160,7 +161,7 @@ Authoritative stories with Given-When-Then criteria are in **`user-stories.md`**
   visible to the model in its own chain and reported truthfully.
 - **US5 (P2)** — Timeline: every user message carries a timestamp and a before/after marker, and
   the model may ask when it is confused.
-- **US6 (P2)** — Media doesn't merge and doesn't interrupt.
+- **US6 (P2)** — A single image keeps working: handled at once when idle; when it arrives mid-work it is queued, noted to the model, and analyzed right after the current work.
 - **US7 (P3)** — Group chat: per-chat stream.
 - **US8 (P3)** — Approval execution ("כן") is not interrupted; messages sent during it are handled
   afterwards.
@@ -226,8 +227,18 @@ Authoritative stories with Given-When-Then criteria are in **`user-stories.md`**
 
 **Media boundary**
 
-- **REQ-RMH-019**: A media message MUST NOT be merged into text handling and MUST NOT interrupt
-  it; it is processed on its existing media path.
+- **REQ-RMH-019**: A single media message (image/document/video/audio) MUST keep working as
+  today. When nothing else is being handled it is handled at once. When it arrives while the
+  model is busy, it MUST be received, saved with its timestamp and acknowledged immediately; the
+  model MUST be told at its next hand-back that a file arrived (timestamp and caption), but the
+  file MUST NOT be analyzed in the current exchange. It gets its own exchange, in arrival order,
+  as soon as the current work is finished. A queued media message counts as work owed, so the
+  system is not idle while one waits.
+- **REQ-RMH-019a**: Text arriving while a media message is being analyzed MUST be attached at the
+  next hand-back like any other text.
+- **REQ-RMH-019b**: `analyze_media` stays one-file-at-a-time (no change to that tool in this
+  feature); several media in a row are handled one after another, as today. Removing that wait is
+  Feature 102.
 
 **Safety**
 
@@ -282,8 +293,7 @@ retired.)*
    and attach **all** user messages received since to the next message sent to the model.
 3. *(Resolved 2026-10-11)* Scope is the **backbone only**; the legacy `AIHandler` path is not
    touched.
-4. **Media is left out of this feature** (product owner, 2026-10-12): it keeps its existing handling,
-   is not merged and does not interrupt. Multiple media (e.g. two bank slips a second apart) and
+4. **Single media fits in as in REQ-RMH-019** (product owner, 2026-10-12). Multiple media (e.g. two bank slips a second apart) and
    other "multiple independent requests" in one stream are **Feature 102**
    (`specs/repo/features/102-multiple-media-images/`); `contactsArrayMessage` likewise.
 5. **To verify during `speckit.plan`** (no decision needed): that when a model call returns, every
