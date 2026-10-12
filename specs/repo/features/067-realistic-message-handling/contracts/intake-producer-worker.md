@@ -1,4 +1,4 @@
-# Contract: producer / coordinator / worker
+# Contract: producer / coordinator / dispatcher
 
 Replaces the 2026-08-30 producer-consumer contract.
 
@@ -7,7 +7,7 @@ Replaces the 2026-08-30 producer-consumer contract.
 2. `on_notification_received(body)` read-receipt hook — errors logged, never fatal (as today).
 3. **Room check first:** if the chat's queue (or `arrival`) is full → raise `QueueLimitExceeded`
    (ERROR: queue, size, limit, message id), acknowledge, **drop without storing**, `continue`.
-   Only the worker removes items, so a check by the single producer cannot be invalidated.
+   Only the dispatcher removes items, so a check by the single producer cannot be invalidated.
 4. Build `notification = Notification(body, bot.api, state_manager)` (the existing bot client, as
    the router's handler does today). Only `incomingMessageReceived`
    webhooks are queued; other webhook types are ignored as today (no handlers are registered for
@@ -22,14 +22,14 @@ With `intake is None` the loop is today's code, unchanged (player/tests).
 ## Coordinator
 - `submit(notification, message)`: `chats.setdefault(chat_id, ChatIntake()).items.put_or_raise((notification, message))`;
   `arrival.put_or_raise(chat_id)`. A full queue raises `QueueLimitExceeded`: the producer logs ERROR, acknowledges and drops the item (REQ-RMH-033).
-- `next_work_item()` (worker): `deferred` first; then `arrival.get(timeout)` → that chat's queue
+- `next_work_item()` (dispatcher): `deferred` first; then `arrival.get(timeout)` → that chat's queue
   `get_nowait()` (`queue.Empty` = a stale id already drained at a hand-back: skip); media backlog
   item when that chat has nothing else queued; `None` on timeout.
-- `drain_attachable(chat_id)` (worker, at a hand-back): `get_nowait()` until `queue.Empty` on that chat's queue;
+- `drain_attachable(chat_id)` (dispatcher, at a hand-back): `get_nowait()` until `queue.Empty` on that chat's queue;
   text types from non-blocked senders → returned (already stored); media → noted, parked in
   `media_backlog`; everything else → `deferred`. Order preserved.
 
-## Worker — `IntakeWorker` (knows nothing about Green API)
+## Dispatcher — `DeniDinDispatcher` (knows nothing about Green API)
 Constructed with the injected `dispatch(type_message, notification)` — the same callable the
 message source's `start(dispatch)` already receives, and the player uses. Loop:
 `item = coordinator.next_work_item()`; `denidin.preceived[idMessage] = item.message`; then
@@ -38,8 +38,8 @@ pre-stored message instead of storing again. Exception → log, `sleep(5)`, cont
 (REQ-RMH-024). Never exits except on shutdown. It holds no HTTP client, router or session.
 
 ## Invariants
-- At most one message is handled at a time (single worker) — REQ-RMH-023.
-- Producer and worker share only the bounded queues; sessions are touched only through
+- At most one message is handled at a time (single dispatcher) — REQ-RMH-023.
+- Producer and dispatcher share only the bounded queues; sessions are touched only through
   the SessionManager actor (REQ-RMH-025/029). No locks.
-- Nothing is dropped silently: an item leaves a queue only via the worker's `get`, and only into
+- Nothing is dropped silently: an item leaves a queue only via the dispatcher's `get`, and only into
   `deferred`, `media_backlog`, or `dispatch` — except a `QueueLimitExceeded` drop, which is always logged at ERROR and counted.

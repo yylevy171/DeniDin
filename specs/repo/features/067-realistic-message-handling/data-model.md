@@ -3,13 +3,13 @@
 ## ChatIntake (per `chat_id`, in `IntakeCoordinator`)
 | Field | Type | Owner | Notes |
 |---|---|---|---|
-| `items` | `BoundedQueue[(Notification, WhatsAppMessage)]` | producer puts, worker gets | ready notification (bound to the send client) + the already-stored message |
-| `deferred` | `list[dict]` | worker only | non-attachable bodies (taps, edited/deleted, contactsArray, blocked sender…) kept in order; dispatched before newer bodies |
-| `media_backlog` | `list[(Notification, WhatsAppMessage)]` | worker only | media items seen at a drain, waiting to be handled on their own |
+| `items` | `BoundedQueue[(Notification, WhatsAppMessage)]` | producer puts, dispatcher gets | ready notification (bound to the send client) + the already-stored message |
+| `deferred` | `list[dict]` | dispatcher only | non-attachable bodies (taps, edited/deleted, contactsArray, blocked sender…) kept in order; dispatched before newer bodies |
+| `media_backlog` | `list[(Notification, WhatsAppMessage)]` | dispatcher only | media items seen at a drain, waiting to be handled on their own |
 
 ## IntakeCoordinator
 `chats: dict[str, ChatIntake]` (created with `setdefault`), `arrival: BoundedQueue[str]` (chat ids in
-arrival order; the worker blocks on it; stale ids with empty chat queues are skipped).
+arrival order; the dispatcher blocks on it; stale ids with empty chat queues are skipped).
 
 ## PendingUserItem (built at a drain; never persisted — the stored `Message` already is)
 | Field | Meaning |

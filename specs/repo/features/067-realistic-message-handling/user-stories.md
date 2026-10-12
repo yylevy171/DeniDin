@@ -163,4 +163,4 @@ is not mixed into the text request; nothing is lost or analyzed twice.
 
 *Not covered by a `billed`/`expensive` scenario (existing or unit/integration coverage instead):*
 idle capability reset (already tested), acknowledge-on-receipt, replay-player unchanged,
-worker-failure continuation.
+dispatcher-failure continuation.

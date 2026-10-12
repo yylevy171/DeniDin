@@ -3,7 +3,7 @@
 1. Unit + integration: `cd apps/denidin-app && scripts/run_unit_integration_tests.sh tests/unit/intake tests/integration/test_intake_*.py`
    (never a bare `pytest`).
 2. Burst behaviour (integration): feed N webhook bodies for one chat into a producer whose
-   Green API client is a local fake; assert one worker, bodies stored individually in order,
+   Green API client is a local fake; assert one dispatcher, bodies stored individually in order,
    nothing lost, deletion called per body immediately.
 3. Hand-back (integration): a fake model client that returns a tool call then `send_to_user`;
    queue a message after the first call; assert the follow-up `input` contains the

@@ -25,24 +25,24 @@ Nothing was run during planning.
 
 ## Decisions
 
-### D1 — Producer / worker split behind the live bot only (revised 2026-10-12)
-The worker knows nothing about Green API: the Green API message source builds each `Notification` and gives the worker only `(notification, stored message)` plus the injected `dispatch(type, notification)` (the contract the player already uses). Sends are unchanged (shared bot client — already used concurrently today by the reminder and typing-keepalive schedulers).
+### D1 — Producer / dispatcher split behind the live bot only (revised 2026-10-12)
+The dispatcher knows nothing about Green API: the Green API message source builds each `Notification` and gives the dispatcher only `(notification, stored message)` plus the injected `dispatch(type, notification)` (the contract the player already uses). Sends are unchanged (shared bot client — already used concurrently today by the reminder and typing-keepalive schedulers).
 `run_forever` becomes a **producer**: poll → hook → hand the raw body to an `IntakeCoordinator` →
-acknowledge immediately. A single **worker thread** pulls bodies and calls the same
+acknowledge immediately. A single **dispatcher thread** pulls bodies and calls the same
 `dispatch(type, notification)` the router's handler calls today, so every existing handler runs unchanged on the
-worker. When no coordinator is attached (player, tests that build a bot without one) `run_forever`
+dispatcher. When no coordinator is attached (player, tests that build a bot without one) `run_forever`
 is the current synchronous code, byte-for-byte.
-*Why*: it is the smallest change that lets polling continue during a model call (F1). The worker
+*Why*: it is the smallest change that lets polling continue during a model call (F1). The dispatcher
 stays **single and global**, exactly as serial as today (one chat's long-running handling still delays
 another chat — unchanged, out of scope).
-*Rejected*: per-chat worker threads (new concurrency surface, no requirement for it); making
+*Rejected*: per-chat dispatcher threads (new concurrency surface, no requirement for it); making
 handlers async (large rewrite).
 
 ### D2 — The poller stores; `SessionManager` becomes an actor (revised 2026-10-12)
 The poller receives a message, **stores it through `SessionManager`**, acknowledges it, and
 enqueues the stored message. This is safe only if `SessionManager` is: today `get_session`
 reloads `session.json` from disk on every call and every setter rewrites the whole file
-(`session_manager.py:317, 376, 922`), so a poller `add_message` racing a worker
+(`session_manager.py:317, 376, 922`), so a poller `add_message` racing a dispatcher
 `set_approval_message_id` can lose an update, duplicate an `order_num`, or let a reader hit a
 half-written file. Decision (product owner): `SessionManager` is a **database-style actor** — its
 own thread, one thread-safe queue for reads **and** writes, requests executed one at a time (D15).
@@ -51,12 +51,12 @@ REQ-RMH-003 is now met literally: the message is durable before it is acknowledg
 ### D3 — One queue technology: bounded `queue.Queue` (revised 2026-10-12)
 Per chat: a `queue.Queue(maxsize=…)` of **pre-received items** `(notification, WhatsAppMessage)`;
 plus one `arrival` `queue.Queue` of chat ids that preserves cross-chat order and is what the
-worker blocks on (`get(timeout)`) — no separate wake-up Event. The worker takes a chat id from
+dispatcher blocks on (`get(timeout)`) — no separate wake-up Event. The dispatcher takes a chat id from
 `arrival`, then `get_nowait()` from that chat's queue (an empty queue = stale id, skip). A
 hand-back drain is `get_nowait()` until `queue.Empty` on that chat's queue. The hard limit is
 `maxsize` on the per-chat queue; a global ceiling is the `arrival` queue's `maxsize`. Both
 `SessionManager`'s queue (D15) and these use the same class and the same limit/warn/health
-machinery (D16). The worker-private `deferred` list and media backlog are not queues.
+machinery (D16). The dispatcher-private `deferred` list and media backlog are not queues.
 
 ### D4 — Hand-back merge
 In `Backbone._run_resolution_loop`, after a round's tool calls have run and before the follow-up
@@ -74,16 +74,16 @@ marker relative to the model's last output (contract `hand-back-merge.md`).
 ### D5 — What is attachable
 Only text-bearing types from non-blocked senders: `textMessage`, `extendedTextMessage`,
 `contactMessage`. Everything else (`interactiveButtonsResponse` taps, `contactsArrayMessage`,
-edited/deleted, error types, a blocked sender) is **deferred**: moved, in order, to the worker's
+edited/deleted, error types, a blocked sender) is **deferred**: moved, in order, to the dispatcher's
 per-chat `deferred` list and dispatched later through the normal `dispatch` path. Order
 within a chat is preserved (deferred items run before newer queued ones).
 
 ### D6 — Media (REQ-RMH-019/019a/019b)
 At a drain, a media body is `receive()`d (stored as `[<filename> sent]` or its caption, with
 timestamp), **noted** to the model (a one-line "a file arrived at HH:MM:SS" item), and moved to
-the chat's **media backlog** (worker-only). When the current work has nothing more owed, the
-worker dispatches the backlog item through the normal media path, in arrival order. The media
-handler must not store it a second time: the worker passes the already-received
+the chat's **media backlog** (dispatcher-only). When the current work has nothing more owed, the
+dispatcher dispatches the backlog item through the normal media path, in arrival order. The media
+handler must not store it a second time: the dispatcher passes the already-received
 `WhatsAppMessage` (looked up by `message_id`) so `_process_media_message` skips `receive`.
 `analyze_media` is untouched (one file at a time). Several media at once = Feature 102.
 
@@ -120,7 +120,7 @@ existing notification deduper drops it. A crash **between store and acknowledge*
 redelivery. A failed store is not acknowledged. The earlier ack-before-persist crash window (R1)
 is **closed**. What a crash can still lose is the *queue position* of a stored-but-not-yet-handled
 message: on restart it is in history but nobody answers it — to be addressed by a startup sweep
-(unanswered final user message in a chat → hand to the worker); listed as task candidate, not
+(unanswered final user message in a chat → hand to the dispatcher); listed as task candidate, not
 required by the spec.
 
 ### D9 — Typing indicator
@@ -136,7 +136,7 @@ can write (`cap_invoicing_write`, reminders, ledger) gets a one-line cross-refer
 `runtime_constitution.md` is untouched (backbone only).
 
 ### D11 — No turn vocabulary in new code
-New names: `IntakeCoordinator`, `IntakeWorker`, `drain_attachable`, `HandBack`, `pending
+New names: `IntakeCoordinator`, `DeniDinDispatcher`, `drain_attachable`, `HandBack`, `pending
 messages`. Existing `begin_turn`/`end_turn`/`single_turn`/`_turn_*` names are **not** renamed in
 this feature (a rename is a separate, mechanical change; flagged to the product owner).
 
@@ -149,7 +149,7 @@ None (product owner, 2026-10-12). Rollback is the previous release.
 |---|----------|---------------|--------|
 | V1 | Does `responses.create` accept a **user message item alongside `function_call_output` items** in one `input` array when chaining with `previous_response_id`? | One real `billed` probe call (text only) | D4 |
 | V2 | When a call returns, is every server-side Morning tool call fully present in `response.output` and nothing still running? | Inspect an existing logged real `mcp_call` response, or one billed run | D4 summary, SC-004 |
-| V3 | *(Resolved by reading.)* `Notification(event, api, state_manager)` is constructible directly (`whatsapp_chatbot_python/manager/handler.py:16-28`), so the source builds notifications with the existing bot client; the worker needs no router or session. | — | — |
+| V3 | *(Resolved by reading.)* `Notification(event, api, state_manager)` is constructible directly (`whatsapp_chatbot_python/manager/handler.py:16-28`), so the source builds notifications with the existing bot client; the dispatcher needs no router or session. | — | — |
 | V4 | *(Resolved — see D7/D14.)* | — | — |
 | V5 | *(Resolved — see D13.)* History items have no timestamps. | — | — |
 | V6 | Does post-reply `_run_post_turn_ledger_recognition` behave correctly when one reply covers several user messages (it takes one `reply_text`)? | Read it; one integration test | A1/A2 |
@@ -158,13 +158,13 @@ None (product owner, 2026-10-12). Rollback is the previous release.
 
 - **R1** *(closed by D8)* ack-before-persist window. Remaining: a stored-but-unhandled message
   after a crash (see D8).
-- **R2** The worker is global-serial: long-running handling in one chat delays all others (unchanged
+- **R2** The dispatcher is global-serial: long-running handling in one chat delays all others (unchanged
   from today).
-- **R3** Producer and worker share only the bounded queues; a
+- **R3** Producer and dispatcher share only the bounded queues; a
   message appended in the instant a drain finishes lands in the deque and is picked up by the next
-  drain or as the next message to handle — never dropped (the worker re-checks `has_work` before it
+  drain or as the next message to handle — never dropped (the dispatcher re-checks `has_work` before it
   sleeps).
-- **R5** The poller and the sends share one bot client. Already true today (reminder/typing-keepalive scheduler threads send while the poller waits); no new exposure beyond sends now also coming from the worker thread. Accepted.
+- **R5** The poller and the sends share one bot client. Already true today (reminder/typing-keepalive scheduler threads send while the poller waits); no new exposure beyond sends now also coming from the dispatcher thread. Accepted.
 - **R4** Models may still mishandle a burst; the safeguard is the prompt rules plus the right to
   ask the user (spec).
 
@@ -206,10 +206,10 @@ None (product owner, 2026-10-12). Rollback is the previous release.
   warned on at a fraction of the bound, warned on when stalled, logged periodically and in `/health`.
 
 ### D17 — Keeping the threads alive (REQ-RMH-036)
-- Today nothing watches a thread. If the new worker or actor thread died, the poller would keep
+- Today nothing watches a thread. If the new dispatcher or actor thread died, the poller would keep
   storing and queuing and nothing would ever be handled/answered; if the actor died every session
   call would time out — a silent outage.
-- Every thread loop wraps **each item** in `try/except Exception` (log, continue; the worker keeps
+- Every thread loop wraps **each item** in `try/except Exception` (log, continue; the dispatcher keeps
   REQ-RMH-024's sleep-5 posture) and a last-resort `except BaseException` that logs CRITICAL before
   the thread ends.
 - A `ThreadSupervisor` (same scheduler as the monitor, every ~5 s) checks `thread.is_alive()`;

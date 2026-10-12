@@ -36,7 +36,7 @@
 - All 6 Open Questions were resolved in the `speckit.clarify` session (2026-08-30) — see the spec
   Clarifications section: media does not cancel the text turn; journal delivered via a dedicated
   system-note field after the date line; typing indicator re-fired on merged turn; acknowledge
-  immediately on receipt; the "כן"-approval execution turn is non-interruptible; worker mirrors
+  immediately on receipt; the "כן"-approval execution turn is non-interruptible; dispatcher mirrors
   the live loop's log-sleep-continue posture.
 - The spec deliberately keeps `HANDLER_REGISTRY` (8 message types) and the player contract as
   immutability constraints — flagged in `user-stories.md` routing requirements.

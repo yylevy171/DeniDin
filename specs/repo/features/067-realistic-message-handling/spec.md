@@ -94,15 +94,15 @@ works."
 
 - Q: Where are inbound messages stored relative to the queue? → A: **In the poller, before the
   queue**: message received → stored through `SessionManager` → acknowledged → the stored message
-  object is enqueued; the worker receives message objects, not raw bodies. (Supersedes
+  object is enqueued; the dispatcher receives message objects, not raw bodies. (Supersedes
   "acknowledge before storing" and its crash window.)
 - Q: Is `SessionManager` safe to call from two threads? → A: **No** (it reloads and rewrites the
   whole `session.json` on every call), so **`SessionManager` becomes a database-style actor with
   its own thread and a single thread-safe queue for both reads and writes**, executing requests
   one at a time. This is the **explicit human approval** for a `queue.Queue` in this one place.
-- Q: What does the worker know about Green API? → A: **Nothing.** The message source owns
-  everything Green API and hands the worker a ready `Notification` plus the stored message; the
-  worker only calls the injected `dispatch(type, notification)` (the same contract the replay
+- Q: What does the dispatcher know about Green API? → A: **Nothing.** The message source owns
+  everything Green API and hands the dispatcher a ready `Notification` plus the stored message; the
+  dispatcher only calls the injected `dispatch(type, notification)` (the same contract the replay
   player uses). **Sends stay exactly as today** — `DeniDin` → `WhatsAppHandler` →
   `notification.answer(...)` on the shared bot client; no separate send client (product owner,
   2026-10-12).
@@ -117,14 +117,14 @@ works."
 
 - **One queue technology for both queues:** `queue.Queue` (bounded) for the intake **and** for
   the `SessionManager` actor. No second family of queues. **Locks inside the queues are approved.**
-  (Worker-private lists such as the deferred and media-backlog lists are not queues.)
+  (Dispatcher-private lists such as the deferred and media-backlog lists are not queues.)
 - **Hard, configurable limit** on the number of messages/requests in each queue. When the limit
   is reached an **error is raised, and messages are dropped from then on** (until the queue has
   room again).
 - **Warnings:** if a queue grows too big, or stays big/stalled for too long, a warning MUST be
   raised.
 - **No silent blow-up** of the store queue (or any queue): sizes and stalls are observable.
-- **Thread supervision:** something MUST make sure the worker and the actor threads are always
+- **Thread supervision:** something MUST make sure the dispatcher and the actor threads are always
   up, and define what happens when one dies.
 
 ### Session 2026-08-30 (still in force unless contradicted above)
@@ -142,7 +142,7 @@ works."
   approval.** Follow the project precedent (lock-free background jobs, documented residual risk);
   a one-way cross-thread flag is acceptable.
 - Typing indicator is re-fired when new user messages are handed to the model.
-- A failure while handling work is logged, the worker sleeps 5s and continues — it never exits.
+- A failure while handling work is logged, the dispatcher sleeps 5s and continues — it never exits.
 
 ## Terminology Glossary
 
@@ -281,7 +281,7 @@ Authoritative stories with Given-When-Then criteria are in **`user-stories.md`**
 
 - **REQ-RMH-020**: There is **no feature flag** (product owner, 2026-10-11).
 - **REQ-RMH-021**: The poller MUST store an inbound message, then acknowledge it to the upstream
-  queue, then enqueue the stored message for the worker. A message whose store fails MUST NOT be
+  queue, then enqueue the stored message for the dispatcher. A message whose store fails MUST NOT be
   acknowledged (the upstream redelivers it).
 - **REQ-RMH-022**: The replay/export player path MUST remain synchronous and unchanged.
 - **REQ-RMH-023**: At most one message MUST be handled by the model at a time per chat.
@@ -308,7 +308,7 @@ Authoritative stories with Given-When-Then criteria are in **`user-stories.md`**
 - **REQ-RMH-035**: Queue depths, limits, last-taken times and dropped counts for **both** queues
   MUST be observable (logged periodically at INFO when non-empty, and reported in `/health`), so a
   growing or stalled queue is noticed without anyone having to look.
-- **REQ-RMH-036**: A supervisor MUST check every second-scale interval that the worker thread and
+- **REQ-RMH-036**: A supervisor MUST check every second-scale interval that the dispatcher thread and
   the `SessionManager` actor thread are alive. A thread that dies MUST be logged at CRITICAL and
   restarted (the queue survives, so nothing queued is lost; the item in flight fails loudly, never
   hangs its caller). Repeated deaths (a configurable count within a configurable time) MUST make
@@ -319,7 +319,7 @@ Authoritative stories with Given-When-Then criteria are in **`user-stories.md`**
   records such as `CHANGELOG.md`/`RELEASES.md`).
 - **REQ-RMH-031**: Existing documentation (`CLAUDE.md`, `.github/ARCHITECTURE.md`, app docs,
   prompts) MUST be updated to describe this model.
-- **REQ-RMH-032**: The worker MUST know nothing about Green API, a router or an HTTP session: it
+- **REQ-RMH-032**: The dispatcher MUST know nothing about Green API, a router or an HTTP session: it
   calls only the injected `dispatch(type, notification)`. Notifications are built by the message
   source; sending is unchanged.
 
