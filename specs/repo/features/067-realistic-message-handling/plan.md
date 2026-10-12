@@ -130,14 +130,24 @@ apps/denidin-app/
 - **Phase 5 — Prompts** (REQ-026/027/028).
 - **Phase 6 — Acceptance**: write and run A1–A8 once (A8 `expensive`, own approval).
 
-## Open questions for the product owner (for `speckit.tasks`)
+## Decisions from the plan review (product owner, 2026-10-12)
 
-- **Q1** Cancelling a pending approval: with D14 an approval stays live until answered or
-  superseded. If the user types "stop, don't do X", should the model be able to *invalidate* the
-  buttons (a tiny resolution tool), or is leaving them live and relying on the model to refuse
-  a later tap acceptable?
-- **Q2** Rename the code's remaining "turn" names (`begin_turn`, `single_turn`, `_turn_*`)? Not in
-  this plan (mechanical, separate change).
+- D1–D14 approved as written.
+- **Q1 resolved:** cancelling a pending approval — **rely on the model**; no invalidation tool. The
+  buttons stay live until answered or replaced.
+- **Q2 resolved:** **rename every reference to "turn"** — in code, tests, prompts and docs — except
+  history (git history, persisted data and logs). Naming scheme and scope: see the open items below.
+- **Existing documentation must be adjusted** to the new model (`CLAUDE.md`, `.github/ARCHITECTURE.md`,
+  `apps/denidin-app/README.md`/docs, `config/prompts/*` wording): a docs task in `tasks.md`.
+
+## Open items before `speckit.tasks`
+
+- **O1** Where inbound messages are stored relative to the queue (finding 2): store in the poller,
+  or spool a raw file in the poller and store on the worker — see the discussion in the chat/
+  research D2. *Pending decision.*
+- **O2** The worker must not use the poller's HTTP session (finding 3): give the worker its own
+  Green API client. *Pending confirmation.*
+- **O3** The "turn" rename: replacement vocabulary and exact scope. *Pending decision.*
 
 ## Complexity Tracking
 
