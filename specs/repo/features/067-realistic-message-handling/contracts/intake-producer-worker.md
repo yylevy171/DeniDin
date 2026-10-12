@@ -5,15 +5,18 @@ Replaces the 2026-08-30 producer-consumer contract.
 ## Producer — `DeniDinGreenAPIBot.run_forever` (only when `self.intake is not None`)
 1. `receiveNotification()`; unusable/empty → `continue` (as today).
 2. `on_notification_received(body)` read-receipt hook — errors logged, never fatal (as today).
-3. Build `notification = Notification(body, bot.api, state_manager)` (the existing bot client, as
+3. **Room check first:** if the chat's queue (or `arrival`) is full → raise `QueueLimitExceeded`
+   (ERROR: queue, size, limit, message id), acknowledge, **drop without storing**, `continue`.
+   Only the worker removes items, so a check by the single producer cannot be invalidated.
+4. Build `notification = Notification(body, bot.api, state_manager)` (the existing bot client, as
    the router's handler does today). Only `incomingMessageReceived`
    webhooks are queued; other webhook types are ignored as today (no handlers are registered for
    them). `message = denidin.prestore(notification)` — for the message types whose handlers store at
    receipt, store exactly as the handler would (same content rules); other types: `None`.
    A store failure → log, **do not acknowledge**, `continue` (REQ-RMH-021).
-4. `deleteNotification(receiptId)`.
-5. `intake.submit(notification, message)`.
-6. Any exception: log, `sleep(5.0)`, `continue` (as today).
+5. `deleteNotification(receiptId)`.
+6. `intake.submit(notification, message)`.
+7. Any exception: log, `sleep(5.0)`, `continue` (as today).
 With `intake is None` the loop is today's code, unchanged (player/tests).
 
 ## Coordinator

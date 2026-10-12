@@ -112,7 +112,8 @@ item's content with its Israel-local time (`[HH:MM:SS dd/mm]`); the default stay
 marker. Because a message's rendered text never changes once stored, the prefix is stable for
 prompt caching.
 
-### D8 — Store, then acknowledge, then enqueue (revised)
+### D8 — Check room, store, acknowledge, enqueue (revised 2026-10-12)
+If the intake is full the message is dropped **before** it is stored (REQ-RMH-033: a full intake means something is very wrong).
 `receive → store (SessionManager actor) → deleteNotification → enqueue`. A crash after the store
 loses nothing: the stored message is in the session, and if the upstream redelivers it the
 existing notification deduper drops it. A crash **between store and acknowledge** just means a

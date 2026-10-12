@@ -298,8 +298,9 @@ Authoritative stories with Given-When-Then criteria are in **`user-stories.md`**
   config; defaults in `config.example.json`). When a `put` finds the queue full the system MUST
   raise a `QueueLimitExceeded` error (logged at ERROR with queue name, size, limit and the item's
   identity), and the item MUST be dropped; every further `put` MUST fail the same way until room
-  is available. A dropped inbound message is acknowledged and discarded (see the Open Item on
-  whether it is still stored).
+  is available. A dropped inbound message is acknowledged and discarded and is **not
+  stored** in the chat history (product owner, 2026-10-12: a full intake means something is very
+  wrong). The poller therefore checks for room **before** storing.
 - **REQ-RMH-034**: A queue MUST raise a WARNING when its size reaches a configurable warning size
   (default well below the limit), and when it has had items waiting without any being taken for
   longer than a configurable number of seconds (a stall). Warnings repeat at a bounded rate, not
@@ -357,9 +358,8 @@ retired.)*
 
 ## Open Items
 
-0. **When the intake queue is full**, is the dropped inbound message still **stored in the chat
-   history** (so the next message's context contains it) or **discarded entirely**? *(Pending
-   the product owner.)*
+0. *(Resolved 2026-10-12)* **When the intake queue is full** something is very wrong: the inbound
+   message is **dropped and NOT stored** (acknowledged and discarded, ERROR logged).
 
 1. *(Resolved 2026-10-11)* A reply that comes back while newer user messages are waiting is
    **sent as is**.
