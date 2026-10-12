@@ -5,9 +5,8 @@
 **Revised**: 2026-10-11 — Feature 090 ("Removing the Concept of a Turn") folded in; the design was
 re-clarified one question at a time with the product owner (see Clarifications, Session
 2026-10-11). This revision **supersedes** the 2026-08-30 discard-and-merge-turn design.
-**Status**: In progress — spec revised 2026-10-11 (all open items answered). `plan.md`, `research.md`, `data-model.md`,
-`contracts/`, `quickstart.md` still describe the SUPERSEDED turn-based design and must be redone
-(`speckit.plan`) against the post-Feature-063 backbone before `speckit.tasks`.
+**Status**: In progress — spec revised 2026-10-11; acceptance scenarios approved and `speckit.plan`
+completed 2026-10-12 (`plan.md`, `research.md`, `data-model.md`, `contracts/`, `quickstart.md`). Next: `speckit.tasks`.
 **Priority**: P2 (first-pass estimate)
 **Absorbs**: Feature 090 (obsolete, folded in — `specs/repo/features/090-remove-turn-concept/`).
 **Input**: User description (2026-08-30): "Today the denidin bot responds 1:1 to any message
@@ -30,9 +29,8 @@ works."
   Technology Choices, Requirement IDs, explicit `runtime_constitution.md` boundary section for
   new behavior.
 
-**Required Files**: `user-stories.md` ✅ · `spec.md` (this file) ✅ · `plan.md` ⛔ (superseded,
-redo) · `data-model.md` ⛔ · `contracts/` ⛔ · `research.md` ⛔ (partly reusable) ·
-`quickstart.md` ⛔ · `tasks.md` ⏳
+**Required Files**: `user-stories.md` ✅ · `spec.md` (this file) ✅ · `plan.md` ✅ · `data-model.md` ✅ ·
+`contracts/` ✅ · `research.md` ✅ · `quickstart.md` ✅ · `tasks.md` ⏳
 
 ---
 
