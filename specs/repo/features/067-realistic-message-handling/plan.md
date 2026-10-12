@@ -10,7 +10,8 @@
   workflow; integration tests simulate a real entry point (a Green API webhook body); **no
   monkey-patching** (the producer split is a Template-Method change inside the existing
   `DeniDinGreenAPIBot` subclass plus a dependency-injected `IntakeCoordinator`); no
-  `Lock`/`RLock`/`Semaphore`/`queue.Queue` (REQ-RMH-025); `pathlib`; no new dependency; bounded-retry
+  `Lock`/`RLock`/`Semaphore`; the one `queue.Queue` is SessionManager's actor queue, explicitly
+  approved 2026-10-12 (REQ-RMH-025/029); `pathlib`; no new dependency; bounded-retry
   rule §XVIII not touched (no new external handshake).
 - **METHODOLOGY.md**: spec-first; the 2026-09-12 TDD redefinition — the approved `billed`/`expensive`
   scenarios (user-stories.md A1–A8) are the final acceptance pass, written and run once at the end;
@@ -50,7 +51,7 @@ Backbone only. The legacy `AIHandler`, the replay player and `HANDLER_REGISTRY` 
 | No env vars | ✅ none introduced |
 | Israel local time | ✅ `now_local()`; timestamps formatted from stored message timestamps |
 | No monkey-patching | ✅ subclass override already exists; coordinator injected via an attribute set at startup, like `on_notification_received` |
-| No locks / queue.Queue | ✅ deque + Event (REQ-RMH-025); residual risks in research.md R1–R5 |
+| No locks / queue.Queue | ✅ no locks; deque + Event for intake; the single `queue.Queue` is SessionManager's, human-approved (REQ-RMH-025/029) |
 | Feature flag | ✅ none by human decision |
 | Tests immutable once approved | ✅ new tests only |
 | Player/registry unchanged | ✅ REQ-RMH-022; `HANDLER_REGISTRY` stays 8 types |
@@ -63,28 +64,34 @@ Post-design re-check: ✅ no violations; no Complexity Tracking entries.
 ```
 Green API queue
   └─ POLLER (producer)  DeniDinGreenAPIBot.run_forever
-       receive → read-receipt hook → intake.submit(body) → deleteNotification (immediately)
-  └─ IntakeCoordinator  (per-chat deque of raw bodies + global arrival deque + wake Event)
-  └─ WORKER (one thread)  IntakeWorker.run
-       next body (deferred first, then arrival order) → router.route_event(body)   # unchanged handlers
+       receive → read-receipt hook → store via SessionManager (actor) → deleteNotification
+              → intake.submit(body, stored_message)
+  └─ SessionManager ACTOR  (own thread; ONE thread-safe queue for reads + writes; sole owner of session files)
+  └─ IntakeCoordinator  (per-chat deque of (body, stored message) + global arrival deque + wake Event)
+  └─ WORKER (one thread, own Green API client)  IntakeWorker.run
+       next item (deferred first, then arrival order) → router.route_event(body)   # unchanged handlers;
+                                                          # DeniDin.receive() returns the pre-stored message
           → _process_conversational_message → Backbone.single_turn → _run_resolution_loop
                each round: run the model's tool calls
                            ├─ send_to_user / approval round  → return final text (sent as is)
-                           └─ otherwise → drain_attachable(chat)  → receive() each → build user items
+                           └─ otherwise → drain_attachable(chat)  → (already stored) build user items
                                          → responses.create(input = outputs + pending items)
        reply sent; worker loops: anything queued is simply the next exchange
-       media bodies seen at a drain → stored, noted, parked in the media backlog → dispatched after
+       media items seen at a drain → noted, parked in the media backlog → dispatched after
 ```
 
 ### What changes where
 
 | Area | Change |
 |---|---|
-| `src/utils/green_api_bot.py` | `DeniDinGreenAPIBot.run_forever`: when `self.intake` is set → producer path (submit + immediate delete); else today's code unchanged |
+| `src/managers/session_store.py` (new) / `session_manager.py` | today's `SessionManager` body becomes `SessionStore` (single-thread-only); `SessionManager` becomes the actor facade — same public signatures, one thread, one `queue.Queue`, `Future` results (D15) |
+| `src/utils/green_api_bot.py` | `DeniDinGreenAPIBot.run_forever`: when `self.intake` is set → producer path (store → delete → submit); else today's code unchanged |
 | `src/intake/intake_coordinator.py` (new) | `submit`, `drain_attachable(chat_id)`, `next_work_item()`, `park_media`, `has_work()`; classification (D5) |
-| `src/intake/intake_worker.py` (new) | thread; `route_event` per item; log + sleep 5 + continue on error (REQ-RMH-024); media backlog dispatch |
+| `src/intake/intake_worker.py` (new) | thread; own Green API client (REQ-RMH-032); `route_event` per item; log + sleep 5 + continue on error (REQ-RMH-024); media backlog dispatch |
 | `src/sources/green_api_source.py` + `denidin.py` `__main__` | build coordinator + worker, attach `bot.intake`, start worker before the poll loop; `DeniDin.intake` for the AI side (None-guarded) |
-| `DeniDin` (`denidin.py`) | `receive_pending(chat_id)` → list of received `WhatsAppMessage` + media notes; `receive` made reusable for a pre-received media message |
+| `DeniDin` (`denidin.py`) | `prestore(notification)` (poller: same content rules each handler uses today); `receive()` returns the pre-stored message instead of storing twice; `receive_pending(chat_id)` → stored messages + media notes |
+| Rename "turn" (REQ-RMH-030) | `begin_turn`/`end_turn`/`single_turn`/`_turn_*`/`_turns_in_progress`/`turn_context`… in code and tests; prompts; docs — vocabulary pending (O3) |
+| Existing docs (REQ-RMH-031) | `CLAUDE.md`, `.github/ARCHITECTURE.md`, `.github/*` mentions, app README/docs |
 | `src/backbone/backbone.py` | `_run_resolution_loop`: drain at each non-final hand-back (off when `_turn_is_approved_write`, REQ-RMH-014); record `last_output_at`; D14 — stop clearing `approval_message_id` on unrelated messages |
 | `src/backbone/pending_messages.py` (new) | format user items: timestamp + before/after marker; media note |
 | `src/managers/session_manager.py` | opt-in timestamp prefix for the backbone's rolling window (D13); default off |
@@ -121,33 +128,32 @@ apps/denidin-app/
 ## Phases
 
 - **Phase 0 — Gate Zero** (before building on third-party behavior; one `billed` probe, text only):
-  V1, V2, V6, plus the V3 concurrency test. If V1 fails, D4 falls back to sending the pending
-  messages as their own user message in a **separate** follow-up call after the tool outputs.
+  V1, V2, V6. If V1 fails, D4 falls back to sending the pending messages as their own user
+  message in a **separate** follow-up call after the tool outputs.
+- **Phase 0b — SessionManager actor (D15)**: the data-integrity foundation; facade + store split,
+  every existing caller unchanged; unit tests (serialization, exception propagation, timeout,
+  shutdown), plus a stress test of concurrent writers proving no lost update.
 - **Phase 1 — Intake** (US stories 1,2,7): coordinator + producer + worker; unit + integration.
 - **Phase 2 — Hand-back merge** (US 1,2,3,5): drain, formatter, timestamps, typing indicator.
 - **Phase 3 — Guards & approvals** (US 8,9): D7, D14; reply-as-is path.
 - **Phase 4 — Media** (US 6): note + backlog + pre-received message.
-- **Phase 5 — Prompts** (REQ-026/027/028).
+- **Phase 5 — Prompts and docs** (REQ-026/027/028, REQ-031).
+- **Phase 5b — Rename "turn"** (REQ-030): last, as one mechanical sweep, so it never muddies the behavior diffs.
 - **Phase 6 — Acceptance**: write and run A1–A8 once (A8 `expensive`, own approval).
 
 ## Decisions from the plan review (product owner, 2026-10-12)
 
-- D1–D14 approved as written.
-- **Q1 resolved:** cancelling a pending approval — **rely on the model**; no invalidation tool. The
-  buttons stay live until answered or replaced.
-- **Q2 resolved:** **rename every reference to "turn"** — in code, tests, prompts and docs — except
-  history (git history, persisted data and logs). Naming scheme and scope: see the open items below.
-- **Existing documentation must be adjusted** to the new model (`CLAUDE.md`, `.github/ARCHITECTURE.md`,
-  `apps/denidin-app/README.md`/docs, `config/prompts/*` wording): a docs task in `tasks.md`.
+- D1–D14 approved; D2/D3/D8 revised and D15 added the same day (see `research.md`).
+- Poller stores via `SessionManager`, then acknowledges, then enqueues; `SessionManager` is an
+  actor with one thread-safe queue for reads and writes (approved `queue.Queue`).
+- The worker has its own Green API client; it never uses the poller's HTTP session.
+- Cancelling a pending approval: rely on the model.
+- Rename every "turn" (code, tests, prompts, docs), except history; update existing docs.
 
 ## Open items before `speckit.tasks`
 
-- **O1** Where inbound messages are stored relative to the queue (finding 2): store in the poller,
-  or spool a raw file in the poller and store on the worker — see the discussion in the chat/
-  research D2. *Pending decision.*
-- **O2** The worker must not use the poller's HTTP session (finding 3): give the worker its own
-  Green API client. *Pending confirmation.*
-- **O3** The "turn" rename: replacement vocabulary and exact scope. *Pending decision.*
+- **O3** The replacement vocabulary for "turn" and the exact scope of the rename (e.g. do closed
+  specs under `specs/done/` count as history?). *Pending the product owner.*
 
 ## Complexity Tracking
 

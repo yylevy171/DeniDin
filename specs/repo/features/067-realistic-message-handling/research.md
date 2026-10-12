@@ -37,21 +37,21 @@ another chat — unchanged, out of scope).
 *Rejected*: per-chat worker threads (new concurrency surface, no requirement for it); making
 handlers async (large rewrite).
 
-### D2 — The producer never touches session state
-The producer only parses `chatId`/`typeMessage`, appends the raw body to that chat's deque and
-sets a wake-up `threading.Event`. Persisting happens on the worker (F2: `add_message` mutates
-`session.json`; two writers without a lock would lose updates).
-*Consequence*: REQ-RMH-003's "persisted immediately" is satisfied at the **next hand-back /
-exchange start**, not at the instant of receipt. Combined with ack-immediately this is the
-accepted crash window (D8).
+### D2 — The poller stores; `SessionManager` becomes an actor (revised 2026-10-12)
+The poller receives a message, **stores it through `SessionManager`**, acknowledges it, and
+enqueues the stored message. This is safe only if `SessionManager` is: today `get_session`
+reloads `session.json` from disk on every call and every setter rewrites the whole file
+(`session_manager.py:317, 376, 922`), so a poller `add_message` racing a worker
+`set_approval_message_id` can lose an update, duplicate an `order_num`, or let a reader hit a
+half-written file. Decision (product owner): `SessionManager` is a **database-style actor** — its
+own thread, one thread-safe queue for reads **and** writes, requests executed one at a time (D15).
+REQ-RMH-003 is now met literally: the message is durable before it is acknowledged.
 
-### D3 — Lock-free structures
-Per chat: a `collections.deque` of raw bodies (producer `append`, worker `popleft` — each end is
-touched by exactly one thread, operations are atomic under the GIL). A global `arrival` deque of
-chat ids preserves cross-chat arrival order; the worker skips a chat id whose deque is already
-empty (its bodies were drained at a hand-back). No `Lock`/`RLock`/`Semaphore`/`queue.Queue`
-(REQ-RMH-025). The wake-up is a `threading.Event` (the permitted one-way flag).
-Worker-only structures (the per-chat `deferred` list, the media backlog) need no protection.
+### D3 — Intake structures (revised)
+Per chat: a `collections.deque` of **pre-received items** `(body, WhatsAppMessage)` (producer
+`append`, worker `popleft` — one thread per end, atomic under the GIL), plus a global `arrival`
+deque of chat ids (stale ids with empty deques are skipped) and a `threading.Event` wake-up. No
+locks. The only `queue.Queue` is SessionManager's (D15, approved).
 
 ### D4 — Hand-back merge
 In `Backbone._run_resolution_loop`, after a round's tool calls have run and before the follow-up
@@ -107,17 +107,15 @@ item's content with its Israel-local time (`[HH:MM:SS dd/mm]`); the default stay
 marker. Because a message's rendered text never changes once stored, the prefix is stable for
 prompt caching.
 
-### D8 — Acknowledge on receipt; crash window accepted
-`deleteNotification` is called right after the body is handed to the coordinator. A process crash
-before the worker has persisted that body loses the message with no redelivery. The window is the
-length of the exchange in progress (up to ~a minute), larger than serial mode's. Accepted by the
-product owner (2026-08-30 clarification, restated in the spec); no extra journal file is added
-(it would be a new durable-state mechanism for a case the spec already accepts). Logged at INFO
-on enqueue and drain so a loss is at least traceable.
-*Alternative kept for the record*: acknowledge only after the worker persists — safer, but it
-means the unacknowledged notification is redelivered by Green API on every poll while the worker
-is busy, which the existing notification deduper would have to absorb; rejected as a larger
-behavior change.
+### D8 — Store, then acknowledge, then enqueue (revised)
+`receive → store (SessionManager actor) → deleteNotification → enqueue`. A crash after the store
+loses nothing: the stored message is in the session, and if the upstream redelivers it the
+existing notification deduper drops it. A crash **between store and acknowledge** just means a
+redelivery. A failed store is not acknowledged. The earlier ack-before-persist crash window (R1)
+is **closed**. What a crash can still lose is the *queue position* of a stored-but-not-yet-handled
+message: on restart it is in history but nobody answers it — to be addressed by a startup sweep
+(unanswered final user message in a chat → hand to the worker); listed as task candidate, not
+required by the spec.
 
 ### D9 — Typing indicator
 When a drain attaches messages, `send_typing_indicator` is re-fired (REQ-RMH-018), as
@@ -152,13 +150,35 @@ None (product owner, 2026-10-12). Rollback is the previous release.
 
 ## Residual risks (documented, not locked away)
 
-- **R1** Ack-before-persist crash window (D8).
+- **R1** *(closed by D8)* ack-before-persist window. Remaining: a stored-but-unhandled message
+  after a crash (see D8).
 - **R2** The worker is global-serial: a long exchange in one chat delays all others (unchanged
   from today).
 - **R3** Producer and worker share only the per-chat deques, the arrival deque and the Event; a
   message appended in the instant a drain finishes lands in the deque and is picked up by the next
   drain or as the next exchange — never dropped (the worker re-checks `has_work` before it
   sleeps).
-- **R5** The poller and the worker share one `requests.Session` (`bot.api.session`); `requests.Session` is not formally thread-safe. Mitigation if V3's test shows trouble: the producer uses its own `GreenAPI` instance for receive/delete.
+- **R5** *(resolved by product decision, REQ-RMH-032)* the worker uses its own Green API client; the poller's session is private to it.
 - **R4** Models may still mishandle a burst; the safeguard is the prompt rules plus the right to
   ask the user (spec).
+
+### D15 — SessionManager as an actor (REQ-RMH-029)
+- Rename today's class body to `SessionStore` (not thread-safe, used **only** by the actor thread)
+  and make `SessionManager` a thin facade with the **same public method signatures**; each method
+  puts `(operation, args, kwargs, Future)` on the single queue and blocks on the `Future`
+  (bounded wait; a timeout is a loud error, never a silent default). Explicit forwarding methods
+  — no `__getattr__` magic, no monkey-patching.
+- The actor thread loops: `get()` → run the matching `SessionStore` method → `Future.set_result`
+  / `set_exception`. Internal calls between `SessionStore` methods are direct (no re-queueing, so
+  no self-deadlock).
+- Returned `Session`/`Message` objects are fresh copies (they already are — loaded from disk), so
+  they cross threads safely.
+- Lifecycle: the thread is a daemon started by the facade (lazily on first call, or explicitly in
+  `initialize_app`); `close()` drains and stops it. Tests, `BackfillDeniDin`, `WebappDeniDin` and
+  the player keep working because the facade is a drop-in; each owns its own manager/thread.
+- Cost: every session read/write now round-trips through one thread; a long read (a 14-day
+  rolling window) delays the poller's store of the next message by that read's duration (tens of
+  ms). Accepted.
+- Other writers of session files (daily roll, capability reset, reminders touching sessions) go
+  through the facade — to be enumerated in tasks.md; any code that opens `session.json` directly
+  is a bug to fix in this phase.

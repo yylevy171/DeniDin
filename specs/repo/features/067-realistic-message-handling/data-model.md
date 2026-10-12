@@ -3,9 +3,9 @@
 ## ChatIntake (per `chat_id`, in `IntakeCoordinator`)
 | Field | Type | Owner | Notes |
 |---|---|---|---|
-| `bodies` | `deque[dict]` | producer appends, worker pops left | raw Green API webhook bodies not yet received |
+| `bodies` | `deque[(dict, WhatsAppMessage)]` | producer appends, worker pops left | raw body + the already-stored message |
 | `deferred` | `list[dict]` | worker only | non-attachable bodies (taps, edited/deleted, contactsArray, blocked sender…) kept in order; dispatched before newer bodies |
-| `media_backlog` | `deque[(dict, WhatsAppMessage)]` | worker only | media bodies already received/stored at a drain, waiting for their own exchange |
+| `media_backlog` | `deque[(dict, WhatsAppMessage)]` | worker only | media items seen at a drain, waiting for their own exchange |
 
 ## IntakeCoordinator
 `chats: dict[str, ChatIntake]` (created with `setdefault`), `arrival: deque[str]` (chat ids in
@@ -27,3 +27,8 @@ Kept on the exchange's local state; replaced each round.
 ## Unchanged
 `Session`, `Message`, `Session.active_capabilities`, `Session.approval_message_id` (only *when it
 is cleared* changes, D14).
+
+## SessionManager actor (D15)
+`SessionManager` (facade) → one `queue.Queue` of `(operation, args, kwargs, Future)` → one thread →
+`SessionStore` (today's implementation, single-thread-only). No other component touches session
+files.

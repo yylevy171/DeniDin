@@ -90,6 +90,23 @@ works."
 - Q: Feature flag? → A: **No flag.** (Supersedes the 2026-08-30 decision for
   `feature_flags.realistic_message_handling`; rollback is the previous release.)
 
+### Session 2026-10-12 (plan review, product owner)
+
+- Q: Where are inbound messages stored relative to the queue? → A: **In the poller, before the
+  queue**: message received → stored through `SessionManager` → acknowledged → the stored message
+  object is enqueued; the worker receives message objects, not raw bodies. (Supersedes
+  "acknowledge before storing" and its crash window.)
+- Q: Is `SessionManager` safe to call from two threads? → A: **No** (it reloads and rewrites the
+  whole `session.json` on every call), so **`SessionManager` becomes a database-style actor with
+  its own thread and a single thread-safe queue for both reads and writes**, executing requests
+  one at a time. This is the **explicit human approval** for a `queue.Queue` in this one place.
+- Q: Worker access to the poller's HTTP session? → A: **No.** The poller owns its HTTP session;
+  the worker gets its own Green API client / anything else it needs is provided to it.
+- Q: Cancelling a pending approval? → A: **Rely on the model**; no invalidation tool.
+- Q: The word "turn" in existing code and docs? → A: **Rename every reference** (code, tests,
+  prompts, docs), except history (git history, persisted data, logs, cut-release records).
+- Q: Existing documentation? → A: **Adjust it** to this model.
+
 ### Session 2026-08-30 (still in force unless contradicted above)
 
 - Media (image/document/video/audio) **fits in without being merged** (confirmed 2026-10-12): a
@@ -98,7 +115,7 @@ works."
   exchange right after the current work, in arrival order. Several media at once are Feature 102.
 - **Group chats: per chat.** A new message from anyone in the group is treated as part of that
   chat's single stream (one shared history, one typing indicator, one pending-approval slot).
-- **Acknowledge immediately on receipt** (`deleteNotification` as soon as the message is read and
+- ~~Acknowledge immediately on receipt~~ (superseded 2026-10-12: store first, then acknowledge) (`deleteNotification` as soon as the message is read and
   handed on). Accepted residual risk: a crash between acknowledgement and handling loses that
   message — to be documented in the re-done `research.md`.
 - **No `threading.Lock`/`RLock`/`Semaphore`/`queue.Queue` without a separate explicit human
@@ -132,8 +149,8 @@ Detailed design (threading model, class seams, exact hand-back points) is deferr
 `plan.md` / `research.md`. Constraints fixed now:
 
 - **No new runtime dependency** is expected.
-- **No `threading.Lock`/`RLock`/`Semaphore`/`queue.Queue`** without separate explicit human
-  approval; a one-way cross-thread flag is permitted.
+- **No `threading.Lock`/`RLock`/`Semaphore`.** One approved `queue.Queue` (SessionManager's actor
+  queue, REQ-RMH-029); a one-way cross-thread flag (`threading.Event`) is permitted.
 - The **replay/export player path** (`PlayerExportSource`) and the shared dispatch/handler code it
   runs through MUST remain synchronous and behaviorally unchanged — any producer/hand-back
   machinery lives behind the **live** message source only.
@@ -176,7 +193,8 @@ Authoritative stories with Given-When-Then criteria are in **`user-stories.md`**
 - **REQ-RMH-002**: The first user message after idle MUST be handed to the model immediately; the
   system MUST NOT wait for a debounce window.
 - **REQ-RMH-003**: User messages arriving while the model is working MUST be received and
-  persisted immediately, individually, and handed to the model at the next hand-back.
+  persisted **by the poller before being acknowledged**, individually, and handed to the model at
+  the next hand-back.
 - **REQ-RMH-004**: In a burst, each hand-back MUST attach every user message read since the
   previous hand-back (all of them, in arrival order), not just one.
 - **REQ-RMH-005**: Every user message MUST be persisted individually to the conversation history
@@ -241,14 +259,25 @@ Authoritative stories with Given-When-Then criteria are in **`user-stories.md`**
 **Safety**
 
 - **REQ-RMH-020**: There is **no feature flag** (product owner, 2026-10-11).
-- **REQ-RMH-021**: The inbound notification MUST be acknowledged to the upstream queue
-  immediately on receipt; the crash-window MUST be documented as accepted residual risk.
+- **REQ-RMH-021**: The poller MUST store an inbound message, then acknowledge it to the upstream
+  queue, then enqueue the stored message for the worker. A message whose store fails MUST NOT be
+  acknowledged (the upstream redelivers it).
 - **REQ-RMH-022**: The replay/export player path MUST remain synchronous and unchanged.
 - **REQ-RMH-023**: At most one model exchange MUST run at a time per chat.
 - **REQ-RMH-024**: A failure while handling one item MUST be logged (sleep 5s, continue) and MUST
   NOT stop handling of later messages.
-- **REQ-RMH-025**: No `threading.Lock`/`RLock`/`Semaphore`/`queue.Queue` without separate explicit
-  human approval; accepted residual concurrency risk MUST be documented.
+- **REQ-RMH-025**: No `threading.Lock`/`RLock`/`Semaphore` anywhere. The **only** thread-safe queue
+  is the one owned by `SessionManager` (REQ-RMH-029, approved 2026-10-12); the intake structures
+  use plain deques and a `threading.Event`. Residual concurrency risk MUST be documented.
+- **REQ-RMH-029**: `SessionManager` MUST run as a serialized actor: one thread, one thread-safe
+  queue carrying **both reads and writes**; every public operation is executed by that thread, one
+  at a time, and its result returned to the caller. No other thread may touch session files.
+- **REQ-RMH-030**: Every reference to "turn" (identifiers, tests, comments, prompts, docs) MUST be
+  renamed to the new vocabulary, except history (git history, persisted data, logs, cut-release
+  records such as `CHANGELOG.md`/`RELEASES.md`).
+- **REQ-RMH-031**: Existing documentation (`CLAUDE.md`, `.github/ARCHITECTURE.md`, app docs,
+  prompts) MUST be updated to describe this model.
+- **REQ-RMH-032**: The worker MUST NOT use the poller's HTTP session; it uses its own client.
 
 **Constitution boundary**
 

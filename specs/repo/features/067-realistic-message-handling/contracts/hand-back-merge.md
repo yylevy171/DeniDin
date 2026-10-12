@@ -8,7 +8,7 @@ follow-up `responses.create`. **Not** on a round that produced `send_to_user` /
 
 ## Steps
 1. `pending = denidin.receive_pending(chat_id)` (None-guarded → `[]` when no coordinator, e.g. the
-   player) — each attachable body is `receive()`d (stored individually, REQ-RMH-005).
+   player) — the attachable messages the poller already stored individually (REQ-RMH-005).
 2. `last_output_at` = when the previous model response returned.
 3. Build one user input item per pending message, appended **after** the `function_call_output`
    items: `input = outputs + pending_items`.
