@@ -3,6 +3,8 @@
 
 Old shape : source_type "בנק", event_subtype "הפקדה"
 New shape : source_type "הפקדה", event_subtype "בנק" (the METHOD), schema_version 3
+A cancelled one (source_type "בנק", event_subtype "מבוטל") is a mistake and is DELETED (after
+the backup, which keeps it).
 
 Nothing else about an event changes: every other field stays byte-for-byte
 identical, and filenames and `event_id`s are never touched.
@@ -34,6 +36,8 @@ from typing import Dict, List, Tuple
 OLD_SOURCE_TYPE = "בנק"
 NEW_SOURCE_TYPE = "הפקדה"
 NEW_SUBTYPE = "בנק"
+OLD_SUBTYPE = "הפקדה"
+CANCELLED_SUBTYPE = "מבוטל"  # deleted, not flipped
 NEW_SCHEMA_VERSION = 3
 CHANGED_KEYS = ("source_type", "event_subtype", "schema_version")
 
@@ -50,9 +54,10 @@ def _flipped(record: Dict) -> Dict:
     return new
 
 
-def _plan(events_dir: Path) -> Tuple[List[Tuple[Path, Dict, Dict]], int]:
-    """Returns ([(path, old, new)] for events to flip, count already in the new shape)."""
+def _plan(events_dir: Path) -> Tuple[List[Tuple[Path, Dict, Dict]], List[Path], int]:
+    """Returns ([(path, old, new)] to flip, [path] to delete (cancelled), count already in the new shape)."""
     to_flip: List[Tuple[Path, Dict, Dict]] = []
+    to_delete: List[Path] = []
     already = 0
     for path in sorted(events_dir.glob("*.json")):
         try:
@@ -67,13 +72,19 @@ def _plan(events_dir: Path) -> Tuple[List[Tuple[Path, Dict, Dict]], int]:
             continue
         if source_type != OLD_SOURCE_TYPE:
             continue
+        if record.get("event_subtype") == CANCELLED_SUBTYPE:
+            to_delete.append(path)
+            continue
+        if record.get("event_subtype") != OLD_SUBTYPE:
+            raise MigrationAbort(f"{path.name}: source_type בנק with unexpected event_subtype "
+                                 f"{record.get('event_subtype')!r} - nothing written")
         new = _flipped(record)
         unchanged_old = {k: v for k, v in record.items() if k not in CHANGED_KEYS}
         unchanged_new = {k: v for k, v in new.items() if k not in CHANGED_KEYS}
         if unchanged_old != unchanged_new or record.get("event_id") != new.get("event_id"):
             raise MigrationAbort(f"{path.name}: verification failed - fields other than {CHANGED_KEYS} would change")
         to_flip.append((path, record, new))
-    return to_flip, already
+    return to_flip, to_delete, already
 
 
 def _write(path: Path, record: Dict) -> None:
@@ -87,14 +98,17 @@ def migrate(data_root: Path, apply: bool) -> Dict[str, object]:
     events_dir = data_root / "events"
     if not events_dir.is_dir():
         raise MigrationAbort(f"{events_dir} does not exist")
-    to_flip, already = _plan(events_dir)
-    result: Dict[str, object] = {"to_flip": len(to_flip), "already_flipped": already, "applied": False, "backup": None}
-    if not apply or not to_flip:
+    to_flip, to_delete, already = _plan(events_dir)
+    result: Dict[str, object] = {"to_flip": len(to_flip), "to_delete": len(to_delete),
+                                 "already_flipped": already, "applied": False, "backup": None}
+    if not apply or not (to_flip or to_delete):
         return result
     backup = data_root / f"events_backup_066_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     shutil.copytree(events_dir, backup)
     for path, _old, new in to_flip:
         _write(path, new)
+    for path in to_delete:
+        path.unlink()
     result.update(applied=True, backup=str(backup))
     return result
 
@@ -110,7 +124,7 @@ def main(argv: List[str]) -> int:
         print(f"ABORTED, nothing written: {exc}", file=sys.stderr)
         return 1
     mode = "APPLIED" if result["applied"] else ("DRY-RUN" if not args.apply else "NOTHING TO DO")
-    print(f"{mode}: {result['to_flip']} event(s) to flip, {result['already_flipped']} already in the new shape"
+    print(f"{mode}: {result['to_flip']} event(s) to flip, {result['to_delete']} cancelled to delete, {result['already_flipped']} already in the new shape"
           + (f", backup: {result['backup']}" if result["backup"] else ""))
     return 0
 

@@ -104,3 +104,27 @@ def test_main_reports_and_returns_nonzero_on_abort(root, capsys):
 
     assert migrate_066.main(["--data-root", str(root), "--apply"]) == 1
     assert "ABORTED" in capsys.readouterr().err
+
+
+def test_a_cancelled_bank_event_is_deleted_and_survives_only_in_the_backup(root):
+    rec = _event("C1", "בנק", "מבוטל", description="מבוטל - כפילות")
+    (root / "events" / "C1.json").write_text(_dump(rec), encoding="utf-8")
+    dry = migrate_066.migrate(root, apply=False)
+    assert dry["to_flip"] == 2 and dry["to_delete"] == 1 and (root / "events" / "C1.json").exists()
+
+    result = migrate_066.migrate(root, apply=True)
+
+    assert result["to_delete"] == 1
+    assert not (root / "events" / "C1.json").exists()
+    assert json.loads((Path(result["backup"]) / "C1.json").read_text(encoding="utf-8")) == rec
+    assert sorted(p.name for p in (root / "events").glob("*.json")) == ["A1.json", "B1.json", "B2.json", "H1.json"]
+
+
+def test_a_bank_event_with_an_unknown_subtype_aborts_before_anything_is_written(root):
+    (root / "events" / "U1.json").write_text(_dump(_event("U1", "בנק", "משהו")), encoding="utf-8")
+    before = _snapshot(root)
+
+    with pytest.raises(migrate_066.MigrationAbort):
+        migrate_066.migrate(root, apply=True)
+
+    assert _snapshot(root) == before
