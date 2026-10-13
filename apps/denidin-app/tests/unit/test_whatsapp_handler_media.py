@@ -19,21 +19,25 @@ def whatsapp_handler():
 
 
 def _handle_media(whatsapp_handler, notification, media_handler, monkeypatch):
-    """The legacy media path as denidin.py runs it (2026-10-02: moved off WhatsAppHandler
-    onto denidin.py): the message is received, then handed to MediaHandler."""
+    """The media path as denidin.py runs it: the message is received and stored, the file downloaded and
+    validated, then the raw file is handed to the AI manager (which reads it through analyze_media)."""
     app = whatsapp_handler.denidin
     app.whatsapp_handler = whatsapp_handler
     app.media_handler = media_handler
+    app.ai_manager = MagicMock()
     monkeypatch.setattr(denidin_module, "denidin_app", app)
-    message = app.receive(notification)
-    return denidin_module._handle_media_message(notification, message)
+    denidin_module._process_media_message(notification)
+    return app
 
 
 @pytest.fixture
 def mock_media_handler():
     """Create a mock MediaHandler"""
     handler = MagicMock()
-    handler.process_media_message = MagicMock()
+    handler.media_file_manager.download_file.return_value = (b"bytes", True)
+    handler.media_file_manager.validate_format.side_effect = lambda name, mime: (
+        "image" if mime.startswith("image") else "document")
+    handler.media_file_manager.store_media.return_value = None
     return handler
 
 
@@ -169,145 +173,71 @@ class TestMediaMessageDetection:
 
 
 class TestMediaHandlerIntegration:
-    """Test integration between WhatsAppHandler and MediaHandler"""
-    
-    def test_route_media_to_media_handler_and_send_summary(
+    """The media path: download + validate, then the raw file goes to the AI manager"""
+
+    def test_media_is_downloaded_and_handed_raw_to_the_ai_manager(
         self, whatsapp_handler, mock_notification_image, mock_media_handler, monkeypatch
     ):
-        """Test that media messages are routed to MediaHandler and summary is sent"""
-        # Mock successful processing
-        mock_media_handler.process_media_message.return_value = {
-            "success": True,
-            "summary": "📷 Image Analysis\n\nI found a photo of a receipt from SuperMarket.\n\nKey details:\n• Merchant: SuperMarket\n• Date: 2026-01-20\n• Total: ₪150.50",
-            "media_attachment": Mock(),
-            "document_metadata": Mock()
-        }
-        
-        # Inject MediaHandler into WhatsAppHandler
-        _handle_media(whatsapp_handler, mock_notification_image, mock_media_handler, monkeypatch)
-        
-        # Verify MediaHandler was called with correct parameters (CHK111: caption from webhook)
-        # message_id=ANY (Feature 033): a fresh UUID generated per-call, matching
-        # WhatsAppMessage.from_notification's convention for text messages - not
-        # deterministic, so only presence/shape matters here, not the exact value.
-        mock_media_handler.process_media_message.assert_called_once_with(
-            file_url='https://api.green-api.com/file/abc123',
-            filename='IMG_001.jpg',
-            mime_type='image/jpeg',
-            file_size=0,  # Green API doesn't provide fileSize - set to 0
-            caption='What is in this photo?',  # CHK111: WhatsApp message text
-            sender_phone='972501234567@c.us',
-            chat_id='972501234567@c.us',  # bugfix-017: needed to link this turn to a session
-            timestamp=1769000000,  # Feature 024: real notification timestamp, the
-            # ledger event's "hard pointer" - not processing time
-            message_id=ANY,  # 2026-09-30: the id the message was already stored under on
-            # receipt - MediaHandler only fills in facts, so no addressing fields are passed
-        )
-        
-        # Verify summary was sent back to user
-        mock_notification_image.answer.assert_called_once()
-        sent_message = mock_notification_image.answer.call_args[0][0]
-        assert "Image Analysis" in sent_message
-        assert "SuperMarket" in sent_message
-    
-    def test_send_error_message_on_processing_failure(
+        app = _handle_media(whatsapp_handler, mock_notification_image, mock_media_handler, monkeypatch)
+
+        mock_media_handler.media_file_manager.download_file.assert_called_once_with(
+            'https://api.green-api.com/file/abc123')
+        request = app.ai_manager.handle_message.call_args.args[0]
+        assert request.user_prompt == 'What is in this photo?'  # CHK111: caption from the webhook
+        assert request.chat_id == '972501234567@c.us'
+        assert request.timestamp == 1769000000  # the notification's own time, not processing time
+        assert request.media.filename == 'IMG_001.jpg'
+        assert request.media.mime_type == 'image/jpeg'
+        assert request.media.data == b"bytes"
+        # nothing is answered by the app itself: the model decides what to say
+        mock_notification_image.answer.assert_not_called()
+
+    def test_a_file_that_cannot_be_downloaded_gets_the_friendly_error_and_no_model_call(
         self, whatsapp_handler, mock_notification_document, mock_media_handler, monkeypatch
     ):
-        """Test that MediaHandler failures send user-friendly error messages"""
-        # Mock failed processing
-        mock_media_handler.process_media_message.return_value = {
-            "success": False,
-            "error_message": "Sorry, I couldn't process this PDF. The file may be corrupted or too large."
-        }
-        
-        # Inject MediaHandler into WhatsAppHandler
-        _handle_media(whatsapp_handler, mock_notification_document, mock_media_handler, monkeypatch)
-        
-        # Verify error message was sent to user (exact constant)
-        mock_notification_document.answer.assert_called_once_with(
-            FAILED_TO_PROCESS_FILE_DEFAULT
-        )
+        mock_media_handler.media_file_manager.download_file.return_value = (b"", False)
+
+        app = _handle_media(whatsapp_handler, mock_notification_document, mock_media_handler, monkeypatch)
+
+        mock_notification_document.answer.assert_called_once_with(FAILED_TO_PROCESS_FILE_DEFAULT)
+        app.ai_manager.handle_message.assert_not_called()
 
 
 class TestCaptionHandling:
     """Test CHK111: Caption is WhatsApp message text"""
-    
+
+    def _notification(self, type_message, file_data):
+        notification = MagicMock(spec=Notification)
+        notification.answer = MagicMock()
+        notification.event = {
+            'typeWebhook': 'incomingMessageReceived',
+            'messageData': {'typeMessage': type_message, 'fileMessageData': file_data},
+            'senderData': {'chatId': '972501234567@c.us', 'sender': '972501234567@c.us',
+                           'senderName': 'Test User'},
+        }
+        return notification
+
     def test_caption_extracted_from_webhook_not_file_metadata(
         self, whatsapp_handler, mock_media_handler, monkeypatch
     ):
-        """Test that caption comes from webhook messageData, not file embedded metadata"""
-        # Create notification with caption in fileMessageData (CHK111)
-        notification = MagicMock(spec=Notification)
-        notification.answer = MagicMock()
-        notification.event = {
-            'typeWebhook': 'incomingMessageReceived',
-            'messageData': {
-                'typeMessage': 'imageMessage',
-                'fileMessageData': {
-                    'downloadUrl': 'https://api.green-api.com/file/test',
-                    'caption': 'User typed this question',  # CHK111: This is what user typed
-                    'fileName': 'photo.jpg',
-                    'mimeType': 'image/jpeg'
-                }
-            },
-            'senderData': {
-                'chatId': '972501234567@c.us',
-                'sender': '972501234567@c.us',
-                'senderName': 'Test User'
-            }
-        }
-        
-        mock_media_handler.process_media_message.return_value = {
-            "success": True,
-            "summary": "Test summary",
-            "media_attachment": Mock(),
-            "document_metadata": Mock()
-        }
-        
-        _handle_media(whatsapp_handler, notification, mock_media_handler, monkeypatch)
-        
-        # Verify caption from webhook was passed to MediaHandler (CHK111)
-        call_kwargs = mock_media_handler.process_media_message.call_args[1]
-        assert call_kwargs['caption'] == 'User typed this question'
-    
+        notification = self._notification('imageMessage', {
+            'downloadUrl': 'https://api.green-api.com/file/test', 'caption': 'User typed this question',
+            'fileName': 'photo.jpg', 'mimeType': 'image/jpeg'})
+
+        app = _handle_media(whatsapp_handler, notification, mock_media_handler, monkeypatch)
+
+        assert app.ai_manager.handle_message.call_args.args[0].user_prompt == 'User typed this question'
+
     def test_missing_caption_sends_empty_string(
         self, whatsapp_handler, mock_media_handler, monkeypatch
     ):
-        """Test that missing caption results in empty string, not None"""
-        # Create notification without caption (using correct nested structure)
-        notification = MagicMock(spec=Notification)
-        notification.answer = MagicMock()
-        notification.event = {
-            'typeWebhook': 'incomingMessageReceived',
-            'messageData': {
-                'typeMessage': 'documentMessage',
-                'fileMessageData': {
-                    'downloadUrl': 'https://api.green-api.com/file/test',
-                    # No caption field
-                    'fileName': 'doc.pdf',
-                    'mimeType': 'application/pdf'
-                }
-            },
-            'senderData': {
-                'chatId': '972501234567@c.us',
-                'sender': '972501234567@c.us',
-                'senderName': 'Test User'
-            }
-        }
-        
-        mock_media_handler.process_media_message.return_value = {
-            "success": True,
-            "summary": "Test summary",
-            "media_attachment": Mock(),
-            "document_metadata": Mock()
-        }
-        
-        _handle_media(whatsapp_handler, notification, mock_media_handler, monkeypatch)
-        
-        # Verify empty string was passed, not None
-        call_kwargs = mock_media_handler.process_media_message.call_args[1]
-        assert call_kwargs['caption'] == ''
-        assert call_kwargs['caption'] is not None
+        notification = self._notification('documentMessage', {
+            'downloadUrl': 'https://api.green-api.com/file/test', 'fileName': 'doc.pdf',
+            'mimeType': 'application/pdf'})
+
+        app = _handle_media(whatsapp_handler, notification, mock_media_handler, monkeypatch)
+
+        assert app.ai_manager.handle_message.call_args.args[0].user_prompt == ''
 
 
 class TestGreenApiWebhookStructure:

@@ -1,7 +1,5 @@
 """
-react_to_message / send_progress_update actions shared by the legacy AIHandler
-and the Feature 063 backbone. Moved out of handlers/ai_handler.py with their
-bodies unchanged - one implementation, used by both paths.
+react_to_message / send_progress_update actions of the Feature 063 backbone.
 """
 import logging
 from typing import Any, Dict, Optional
@@ -56,7 +54,7 @@ def build_react_to_message_payload(
 
 
 def send_progress_update_message(denidin, builder, chat_id: Optional[str], text: Optional[str]) -> bool:
-    """Sends one interim progress message in the turn in progress in `chat_id`
+    """Sends one interim progress message to `chat_id`
     (DeniDin.send_to_user - which wire-logs and stores it); returns whether it
     was sent. Best-effort - never raises."""
     if not text:
@@ -65,8 +63,7 @@ def send_progress_update_message(denidin, builder, chat_id: Optional[str], text:
     try:
         sent = bool(denidin.send_to_user(chat_id, text))
     except Exception as e:  # pylint: disable=broad-except
-        # Best-effort, per runtime_constitution.md: a failed interim send must
-        # never fail the turn - the real final answer still has to go out below.
+        # Best-effort: a failed interim send must never fail the conversation.
         logger.warning(f"[080] send_progress_update: failed to send interim message: {e}")
         return False
     if sent and builder is not None:

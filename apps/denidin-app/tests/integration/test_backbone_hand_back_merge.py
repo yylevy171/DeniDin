@@ -12,7 +12,7 @@ from src.intake.intake_coordinator import IntakeCoordinator
 from src.models.config import AppConfiguration
 from src.models.message import AIRequest
 from src.utils.time_utils import now_local
-from tests.backbone_test_support import make_backbone
+from tests.backbone_test_support import FakeBot, make_backbone
 from tests.denidin_test_support import make_session_manager
 
 pytestmark = pytest.mark.integration
@@ -28,6 +28,11 @@ def _fc(name, args=None, call_id="c", rid="r"):
 
 def _reply(text, rid="rt"):
     return _fc("send_to_user", {"text": text}, call_id="c-reply", rid=rid)
+
+
+def _end(rid="r-end"):
+    """A model response with no tool call: the app pauses."""
+    return SimpleNamespace(output=[], output_text="", id=rid, usage=None)
 
 
 def _event(n, type_message="textMessage", text=None, seconds_ahead=5):
@@ -49,6 +54,7 @@ def env(tmp_path):
     backbone = make_backbone(client, config, session_manager=sessions)
     app = backbone.denidin
     app.intake = IntakeCoordinator(app)
+    app.green_api_bot = FakeBot()
 
     def queue(event):
         app.intake.submit(app.intake.prepare(SimpleNamespace(event=event)))
@@ -66,7 +72,7 @@ def _inputs(env):
 
 def _load_then_reply(env, reply="סבבה"):
     env.client.responses.create.side_effect = [
-        _fc("load_capabilities", {"capabilities": ["cap_ledger_query"]}), _reply(reply, rid="r2")]
+        _fc("load_capabilities", {"capabilities": ["cap_ledger_query"]}), _reply(reply, rid="r2"), _end("r3")]
 
 
 def test_messages_waiting_at_a_hand_back_join_the_tool_results_in_order(env):
@@ -89,12 +95,14 @@ def test_the_first_message_and_history_carry_timestamps(env):
     assert re.match(r"\[\d\d:\d\d:\d\d \d\d/\d\d\] שלום", first_input[-1]["content"])
 
 
-def test_nothing_is_attached_on_the_round_that_sends_the_reply(env):
-    env.client.responses.create.side_effect = [_reply("תשובה")]
-    env.queue(_event(1))
+def test_a_message_waiting_when_the_reply_is_sent_reaches_the_model_on_that_hand_back(env):
+    env.client.responses.create.side_effect = [_reply("תשובה"), _end("r2")]
+    env.queue(_event(1, text="ועוד דבר"))
     env.backbone.handle_message(env.request(), chat_id=CHAT, user_role="godfather")
-    assert len(_inputs(env)) == 1
-    assert env.app.intake.next_work_item(0.01).id_message == "ID1"  # still waiting: handled next
+    assert env.app.green_api_bot.sent_texts == ["תשובה"]
+    follow_up = _inputs(env)[1]
+    assert follow_up[0]["type"] == "function_call_output" and "ועוד דבר" in follow_up[1]["content"]
+    assert env.app.intake.next_work_item(0.01) is None  # nothing left behind
 
 
 def test_without_an_intake_the_follow_up_input_is_just_the_tool_results(env):
@@ -118,7 +126,8 @@ def test_an_approved_write_is_not_interrupted_by_waiting_messages(env):
     env.sessions.set_approval_message_id(CHAT, "BTN-1")
     # an approved-write handling calls the model without retries (with_options), so that is the client to fake
     create = env.client.with_options.return_value.responses.create
-    create.side_effect = [_fc("load_capabilities", {"capabilities": ["cap_ledger_query"]}), _reply("סבבה", rid="r2")]
+    create.side_effect = [_fc("load_capabilities", {"capabilities": ["cap_ledger_query"]}), _reply("סבבה", rid="r2"),
+                          _end("r3")]
     env.queue(_event(1, text="רגע, תבטל"))
     env.backbone.handle_message(env.request("כן"), chat_id=CHAT, user_role="godfather")
     follow_up = create.call_args_list[1].kwargs["input"]
@@ -136,7 +145,7 @@ def test_a_no_does_not_block_attaching(env):
 
 def test_approval_guard_survives_unrelated_messages(env):
     env.sessions.set_approval_message_id(CHAT, "BTN-1")
-    env.client.responses.create.side_effect = [_reply("אין בעיה")]
+    env.client.responses.create.side_effect = [_reply("אין בעיה"), _end()]
     env.backbone.handle_message(env.request("מה השעה?"), chat_id=CHAT, user_role="godfather")
     assert env.sessions.get_session(CHAT).approval_message_id == "BTN-1"
 
@@ -144,15 +153,17 @@ def test_approval_guard_survives_unrelated_messages(env):
 @pytest.mark.parametrize("answer", ["כן", "לא", "yes", "no"])
 def test_approval_guard_is_cleared_when_answered(env, answer):
     env.sessions.set_approval_message_id(CHAT, "BTN-1")
-    env.client.responses.create.side_effect = [_reply("בסדר")]
+    # a yes is an approved write: its calls go through the no-retry client
+    for create in (env.client.responses.create, env.client.with_options.return_value.responses.create):
+        create.side_effect = [_reply("בסדר"), _end()]
     env.backbone.handle_message(env.request(answer), chat_id=CHAT, user_role="godfather")
     assert env.sessions.get_session(CHAT).approval_message_id is None
 
 
 def test_a_newer_approval_supersedes_the_old_guard(env):
     env.sessions.set_approval_message_id(CHAT, "BTN-1")
-    env.backbone.record_sent_message_id(CHAT, "BTN-2")
-    assert env.sessions.get_session(CHAT).approval_message_id == "BTN-2"
+    assert env.app.send_approval_buttons(CHAT, "לאשר שוב?") is True
+    assert env.sessions.get_session(CHAT).approval_message_id == "BTN1"
 
 
 # ---------------------------------------------------------------- long burst (US2)
@@ -163,6 +174,7 @@ def test_a_burst_reaches_the_model_once_each_in_order_and_nothing_is_left_behind
         _fc("load_capabilities", {"capabilities": ["cap_reminders_read"]}, call_id="c2", rid="r2"),
         _fc("load_capabilities", {"capabilities": ["cap_invoicing_read"]}, call_id="c3", rid="r3"),
         _reply("סיימתי", rid="r4"),
+        _end("r5"),
     ]
     for n in range(1, 5):
         env.queue(_event(n, text=f"fact {n}"))
@@ -177,7 +189,7 @@ def test_a_burst_reaches_the_model_once_each_in_order_and_nothing_is_left_behind
 
 
 def test_messages_arriving_after_the_reply_become_the_next_handling_not_lost(env):
-    env.client.responses.create.side_effect = [_reply("תשובה")]
+    env.client.responses.create.side_effect = [_reply("תשובה"), _end()]
     env.backbone.handle_message(env.request("א"), chat_id=CHAT, user_role="godfather")
     env.queue(_event(9, text="עוד אחד"))
     item = env.app.intake.next_work_item(0.01)
@@ -192,7 +204,7 @@ def test_history_user_items_carry_their_clock_time_assistant_items_do_not(env):
         chat_name=None, message_id="old-1", whatsapp_id_message="W1", timestamp=int(now_local().timestamp()) - 60))
     env.app.store_outbound(SimpleNamespace(chat_id=CHAT, sender_id=CHAT, sender_display_name="Dana",
                                            is_group=False, chat_name=None), "תשובה ישנה")
-    env.client.responses.create.side_effect = [_reply("טוב")]
+    env.client.responses.create.side_effect = [_reply("טוב"), _end()]
     env.backbone.handle_message(env.request("חדש"), chat_id=CHAT, user_role="godfather")
     history = _inputs(env)[0][:-1]
     import re
@@ -210,7 +222,7 @@ def test_a_second_group_member_is_attached_with_their_name(env):
     ev["senderData"] = {"chatId": group, "sender": CHAT, "senderName": "Yossi"}
     env.app.intake.submit(env.app.intake.prepare(SimpleNamespace(event=ev)))
     env.client.responses.create.side_effect = [
-        _fc("load_capabilities", {"capabilities": ["cap_ledger_query"]}), _reply("ok", rid="r2")]
+        _fc("load_capabilities", {"capabilities": ["cap_ledger_query"]}), _reply("ok", rid="r2"), _end("r3")]
     request = AIRequest(user_prompt="בקשה", constitution="", max_tokens=500, model="m", chat_id=group,
                         message_id="m0", timestamp=int(now_local().timestamp()))
     env.backbone.handle_message(request, chat_id=group, user_role="godfather", is_group=True)
@@ -221,7 +233,7 @@ def test_a_second_group_member_is_attached_with_their_name(env):
 
 def test_a_button_tap_after_unrelated_chatter_is_honoured_once_then_ignored(env):
     env.sessions.set_approval_message_id(CHAT, "BTN-1")
-    env.client.responses.create.side_effect = [_reply("שיחה"), _reply("בוצע")]
+    env.client.responses.create.side_effect = [_reply("שיחה"), _end("r1b"), _reply("בוצע"), _end("r2b")]
     env.backbone.handle_message(env.request("שאלה אחרת"), chat_id=CHAT, user_role="godfather")
     tap = SimpleNamespace(chat_id=CHAT, sender_id=CHAT, message_id="TAP-1", sender_display_name="Dana",
                           is_group=False, chat_name=None)

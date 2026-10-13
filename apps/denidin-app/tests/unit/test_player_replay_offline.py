@@ -22,18 +22,21 @@ OWN_NUMBER = "972599999999"
 REPLY = "קיבלתי, תודה"
 
 
-def _send_to_user_response(*_args, **_kwargs):
+def _answers():
+    """send_to_user once, then nothing more to do (the app pauses)."""
     item = SimpleNamespace(
         type="function_call", name="send_to_user",
         arguments=json.dumps({"text": REPLY}), call_id="call1",
     )
-    return SimpleNamespace(output=[item], output_text="", id="resp1", usage=None)
+    yield SimpleNamespace(output=[item], output_text="", id="resp1", usage=None)
+    while True:
+        yield SimpleNamespace(output=[], output_text="", id="resp2", usage=None)
 
 
 @pytest.fixture
 def fake_openai(monkeypatch):
     client = MagicMock()
-    client.responses.create.side_effect = _send_to_user_response
+    client.responses.create.side_effect = _answers()
     monkeypatch.setattr(denidin, "OpenAI", lambda **_kwargs: client)
     return client
 

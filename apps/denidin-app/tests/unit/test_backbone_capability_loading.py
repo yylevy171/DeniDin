@@ -17,7 +17,7 @@ from src.models.config import AppConfiguration
 from src.models.message import AIRequest
 from src.services.capability_reset_service import sweep_idle_capabilities
 from src.utils.time_utils import now_local
-from tests.backbone_test_support import make_backbone
+from tests.backbone_test_support import FakeBot, make_backbone
 from tests.denidin_test_support import make_reminder_manager, make_session_manager
 
 
@@ -47,10 +47,17 @@ def _request(text="שלום"):
     return AIRequest(user_prompt=text, constitution="", max_tokens=500, model="m", chat_id="chat1", message_id="m1")
 
 
+def _end(resp_id="r-end"):
+    """A response with nothing to do - the app pauses on it."""
+    return SimpleNamespace(output=[], output_text="", id=resp_id, usage=None)
+
+
 def _orch(env, client):
-    return make_backbone(
+    backbone = make_backbone(
         client, env.config, reminder_manager=env.reminders, session_manager=env.sessions,
     )
+    backbone.denidin.green_api_bot = FakeBot()
+    return backbone
 
 
 def _tool_names(kwargs):
@@ -63,11 +70,12 @@ def test_load_attaches_prompt_and_tools_to_the_very_next_round(env):
         _call("load_capabilities", {"capabilities": ["cap_reminders_write"]}),
         _call("create_reminder", {"message_text": "לשלם", "schedule_type": "one_time", "one_time_due_at": "2099-01-01T09:00:00", "recurrence": None}, resp_id="r2"),
         _call("send_to_user", {"text": "בוצע"}, resp_id="r3"),
+        _end(),
     ]
     orch = _orch(env, client)
     response = orch.handle_message(_request(), chat_id="chat1", user_role="godfather")
 
-    first, second, third = [c.kwargs for c in client.responses.create.call_args_list]
+    first, second, third, _paused = [c.kwargs for c in client.responses.create.call_args_list]
     assert "PROMPT[cap_reminders_write]" not in first["instructions"] and "create_reminder" not in _tool_names(first)
     assert "(none - plain backbone)" in first["instructions"]
     # round 2 AND 3: BOTH prompt and tools present (rebuilt each round, not just once)

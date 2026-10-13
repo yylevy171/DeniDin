@@ -24,9 +24,9 @@ def test_offer_step_exists_and_is_scoped_to_images_with_a_resolved_client():
     assert "client is resolved" in step
 
 
-def test_offer_is_the_final_buttons_message():
+def test_offer_is_the_last_message_and_nothing_follows_it():
     step = _offer_step()
-    assert "turn's final message" in step
+    assert "send nothing more and wait" in step
     assert "approval_with_yes_no_buttons" in step
 
 
@@ -56,12 +56,10 @@ def test_approval_capability_is_a_plain_yes_no_on_whatever_was_asked():
     assert "not a write approval" not in APPROVAL_CAP
 
 
-def test_the_client_step_does_not_end_the_turn_before_the_offer():
-    """64-1 (2026-10-12): the model ended the turn with send_to_user after resolving the
-    client, so the offer step was never reached. The report goes out with end_turn=false."""
-    client_step = FLOW[FLOW.index("2. "):FLOW.index("3. ")]
-    assert "`end_turn=false`" in client_step
-    assert "ENDS the turn" in client_step
+def test_the_client_step_does_not_stop_before_the_offer():
+    """64-1: after resolving the client the model must go on to the ledger recording and the offer. There is
+    no 'end of turn' any more; the report goes out with cap_send_to_user and the flow continues."""
+    assert "end_turn" not in FLOW
     assert "cap_send_progress_update" not in FLOW
     assert "Load `cap_approval_with_buttons` now" in _offer_step()
 
@@ -71,5 +69,5 @@ def test_the_slips_date_always_wins_and_is_never_asked_about():
     ask which date to use and record nothing."""
     assert "ALWAYS the date on the slip" in FLOW
     assert "Never ask the user which date to use" in FLOW
-    ledger = (CONFIG.parent / "ledger_recognition_prompt.md").read_text(encoding="utf-8")
+    ledger = (CONFIG / "capabilities" / "cap_ledger_capture.md").read_text(encoding="utf-8")
     assert "the slip's date is ALWAYS `txn_date`" in ledger

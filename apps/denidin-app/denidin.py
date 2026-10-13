@@ -181,8 +181,8 @@ class DeniDin:  # pylint: disable=too-many-instance-attributes,too-many-public-m
     DeniDin application instance (REQ-063-08). Owns DeniDin's managers (users,
     sessions, roll markers, long-term memory, ledger events, reminders, the Morning
     MCP locator, the document templates, telemetry), its WhatsApp side
-    (`whatsapp_handler`), and exactly one AI implementation, `ai_manager` (the legacy
-    AIHandler when the backbone flag is off, the Backbone when it is on). Every one of
+    (`whatsapp_handler`), and exactly one AI implementation, `ai_manager` (the
+    Backbone). Every one of
     them takes this object as its only constructor argument and reaches anything else
     it needs through it.
 
@@ -207,8 +207,6 @@ class DeniDin:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         self.green_api = green_api
         # The live bot - set by __main__ once it exists; None in tests and the player.
         self.green_api_bot: Optional[Any] = None
-        # Feature 063: whether the backbone flag selected the Backbone.
-        self.backbone_enabled = bool((config.feature_flags or {}).get('enable_capability_backbone', False))
         # Memory system and RBAC are always on (2026-07-14 decision).
         self.memory_enabled = True
         self.rbac_enabled = True
@@ -514,8 +512,9 @@ class DeniDin:  # pylint: disable=too-many-instance-attributes,too-many-public-m
     def record_created_document(self) -> None:
         """A Morning document was just created: record it in the ledger now, in the
         background (see accounting_reconciliation_service.record_created_document). No-op
-        without a ledger."""
-        if self.ledger_event_manager is None:
+        without a ledger, and while the accounting reconciliation is switched off
+        (config.accounting_ledger_update_freq == 0)."""
+        if self.ledger_event_manager is None or not self.config.accounting_ledger_update_freq:
             return
         record_created_document(self)
 
@@ -610,9 +609,7 @@ def _handle_not_initialized_error(notification: Notification, message_type: str)
 
 def start_capability_reset_if_enabled(denidin: "DeniDin"):
     """Feature 063: starts the idle capability-reset scheduler, or returns None.
-    Only ever started when the backbone flag is on (`backbone` is
-    constructed only then - the legacy path never loads capabilities) AND
-    `capabilities_reset_minutes` > 0 (0 = inactive, the default)."""
+    Only started when `capabilities_reset_minutes` > 0 (0 = inactive, the default)."""
     return start_capability_reset_scheduler(
         denidin, getattr(denidin.config, "capabilities_reset_minutes", 0)
     )
@@ -620,7 +617,7 @@ def start_capability_reset_if_enabled(denidin: "DeniDin"):
 
 def build_denidin_objects(denidin: DeniDin) -> None:
     """Builds every object DeniDin owns except its AI implementation (initialize_app
-    selects that by the backbone flag) onto `denidin`, each constructed with DeniDin
+    builds that) onto `denidin`, each constructed with DeniDin
     itself and reading its own settings off DeniDin's config."""
     config = denidin.config
     # Feature 080: the one RequestTelemetry store, shared with the AI implementation's
@@ -1541,10 +1538,11 @@ def main() -> None:
             morning_mcp_locator=denidin.morning_mcp_locator,
             memory_manager=denidin.memory_manager,
             log_path=resolve_log_path(),
+            queue_monitor=denidin.queue_monitor,
+            thread_supervisor=denidin.thread_supervisor,
         )
         # bugfix-069: report-only fields (e.g. whatsapp_authorized) - never fail status.
-        info_fns = build_health_info_fns(
-            green_api=live_bot.api, queue_monitor=denidin.queue_monitor, thread_supervisor=denidin.thread_supervisor)
+        info_fns = build_health_info_fns(green_api=live_bot.api)
         start_health_server(denidin.config.health_check_port, check_fns, info_fns)
         start_heartbeat_thread()
 
@@ -1573,8 +1571,7 @@ def main() -> None:
         )
 
     # Feature 063: idle capability-reset sweep (capabilities_reset_minutes; 0 =
-    # inactive) - only meaningful when the backbone flag is on (that's the only
-    # path that loads capabilities). Same deliberate placement as above.
+    # inactive). Same deliberate placement as above.
     denidin.capability_reset_scheduler = start_capability_reset_if_enabled(denidin)
 
     # Feature 070: nightly 02:00 Israel-local daily-summary roll - same

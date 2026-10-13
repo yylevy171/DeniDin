@@ -163,6 +163,7 @@ def build_health_check_fns(
     morning_mcp_locator: Optional[MorningMcpLocator] = None,
     memory_manager=None,
     log_path: Optional[Path] = None,
+    queue_monitor=None,
     thread_supervisor=None,
 ) -> Dict[str, Callable[[], bool]]:
     """Binds each live object to its check via closure, once, producing the
@@ -181,10 +182,15 @@ def build_health_check_fns(
         checks["chromadb_connectivity"] = lambda: check_chromadb_connectivity(memory_manager)
     if log_path is not None:
         checks["logs_writing"] = lambda: check_log_freshness(log_path)
+    if queue_monitor is not None and thread_supervisor is not None:
+        # Feature 067 (REQ-RMH-035/036), counted toward `status` (human decision 2026-10-13): queues
+        # within their limits, not stalled, and the dispatcher + session threads alive.
+        checks["intake_pipeline"] = lambda: (queue_monitor.within_limits() and queue_monitor.not_stalled()
+                                             and thread_supervisor.all_alive())
     return checks
 
 
-def build_health_info_fns(green_api=None, queue_monitor=None, thread_supervisor=None) -> Dict[str, Callable[[], bool]]:
+def build_health_info_fns(green_api=None) -> Dict[str, Callable[[], bool]]:
     """bugfix-069: report-only fields - shown in the /health body as "success"/"fail" but
     never counted toward `status`/the HTTP code. The prober (scripts/health_monitoring)
     restarts the environment whenever `status` is not "ok", and a restart cannot fix
@@ -193,13 +199,6 @@ def build_health_info_fns(green_api=None, queue_monitor=None, thread_supervisor=
     info: Dict[str, Callable[[], bool]] = {}
     if green_api is not None:
         info["whatsapp_authorized"] = lambda: check_whatsapp_authorized(green_api)
-    if queue_monitor is not None and thread_supervisor is not None:
-        # Feature 067 (REQ-RMH-035/036): ONE report-only value - queues within their limits,
-        # queues not stalled, and the dispatcher + session threads alive (restart budget not
-        # exhausted). "fail" if any of the three is not ok. Report-only: a restart cannot
-        # drain a flooded queue.
-        info["intake_pipeline"] = lambda: (queue_monitor.within_limits() and queue_monitor.not_stalled()
-                                           and thread_supervisor.all_alive())
     return info
 
 

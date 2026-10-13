@@ -10,18 +10,6 @@ import uuid
 from src.models.media import Media
 from src.utils.time_utils import now_local
 
-# Feature 039's "send nothing this turn" signal. Defined here rather than in
-# ai_handler because bugfix-028 B5 makes AIResponse itself enforce the
-# response-owed contract, and a model may not import a handler.
-# `ai_handler.NO_REPLY_SENTINEL` re-exports this, so existing imports of it
-# (src and tests alike) keep working unchanged.
-NO_REPLY_SENTINEL = "[[NO_REPLY]]"
-
-
-def should_reply_for(text: str) -> bool:
-    """False iff the model's final text is exactly the [[NO_REPLY]] sentinel
-    (Feature 039) - the one check both the legacy AIHandler and the Backbone use."""
-    return (text or "").strip() != NO_REPLY_SENTINEL
 
 
 def _frame_contact_message_text(contact_message_data: Dict[str, Any]) -> str:

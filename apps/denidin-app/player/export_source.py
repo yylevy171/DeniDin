@@ -10,6 +10,7 @@ list once, in order, and returns.
 
 See contracts/message-source.md for the full interface contract.
 """
+from types import SimpleNamespace
 from typing import Callable, Dict, List, Optional
 
 from player.export_parser import ParsedMessage
@@ -33,6 +34,26 @@ class _PlayerNotification:
 
     def answer(self, text: str) -> None:
         self.last_answer = text
+
+
+class PlayerBot:
+    """Stand-in for the live Green API bot (sending side only): the model's sends go through
+    the real DeniDin/WhatsAppHandler to this, which records them and accepts every one - a replay
+    never sends anything anywhere (spec.md's "player" framing), but the sent messages are
+    still stored in the chat's session exactly as a live send would store them."""
+
+    def __init__(self) -> None:
+        self.sent: List[tuple] = []
+        self.api = SimpleNamespace(sending=SimpleNamespace(
+            sendMessage=self._send_message, sendInteractiveButtons=self._send_buttons))
+
+    def _send_message(self, chat_id: str, text: str, *_args) -> SimpleNamespace:
+        self.sent.append((chat_id, text))
+        return SimpleNamespace(code=200, data={"idMessage": f"PLAYER{len(self.sent)}"})
+
+    def _send_buttons(self, chat_id: str, body: str, _buttons, _header, _footer) -> SimpleNamespace:
+        self.sent.append((chat_id, body))
+        return SimpleNamespace(code=200, data={"idMessage": f"PLAYER{len(self.sent)}"})
 
 
 class PlayerExportSource(MessageSource):

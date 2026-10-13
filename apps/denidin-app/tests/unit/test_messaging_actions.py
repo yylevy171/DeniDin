@@ -1,4 +1,4 @@
-"""Shared react_to_message / send_progress_update actions (used by legacy AIHandler and backbone)."""
+"""Shared react_to_message / send_progress_update actions (used by the backbone)."""
 from unittest.mock import MagicMock
 
 from src.tool_actions.messaging_actions import (
@@ -29,16 +29,16 @@ def _denidin(active_document_message_id=None, reaction_sent=True):
 
 def test_send_progress_update_sends_through_denidin_marks_telemetry_and_reports_sent():
     denidin, builder = MagicMock(), MagicMock()
-    denidin.send_progress_update.return_value = True
+    denidin.send_to_user.return_value = True
     assert send_progress_update_message(denidin, builder, "chat1", "רגע...") is True
-    denidin.send_progress_update.assert_called_once_with("chat1", "רגע...")
+    denidin.send_to_user.assert_called_once_with("chat1", "רגע...")
     builder.mark_progress_update_sent.assert_called_once_with()
 
 
 def test_send_progress_update_not_sent_reports_not_sent():
-    """No turn in progress in the chat (or no WhatsApp side) - DeniDin sends nothing."""
+    """DeniDin could not send it (no WhatsApp side, or the send failed)."""
     denidin, builder = MagicMock(), MagicMock()
-    denidin.send_progress_update.return_value = None
+    denidin.send_to_user.return_value = False
     assert send_progress_update_message(denidin, builder, "chat1", "רגע...") is False
     builder.mark_progress_update_sent.assert_not_called()
 
@@ -46,12 +46,12 @@ def test_send_progress_update_not_sent_reports_not_sent():
 def test_send_progress_update_without_text_sends_nothing():
     denidin = MagicMock()
     assert send_progress_update_message(denidin, None, "chat1", "") is False
-    denidin.send_progress_update.assert_not_called()
+    denidin.send_to_user.assert_not_called()
 
 
 def test_send_progress_update_send_failure_is_swallowed():
     denidin = MagicMock()
-    denidin.send_progress_update.side_effect = RuntimeError("boom")
+    denidin.send_to_user.side_effect = RuntimeError("boom")
     assert send_progress_update_message(denidin, None, "chat1", "רגע...") is False
 
 

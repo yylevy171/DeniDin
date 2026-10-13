@@ -18,10 +18,12 @@ import pytest
 from openai import APIError, APITimeoutError, RateLimitError
 
 import denidin as denidin_module
+from src.constants import error_messages
 from src.constants.error_messages import ERROR_PROCESSING_MESSAGE_TRY_AGAIN
 from src.backbone.backbone import Backbone as AIHandler
 from src.models.config import AppConfiguration
 from tests.ai_handler_test_support import make_ai_handler
+from tests.backbone_test_support import FakeBot
 
 CHAT_ID = "972500000000@c.us"
 
@@ -40,6 +42,7 @@ def ai_handler(tmp_path):
     config.user_roles = {}
     config.godfather_phone = None
     config.feature_flags = {}
+    config.allocation_threshold_nis = 5000
     return make_ai_handler(MagicMock(), config)
 
 
@@ -49,7 +52,7 @@ def app(ai_handler, monkeypatch):
     app.ai_manager = ai_handler
     app.group_membership_resolver = None
     monkeypatch.setattr(denidin_module, "denidin_app", app)
-    monkeypatch.setattr(denidin_module, "_run_post_turn_ledger_recognition", lambda **_kw: None)
+    app.green_api_bot = FakeBot()
     return app
 
 
@@ -69,21 +72,19 @@ def _stored(ai_handler):
 
 
 class TestOpenAIErrorRepliesAreStored:
-    @pytest.mark.parametrize("error, expected_fragment", [
-        (APITimeoutError(request=Mock()), "trouble connecting"),
-        (RateLimitError("rate", response=Mock(), body={}), "at capacity"),
-        (APIError("boom", request=Mock(), body={}), "error processing your request"),
-        (ValueError("unexpected"), "unexpected error"),
+    @pytest.mark.parametrize("error, expected", [
+        (APITimeoutError(request=Mock()), error_messages.BACKBONE_AI_TIMEOUT),
+        (RateLimitError("rate", response=Mock(), body={}), error_messages.BACKBONE_AI_RATE_LIMITED),
+        (APIError("boom", request=Mock(), body={}), error_messages.BACKBONE_AI_API_ERROR),
+        (ValueError("unexpected"), error_messages.BACKBONE_UNEXPECTED_ERROR),
     ])
-    def test_user_message_and_the_error_reply_sent_are_stored(self, app, error, expected_fragment):
+    def test_user_message_and_the_error_reply_sent_are_stored(self, app, error, expected):
         app.ai_manager.client.responses.create.side_effect = error
-        notification = _notification()
 
-        denidin_module._process_conversational_message(notification)
+        denidin_module._process_conversational_message(_notification())
 
-        sent = notification.answer.call_args[0][0]
-        assert expected_fragment in sent.lower()
-        assert _stored(app.ai_manager) == [("user", "שלום, מה שלומך?"), ("assistant", sent)]
+        assert app.green_api_bot.sent_texts == [expected]
+        assert _stored(app.ai_manager) == [("user", "שלום, מה שלומך?"), ("assistant", expected)]
 
 
 class TestTheUsersMessageIsStoredEvenWhenTheTurnCrashes:
@@ -95,6 +96,6 @@ class TestTheUsersMessageIsStoredEvenWhenTheTurnCrashes:
 
         denidin_module._process_conversational_message(notification)
 
-        notification.answer.assert_called_once_with(ERROR_PROCESSING_MESSAGE_TRY_AGAIN)
+        notification.answer.assert_called_once_with(ERROR_PROCESSING_MESSAGE_TRY_AGAIN)  # the app's own notice
         assert _stored(app.ai_manager) == [
             ("user", "שלום, מה שלומך?"), ("assistant", ERROR_PROCESSING_MESSAGE_TRY_AGAIN)]

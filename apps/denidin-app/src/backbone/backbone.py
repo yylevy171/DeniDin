@@ -1,13 +1,12 @@
 """
 Backbone (Feature 063) — the new, standalone module implementing the
-Backbone-as-tool-backbone-kernel architecture. Selected once at startup by
-`denidin.py::initialize_app` only when `config.feature_flags['enable_capability_backbone']`
-is true; `src/handlers/ai_handler.py` is never imported by, and never imports, this
-module (REQ-063-07).
+Backbone-as-tool-backbone-kernel architecture, and the one AI implementation: built at
+startup by `denidin.py::initialize_app` (Feature 067 removed the legacy AIHandler and the flag).
 
 See contracts/capability-resolution-loop.md (the loop) and contracts/prompt-assembly.md
 (the prompt-loading/caching + per-call instructions assembly this module implements).
 """
+import contextlib
 import json
 import logging
 from pathlib import Path
@@ -106,9 +105,8 @@ _DEFAULT_BACKBONE_CONFIG = {
 
 
 class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
-    """The new backbone kernel - the AI implementation when the backbone flag is on
-    (REQ-063-08). DeniDin's Shared Managers are handed in (AIManager's keyword arguments), never
-    built here; the backbone never imports or calls the legacy AIHandler."""
+    """The backbone kernel - the AI implementation (REQ-063-08). DeniDin's Shared
+    Managers are handed in (AIManager's keyword arguments), never built here."""
 
     def __init__(self, denidin: Any):
         super().__init__(denidin)
@@ -650,7 +648,10 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
             response = self._call_chained(request, chat_id, input_items, previous_id, instructions, tools)
             previous_id = getattr(response, "id", None)
             last_output_at = now_local()  # when the model's most recent output came back
-            with self.tool_call_span(self._turn_telemetry_builder, "local_tools"):
+            has_calls = any(getattr(item, "type", None) == "function_call"
+                            for item in (getattr(response, "output", None) or []))
+            with (self.tool_call_span(self._turn_telemetry_builder, "local_tools") if has_calls
+                  else contextlib.nullcontext()):
                 outputs = self._execute_round_calls(request, turn_context, chat_id=chat_id, tags=tags,
                                                     response=response)
             if outputs is None:
@@ -683,6 +684,7 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
             "input": input_items,
             "max_output_tokens": request.max_tokens,
             "tools": tools,
+            "truncation": "auto",  # a long chain drops its oldest items instead of failing (no hard cap)
         }
         if previous_id:
             kwargs["previous_response_id"] = previous_id
@@ -878,6 +880,7 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
         debug_wire("openai", "in", context, response)
         new_mcp_calls = self._extract_mcp_call_items(response)
         self._turn_mcp_calls.extend(new_mcp_calls)
+        self.record_mcp_tool_calls(self._turn_telemetry_builder, new_mcp_calls)  # telemetry, as they happen
         # A Morning document created now is recorded in the ledger by the app itself.
         if any(call["name"] in DOCUMENT_CREATING_TOOLS and not call["error"] for call in new_mcp_calls):
             self.denidin.record_created_document()

@@ -16,7 +16,7 @@ from src.constants.error_messages import BACKBONE_UNEXPECTED_ERROR
 from src.models.config import AppConfiguration
 from src.models.message import AIRequest
 from src.utils.time_utils import now_local
-from tests.backbone_test_support import make_backbone
+from tests.backbone_test_support import FakeBot, make_backbone
 from tests.denidin_test_support import make_session_manager
 
 pytestmark = pytest.mark.integration
@@ -40,24 +40,6 @@ def _nothing(rid="r-end"):
 
 def _text_only(text, rid="r-text"):
     return SimpleNamespace(output=[], output_text=text, id=rid, usage=None)
-
-
-class FakeBot:
-    """The Green API bot's sending side: records every send, accepts all of them."""
-
-    def __init__(self):
-        self.sent = []
-        self.buttons = []
-        self.api = SimpleNamespace(sending=SimpleNamespace(
-            sendMessage=self._send_message, sendInteractiveButtons=self._send_buttons))
-
-    def _send_message(self, chat_id, text, *args):
-        self.sent.append((chat_id, text))
-        return SimpleNamespace(code=200, data={"idMessage": f"SENT{len(self.sent)}"})
-
-    def _send_buttons(self, chat_id, body, buttons, header, footer):
-        self.buttons.append((chat_id, body, buttons))
-        return SimpleNamespace(code=200, data={"idMessage": f"BTN{len(self.buttons)}"})
 
 
 @pytest.fixture

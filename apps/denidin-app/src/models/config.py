@@ -62,10 +62,8 @@ class AppConfiguration:
     feature_flags: Dict[str, bool] = field(default_factory=dict)
     memory: Dict = field(default_factory=dict)
     constitution_config: Dict = field(default_factory=dict)
-    # Feature 063 (Dynamic Capability Backbone) - parallel to constitution_config, only ever
-    # read by the new src/backbone when feature_flags['enable_capability_backbone']
-    # is true. AIHandler never reads this; a config that never sets the flag needs no
-    # backbone_config block at all (data-model.md's Config additions).
+    # Feature 063 (Dynamic Capability Backbone): where the backbone loads its prompts from
+    # (base_dir) and its settings. The backbone is the only AI implementation (Feature 067).
     backbone_config: Dict = field(default_factory=dict)
     user_roles: Dict = field(default_factory=dict)
 

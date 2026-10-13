@@ -20,7 +20,7 @@ import denidin as denidin_module
 from denidin import REPLAY_REPLY_OFFSET_SECONDS
 from src.constants.error_messages import UNSUPPORTED_MESSAGE_TYPE_SUPPORTED_TYPES
 from src.handlers.whatsapp_handler import WhatsAppHandler
-from src.models.message import AIResponse, WhatsAppMessage
+from src.models.message import WhatsAppMessage
 from tests.denidin_test_support import make_denidin, make_session_manager
 
 CHAT_ID = "972500000000@c.us"
@@ -175,47 +175,41 @@ class TestDeniDinStoresAtTheBoundary:
             ("assistant", UNSUPPORTED_MESSAGE_TYPE_SUPPORTED_TYPES),
         ]
 
-    def test_send_response_stores_the_reply_with_its_mcp_calls(self, app, session_manager):
-        response = AIResponse(
-            request_id="r1", response_text="בוצע", tokens_used=0, prompt_tokens=0,
-            completion_tokens=0, model="m", finish_reason="stop", timestamp=_now(),
-            mcp_calls=[{"name": "add_client"}],
-        )
-        app.send_response(_notification(), response)
+    def test_send_to_user_sends_at_once_and_stores_the_reply_with_its_mcp_calls(self, app, session_manager):
+        bot = MagicMock()
+        bot.api.sending.sendMessage.return_value = MagicMock(code=200, data={"idMessage": "WA-OUT"})
+        app.green_api_bot = bot
 
+        assert app.send_to_user(CHAT_ID, "בוצע", mcp_calls=[{"name": "add_client"}]) is True
+
+        bot.api.sending.sendMessage.assert_called_once_with(CHAT_ID, "בוצע")
         [stored] = _stored(session_manager)
         assert stored["content"] == "בוצע"
         assert stored["mcp_calls"] == [{"name": "add_client"}]
+        assert stored["ai_required_role"] == "assistant"
 
-    def test_a_no_reply_turn_stores_nothing(self, app, session_manager):
-        response = AIResponse(
-            request_id="r1", response_text="[[NO_REPLY]]", tokens_used=0, prompt_tokens=0,
-            completion_tokens=0, model="m", finish_reason="stop", timestamp=_now(),
-            should_reply=False,
-        )
-        app.send_response(_notification(), response)
+    def test_a_message_that_could_not_be_sent_is_not_stored(self, app, session_manager):
+        bot = MagicMock()
+        bot.api.sending.sendMessage.return_value = MagicMock(code=500, data={})
+        app.green_api_bot = bot
 
+        assert app.send_to_user(CHAT_ID, "לא נשלח") is False
         assert _stored(session_manager) == []
+
+    def test_approval_buttons_are_stored_and_their_message_id_remembered_on_the_chat(self, app, session_manager):
+        bot = MagicMock()
+        bot.api.sending.sendInteractiveButtons.return_value = MagicMock(code=200, data={"idMessage": "BTN-1"})
+        app.green_api_bot = bot
+
+        assert app.send_approval_buttons(CHAT_ID, "📋 לאישור: ... לאישור — כן/לא?") is True
+
+        [stored] = _stored(session_manager)
+        assert stored["content"] == "📋 לאישור: ... לאישור — כן/לא?"
+        assert session_manager.get_session(CHAT_ID).approval_message_id == "BTN-1"
 
     def test_the_whatsapp_handler_itself_stores_nothing(self, app, session_manager):
         notification = _notification()
         sent = app.whatsapp_handler.send_text(notification, "שלום")
         notification.answer.assert_called_once_with("שלום")
         assert (sent.text, sent.whatsapp_id_message) == ("שלום", "WA-OUT")
-        assert _stored(session_manager) == []
-
-    def test_a_progress_update_is_sent_in_the_turn_in_progress_and_stored(self, app, session_manager):
-        notification = _notification()
-        app.mark_chat_busy(notification, _message(), is_blocked=False)
-
-        assert app.send_progress_update(CHAT_ID, "רגע, בודק") is True
-        notification.answer.assert_called_once_with("רגע, בודק")
-        [stored] = _stored(session_manager)
-        assert (stored["content"], stored["whatsapp_id_message"]) == ("רגע, בודק", None)
-
-    def test_no_progress_update_outside_a_turn(self, app, session_manager):
-        app.mark_chat_busy(_notification(), _message(), is_blocked=False)
-        app.mark_chat_idle(CHAT_ID)
-
-        assert app.send_progress_update(CHAT_ID, "רגע") is False
         assert _stored(session_manager) == []

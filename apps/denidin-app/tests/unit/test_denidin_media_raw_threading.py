@@ -42,7 +42,6 @@ def app(monkeypatch):
     fake.config.ai_vision_model = "gpt-5.6-luna"
     fake.green_api_bot = None
     fake.typing_keepalive_scheduler = None
-    fake.backbone_enabled = True
     fake.user_manager.get_user.return_value.is_blocked = False
     fake.ai_manager.handle_message.return_value = AIResponse(
         request_id="r1", response_text="בסדר.", tokens_used=0,
@@ -53,9 +52,9 @@ def app(monkeypatch):
     return fake
 
 
-def test_flag_on_media_dispatch_never_calls_the_legacy_extraction_pipeline(app):
+def test_media_dispatch_never_calls_the_legacy_extraction_pipeline(app):
     """The old shortcut (process_media_message: download+extract+persist+ledger-
-    detect in one call) must never be invoked on the flag-on path — only the raw
+    detect in one call) must never be invoked on this path — only the raw
     low-level MediaFileManager pieces."""
     file_manager = app.media_handler.media_file_manager
     file_manager.download_file.return_value = (b"fake jpeg bytes", True)

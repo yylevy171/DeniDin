@@ -15,13 +15,11 @@ own turn (`handle_message`), button-tap resolution, sent-approval bookkeeping, a
 hooks the media extractors call.
 """
 import contextlib
-import json
 import logging
 import re
 import time
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Tuple, cast
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, cast
 
 from openai import APIStatusError, OpenAI
 
@@ -82,8 +80,6 @@ MORNING_READ_MCP_TOOLS = (
 
 RECALLED_MEMORIES_HEADER = "RECALLED MEMORIES (from past conversations):\n"
 
-# WhatsApp reply length limit the reply is cut to (AIResponse.truncate_for_whatsapp).
-WHATSAPP_MAX_REPLY_CHARS = 4000
 
 # Phrases of a state-changing Morning confirmation ("issued", "marked paid",
 # "cancelled", "added" - all "successfully").
@@ -111,76 +107,9 @@ AFFIRMATIVE_REPLIES = {
     "לאשר",
 }
 
-# What was NOT done, by what the approved write was about (2026-10-01): a reminder
-# write that never ran must not be reported as "no document was created".
-_NOTHING_DONE = {
-    "document": "לא נוצר שום מסמך",
-    "client": "לא נוסף ולא עודכן שום לקוח",
-    "reminder": "לא נוצרה, לא שונתה ולא נמחקה שום תזכורת",
-}
-_NOTHING_DONE_GENERIC = "לא בוצע שום שינוי"
-
-_INVOICE_WRITE_TOOLS = frozenset((
-    "create_invoice", "create_transaction_account", "create_combo_document",
-    "create_credit_note", "create_receipt", "create_combo_document_as_reference",
-    "cancel_transaction_account",
-))
-_CLIENT_WRITE_TOOLS = frozenset(("add_client", "update_client"))
-_REMINDER_WRITE_TOOLS = frozenset(("create_reminder", "modify_reminder", "delete_reminder"))
-
-_HEBREW_LETTER = re.compile(r"[א-ת]")
-
-
 def _field(item: Any, name: str) -> Any:
     """`name` off a raw Responses API item (object) or an already-extracted dict."""
     return item.get(name) if isinstance(item, dict) else getattr(item, name, None)
-
-
-def _arguments_signature(call: Any) -> str:
-    """A call's arguments as one comparable string: a JSON string or dict both become
-    sorted-key JSON, so the same arguments compare equal however they were carried."""
-    raw = _field(call, "arguments")
-    arguments = raw
-    if isinstance(raw, str):
-        try:
-            arguments = json.loads(raw)
-        except ValueError:
-            return raw
-    try:
-        return json.dumps(arguments, sort_keys=True, ensure_ascii=False)
-    except TypeError:
-        return repr(arguments)
-
-
-def _call_succeeded(call: Any) -> bool:
-    """A call carrying an error, or a local tool whose output starts with "⚠️"/"error:",
-    failed - it is an attempt, never an execution."""
-    if _field(call, "error"):
-        return False
-    output = _field(call, "output")
-    return not (isinstance(output, str) and output.startswith(("⚠️", "error:")))
-
-
-@dataclass
-class WriteExecutions:
-    """What an approved turn executed: how many times each write tool was called
-    (attempts, failed ones included), the arguments of each SUCCESSFUL call, and the
-    first failure text any call carried (for telling the user why nothing ran)."""
-    counts: Dict[str, int] = field(default_factory=dict)
-    failure_detail: str = ""
-    successful_arguments: Dict[str, List[str]] = field(default_factory=dict)
-
-    @property
-    def duplicated(self) -> List[str]:
-        """Write tools that SUCCEEDED more than once with identical arguments - the
-        signature of the same approved call being run twice (2026-10-04). Failed
-        attempts, and deliberate writes with different arguments, never count."""
-        return [name for name, signatures in self.successful_arguments.items()
-                if len(signatures) != len(set(signatures))]
-
-    @property
-    def ran_any(self) -> bool:
-        return bool(self.counts)
 
 
 class AIManager(ABC):  # pylint: disable=too-many-instance-attributes,too-many-public-methods
@@ -645,22 +574,6 @@ class AIManager(ABC):  # pylint: disable=too-many-instance-attributes,too-many-p
         return "stop"
 
     @staticmethod
-    def fit_for_whatsapp(ai_response: AIResponse) -> AIResponse:
-        """The reply cut to WhatsApp's limit (AIResponse.truncate_for_whatsapp) when it
-        is longer, logged; otherwise unchanged."""
-        if len(ai_response.response_text) > WHATSAPP_MAX_REPLY_CHARS:
-            logger.warning("Response truncated to %d chars for WhatsApp", WHATSAPP_MAX_REPLY_CHARS)
-            return ai_response.truncate_for_whatsapp()
-        return ai_response
-
-    @staticmethod
-    def reply_or_fallback(text: str, fallback: str) -> str:
-        """The reply text, or `fallback` when there is none (Item7, 2026-10-01): a turn
-        the user sent something to is never left silent by accident. A deliberate
-        [[NO_REPLY]] is non-empty text, so it passes through unchanged."""
-        return (text or "").strip() or fallback
-
-    @staticmethod
     def log_possible_hallucinated_confirmation(request_id: str, response_text: str,
                                                 tools_offered: bool,
                                                 mcp_calls: List[Dict[str, Any]]) -> None:
@@ -734,54 +647,3 @@ class AIManager(ABC):  # pylint: disable=too-many-instance-attributes,too-many-p
             if text:
                 return str(text)
         return ""
-
-    @classmethod
-    def tally_write_executions(cls, calls: Iterable[Any], write_tool_names: Iterable[str]
-                               ) -> WriteExecutions:
-        """Counts executions of each tool in `write_tool_names` among `calls` (raw
-        `mcp_call` items or {name, arguments, output, error} dicts), and records the
-        arguments of each successful one (WriteExecutions.duplicated). The failure detail is taken
-        from the first call of ANY name that carries output or error text, cut to 200
-        characters."""
-        names = set(write_tool_names)
-        result = WriteExecutions()
-        for call in calls:
-            name = _field(call, "name")
-            if name in names:
-                result.counts[name] = result.counts.get(name, 0) + 1
-                if _call_succeeded(call):
-                    result.successful_arguments.setdefault(name, []).append(_arguments_signature(call))
-            if not result.failure_detail:
-                output = _field(call, "output")
-                if output:
-                    result.failure_detail = f" ({str(output)[:200]})"
-                else:
-                    error_text = cls.mcp_error_text(call)
-                    if error_text:
-                        result.failure_detail = f" ({error_text[:200]})"
-        return result
-
-    @staticmethod
-    def write_subject(tool_names: Iterable[str]) -> str:
-        """"document" / "client" / "reminder" when every one of `tool_names` (the writes
-        the approval could have been about) is of that one kind; "" when mixed or none."""
-        kinds = set()
-        for name in tool_names:
-            if name in _INVOICE_WRITE_TOOLS:
-                kinds.add("document")
-            elif name in _CLIENT_WRITE_TOOLS:
-                kinds.add("client")
-            elif name in _REMINDER_WRITE_TOOLS:
-                kinds.add("reminder")
-        return kinds.pop() if len(kinds) == 1 else ""
-
-    @staticmethod
-    def approved_write_not_run_message(failure_detail: str, subject: str = "") -> str:
-        """The reply when the user approved a write and it never ran (bugfix-028 B4(b)).
-        Hebrew only: the failure detail (a tool's own output/error text) is shown only
-        when it is Hebrew text, never raw English/JSON. `subject` (write_subject) names
-        what was not done."""
-        detail = failure_detail if _HEBREW_LETTER.search(failure_detail or "") else ""
-        nothing_done = _NOTHING_DONE.get(subject, _NOTHING_DONE_GENERIC)
-        return (f"אישרת, אבל הפעולה לא בוצעה בפועל{detail}. "
-                f"{nothing_done}. נסי שוב או ספרי לי איך להמשיך.")

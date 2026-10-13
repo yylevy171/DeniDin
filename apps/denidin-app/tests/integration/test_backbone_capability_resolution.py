@@ -1,11 +1,9 @@
 """
 Integration tests (Feature 063, "resolution" redesign - NOT billed): the
 flag-on capability-loading loop end to end with REAL internal components
-(Backbone, SessionManager, ReminderManager, LedgerEventManager,
+(Backbone, DeniDin, WhatsAppHandler, SessionManager, ReminderManager, LedgerEventManager,
 the real idle-reset scheduler) and only the OpenAI SDK boundary mocked
-(CONSTITUTION §I/§V). Also proves the FEATURE FLAG boundary: flag off means
-no backbone and no reset scheduler; the legacy ai_handler.py never even
-mentions the new tools.
+(CONSTITUTION §I/§V). Also proves the idle-reset scheduler starts only when configured.
 """
 import json
 import time
@@ -29,7 +27,7 @@ from src.services.capability_reset_service import (
     CAPABILITY_RESET_JOB_ID, start_capability_reset_scheduler, sweep_idle_capabilities,
 )
 from src.utils.time_utils import now_local
-from tests.backbone_test_support import make_backbone
+from tests.backbone_test_support import FakeBot, make_backbone
 from tests.denidin_test_support import make_ledger_event_manager, make_reminder_manager, make_session_manager
 
 pytestmark = pytest.mark.integration
@@ -48,6 +46,11 @@ def _text(text, rid="rt"):
     """The model's final reply - always a send_to_user call (2026-09-30: plain text is
     never sent to the user)."""
     return _fc("send_to_user", {"text": text}, call_id="c-reply", rid=rid)
+
+
+def _end(rid="r-end"):
+    """A model response with no tool call: the app pauses."""
+    return SimpleNamespace(output=[], output_text="", id=rid, usage=None)
 
 
 def _tap(chat="chat1"):
@@ -83,10 +86,12 @@ def env(tmp_path):
     client = MagicMock()
 
     def make(**extra):
-        return make_backbone(
+        backbone = make_backbone(
             client, config, reminder_manager=reminders, ledger_event_manager=ledger,
             session_manager=sessions, morning_mcp_locator=locator, **extra,
         )
+        backbone.denidin.green_api_bot = FakeBot()
+        return backbone
     return SimpleNamespace(config=config, sessions=sessions, reminders=reminders, ledger=ledger,
                            client=client, make=make, tmp_path=tmp_path)
 
@@ -102,13 +107,16 @@ def test_ledger_query_loaded_then_real_manager_queried(env):
         _fc("load_capabilities", {"capabilities": ["cap_ledger_query"]}),
         _fc("query_ledger_events", {"criteria": [{"text": "יוסי", "hint": "identity"}]}, rid="r2"),
         _fc("send_to_user", {"text": "לא נמצא"}, rid="r3"),
+        _end("r4"),
     ]
-    response = env.make().handle_message(_request(), chat_id="chat1", user_role="godfather")
+    orch = env.make()
+    response = orch.handle_message(_request(), chat_id="chat1", user_role="godfather")
     kws = _sent_kwargs(env)
     assert "query_ledger_events" not in _tool_names(kws[0]) and "query_ledger_events" in _tool_names(kws[1])
     tool_output = kws[2]["input"][0]
     assert tool_output["type"] == "function_call_output"
     json.loads(tool_output["output"])  # real LedgerEventManager result is valid JSON
+    assert orch.denidin.green_api_bot.sent_texts == ["לא נמצא"]
     assert response.response_text == "לא נמצא"
 
 
@@ -122,6 +130,7 @@ def test_reminders_read_lists_real_reminders(env):
         _fc("load_capabilities", {"capabilities": ["cap_reminders_read"]}),
         _fc("list_reminders", {}, rid="r2"),
         _fc("send_to_user", {"text": "הנה"}, rid="r3"),
+        _end("r4"),
     ]
     env.make().handle_message(_request(), chat_id="chat1", user_role="godfather")
     kws = _sent_kwargs(env)
@@ -134,45 +143,49 @@ def test_invoicing_write_attaches_its_never_approval_mcp_entry(env):
     env.client.responses.create.side_effect = [
         _fc("load_capabilities", {"capabilities": ["cap_invoicing_write"]}),
         _fc("approval_with_yes_no_buttons", {"text": "להפיק חשבונית?"}, rid="r2"),
+        _end("r3"),
     ]
-    response = env.make().handle_message(_request("תפיק חשבונית"), chat_id="chat1", user_role="godfather")
+    orch = env.make()
+    response = orch.handle_message(_request("תפיק חשבונית"), chat_id="chat1", user_role="godfather")
     kws = _sent_kwargs(env)
     assert _mcp_entry(kws[0]) is None
     entry = _mcp_entry(kws[1])
     assert entry["require_approval"] == "never" and "create_invoice" in entry["allowed_tools"]
     assert entry["headers"]["Authorization"] == "Bearer tok"
-    # approval is the plain stateless buttons tool - no pending-approval record
+    # approval is the plain buttons tool: sent at once, its message id kept on the chat
+    assert [b[1] for b in orch.denidin.green_api_bot.buttons] == ["להפיק חשבונית?"]
     assert response.offer_approval_buttons is True
-    assert response.response_text == "להפיק חשבונית?"
 
 
-def test_live_button_tap_resolves_as_ordinary_turn_and_capability_stays_loaded(env):
+def test_live_button_tap_resolves_as_an_approved_write_and_capability_stays_loaded(env):
     env.client.responses.create.side_effect = [
         _fc("load_capabilities", {"capabilities": ["cap_invoicing_write"]}),
         _fc("approval_with_yes_no_buttons", {"text": "להפיק?"}, rid="r2"),
+        _end("r2b"),
     ]
-    # After "כן" - the approved-write turn (Item4): its calls are never retried, so they
-    # go through client.with_options(max_retries=0); create_invoice ran server-side once
-    # and the model reports it.
+    # After "כן" - the approved-write call: never retried, so it goes through
+    # client.with_options(max_retries=0); create_invoice ran server-side once and the
+    # model reports it.
     reply = _text("הופקה חשבונית 123.", rid="r3")
     reply.output.insert(0, SimpleNamespace(type="mcp_call", name="create_invoice", arguments="{}",
                                            output="{\"number\": 123}", error=None))
     approved_create = env.client.with_options.return_value.responses.create
-    approved_create.side_effect = [reply]
+    approved_create.side_effect = [reply, _end("r4")]
     orch = env.make()
     orch.handle_message(_request("תפיק"), chat_id="chat1", user_role="godfather")
-    orch.record_sent_message_id("chat1", "STANZA-1")  # what denidin.py does after the buttons send
-    tap = orch.resolve_button_tap(_tap("chat1"), "denidin_approve", "STANZA-1", user_role="godfather")
-    assert tap.response_text == "הופקה חשבונית 123."
+    assert env.sessions.get_session("chat1").approval_message_id == "BTN1"  # set when the buttons were sent
+    tap = orch.resolve_button_tap(_tap("chat1"), "denidin_approve", "BTN1", user_role="godfather")
+    assert orch.denidin.green_api_bot.sent_texts[0] == "הופקה חשבונית 123."
+    assert [c["name"] for c in tap.mcp_calls] == ["create_invoice"]
     env.client.with_options.assert_called_with(max_retries=0)
-    last = approved_create.call_args.kwargs
-    assert "create_invoice" in _mcp_entry(last)["allowed_tools"]  # still loaded on the tap turn
+    last = approved_create.call_args_list[0].kwargs
+    assert "create_invoice" in _mcp_entry(last)["allowed_tools"]  # still loaded on the tap
     assert env.sessions.get_session("chat1").active_capabilities == ["cap_invoicing_write"]
 
 
 def test_stale_wrong_stanza_tap_is_ignored_with_no_model_call(env):
     orch = env.make()
-    orch.record_sent_message_id("chat1", "STANZA-1")
+    env.sessions.set_approval_message_id("chat1", "STANZA-1")
     assert orch.resolve_button_tap(_tap("chat1"), "denidin_approve", "OTHER", user_role="godfather") is None
     env.client.responses.create.assert_not_called()
 
@@ -183,44 +196,35 @@ def test_tap_with_no_outstanding_approval_is_ignored(env):
 
 
 def test_a_second_tap_on_the_same_message_is_stale(env):
-    # A live "כן" tap is the approved-write turn - its call goes through
-    # client.with_options(max_retries=0) (Item4).
+    # A live "כן" tap is an approved-write call - it goes through
+    # client.with_options(max_retries=0).
     approved_create = env.client.with_options.return_value.responses.create
-    approved_create.side_effect = [_text("בוצע", rid="r1")]
+    approved_create.side_effect = [_text("בוצע", rid="r1"), _end("r2")]
     orch = env.make()
-    orch.record_sent_message_id("chat1", "STANZA-1")
+    env.sessions.set_approval_message_id("chat1", "STANZA-1")
     assert orch.resolve_button_tap(_tap("chat1"), "denidin_approve", "STANZA-1", user_role="godfather") is not None
     assert orch.resolve_button_tap(_tap("chat1"), "denidin_approve", "STANZA-1", user_role="godfather") is None
-    assert approved_create.call_count == 1
+    assert approved_create.call_count == 2  # the one tap's two calls (the reply, then the pause)
 
 
-def test_any_new_typed_turn_supersedes_outstanding_approval_buttons(env):
-    env.client.responses.create.side_effect = [_text("אוקיי", rid="r1")]
+def test_a_typed_yes_answers_the_outstanding_approval_so_its_buttons_go_stale(env):
+    approved_create = env.client.with_options.return_value.responses.create
+    approved_create.side_effect = [_text("אוקיי", rid="r1"), _end("r2")]
     orch = env.make()
-    orch.record_sent_message_id("chat1", "STANZA-1")
+    env.sessions.set_approval_message_id("chat1", "STANZA-1")
     orch.handle_message(_request("כן"), chat_id="chat1", user_role="godfather")  # typed reply
+    assert env.sessions.get_session("chat1").approval_message_id is None
     assert orch.resolve_button_tap(_tap("chat1"), "denidin_approve", "STANZA-1", user_role="godfather") is None
 
 
-def test_denidin_records_the_sent_buttons_message_id_for_the_backbone(env, monkeypatch):
+def test_buttons_sent_by_deni_din_store_their_message_id_on_the_chat(env):
     orch = env.make()
-    # REQ-063-08: DeniDin sends (and stores) the reply, returning the buttons' idMessage
-    fake_app = SimpleNamespace(send_response=MagicMock(return_value="SENT-ID"), ai_manager=orch)
-    monkeypatch.setattr(denidin_module, "denidin_app", fake_app)
-    denidin_module._send_ai_response_and_attach(MagicMock(), "chat1", MagicMock())  # pylint: disable=protected-access
-    assert env.sessions.get_session("chat1").approval_message_id == "SENT-ID"
-
-
-def test_denidin_records_nothing_when_no_buttons_were_sent(env, monkeypatch):
-    orch = env.make()
-    monkeypatch.setattr(denidin_module, "denidin_app", SimpleNamespace(
-        send_response=MagicMock(return_value=None), ai_manager=orch))  # plain-text send
-    denidin_module._send_ai_response_and_attach(MagicMock(), "chat1", MagicMock())  # pylint: disable=protected-access
-    assert env.sessions.get_session("chat1").approval_message_id is None
+    assert orch.denidin.send_approval_buttons("chat1", "לאשר?") is True
+    assert env.sessions.get_session("chat1").approval_message_id == "BTN1"
 
 
 def test_approval_message_id_persists_across_restart(env):
-    env.make().record_sent_message_id("chat1", "STANZA-1")
+    env.sessions.set_approval_message_id("chat1", "STANZA-1")
     restarted = make_session_manager(storage_dir=str(env.tmp_path / "sessions"))
     assert restarted.get_session("chat1").approval_message_id == "STANZA-1"
 
@@ -233,6 +237,7 @@ def test_each_morning_capability_gets_its_own_fixed_mcp_entry(env):
         _fc("load_capabilities", {"capabilities": ["cap_invoicing_write"]}, rid="r1"),
         _fc("load_capabilities", {"capabilities": ["cap_client_write"]}, rid="r2"),
         _text("סיימתי", rid="r3"),
+        _end("r4"),
     ]
     env.make().handle_message(_request(), chat_id="chat1", user_role="godfather")
     sent = _sent_kwargs(env)
@@ -257,6 +262,7 @@ def test_media_analysis_reads_the_file_attached_to_the_request(env):
         _fc("analyze_media", {}, rid="r2"),
         vision_reply,
         _fc("send_to_user", {"text": "זה קבלה"}, rid="r3"),
+        _end("r4"),
     ]
     request = _request("מה זה")
     request.media = Media(data=b"fake jpeg bytes", mime_type="image/jpeg",
@@ -275,6 +281,7 @@ def test_docx_write_tools_attached_when_loaded(env):
     env.client.responses.create.side_effect = [
         _fc("load_capabilities", {"capabilities": ["cap_docx_write"]}),
         _text("ok", rid="r2"),
+        _end("r3"),
     ]
     env.make(fee_agreement_tools=fee, whatsapp_handler=MagicMock()).handle_message(
         _request(), chat_id="chat1", user_role="godfather")
@@ -287,6 +294,7 @@ def test_loaded_set_survives_restart_then_idle_reset_clears_it_for_the_next_turn
     env.client.responses.create.side_effect = [
         _fc("load_capabilities", {"capabilities": ["cap_reminders_write"]}),
         _fc("send_to_user", {"text": "נטען"}, rid="r2"),
+        _end("r2b"),
     ]
     env.make().handle_message(_request(), chat_id="chat1", user_role="godfather")
 
@@ -295,7 +303,7 @@ def test_loaded_set_survives_restart_then_idle_reset_clears_it_for_the_next_turn
 
     assert sweep_idle_capabilities(restarted, 60, now=now_local() + timedelta(minutes=61)) == 1
 
-    env.client.responses.create.side_effect = [_fc("send_to_user", {"text": "שלום"}, rid="r3")]
+    env.client.responses.create.side_effect = [_fc("send_to_user", {"text": "שלום"}, rid="r3"), _end("r3b")]
     make_backbone(env.client, env.config, session_manager=restarted).handle_message(
         _request("היי"), chat_id="chat1", user_role="godfather")
     kw = _sent_kwargs(env)[-1]
@@ -325,36 +333,28 @@ def test_real_scheduler_fires_and_clears_idle_chat_but_not_active_one(env):
     assert fresh.get_session("idle").active_capabilities == []
 
 
-# -------------------------------------------------------- the FEATURE FLAG
+# ------------------------------------------------ the idle-reset scheduler
 
-def _app_config(tmp_path, flag, reset_minutes):
+def _app_config(tmp_path, reset_minutes):
     return {
         "green_api_instance_id": "1234567890", "green_api_token": "t", "ai_api_key": "sk-test",
         "ai_model": "gpt-5.6-luna", "ai_vision_model": "gpt-5.6-luna",
         "ai_embedding_model": "text-embedding-3-large", "ai_reply_max_tokens": 1000,
         "log_level": "INFO", "data_root": str(tmp_path / "data"),
-        "feature_flags": {"enable_capability_backbone": flag},
         "capabilities_reset_minutes": reset_minutes,
         # longterm storage_dir does not follow data_root - keep ChromaDB in tmp too
         "memory": {"longterm": {"storage_dir": str(tmp_path / "data" / "memory")}},
-        "constitution_config": {}, "backbone_config": {}, "user_roles": {},
+        "backbone_config": {}, "user_roles": {},
     }
 
 
-def test_flag_off_never_starts_reset_scheduler_even_with_minutes_configured(tmp_path):
-    app = denidin_module.initialize_app(_app_config(tmp_path, False, 30))
-    assert not app.backbone_enabled
+def test_zero_minutes_starts_nothing(tmp_path):
+    app = denidin_module.initialize_app(_app_config(tmp_path, 0))
     assert denidin_module.start_capability_reset_if_enabled(app) is None
 
 
-def test_flag_on_with_zero_minutes_starts_nothing(tmp_path):
-    app = denidin_module.initialize_app(_app_config(tmp_path, True, 0))
-    assert app.backbone_enabled
-    assert denidin_module.start_capability_reset_if_enabled(app) is None
-
-
-def test_flag_on_with_minutes_starts_the_single_sweep_job(tmp_path):
-    app = denidin_module.initialize_app(_app_config(tmp_path, True, 30))
+def test_minutes_configured_starts_the_single_sweep_job(tmp_path):
+    app = denidin_module.initialize_app(_app_config(tmp_path, 30))
     scheduler = denidin_module.start_capability_reset_if_enabled(app)
     try:
         assert scheduler is not None
@@ -363,17 +363,10 @@ def test_flag_on_with_minutes_starts_the_single_sweep_job(tmp_path):
         scheduler.shutdown(wait=False)
 
 
-def test_legacy_ai_handler_source_is_untouched_by_the_new_mechanism():
-    text = (Path(__file__).parent.parent.parent / "src" / "handlers" / "ai_handler.py").read_text(encoding="utf-8")
-    for token in ("load_capabilities", "unload_capabilities", "reset_to_backbone", "active_capabilities",
-                  "load_flows", "unload_flows", "active_flows", "capabilities_reset_minutes"):
-        assert token not in text
-
-
 def test_every_capability_tag_is_loadable_end_to_end(env):
     """Each tag can be loaded through the real loop and lands in the persisted set."""
     for tag in CapabilityTag:
-        env.client.responses.create.side_effect = [_fc("load_capabilities", {"capabilities": [tag.value]}), _text("ok")]
+        env.client.responses.create.side_effect = [_fc("load_capabilities", {"capabilities": [tag.value]}), _text("ok"), _end()]
         env.make(fee_agreement_tools=MagicMock(build_tools=lambda u: []),
                  whatsapp_handler=MagicMock()).handle_message(_request(chat=f"c-{tag.value}"),
                                                             chat_id=f"c-{tag.value}", user_role="godfather")
@@ -390,9 +383,10 @@ def test_flow_then_its_capabilities_loaded_together_end_to_end(env):
         _fc("load_flows", {"flows": ["flow_issue_invoice_for_payment_due"]}, rid="r1"),
         _fc("load_capabilities", {"capabilities": ["cap_client_read", "cap_invoicing_write"]}, rid="r2"),
         _text("ok"),
+        _end(),
     ]
-    env.make(whatsapp_handler=MagicMock()).handle_message(_request(), chat_id="chat1", user_role="godfather")
-    first, second, third = _sent_kwargs(env)
+    env.make().handle_message(_request(), chat_id="chat1", user_role="godfather")
+    first, second, third = _sent_kwargs(env)[:3]
     assert "# Flow: Issue invoice for payment due" not in first["instructions"]
     assert "# Flow: Issue invoice for payment due" in second["instructions"]
     assert "## Loaded flows\n\nflow_issue_invoice_for_payment_due" in third["instructions"]
@@ -406,8 +400,8 @@ def test_flow_then_its_capabilities_loaded_together_end_to_end(env):
 def test_every_flow_tag_is_loadable_end_to_end(env):
     from src.backbone.flow_tags import FlowTag
     for flow in FlowTag:
-        env.client.responses.create.side_effect = [_fc("load_flows", {"flows": [flow.value]}), _text("ok")]
-        env.make(whatsapp_handler=MagicMock()).handle_message(
+        env.client.responses.create.side_effect = [_fc("load_flows", {"flows": [flow.value]}), _text("ok"), _end()]
+        env.make().handle_message(
             _request(chat=f"f-{flow.value}"), chat_id=f"f-{flow.value}", user_role="godfather")
         assert env.sessions.get_session(f"f-{flow.value}").active_flows == [flow.value]
         assert f"# Flow:" in _sent_kwargs(env)[-1]["instructions"]
