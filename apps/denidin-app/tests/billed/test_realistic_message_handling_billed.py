@@ -17,6 +17,17 @@ def _normalized(text: str) -> str:
     return (text or "").replace("₪", "").replace(",", "")
 
 
+def test_a0_count_with_me_three_quick_messages_get_the_next_number(denidin_app):
+    """A0 - the simplest burst: the owner starts counting and sends 1, 2, 3 at once; DeniDin answers 4."""
+    with intake_rig(denidin_app, ADMIN_ISOLATED_CHAT_ID) as rig:
+        for text in ("בוא נספור ביחד עד 5, אני מתחיל: 1", "2", "3"):
+            rig.send_text(text)
+        rig.wait_until_idle()
+        reply = rig.last_reply()
+        assert "4" in reply, reply
+        assert len(rig.stored_user_messages()) >= 3
+
+
 def test_a1_quick_additive_burst_gives_one_coherent_answer(denidin_app):
     with intake_rig(denidin_app, ADMIN_ISOLATED_CHAT_ID) as rig:
         for text in ("תפיק לי חשבונית", "ללקוח דנה", "על 500 שקל"):

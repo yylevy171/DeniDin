@@ -62,7 +62,7 @@ class IntakeRig:
         deadline, quiet = time.time() + timeout, 0
         while time.time() < deadline:
             busy = (any(q.size() for q in self.intake.queues()) or self.intake.deferred
-                    or self.app._turns_in_progress or getattr(self.intake, "_current", None) is not None)
+                    or self.app._busy_chats or getattr(self.intake, "_current", None) is not None)
             quiet = 0 if busy else quiet + 1
             if quiet >= 3:
                 return
@@ -89,7 +89,7 @@ class IntakeRig:
         sm = self.app.session_manager
         session = sm.get_session(self.chat_id)
         rows = [m for _mid, m in sm._iter_persisted_messages(session)]
-        return [m["content"] for m in rows if m.get("role") == "user"]
+        return [m["content"] for m in rows if (m.get("ai_required_role") or m.get("role")) == "user"]
 
 
 @contextmanager
