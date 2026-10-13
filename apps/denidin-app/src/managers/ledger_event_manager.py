@@ -617,7 +617,7 @@ def _expand_accounting_document_json(event: Dict) -> Optional[Dict]:
         # Feature 066: Morning files Bit and PayBox under one generic "app" payment type
         # (10); the appType tells them apart, so name the real method.
         "accounting_document_payment_method": (
-            _APP_PAYMENT_METHOD_BY_APP_TYPE.get(payment.get("app_type"), payment.get("method"))
+            _APP_PAYMENT_METHOD_BY_APP_TYPE.get(payment.get("app_type") or 0, payment.get("method"))
             if payment.get("type") == 10 else payment.get("method")
         ),
         "check_number": payment.get("cheque_number"),
