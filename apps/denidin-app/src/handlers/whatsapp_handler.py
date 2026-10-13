@@ -9,13 +9,11 @@ from tenacity import (
     retry,
     stop_after_attempt,
     wait_fixed,
-    retry_if_exception_type,
     retry_if_exception,
 )
 from whatsapp_chatbot_python import Notification
 from src.constants.error_messages import APPROVAL_BUTTONS_SEND_FAILED
-from src.managers.pending_approval_manager import BUTTON_ID_APPROVE, BUTTON_ID_DECLINE
-from src.models.message import WhatsAppMessage, AIResponse
+from src.models.message import WhatsAppMessage
 from src.models.fee_agreement import GeneratedDocument
 from src.utils.green_api_bot import send_reaction
 from src.utils.logger import get_logger
@@ -34,6 +32,22 @@ class SentMessage:
     whatsapp_id_message: Optional[str] = None
     as_buttons: bool = False
     is_notice: bool = False
+
+
+# The stable identifiers of the approval buttons (never the display labels) - a tap
+# carries one as selectedId.
+BUTTON_ID_APPROVE = "denidin_approve"
+BUTTON_ID_DECLINE = "denidin_decline"
+
+WHATSAPP_MAX_MESSAGE_CHARS = 4000
+
+
+def fit_for_whatsapp(text: str) -> str:
+    """`text` cut to WhatsApp's length limit (with a trailing "..."); unchanged when shorter."""
+    if len(text) > WHATSAPP_MAX_MESSAGE_CHARS:
+        logger.warning("Message truncated to %d chars for WhatsApp", WHATSAPP_MAX_MESSAGE_CHARS)
+        return text[:WHATSAPP_MAX_MESSAGE_CHARS] + "..."
+    return text
 
 
 def _id_message_of(result: Any) -> Optional[str]:
@@ -146,17 +160,61 @@ class WhatsAppHandler:
         debug_wire("whatsapp", "out", wire_context, _wire_payload)
         return SentMessage(text=text, whatsapp_id_message=_id_message_of(result))
 
-    def send_progress_update(self, notification: Notification, text: str) -> SentMessage:
-        """Feature 080: an interim message mid-turn, in `notification`'s chat - the same
-        notification.answer send the final reply uses, wire-logged both directions."""
-        chat_id = notification.event.get("senderData", {}).get("chatId", "")
+    def send_to_chat(self, chat_id: str, text: str, *, wire_context: str = "text") -> Optional[SentMessage]:
+        """Sends `text` to `chat_id` right away (the model's send_to_user): cut to WhatsApp's
+        length limit here, for every message, retried once on a 5xx/timeout, wire-logged both
+        directions. None - never raises - when it could not be sent (logged)."""
+        text = fit_for_whatsapp(text)
+        if not (text and text.strip()):
+            logger.error("Refusing to send an empty message to %s", chat_id)
+            return None
         _wire_payload = {"chat_id": chat_id, "message": text}
-        audit_wire("whatsapp", "out", "progress_update", _wire_payload)
-        debug_wire("whatsapp", "out", "progress_update", _wire_payload)
-        result = notification.answer(text)
-        audit_wire("whatsapp", "in", "progress_update", {"chat_id": chat_id, "message": repr(result)})
-        debug_wire("whatsapp", "in", "progress_update", {"result": repr(result)})
+        audit_wire("whatsapp", "out", wire_context, _wire_payload)
+        debug_wire("whatsapp", "out", wire_context, _wire_payload)
+        try:
+            result = self._send_chat_with_retry(chat_id, text)
+        except Exception as error:  # pylint: disable=broad-except
+            logger.error("Failed to send a message to %s: %s", chat_id, error, exc_info=True)
+            return None
+        audit_wire("whatsapp", "in", wire_context, {"chat_id": chat_id, "message": repr(result)})
+        debug_wire("whatsapp", "in", wire_context, {"result": repr(result)})
+        code = getattr(result, "code", 200)
+        if code != 200:
+            logger.error("Green API did not accept a message to %s: code=%r data=%r",
+                         chat_id, code, getattr(result, "data", None))
+            return None
         return SentMessage(text=text, whatsapp_id_message=_id_message_of(result))
+
+    def send_buttons_to_chat(self, chat_id: str, text: str) -> Optional[SentMessage]:
+        """Feature 047: sends `text` to `chat_id` right away as the "כן"/"לא" interactive
+        approval buttons (the model's approval_with_yes_no_buttons). A failed send is
+        surfaced, never silently downgraded to the plain question: the distinct
+        APPROVAL_BUTTONS_SEND_FAILED notice is sent instead (SentMessage.is_notice), or
+        None when even that could not be sent."""
+        text = fit_for_whatsapp(text)
+        bot = self.green_api_bot
+        buttons = [
+            {"type": "reply", "buttonId": BUTTON_ID_APPROVE, "buttonText": "כן"},
+            {"type": "reply", "buttonId": BUTTON_ID_DECLINE, "buttonText": "לא"},
+        ]
+        _wire_payload = {"chat_id": chat_id, "message": text}
+        audit_wire("whatsapp", "out", "buttons", _wire_payload)
+        debug_wire("whatsapp", "out", "buttons", _wire_payload)
+        id_message = None
+        try:
+            if bot is None:
+                raise RuntimeError("no live bot object injected")
+            result = bot.api.sending.sendInteractiveButtons(chat_id, text, buttons, None, None)
+            if result is not None and result.code == 200 and isinstance(result.data, dict):
+                id_message = result.data.get("idMessage")
+        except Exception as error:  # pylint: disable=broad-except
+            logger.error("Unexpected exception sending approval buttons to %s: %s", chat_id, error, exc_info=True)
+        if id_message is None:
+            logger.error("Failed to send approval buttons to %s", chat_id)
+            return self.send_to_chat(chat_id, APPROVAL_BUTTONS_SEND_FAILED, wire_context="buttons_failed_notice") \
+                and SentMessage(text=APPROVAL_BUTTONS_SEND_FAILED, is_notice=True)
+        logger.info("Approval buttons sent to %s: idMessage=%s", chat_id, id_message)
+        return SentMessage(text=text, whatsapp_id_message=cast(str, id_message), as_buttons=True)
 
     def send_reaction(self, chat_id: str, id_message: str, emoji: str) -> bool:
         """Feature 084: sets (or, with emoji "", clears) a reaction on a message.
@@ -167,35 +225,17 @@ class WhatsAppHandler:
         return send_reaction(self.green_api_bot, chat_id, id_message, emoji)
 
     @retry(
-        retry=retry_if_exception_type((requests.Timeout, requests.ConnectionError, requests.HTTPError)),
+        retry=retry_if_exception(_is_retryable_send_error),
         stop=stop_after_attempt(2),  # Hardcoded: Initial attempt + 1 retry = 2 total attempts
         wait=wait_fixed(1),  # 1 second wait
         reraise=True
     )
-    def _send_with_retry(self, notification: Notification, message: str) -> Any:
-        """
-        Send message via Green API with retry logic.
-        Retries ONCE (max 2 attempts) only on 5xx errors and network errors, waits 1 second.
-        Does NOT retry 4xx client errors.
-
-        Args:
-            notification: Green API notification to reply to
-            message: Message text to send
-
-        Raises:
-            requests.RequestException: After 2 attempts (1 retry) or immediately on 4xx errors
-        """
-        try:
-            return notification.answer(message)
-        except requests.HTTPError as e:
-            # Check if this is a 4xx error that shouldn't be retried
-            if hasattr(e, 'response') and e.response is not None:
-                if 400 <= e.response.status_code < 500:
-                    logger.error(f"HTTP {e.response.status_code} client error - not retrying: {e}")
-                    raise  # Don't retry 4xx errors
-                # 5xx errors: let tenacity retry them by raising
-            raise
-
+    def _send_chat_with_retry(self, chat_id: str, message: str) -> Any:
+        """Sends via Green API. Retries ONCE (max 2 attempts) only on 5xx errors and network
+        errors, after 1 second; never on a 4xx client error."""
+        if self.green_api_bot is None:
+            raise RuntimeError("no live bot object injected")
+        return self.green_api_bot.api.sending.sendMessage(chat_id, message)
 
     @retry(
         retry=retry_if_exception(_is_retryable_send_error),
@@ -267,165 +307,6 @@ class WhatsAppHandler:
                 f"after retry: {e}", exc_info=True
             )
             return False
-
-    def send_response(self, notification: Notification, response: AIResponse) -> Optional[SentMessage]:
-        """
-        Send AI response back to WhatsApp with error handling.
-
-        Args:
-            notification: Green API notification to reply to
-            response: AI response to send
-
-        Returns:
-            What was sent - the reply (Feature 047: as_buttons when it went out as
-            approval buttons), or the notice sent instead when the buttons failed - or
-            None when nothing was sent (should_reply=False, or an empty reply).
-        """
-        # bugfix-028 B5: the send boundary is the last place that can tell a
-        # deliberate silence from a broken turn, and it used to check neither.
-        # Anything that didn't raise was logged as "Response sent successfully",
-        # including a literally empty message (sessions 047cacb7 turn 22,
-        # 12e158e2 turn 16, logged as "0 chars").
-        if not response.should_reply:
-            logger.info(
-                f"No reply owed for request {response.request_id} (should_reply=False) - "
-                f"sending nothing, as intended."
-            )
-            return None
-        if not (response.response_text and response.response_text.strip()):
-            # Unreachable via AIResponse's own contract, which refuses to build
-            # this - kept as a boundary guard because "the user got nothing and
-            # nobody noticed" is the failure being eliminated, and defence in
-            # depth is cheap here.
-            logger.error(
-                f"Refusing to send an empty reply for request {response.request_id} - "
-                f"a zero-character message is not a response."
-            )
-            return None
-
-        # Feature 047: a turn that just created/refreshed a pending approval is sent
-        # as interactive buttons instead of plain text - a fully separate send path
-        # (different Green API endpoint, different failure handling: an error is
-        # surfaced rather than silently falling back to plain text, per
-        # spec.md Clarifications). Every other turn's behavior below is unchanged.
-        if response.offer_approval_buttons:
-            return self._send_approval_buttons(notification, response)
-
-        try:
-            logger.debug(f"Sending response for request {response.request_id}")
-
-            # Use retry wrapper for actual send
-            result = self._send_with_retry(notification, response.response_text)
-
-            logger.info(
-                f"Response sent successfully for request {response.request_id}: "
-                f"{len(response.response_text)} chars"
-            )
-            _wire_payload = {"chat_id": notification.event.get("senderData", {}).get("chatId", ""),
-                             "message": response.response_text}
-            audit_wire("whatsapp", "out", "text", _wire_payload)
-            debug_wire("whatsapp", "out", "text", _wire_payload)
-            return SentMessage(text=response.response_text, whatsapp_id_message=_id_message_of(result))
-
-        except requests.HTTPError as e:
-            # Log specific HTTP error details
-            status_code = e.response.status_code if hasattr(e, 'response') else 'unknown'
-
-            if status_code == 400:
-                logger.error(f"Green API 400 Bad Request error: {e}", exc_info=True)
-            elif status_code == 401:
-                logger.error(f"Green API 401 Authentication error: {e}", exc_info=True)
-            elif status_code == 429:
-                logger.error(f"Green API 429 Rate limit error: {e}", exc_info=True)
-            elif status_code == 500:
-                logger.error(f"Green API 500 Server error: {e}", exc_info=True)
-            else:
-                logger.error(f"Green API HTTP {status_code} error: {e}", exc_info=True)
-
-            raise  # Re-raise after logging
-
-        except requests.Timeout as e:
-            logger.error(f"Green API timeout error: {e}", exc_info=True)
-            raise
-
-        except requests.ConnectionError as e:
-            logger.error(f"Green API connection error: {e}", exc_info=True)
-            raise
-
-        except requests.RequestException as e:
-            logger.error(f"Green API request error: {e}", exc_info=True)
-            raise
-
-        except Exception as e:
-            logger.error(f"Unexpected error sending response: {e}", exc_info=True)
-            raise
-
-    def _send_approval_buttons(self, notification: Notification, response: AIResponse) -> Optional[SentMessage]:
-        """
-        Feature 047: send response.response_text (the existing 📋 לאישור: block,
-        unmodified) as WhatsApp interactive buttons ("כן"/"לא") instead of plain text.
-
-        Per contracts/whatsapp-buttons-send.md: whatsapp_api_client_python's underlying
-        GreenAPI client is configured with raise_errors=False (this codebase's actual
-        default - confirmed by reading API.py, not assumed), so a failed send does NOT
-        raise - it comes back as a Response with code != 200 / data not a dict. Checking
-        the Response's own code/data is therefore the correct (and only reliable) way to
-        detect failure here, not a try/except around the call.
-
-        Returns:
-            The sent buttons message on success. On any failure, the distinct
-            plain-text error notice sent instead (is_notice - never a silent fallback
-            to the approval prompt itself, per spec.md Clarifications), or None when
-            even that could not be sent.
-        """
-        buttons = [
-            {"type": "reply", "buttonId": BUTTON_ID_APPROVE, "buttonText": "כן"},
-            {"type": "reply", "buttonId": BUTTON_ID_DECLINE, "buttonText": "לא"},
-        ]
-
-        try:
-            result = notification.answer_with_interactive_buttons(response.response_text, buttons)
-        except Exception as e:  # pylint: disable=broad-except
-            # Defensive only (per the note above, this client does not normally raise) -
-            # a genuinely unexpected exception (e.g. a bug in the library itself) must
-            # still be treated as a send failure, not propagate and crash the turn.
-            logger.error(
-                f"Unexpected exception sending approval buttons for request "
-                f"{response.request_id}: {e}", exc_info=True
-            )
-            result = None
-
-        id_message = None
-        if result is not None and result.code == 200 and isinstance(result.data, dict):
-            id_message = result.data.get("idMessage")
-
-        if id_message is None:
-            logger.error(
-                f"Failed to send approval buttons for request {response.request_id}: "
-                f"code={getattr(result, 'code', None)!r}, "
-                f"error={getattr(result, 'error', None)!r}"
-            )
-            try:
-                notice = self.send_text(notification, APPROVAL_BUTTONS_SEND_FAILED)
-            except Exception as notice_error:  # pylint: disable=broad-except
-                logger.error(
-                    f"Failed to send approval-buttons failure notice for request "
-                    f"{response.request_id}: {notice_error}", exc_info=True
-                )
-                return None
-            return SentMessage(text=notice.text, whatsapp_id_message=notice.whatsapp_id_message,
-                               is_notice=True)
-
-        logger.info(
-            f"Approval buttons sent successfully for request {response.request_id}: "
-            f"idMessage={id_message}"
-        )
-        _wire_payload = {"chat_id": notification.event.get("senderData", {}).get("chatId", ""),
-                         "message": response.response_text}
-        audit_wire("whatsapp", "out", "buttons", _wire_payload)
-        debug_wire("whatsapp", "out", "buttons", _wire_payload)
-        return SentMessage(text=response.response_text, whatsapp_id_message=cast(str, id_message),
-                           as_buttons=True)
 
     def is_media_message(self, notification: Notification) -> bool:
         """

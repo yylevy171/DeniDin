@@ -25,26 +25,21 @@ from src.backbone.pending_messages import format_pending_items
 from src.backbone.prompt_cache import MtimePromptCache
 from src.backbone.resolution_tools import RESOLUTION_TOOLS, extract_resolution_tool_calls
 from src.capabilities.toolsets import (
-    WRITE_TOOL_NAMES,
     build_capability_tools,
     dispatch_local_tool,
     extract_local_calls,
     local_tool_owners,
 )
-from openai import APIError, APITimeoutError, RateLimitError
+from openai import APIError, APITimeoutError, BadRequestError, RateLimitError
 
 from src.constants.error_messages import (
-    APPROVED_WRITE_POSSIBLY_DUPLICATED_NOTE, BACKBONE_AI_API_ERROR,
-    BACKBONE_AI_RATE_LIMITED, BACKBONE_AI_TIMEOUT, BACKBONE_UNEXPECTED_ERROR,
-    LEDGER_FOLLOWUP_FAILED_TRY_AGAIN,
+    BACKBONE_AI_API_ERROR, BACKBONE_AI_RATE_LIMITED, BACKBONE_AI_TIMEOUT, BACKBONE_UNEXPECTED_ERROR,
 )
-from src.models.message import AIRequest, AIResponse, WhatsAppMessage, should_reply_for
+from src.models.message import AIRequest, AIResponse, WhatsAppMessage
 from src.models.user import Role
 from src.utils.capability_audit_log import log_capability_action, log_loading_action
 from src.utils.logger import read_version, DEFAULT_VERSION_FILE
-from src.tool_actions.messaging_actions import (
-    build_react_to_message_payload, send_progress_update_message,
-)
+from src.tool_actions.messaging_actions import build_react_to_message_payload
 from src.core.ai_manager import AIManager
 from src.utils.wire_log import audit_wire, debug_wire
 from src.utils.time_utils import now_local, local_from_timestamp
@@ -78,14 +73,25 @@ BACKBONE_FLOWS: Tuple[FlowTag, ...] = (
     FlowTag.MODIFY_REMINDER,
 )
 
-# A reply reaches the user ONLY through send_to_user / approval_with_yes_no_buttons
-# (2026-09-30). A round that ends in plain text (no tool call) is never sent: the model
-# gets this one reminder and another round; if it answers in plain text again, the user
-# gets BACKBONE_UNEXPECTED_ERROR instead.
-PLAIN_TEXT_REPLY_REMINDER = (
-    "Your last response was plain text, which is never shown to the user. "
-    "To reply, call send_to_user (or approval_with_yes_no_buttons for a yes/no approval)."
+# Information reaches the user ONLY through tools (send_to_user, approval_with_yes_no_buttons,
+# ...). Output text is ignored - logged, never sent. A response that is plain text with no tool
+# call gets this one note and another call; if the model does it again, the app pauses.
+PLAIN_TEXT_IGNORED_NOTE = (
+    "Your last output text was IGNORED: output text is never shown to the user and never acted on. "
+    "Information reaches the user ONLY through tools - call send_to_user to say something (or "
+    "approval_with_yes_no_buttons for a yes/no question). If you have nothing to do right now, "
+    "respond with nothing at all."
 )
+
+# The Morning tools that create a document - each success is recorded in the ledger by the
+# app (DeniDin.record_created_document), never by the model.
+DOCUMENT_CREATING_TOOLS = frozenset({
+    "create_invoice", "create_transaction_account", "create_combo_document", "create_credit_note",
+    "create_receipt", "create_combo_document_as_reference",
+})
+
+# OpenAI's error code for a previous_response_id it no longer knows (Gate Zero C4).
+CHAIN_NOT_FOUND_CODE = "previous_response_not_found"
 
 # English label per MediaFileManager.validate_format result, used in the
 # first-round "[ATTACHED MEDIA: ...]" marker of a media turn.
@@ -145,7 +151,6 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
         # every one of the ~6 call sites across src/capabilities/* + planning.py
         # - this process handles one webhook turn at a time, so there is no real
         # concurrent-turn clobbering risk in practice.
-        self._turn_conversation_history: List[Dict[str, Any]] = []
 
         # Set once per handle_message() call, same lifecycle/reasoning as
         # _turn_conversation_history above - read by the loop's
@@ -153,13 +158,13 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
         # every round this turn makes.
         self._turn_chat_id: Optional[str] = None
         self._turn_message_id: Optional[str] = None
+        self._turn_request_id: str = ""
 
-        # Set False at the top of every handle_message() call; flipped True by
-        # ApprovalCapability.handle() iff the approval capability was used
-        # THIS turn (2026-09-16) - _finalize_response reads this instead of
-        # checking pending-approval managers to decide whether to offer
-        # WhatsApp interactive buttons, now that cap_reminders_write creates no
-        # pending-approval record of its own.
+        # What this handle_message() call did, for observability (denidin_app.last_response):
+        # the texts it sent, and whether any went out as approval buttons. Nothing waits on
+        # these and nothing is delivered from them - every send happens the moment the model
+        # calls the tool.
+        self._turn_sent_texts: List[str] = []
         self._turn_offered_approval: bool = False
 
         # Set once per handle_message() call (2026-09-15) - the ChromaDB
@@ -185,16 +190,12 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
         self._turn_tokens = [0, 0, 0]  # total, input (prompt), output (completion)
         self._turn_last_response: Optional[Any] = None
 
-        # Item4 (2026-10-01): True when this turn answers an approval-buttons prompt
-        # with a yes. An approval asks about WHATEVER the model asked (a write, an
-        # offer, any question) - the app never assumes it was a write. The turn's model
-        # calls are run with the SDK's own retries off (as legacy's approval call), and
-        # a write it ran twice with identical arguments is flagged (_apply_write_guards).
-        # _turn_write_calls collects what it executed: every raw Morning mcp_call item
-        # (any tool - a read's output can be the failure detail, as in legacy) and each
-        # local write ({name, output, error}); only writes are counted.
+        # True when this message answers an approval-buttons prompt with a yes. An approval
+        # asks about WHATEVER the model asked (a write, an offer, any question) - the app never
+        # assumes it was a write. The model calls are run with the SDK's own retries off (as
+        # legacy's approval call) and nothing is attached to the model's input while it handles
+        # the approved action (REQ-RMH-014).
         self._turn_answers_approval: bool = False
-        self._turn_write_calls: List[Any] = []
 
         # The inbound WhatsAppMessage this turn answers (request.original_message) -
         # the addressing for internal notes stored mid-turn (see record_planning_status).
@@ -438,14 +439,14 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
             # send_progress_update's and react_to_message's real dispatch target/default.
             self._turn_chat_id = effective_chat_id
             self._turn_message_id = request.message_id
+            self._turn_request_id = request.request_id
+            self._turn_sent_texts = []
             # Reset per-turn MCP-call accumulator (2026-09-15) - see __init__'s
             # _turn_mcp_calls docstring.
             self._turn_mcp_calls = []
             self._turn_tokens = [0, 0, 0]
             self._turn_last_response = None
             self._turn_original_message = request.original_message
-            # Reset per-turn approval-buttons flag (2026-09-16) - see __init__'s
-            # _turn_offered_approval docstring.
             self._turn_offered_approval = False
             # Long-term memory recall (2026-09-15, closing a real gap - see
             # _recall_memory's own docstring): computed once here, read by
@@ -474,26 +475,14 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
                 "is_group": is_group,
             }
 
-            # Conversation history (2026-09-14): the SAME rolling-window shape/source
-            # AIHandler._call_openai_api already uses (SessionManager.get_rolling_window,
-            # oldest-first, role-token-capped) - godfather/admin-only scope for now
-            # (explicit decision - client role isn't exercised through this backbone
-            # yet), so the token cap always uses the godfather/admin limit. Set once here,
-            # read by the loop for every round this turn makes (see that
-            # method's own docstring for why this is a plain instance attribute rather
-            # than threaded through every call site).
-            self._turn_conversation_history = self._load_conversation_history(
-                effective_chat_id, exclude_message_id=request.message_id)
-
             # The tool-driven resolution loop (see
             # contracts/capability-resolution-loop.md): one continuous conversation
             # driven by load_capabilities/unload_capabilities/load_flows/unload_flows/reset_to_backbone/
             # record_planning_status/approval_with_yes_no_buttons/send_to_user.
             self._turn_planning_status = None
-            # A yes to outstanding approval buttons makes this the turn that answers
-            # an approval (Item4). Any new turn supersedes whatever approval buttons
-            # were outstanding.
-            self._turn_write_calls = []
+            # A yes to outstanding approval buttons makes this the message that answers an
+            # approval (Item4). Any new message supersedes whatever approval buttons were
+            # outstanding.
             self._turn_answers_approval = False
             if effective_chat_id:
                 approval_was_pending = bool(
@@ -502,43 +491,46 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
                     approval_was_pending and self.is_affirmative_reply(request.user_prompt))
                 # Feature 067 (REQ-RMH-017): the stale-tap guard is cleared only when the
                 # approval itself is answered here (a typed or tapped yes/no); unrelated
-                # messages leave it alone, and a newer approval overwrites it when sent
-                # (record_sent_message_id).
+                # messages leave it alone, and a newer approval overwrites it when sent.
                 if approval_was_pending and (
                         self._turn_answers_approval or self.is_negative_reply(request.user_prompt)):
                     self.session_manager.set_approval_message_id(effective_chat_id, None)
-            final_text = self._run_resolution_loop(request, turn_context)
-            final_text = self._apply_write_guards(request, final_text)
-
-            # Feature 080: the turn's Morning MCP calls, recorded the same way
-            # AIHandler._finalize_response records them (shared helper).
-            if self._turn_mcp_calls:
-                logger.info("MCP calls for request %s: %s", request.request_id, self._turn_mcp_calls)
-            self.record_mcp_tool_calls(self._turn_telemetry_builder, self._turn_mcp_calls)
-            return self._finalize_response(request, final_text)
+            self._run_conversation(request, turn_context)
+            return self._activity_record(request)
         # Legacy's per-error replies (AIHandler._get_response_impl), checked in its order:
         # APITimeoutError and RateLimitError are both APIErrors (C8, 2026-10-04).
         except APITimeoutError as exc:
             logger.error("OpenAI API timeout for request %s after retries: %s",
                          request.request_id, exc, exc_info=True)
-            return self._create_fallback_response(request.request_id, BACKBONE_AI_TIMEOUT)
+            return self._report_failure(request, BACKBONE_AI_TIMEOUT)
         except RateLimitError as exc:
             logger.error("OpenAI rate limit exceeded for request %s after retries: %s",
                          request.request_id, exc, exc_info=True)
-            return self._create_fallback_response(request.request_id, BACKBONE_AI_RATE_LIMITED)
+            return self._report_failure(request, BACKBONE_AI_RATE_LIMITED)
         except APIError as exc:
             logger.error("OpenAI API error for request %s after retries: %s",
                          request.request_id, exc, exc_info=True)
-            return self._create_fallback_response(request.request_id, BACKBONE_AI_API_ERROR)
+            return self._report_failure(request, BACKBONE_AI_API_ERROR)
         except Exception as exc:  # pylint: disable=broad-except
             logger.error(
                 "Unexpected error in Backbone.handle_message for request %s: %s",
                 request.request_id, exc, exc_info=True,
             )
-            # Nothing to store here: the user's message was stored on receipt, every
-            # message sent so far was stored as it was sent, and this fallback text is
-            # stored when it's sent.
-            return self._create_fallback_response(request.request_id, BACKBONE_UNEXPECTED_ERROR)
+            return self._report_failure(request, BACKBONE_UNEXPECTED_ERROR)
+
+    def _report_failure(self, request: AIRequest, message: str) -> AIResponse:
+        """A model call failed after its retries (or something unexpected broke): the friendly
+        error text goes to the user at once and the app pauses. The chain is dropped - it may
+        end at a response whose tool calls were never answered - so the next message starts a
+        new one from the rolling window."""
+        chat_id = self._turn_chat_id
+        if chat_id:
+            try:
+                self.session_manager.set_ai_chain_id(chat_id, None)
+            except Exception as exc:  # pylint: disable=broad-except
+                logger.error("Could not drop the model chain of %s after a failure: %s", chat_id, exc)
+        self._send_to_user(message)
+        return self._activity_record(request)
 
     # ------------------------------------------------------------------
     # Loaded-capability state (persisted on Session.active_capabilities)
@@ -621,91 +613,93 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
         marker = f"[ATTACHED MEDIA: {type_label}, file: {filename}]"
         return f"{marker}\n{request.user_prompt}" if request.user_prompt else marker
 
-    def _run_resolution_loop(self, request: AIRequest, turn_context: Dict[str, Any]) -> str:
-        """The tool-driven "resolution" loop - one continuous conversation, no
-        "initial call"/"turn" concept beyond the API's own call chaining.
-        Every round (including the first) rebuilds instructions AND tools from
-        the persisted loaded-capability set; `load_flows` / `load_capabilities` /
-        their unload counterparts / `reset_to_backbone` mutate those sets, so the
-        change takes effect starting the very next round - and persists into
-        following messages. Loops (capped by MAX_BACKBONE_TOOL_LOOP_ITERATIONS)
-        until send_to_user / approval_with_yes_no_buttons is called, or the
-        cap is hit (falls back to the last round's plain text - "never leave
-        a turn silent")."""
-        chat_id: str = turn_context["chat_id"]  # every turn has a chat
-        tags, instructions, tools = self._build_round_inputs(request, chat_id, turn_context)
-        input_items = list(self._turn_conversation_history)
-        input_items.append({
+    def _first_input(self, request: AIRequest, chat_id: str) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+        """The first model call's input and the chain it continues. With a live chain the input
+        is just this message (the chain holds everything before it); without one it is the
+        rolling window followed by the message, and the call starts a new chain."""
+        user_item = {
             "role": "user",
             # A media request's first-round text is pinned by an approved test (no
             # timestamp) - a human decision is pending on stamping it (Feature 067 open point).
             "content": ("" if request.media is not None else self._timestamp_label(request))
-            + self._first_round_user_content(request)})
+            + self._first_round_user_content(request)}
+        chain_id = self.session_manager.get_session(chat_id).ai_chain_id
+        if chain_id:
+            return [user_item], chain_id
+        return self._window_input(request, chat_id) + [user_item], None
 
-        response = self._call_model("_run_resolution_loop (first round)", {
+    def _window_input(self, request: AIRequest, chat_id: str) -> List[Dict[str, Any]]:
+        """The rolling window (last 14 days, everything stored before this message) a new
+        chain starts from; long-term summaries ride along in the instructions."""
+        return self._load_conversation_history(chat_id, exclude_message_id=request.message_id)
+
+    def _run_conversation(self, request: AIRequest, turn_context: Dict[str, Any]) -> None:
+        """The model works whenever it has something to do and pauses when it has nothing.
+        There is no end: every model response is acted on - each tool call is executed at
+        once (a send is sent, buttons are sent) and its result handed back in the next call,
+        together with any user messages that arrived meanwhile - and the app pauses only
+        when a response carries no tool call. Output text is ignored (logged); a response
+        with text and no tool call gets ONE more call telling the model so; an empty response
+        pauses at once. Instructions AND tools are rebuilt from the persisted loaded
+        flow/capability sets for every call (a chain retains neither)."""
+        chat_id: str = turn_context["chat_id"]  # every message has a chat
+        input_items, previous_id = self._first_input(request, chat_id)
+        told_text_ignored = False
+        for _round in range(MAX_BACKBONE_TOOL_LOOP_ITERATIONS):
+            tags, instructions, tools = self._build_round_inputs(request, chat_id, turn_context)
+            response = self._call_chained(request, chat_id, input_items, previous_id, instructions, tools)
+            previous_id = getattr(response, "id", None)
+            last_output_at = now_local()  # when the model's most recent output came back
+            with self.tool_call_span(self._turn_telemetry_builder, "local_tools"):
+                outputs = self._execute_round_calls(request, turn_context, chat_id=chat_id, tags=tags,
+                                                    response=response)
+            if outputs is None:
+                plain_text = (getattr(response, "output_text", "") or "").strip()
+                if not plain_text:
+                    return  # nothing to do: the app pauses
+                logger.warning("Model answered in plain text without a tool call (request %s) - text ignored: %r",
+                               request.request_id, plain_text)
+                if told_text_ignored:
+                    return
+                told_text_ignored = True
+                input_items = [{"role": "developer", "content": PLAIN_TEXT_IGNORED_NOTE}]
+                continue
+            told_text_ignored = False
+            input_items = self._compose_follow_up_input(chat_id, outputs, last_output_at)
+        logger.warning(
+            "Conversation hit MAX_BACKBONE_TOOL_LOOP_ITERATIONS=%d for request %s - pausing.",
+            MAX_BACKBONE_TOOL_LOOP_ITERATIONS, request.request_id,
+        )
+
+    def _call_chained(self, request: AIRequest, chat_id: str, input_items: List[Dict[str, Any]],
+                      previous_id: Optional[str], instructions: str, tools: List[Dict[str, Any]]) -> Any:
+        """One model call continuing the chat's chain (`previous_id`), or starting a new one when
+        there is none. The new response id is stored on the session as the chain's head. When
+        OpenAI no longer knows the chain (previous_response_not_found) it is dropped and the
+        call is made again as the start of a new chain, from the rolling window."""
+        kwargs: Dict[str, Any] = {
             "model": request.model,
             "instructions": instructions,
             "input": input_items,
             "max_output_tokens": request.max_tokens,
             "tools": tools,
-        })
-
-        last_output_at = now_local()  # when the model's most recent output came back
-        reminded_of_send_to_user = False
-        for _loop_round in range(MAX_BACKBONE_TOOL_LOOP_ITERATIONS):
-            # Feature 080 telemetry, matching AIHandler._run_local_tool_dispatch_loop: each
-            # round's tool dispatch AND its follow-up model call are timed as one
-            # "local_tools" tool call (the shared AIManager.tool_call_span).
-            with self.tool_call_span(self._turn_telemetry_builder, "local_tools"):
-                round_result = self._execute_round_calls(
-                    request, turn_context, chat_id=chat_id, tags=tags, response=response)
-                if round_result is None:
-                    # Plain text, no tool call - never sent to the user (see
-                    # PLAIN_TEXT_REPLY_REMINDER).
-                    plain_text = (getattr(response, "output_text", "") or "").strip()
-                    if reminded_of_send_to_user:
-                        logger.error(
-                            "Model answered in plain text again after being reminded to use "
-                            "send_to_user (request %s) - not sent; replying with an error. Text: %r",
-                            request.request_id, plain_text)
-                        return BACKBONE_UNEXPECTED_ERROR
-                    logger.warning(
-                        "Model answered in plain text without send_to_user (request %s) - not sent; "
-                        "reminding it once. Text: %r", request.request_id, plain_text)
-                    reminded_of_send_to_user = True
-                    outputs = [{"role": "developer", "content": PLAIN_TEXT_REPLY_REMINDER}]
-                    final_text = None
-                else:
-                    outputs, final_text = round_result
-                if final_text is not None:
-                    # Empty send_to_user text: an error reply, never silence (Item7).
-                    return self.reply_or_fallback(final_text, BACKBONE_UNEXPECTED_ERROR)
-
-                try:
-                    # Recompute BOTH instructions and tools from the (possibly
-                    # just-mutated) persisted set - previous_response_id retains
-                    # neither.
-                    tags, instructions, tools = self._build_round_inputs(request, chat_id, turn_context)
-                    response = self._call_model("_run_resolution_loop (follow-up)", {
-                        "model": request.model,
-                        "instructions": instructions,
-                        "input": self._compose_follow_up_input(chat_id, outputs, last_output_at),
-                        "previous_response_id": getattr(response, "id", None),
-                        "max_output_tokens": request.max_tokens,
-                        "tools": tools,
-                    })
-                    last_output_at = now_local()
-                except Exception as exc:  # pylint: disable=broad-except
-                    logger.error("Resolution-loop follow-up call failed (non-fatal): %s", exc)
-                    return self.reply_or_fallback(getattr(response, "output_text", ""),
-                                             LEDGER_FOLLOWUP_FAILED_TRY_AGAIN)
-
-        logger.warning(
-            "Resolution loop hit MAX_BACKBONE_TOOL_LOOP_ITERATIONS=%d for request %s "
-            "without a send_to_user call - returning whatever text the last round carries.",
-            MAX_BACKBONE_TOOL_LOOP_ITERATIONS, request.request_id,
-        )
-        return self.reply_or_fallback(getattr(response, "output_text", ""), BACKBONE_UNEXPECTED_ERROR)
+        }
+        if previous_id:
+            kwargs["previous_response_id"] = previous_id
+        try:
+            response = self._call_model("conversation (chained)" if previous_id else "conversation (new chain)",
+                                        chat_id, kwargs)
+        except BadRequestError as exc:
+            if not previous_id or getattr(exc, "code", None) != CHAIN_NOT_FOUND_CODE:
+                raise
+            logger.warning("[067] OpenAI no longer knows the chain of %s (%s) - starting a new one from the "
+                           "rolling window", chat_id, previous_id)
+            kwargs.pop("previous_response_id")
+            kwargs["input"] = self._window_input(request, chat_id) + [
+                item for item in input_items if item.get("role") == "user"]
+            response = self._call_model("conversation (new chain after expiry)", chat_id, kwargs)
+        self.session_manager.set_ai_chain_id(chat_id, getattr(response, "id", None))
+        return response
 
     def _compose_follow_up_input(self, chat_id: str, outputs: List[Dict[str, Any]],
                                  last_output_at: Any) -> List[Dict[str, Any]]:
@@ -713,7 +707,7 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
         app did for the model - its tool results - and (B) the user messages that arrived
         since, each with its send time and whether it came before or after the model's last
         output. The model's own work is never aborted; it just sees the new messages next.
-        Nothing is attached while an approved write is being handled (REQ-RMH-014) - those
+        Nothing is attached while an approved action is being handled (REQ-RMH-014) - those
         messages are handled afterwards."""
         if self._turn_answers_approval:
             return outputs
@@ -722,27 +716,22 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
             return outputs
         logger.info("[067] %d message(s) arrived while working in %s - handed to the model with its tool results",
                     len(drained.ordered), chat_id)
-        self.denidin.refresh_typing_indicator(chat_id)
         return outputs + format_pending_items(drained, last_output_at)
 
     def _execute_round_calls(self, request: AIRequest, turn_context: Dict[str, Any], *, chat_id: str,
                               tags: List[CapabilityTag], response: Any
-                              ) -> Optional[Tuple[List[Dict[str, Any]], Optional[str]]]:
-        """Executes every tool call in one round's `response` - each function_call gets
-        an output, an error one when it could not run: returns None when
-        it carries no calls at all (plain text - the loop ends), else
-        (function_call_output items for the next round, the reply text if the
-        model called send_to_user/approval_with_yes_no_buttons this round)."""
+                              ) -> Optional[List[Dict[str, Any]]]:
+        """Executes every tool call in one response, at once - each function_call gets an
+        output, an error one when it could not run. None when the response carries no tool
+        call at all."""
         resolution_calls = extract_resolution_tool_calls(response)
         backbone_calls = extract_backbone_tool_calls(response)
         domain_calls = extract_local_calls(response, local_tool_owners(self, tags, turn_context))
-        outputs, final_text = self._run_resolution_calls(resolution_calls, chat_id)
+        outputs = self._run_resolution_calls(resolution_calls, chat_id)
         outputs += self._run_domain_calls(domain_calls, turn_context)
         outputs += self._run_backbone_calls(backbone_calls, request)
         outputs += self._unanswered_call_outputs(response, {o["call_id"] for o in outputs})
-        if not outputs:
-            return None
-        return outputs, final_text
+        return outputs or None
 
     @staticmethod
     def _unanswered_call_outputs(response: Any, answered_call_ids: set) -> List[Dict[str, Any]]:
@@ -772,42 +761,62 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
         return outputs
 
     def _run_resolution_calls(self, calls: List[Tuple[str, str, Dict[str, Any]]], chat_id: str
-                                  ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+                                  ) -> List[Dict[str, Any]]:
         outputs: List[Dict[str, Any]] = []
-        final_text: Optional[str] = None
         for call_id, tool_name, args in calls:
             if tool_name == "send_to_user":
-                text = str(args.get("text", "")).strip()
-                if args.get("end_turn") is False:
-                    result_text = (self._continue_turn() if self._send_to_user(text)
-                                   else "error: the message was not sent.")
-                else:
-                    final_text, result_text = self._end_turn(text), "ok"
+                result_text = ("ok" if self._send_to_user(str(args.get("text", "")))
+                               else "error: the message was not sent.")
             elif tool_name == "approval_with_yes_no_buttons":
-                # Stateless, domain-agnostic: just asks WhatsAppHandler to
-                # render the reply as tappable buttons - _finalize_response
-                # reads this flag.
-                self._turn_offered_approval = True
-                final_text, result_text = self._end_turn(str(args.get("text", "")).strip()), "ok"
+                result_text = ("ok" if self._send_approval_buttons(str(args.get("text", "")))
+                               else "error: the approval buttons were not sent.")
             else:
                 result_text = self._dispatch_resolution_tool(tool_name, args, chat_id)
             outputs.append({"type": "function_call_output", "call_id": call_id, "output": result_text})
-        return outputs, final_text
+        return outputs
 
     def _send_to_user(self, text: Optional[str]) -> bool:
-        """Sends `text` to the user now, in the turn in progress. Only sends: whether the
-        turn then ends or continues is `_end_turn` / `_continue_turn`'s business. (The
-        turn's final reply is delivered by the caller from the turn's result.)"""
-        return send_progress_update_message(
-            self.denidin, self._turn_telemetry_builder, self._turn_chat_id, text)
+        """Sends `text` to the user now (DeniDin.send_to_user - cut to length, wire-logged,
+        stored). False when nothing was sent. Best-effort - never raises."""
+        text = (text or "").strip()
+        if not text:
+            logger.warning("send_to_user called with no text - nothing sent")
+            return False
+        try:
+            sent = self.denidin.send_to_user(self._turn_chat_id, text, mcp_calls=list(self._turn_mcp_calls) or None)
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.warning("send_to_user: failed to send: %s", exc)
+            return False
+        if sent:
+            self._after_sent(text)
+        return bool(sent)
 
-    def _end_turn(self, text: str) -> str:
-        """Ends the turn: `text` is its final reply, which stops the resolution loop."""
-        return text
+    def _send_approval_buttons(self, text: Optional[str]) -> bool:
+        """Sends `text` to the user now as the yes/no approval buttons (DeniDin.send_approval_buttons
+        stores the sent message id on the chat). False when nothing was sent."""
+        text = (text or "").strip()
+        if not text:
+            logger.warning("approval_with_yes_no_buttons called with no text - nothing sent")
+            return False
+        try:
+            sent = self.denidin.send_approval_buttons(
+                self._turn_chat_id, text, mcp_calls=list(self._turn_mcp_calls) or None)
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.warning("approval_with_yes_no_buttons: failed to send: %s", exc)
+            return False
+        if sent:
+            self._turn_offered_approval = True
+            self._after_sent(text)
+        return bool(sent)
 
-    def _continue_turn(self) -> str:
-        """Keeps the turn going: the tool result that tells the model to carry on."""
-        return "ok"
+    def _after_sent(self, text: str) -> None:
+        """Per sent message: remember it for the activity record, and run the log-only
+        possible-fabricated-confirmation check against the Morning calls made so far."""
+        self._turn_sent_texts.append(text)
+        self.log_possible_hallucinated_confirmation(
+            self._turn_request_id, text, True, self._turn_mcp_calls)
+        if self._turn_telemetry_builder is not None:
+            self._turn_telemetry_builder.mark_progress_update_sent()
 
     def _run_domain_calls(self, calls: List[Tuple[str, str, Dict[str, Any], CapabilityTag]],
                            turn_context: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -820,9 +829,6 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
                 logger.error("%s(%s) failed (non-fatal): %s", tool_name, owner_tag.value, exc, exc_info=True)
                 result_text, outcome = f"error: {tool_name} failed: {exc}", "exception"
             log_capability_action(owner_tag.value, f"{tool_name}({args})", outcome, result_text)
-            if tool_name in WRITE_TOOL_NAMES:
-                self._turn_write_calls.append({"name": tool_name, "arguments": args,
-                                               "output": result_text, "error": None})
             outputs.append({"type": "function_call_output", "call_id": call_id, "output": result_text})
         return outputs
 
@@ -831,7 +837,7 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
         outputs: List[Dict[str, Any]] = []
         for call_id, tool_name, args in calls:
             if tool_name == "send_progress_update":
-                # Stored by the send itself (DeniDin.send_progress_update), like every message.
+                # The same send as send_to_user (stored by the send itself, like every message).
                 payload = {"sent": self._send_to_user(args.get("text"))}
             else:
                 payload = build_react_to_message_payload(
@@ -841,35 +847,40 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
                             "output": json.dumps(payload, ensure_ascii=False)})
         return outputs
 
-    def _call_model(self, context: str, kwargs: Dict[str, Any]) -> Any:
-        """One Responses API call, wire-logged both directions, its mcp_call
-        items accumulated for this turn, telemetry recorded. 2026-09-30: retries
-        explicitly once on an HTTP 424 (a gap the OpenAI SDK's own max_retries
-        never covers - see AIManager.call_model_with_retry's docstring),
-        the same shared retry AIHandler._timed_llm_call also uses."""
+    def _call_model(self, context: str, chat_id: str, kwargs: Dict[str, Any]) -> Any:
+        """One Responses API call, wire-logged both directions, its mcp_call items accumulated,
+        telemetry recorded. WhatsApp's typing indicator is on exactly while the call is in
+        flight. Retries explicitly once on an HTTP 424 (a gap the OpenAI SDK's own max_retries
+        never covers - see AIManager.call_model_with_retry's docstring)."""
         audit_wire("openai", "out", context, kwargs)
         debug_wire("openai", "out", context, kwargs)
-        # Retry + Feature 080 timing via the shared AIManager.timed_model_call (also
-        # AIHandler._timed_llm_call's): a failed call is timed and counted too.
-        if self._turn_answers_approval:
-            # Same as legacy _call_openai_approval_api (Item4): the OpenAI SDK's own
-            # retries are off (max_retries=0) for the turn that runs the approved write;
-            # the shared explicit 424 retry still applies.
-            response = self.timed_model_call(
-                self._turn_telemetry_builder,
-                lambda: self.client.with_options(max_retries=0).responses.create(**kwargs),
-                context=context,
-            )
-        else:
-            response = self.timed_model_call(
-                self._turn_telemetry_builder, lambda: self.client.responses.create(**kwargs), context=context,
-            )
+        typing_job = self.denidin.start_typing(chat_id)
+        try:
+            # Retry + Feature 080 timing via the shared AIManager.timed_model_call: a failed
+            # call is timed and counted too.
+            if self._turn_answers_approval:
+                # Same as legacy _call_openai_approval_api (Item4): the OpenAI SDK's own
+                # retries are off (max_retries=0) while the approved action runs; the shared
+                # explicit 424 retry still applies.
+                response = self.timed_model_call(
+                    self._turn_telemetry_builder,
+                    lambda: self.client.with_options(max_retries=0).responses.create(**kwargs),
+                    context=context,
+                )
+            else:
+                response = self.timed_model_call(
+                    self._turn_telemetry_builder, lambda: self.client.responses.create(**kwargs),
+                    context=context,
+                )
+        finally:
+            self.denidin.stop_typing(typing_job)
         audit_wire("openai", "in", context, response)
         debug_wire("openai", "in", context, response)
-        self._turn_mcp_calls.extend(self._extract_mcp_call_items(response))
-        self._turn_write_calls.extend(
-            item for item in (getattr(response, "output", None) or [])
-            if getattr(item, "type", None) == "mcp_call")
+        new_mcp_calls = self._extract_mcp_call_items(response)
+        self._turn_mcp_calls.extend(new_mcp_calls)
+        # A Morning document created now is recorded in the ledger by the app itself.
+        if any(call["name"] in DOCUMENT_CREATING_TOOLS and not call["error"] for call in new_mcp_calls):
+            self.denidin.record_created_document()
         usage = getattr(response, "usage", None)
         if usage is not None:
             self._turn_tokens[0] += int(getattr(usage, "total_tokens", 0) or 0)
@@ -944,69 +955,28 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
         return describe_loading(kind, loading=loading, valid=valid, unknown=unknown,
                                 flows_now=flows_now, capabilities_now=capabilities_now)
 
-    def _apply_write_guards(self, request: AIRequest, final_text: str) -> str:
-        """Item4 (2026-10-01, revised 2026-10-04 and 2026-10-12): on the turn that answers
-        approval buttons with a yes (shared AIManager), the model's reply is ALWAYS sent
-        as is - the app only ever appends a short factual note after it, and only for a
-        double execution: the same write succeeded twice with identical arguments (the
-        approved call run twice): APPROVED_WRITE_POSSIBLY_DUPLICATED_NOTE.
-
-        An approval is a plain yes/no on whatever was asked - not necessarily a write
-        (an offer, a question) - so "no write ran" is never a defect and adds no note.
-        Failed attempts append nothing either: the model saw each error and reports it
-        itself (ST14, 2026-10-03)."""
-        if not self._turn_answers_approval:
-            return final_text
-        executions = self.tally_write_executions(self._turn_write_calls, WRITE_TOOL_NAMES)
-        if executions.duplicated:
-            logger.error(
-                "[022] DUPLICATE EXECUTION DETECTED: approved turn for chat=%r request=%s ran %s "
-                "successfully more than once with identical arguments. All write calls: %r",
-                self._turn_chat_id, request.request_id, executions.duplicated, self._turn_write_calls)
-            self._turn_offered_approval = False
-            return f"{final_text}\n\n{APPROVED_WRITE_POSSIBLY_DUPLICATED_NOTE}"
-        return final_text
-
-    def _finalize_response(self, request: AIRequest, final_text: str) -> AIResponse:
-        """[[NO_REPLY]] sentinel handling via the shared models.message.should_reply_for
-        (the same check AIHandler._finalize_response uses).
-
-        offer_approval_buttons (Feature 047 parity): True iff the model called
-        `approval_with_yes_no_buttons` THIS turn (self._turn_offered_approval),
-        which asks WhatsAppHandler to render the reply as tappable buttons."""
-        should_reply = should_reply_for(final_text)
-        offer_approval_buttons = bool(self._turn_offered_approval)
-        # Same shared post-turn steps as AIHandler._finalize_response (2026-10-01):
-        # the possible-fabricated-confirmation warning (tools are always offered on
-        # this path), the turn's real token totals / model / finish reason, and the
-        # WhatsApp length cut.
-        self.log_possible_hallucinated_confirmation(request.request_id, final_text, True, self._turn_mcp_calls)
+    def _activity_record(self, request: AIRequest) -> AIResponse:
+        """A record of what this call to handle_message did - the texts it sent, the Morning
+        calls it made, its token usage - for observability (denidin_app.last_response, the
+        E2E harness). Nothing is delivered from it: every send already happened."""
         last = self._turn_last_response
         model = getattr(last, "model", None)
         finish_reason = self.finish_reason_of(last) if last is not None else "stop"
         total_tokens, prompt_tokens, completion_tokens = self._turn_tokens
-        return self.fit_for_whatsapp(AIResponse(
+        sent_text = self._turn_sent_texts[-1] if self._turn_sent_texts else ""
+        return AIResponse(
             request_id=request.request_id,
-            response_text=final_text,
+            response_text=sent_text,
             tokens_used=total_tokens,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             model=model if isinstance(model, str) and model else request.model,
             finish_reason=finish_reason if isinstance(finish_reason, str) else "stop",
             timestamp=request.timestamp or int(now_local().timestamp()),
-            should_reply=should_reply,
-            offer_approval_buttons=offer_approval_buttons,
+            should_reply=bool(sent_text),
+            offer_approval_buttons=bool(self._turn_offered_approval),
             mcp_calls=list(self._turn_mcp_calls),
-        ))
-
-    @staticmethod
-    def _create_fallback_response(request_id: str, message: str) -> AIResponse:
-        """2026-09-30 consolidation: delegates to AIManager.build_fallback_response,
-        the one shared implementation also used by AIHandler._create_fallback_response - the
-        two were byte-identical AIResponse shapes before this change. Unlike the legacy
-        fallback strings (English, predating this session's Hebrew-only audit), `message`
-        here is always one of the Hebrew BACKBONE_* constants in error_messages.py."""
-        return AIManager.build_fallback_response(request_id, message)
+        )
 
     @staticmethod
     def _resolve_role(user_role: str) -> Role:
@@ -1047,12 +1017,6 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
     # ------------------------------------------------------------------
     # Button-tap resolution (a tap is just an ordinary "כן"/"לא" turn)
     # ------------------------------------------------------------------
-
-    def record_sent_message_id(self, chat_id: str, message_id: str) -> None:
-        """Called by denidin.py right after a reply is actually sent: remembers its
-        idMessage so a later tap on an approval-buttons message can be matched against
-        it (Feature 047's stale-tap guard)."""
-        self.session_manager.set_approval_message_id(chat_id, message_id)
 
     def resolve_button_tap(self, message: WhatsAppMessage, selected_id: str, stanza_id: str, *,
                            user_role: Optional[str] = None) -> Optional[AIResponse]:

@@ -3,9 +3,9 @@ Capability idle-reset service (Feature 063, 2026-09-24 "resolution" redesign).
 
 A background scheduled task - NOT triggered by any inbound message - that
 returns idle chats to the plain backbone: any chat whose loaded capabilities
-(`Session.active_capabilities` / `Session.active_flows`) are non-empty and whose last activity
+(`Session.active_capabilities` / `Session.active_flows` / `Session.ai_chain_id`) are non-empty and whose last activity
 (`Session.last_active`, refreshed on every message sent OR received) is older
-than `config.capabilities_reset_minutes` gets both sets cleared. No
+than `config.capabilities_reset_minutes` gets both sets cleared and its model chain dropped. No
 notification is sent to anyone and none is needed: instructions AND tools are
 rebuilt fresh from the persisted set on every model call, so the model's next
 real turn simply sees a plain backbone.
@@ -43,7 +43,7 @@ def sweep_idle_capabilities(session_manager: Any, idle_minutes: int,
     for chat_id in session_manager.known_chats():
         try:
             session = session_manager.get_session(chat_id)
-            if not session.active_capabilities and not session.active_flows:
+            if not session.active_capabilities and not session.active_flows and not session.ai_chain_id:
                 continue
             last_active = datetime.fromisoformat(session.last_active)
             if now - last_active < threshold:
@@ -52,6 +52,10 @@ def sweep_idle_capabilities(session_manager: Any, idle_minutes: int,
             loaded_flows = list(session.active_flows)
             session_manager.set_active_capabilities(chat_id, [])
             session_manager.set_active_flows(chat_id, [])
+            # The model chain ends with them (no-turn redesign): the next message starts a
+            # new chain from the rolling window + summaries.
+            if session.ai_chain_id:
+                session_manager.set_ai_chain_id(chat_id, None)
             reset_count += 1
             logger.info(
                 "[063] Idle reset: chat=%s unloaded flows=%s capabilities=%s after %s idle (threshold %d min)",

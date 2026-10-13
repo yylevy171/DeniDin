@@ -57,13 +57,13 @@ def build_react_to_message_payload(
 
 def send_progress_update_message(denidin, builder, chat_id: Optional[str], text: Optional[str]) -> bool:
     """Sends one interim progress message in the turn in progress in `chat_id`
-    (DeniDin.send_progress_update - which wire-logs and stores it); returns whether it
+    (DeniDin.send_to_user - which wire-logs and stores it); returns whether it
     was sent. Best-effort - never raises."""
     if not text:
         logger.warning("[080] send_progress_update called with no text argument - nothing sent")
         return False
     try:
-        sent = bool(denidin.send_progress_update(chat_id, text))
+        sent = bool(denidin.send_to_user(chat_id, text))
     except Exception as e:  # pylint: disable=broad-except
         # Best-effort, per runtime_constitution.md: a failed interim send must
         # never fail the turn - the real final answer still has to go out below.

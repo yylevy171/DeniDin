@@ -284,11 +284,6 @@ class AIManager(ABC):  # pylint: disable=too-many-instance-attributes,too-many-p
         the caller then sends nothing at all."""
 
     @abstractmethod
-    def record_sent_message_id(self, chat_id: str, message_id: str) -> None:
-        """Called right after a reply is actually sent with its WhatsApp idMessage, so a
-        later button tap on it can be matched (Feature 047's stale-tap guard)."""
-
-    @abstractmethod
     def extraction_prompt_prefix(self) -> str:
         """Text the media extractors put in front of their own extraction prompt
         ("" for none)."""

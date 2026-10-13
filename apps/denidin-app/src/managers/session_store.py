@@ -172,6 +172,11 @@ class Session:
     # or any new turn starts). A tap whose stanzaId doesn't equal this value is
     # stale and ignored - WhatsApp itself offers no staleness protection.
     approval_message_id: Optional[str] = None
+    # Feature 067 (no-turn redesign): the id of the last OpenAI response in this chat's
+    # model chain (previous_response_id). Every model call continues it; None = no chain
+    # (a new one is built from the rolling window). Dropped by the same idle sweep as the
+    # loaded capabilities, or when OpenAI no longer knows it.
+    ai_chain_id: Optional[str] = None
 
 
 class SessionStore:
@@ -383,6 +388,13 @@ class SessionStore:
         message currently outstanding for this chat."""
         session = self.get_session(chat_id)
         session.approval_message_id = message_id
+        self._save_session(session)
+
+    def set_ai_chain_id(self, chat_id: str, chain_id: Optional[str]) -> None:
+        """Persists (or clears, with None) the id of the last response in this chat's
+        model chain."""
+        session = self.get_session(chat_id)
+        session.ai_chain_id = chain_id
         self._save_session(session)
 
     def add_message(

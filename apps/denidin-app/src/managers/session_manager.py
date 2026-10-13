@@ -142,6 +142,9 @@ class SessionManager:
     def set_approval_message_id(self, chat_id: str, message_id: Optional[str]) -> None:
         return self._call("set_approval_message_id", chat_id, message_id)
 
+    def set_ai_chain_id(self, chat_id: str, chain_id: Optional[str]) -> None:
+        return self._call("set_ai_chain_id", chat_id, chain_id)
+
     def add_message(self, *args: Any, **kwargs: Any) -> Message:
         """Same parameters as ``SessionStore.add_message``."""
         return self._call("add_message", *args, **kwargs)

@@ -26,6 +26,7 @@ class CapabilityTag(str, Enum):
     CLIENT_WRITE = "cap_client_write"
     CLIENT_READ = "cap_client_read"
     LEDGER_QUERY = "cap_ledger_query"
+    LEDGER_CAPTURE = "cap_ledger_capture"
     REMINDERS_WRITE = "cap_reminders_write"
     REMINDERS_READ = "cap_reminders_read"
     MEDIA_ANALYSIS = "cap_media_analysis"
@@ -98,6 +99,13 @@ CAPABILITY_INFO: tuple = (
         "recorded, including how much a client/payer owes or has paid - whether or "
         "not a formal Morning invoice exists. The ledger is a fast cache over "
         "Morning and covers agreement-level amounts Morning cannot see at all.",
+    ),
+    CapabilityInfo(
+        CapabilityTag.LEDGER_CAPTURE,
+        "Recording a complete fee agreement (הסכם) or bank deposit (הפקדה) in the "
+        "ledger, silently. Load it only through the flow that handles such an event "
+        "(flow_fee_agreement_provided_by_user, flow_deposit_provided_by_user), never "
+        "directly. Morning documents are recorded by the app itself.",
     ),
     CapabilityInfo(
         CapabilityTag.REMINDERS_WRITE,
