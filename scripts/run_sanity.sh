@@ -101,7 +101,7 @@ BILLED=(
   "den|tests/billed/test_ledger_query_billed.py::TestLedgerQueryBilled::test_explicit_date_lookup"
   "den|tests/billed/test_ledger_query_billed.py::TestLedgerQueryBilled::test_hours_by_client_last_month"
   "den|tests/billed/test_ledger_query_billed.py::TestLedgerQueryBilled::test_four_way_multi_criterion_with_date_range"
-  "den|tests/billed/test_ledger_query_billed.py::TestLedgerQueryBilled::test_or_across_two_identities_single_turn"
+  "den|tests/billed/test_ledger_query_billed.py::TestLedgerQueryBilled::test_or_across_two_identities_handle_message"
   "den|tests/billed/test_ledger_query_billed.py::TestLedgerQueryBilled::test_broad_threshold_who_owes_above_amount"
   "den|tests/billed/test_ledger_query_billed.py::TestLedgerQueryBilled::test_typo_variant_name_resolved_or_clarified_never_silently_dropped"
   "den|tests/billed/test_fee_agreement_generation_flow.py::TestFeeAgreementGenerationFlow::test_multi_component_arbitrary_n[4]"
@@ -111,6 +111,7 @@ BILLED=(
   "den|tests/billed/test_e2e_ledger_069_text_billed.py::TestLedgerPostTurnCaptureText::test_us4_new_client_agreement_full_detour"
   "den|tests/billed/test_e2e_ledger_069_text_billed.py::TestLedgerPostTurnCaptureText::test_us5_ambiguous_agreement_operator_picks"
   "den|tests/billed/test_e2e_ledger_069_text_billed.py::TestLedgerPostTurnCaptureText::test_us6_exact_match_captures_without_a_question"
+  "den|tests/billed/test_realistic_message_handling_billed.py::test_a0_count_with_me_three_quick_messages_get_the_next_number"
 )
 
 EXPENSIVE=(

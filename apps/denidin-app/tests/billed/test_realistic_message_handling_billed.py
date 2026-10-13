@@ -17,6 +17,7 @@ def _normalized(text: str) -> str:
     return (text or "").replace("₪", "").replace(",", "")
 
 
+@pytest.mark.sanity
 def test_a0_count_with_me_three_quick_messages_get_the_next_number(denidin_app):
     """A0 - the simplest burst: the owner starts counting and sends 1, 2, 3 at once; DeniDin answers 4."""
     with intake_rig(denidin_app, ADMIN_ISOLATED_CHAT_ID) as rig:
