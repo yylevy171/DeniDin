@@ -47,7 +47,7 @@ you write outside a tool call is NEVER delivered - the user never sees it. Every
 answer, question and outcome report goes through `send_to_user`, every time,
 with no exception.
 
-`cap_approval_with_buttons` (yes/no buttons before a write) is an ordinary
+`cap_approval_with_buttons` (a yes/no question with buttons - a sign-off before a write, an offer, any question needing a yes or no) is an ordinary
 capability: flows that need a sign-off load it.
 
 ## Flows and capabilities

@@ -693,7 +693,7 @@ class TestLedgerClientResolutionRouting:
             "raw_response": "בנק - הפקדה 9,440 ₪",
             "extracted_text": "אישור העברה בנקאית\nסכום: 9,440 ₪\nמוטב: דנה כהן",
             "ledger_events": [{
-                "source_type": "בנק", "event_subtype": "הפקדה",
+                "source_type": "הפקדה", "event_subtype": "בנק",
                 "client_name": "דנה כהן", "amount": "9,440₪", "txn_date": None,
                 "components": [],
             }],
@@ -705,7 +705,7 @@ class TestLedgerClientResolutionRouting:
 
         events = self._events(denidin_app)
         assert len(events) == 1
-        assert events[0]["source_type"] == "בנק"
+        assert events[0]["source_type"] == "הפקדה"
         assert events[0]["client_name"] == "דנה כהן"
 
         # the stash text really did carry the verbatim extracted text into the turn

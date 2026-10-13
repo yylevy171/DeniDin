@@ -127,7 +127,7 @@ def main() -> None:
            client_name=official, amount=1000, description=AGREEMENT_MARKER)
     _event(events, "C01e2e00002", now - timedelta(days=5), source_type="חשבונית",
            event_subtype="חשבונית מס קבלה", client_name=official, amount=400, description=INVOICE_MARKER)
-    _event(events, "B01e2e00003", now - timedelta(days=3), source_type="בנק", event_subtype="הפקדה",
+    _event(events, "B01e2e00003", now - timedelta(days=3), source_type="הפקדה", event_subtype="בנק",
            client_name=UNMATCHED_RAW_NAME, amount=250, description=UNMATCHED_MARKER)
 
     # ---- Feature 092 events ----
@@ -159,7 +159,7 @@ def main() -> None:
     _event(events, "C01e2e09112", now - timedelta(days=4), source_type="חשבונית",
            event_subtype="חשבונית מס קבלה", client_name=YISRAEL_RAW_NAME, amount=700,
            description="e2e-092-yisrael")
-    _event(events, "B01e2e09113", now - timedelta(days=4), source_type="בנק", event_subtype="הפקדה",
+    _event(events, "B01e2e09113", now - timedelta(days=4), source_type="הפקדה", event_subtype="בנק",
            client_name=HIDE_RAW_NAME, amount=50, description="e2e-092-hide")
 
     cfg = {

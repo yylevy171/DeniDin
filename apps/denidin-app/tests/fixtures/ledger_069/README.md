@@ -101,15 +101,14 @@ Manifests key against the **English snake_case** names written by
 `ledger_event_manager.py` ~lines 1079–1145). **Never** key a manifest against a Hebrew
 stash label or the `capture_ledger_event` tool-argument name if it differs.
 
-`schema_version` stays **2** for this feature — no `LedgerEvent` field is added, and **no
-test asserts `schema_version`'s value** (CLAUDE.md — ledger schema is human-only).
+`schema_version` is a human-governed constant — **no test asserts `schema_version`'s value** (CLAUDE.md — ledger schema is human-only).
 
 ### Fields a Feature 069 manifest asserts on (`expected_event`)
 
 | Persisted key | Notes |
 |---|---|
-| `source_type` | `"בנק"` \| `"הסכם"` (Feature 069 never touches `"חשבונית"`) |
-| `event_subtype` | e.g. `"יצירה"` (`הסכם`), `"הפקדה"` (`בנק`) — value as the model/extractor emits it |
+| `source_type` | `"הפקדה"` \| `"הסכם"` (Feature 069 never touches `"חשבונית"`; Feature 066 renamed the old `"בנק"` type to `"הפקדה"`) |
+| `event_subtype` | e.g. `"יצירה"` (`הסכם`), for `הפקדה` the METHOD: `"בנק"` \| `"ביט"` \| `"פייבוקס"` \| `"צ׳ק"` \| `"מזומן"` — value as the model/extractor emits it |
 | `client_name` | the **exact resolved Morning name** (checked separately via `client_resolution.morning_name_after_resolution`); for `store_anyway`, the operator-stated name instead |
 | `payer_name` | `הסכם`-only; forced `None` for `בנק` / `חשבונית`. For `בנק`, if `client_name` is empty but `payer_name` is given, the manager rescues `payer_name` into `client_name` |
 | `description` | free text; for `store_anyway` must contain the marker phrase `[לקוח לא אומת במורנינג]`, otherwise must **not** contain it |
@@ -122,7 +121,8 @@ test asserts `schema_version`'s value** (CLAUDE.md — ledger schema is human-on
 | `hours`, `hourly_rate` | per-component (`הסכם`) |
 | `txn_date` | hours-worked date (`הסכם`) or transaction date (`בנק`) |
 | `vat_status` | unconditionally `"כולל"` for `בנק` |
-| `bank_number`, `bank_branch`, `bank_account` | **the `בנק` banking triplet — these exact keys.** Populated only for `source_type in ("בנק", "חשבונית")`, else forced `None`. A manifest must never use a Hebrew label (`בנק`, `סניף`, `חשבון`) for these. |
+| `check_number` | Feature 066: populated only for subtype `צ׳ק`, else forced `None` |
+| `bank_number`, `bank_branch`, `bank_account` | **the `בנק` banking triplet — these exact keys.** Populated only for a `הפקדה` with subtype `בנק`/`צ׳ק`, or a `חשבונית`, else forced `None`. A manifest must never use a Hebrew label (`בנק`, `סניף`, `חשבון`) for these. |
 
 ### Provenance / bookkeeping fields — never asserted by a manifest
 

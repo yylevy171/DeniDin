@@ -15,7 +15,7 @@ from src.models.media_attachment import MediaAttachment
 from src.handlers.extractors.image_extractor import ImageExtractor
 from src.handlers.extractors.pdf_extractor import PDFExtractor
 from src.handlers.extractors.docx_extractor import DOCXExtractor
-from src.managers.media_file_manager import MediaFileManager
+from src.managers.media_file_manager import FileTooLargeError, MediaFileManager
 from src.utils.logger import get_logger
 from src.managers.ledger_event_recognizer import build_ledger_stash_text
 
@@ -206,7 +206,7 @@ class MediaHandler:
                 ledger_events = analysis_result.get("ledger_events") or []
                 doc_analysis = analysis_result.get("document_analysis") or {}
                 image_event = next(
-                    (e for e in ledger_events if e.get("source_type") in ("בנק", "הסכם")),
+                    (e for e in ledger_events if e.get("source_type") in ("הפקדה", "הסכם")),
                     None,
                 )
                 if image_event is not None:
@@ -269,8 +269,12 @@ class MediaHandler:
                 "media_type": media_type,
             }
 
+        except FileTooLargeError as e:
+            response = self._error_response(str(e))
+            response["too_large"] = True
+            return response
         except ValueError as e:
-            # Validation errors (file size, format, page count)
+            # Validation errors (format, page count)
             return self._error_response(str(e))
         except Exception as e:
             # Unexpected errors
@@ -327,6 +331,7 @@ class MediaHandler:
         "bank_number": "מספר הבנק",
         "bank_branch": "מספר הסניף",
         "bank_account": "מספר החשבון",
+        "check_number": "מספר הצ'ק",
         "client_name": "שם הלקוח",
         "components": "פירוט שכר הטרחה",
     }

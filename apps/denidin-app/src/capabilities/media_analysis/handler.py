@@ -17,6 +17,7 @@ import uuid
 from typing import Any, Dict, Optional, Tuple
 
 from src.constants.error_messages import BACKBONE_NO_MEDIA_ATTACHED
+from src.handlers.extractors.image_extractor import DEPOSIT_SUBTYPE_BY_DOC_TYPE
 from src.managers.ledger_event_recognizer import build_ledger_stash_text
 
 logger = logging.getLogger(__name__)
@@ -92,17 +93,19 @@ def build_media_stash_text(result: Dict[str, Any], media_type: str) -> Optional[
     doc_type = result.get("doc_type")
     if doc_type is None and (result.get("document_analysis") or {}).get("document_type") == "הסכם":
         doc_type = "agreement"
-    medium = "document" if media_type == "docx" else "image"
+    medium = "document" if media_type in ("docx", "pdf") else "image"
 
-    if doc_type == "bank":
+    if doc_type in DEPOSIT_SUBTYPE_BY_DOC_TYPE:
         analysis = {
             "client_name": fields.get("payer_name"),
+            "event_subtype": DEPOSIT_SUBTYPE_BY_DOC_TYPE[doc_type],
             "bank_number": fields.get("bank_number"),
             "bank_branch": fields.get("bank_branch"),
             "bank_account": fields.get("bank_account"),
+            "check_number": fields.get("check_number"),
             "components": [{"amount": fields.get("amount"), "txn_date": fields.get("txn_date")}],
         }
-        return build_ledger_stash_text(extracted_text, analysis, "בנק", source_medium=medium)
+        return build_ledger_stash_text(extracted_text, analysis, "הפקדה", source_medium=medium)
     if doc_type == "agreement":
         if media_type == "docx":
             # As legacy: a DOCX agreement carries only its parsed body text.

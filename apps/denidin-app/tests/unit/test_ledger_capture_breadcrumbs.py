@@ -58,7 +58,7 @@ def _build_session(sm):
 
 def _bank_verdict(trigger_id):
     return {"verdict": "complete", "trigger_message_id": trigger_id, "event": {
-        "source_type": "בנק", "event_subtype": "הפקדה", "client_name": "דנה כהן",
+        "source_type": "הפקדה", "event_subtype": "בנק", "client_name": "דנה כהן",
         "description": "הפקדה בנקאית", "amount": "5000", "txn_date": "2026-07-15",
         "vat_status": None, "payer_name": None, "components": [], "component_count": 0,
         "bank_number": None, "bank_branch": None, "bank_account": None,
@@ -122,7 +122,7 @@ def test_declined_line_format(lem, sm, caplog):
     session, trigger_id, completing_id = _build_session(sm)
     caplog.set_level(logging.INFO)
 
-    verdict = {"verdict": "declined", "source_type": "בנק",
+    verdict = {"verdict": "declined", "source_type": "הפקדה",
                "client_name_stated": "יוסי מהחנייה", "reason": "declined_by_operator"}
     lem.persist_recognized_event(verdict, session, completing_id)
 

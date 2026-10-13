@@ -1,32 +1,16 @@
-# User Stories: Support Bit, PayBox, Checks, and Cash (Feature 066)
+# User Stories: Support Bit, PayBox, Cheques and Cash (Feature 066)
 
-## Business Goal
-Empower DeniDin to seamlessly handle the 4 most common alternative payment methods in Israel (Bit, PayBox, Checks, and Cash) by unifying them under a robust, highly-extensible `deposit` data model.
+## Story 1 - Bit / PayBox screenshot (P1)
+**Given** the admin sends a Bit or PayBox screenshot **When** the bot reads it **Then** a deposit event of that method is recorded with amount, date and sender, the client is resolved as for any slip, and the Feature 064 offer follows. **And** a 320 created from it shows that payment method in Morning.
 
----
+## Story 2 - Cheque image (P1)
+**Given** the admin sends an image of a cheque **When** the bot reads it **Then** a cheque deposit is recorded with amount, payer, cheque number and bank / branch / account, and a 320 created from it shows method cheque in Morning.
 
-## User Acceptance Testing (UAT)
+## Story 3 - Cash in text (P1)
+**Given** the admin writes "קיבלתי 500 במזומן מיוסי" **When** the turn completes **Then** a cash deposit of 500 from Yossi is recorded with no confirmation question, and a 320 created from it shows method cash in Morning.
 
-### UAT 1: The Data Model Migration (Priority: P1)
-**Given** the production ledger contains hundreds of historical events structured as `type="bank", subtype="deposit"`
-**When** the engineering data-migration script is executed
-**Then** all historical deposit events MUST be rewritten to `type="deposit", subtype="bank"`
-**And** the WebApp UI dashboard MUST load successfully and display the historical deposits correctly without any crashes.
+## Story 4 - Existing bank slips and history (P1)
+**Given** the old data model **When** the migration runs and the new release is live **Then** bank slips are still recorded (now as deposit/bank), all history is migrated, and webapp, player and reconciliation keep working.
 
-### UAT 2: Capturing Bit and PayBox (Priority: P1)
-**Given** the system receives an image of a Bit or PayBox transfer confirmation
-**When** the AI processes the image
-**Then** a new ledger event MUST be created with `type="deposit"` and subtype of `bit` or `paybox`
-**And** the event MUST contain the correct amount and sender details extracted from the image.
-
-### UAT 3: Capturing Checks and Cash (Priority: P1)
-**Given** the system receives an image of a bank check OR a text message stating "Received 500 NIS cash from David"
-**When** the AI processes the input
-**Then** a new ledger event MUST be created with `type="deposit"` and subtype of `check` or `cash`
-**And** for checks, the event MUST include the check number and bank details.
-
-### UAT 4: Morning Document Generation (Priority: P1)
-**Given** a `deposit` ledger event for `bit`, `paybox`, `check`, or `cash` is ready for invoicing
-**When** the AI attempts to generate a Receipt (Type 320) or a Combo Document (Type 400) via the Morning API
-**Then** the document MUST be successfully created in Morning
-**And** the final PDF MUST correctly reflect the specific payment method used, rather than defaulting to "Bank Transfer".
+## Acceptance scenarios (APPROVED 2026-10-09 - see `acceptance-scenarios.md`)
+66-1 Bit (expensive) · 66-2 PayBox (expensive) · 66-3 cheque (expensive) · 66-4 cash (billed) - each verified via the document's details fetched from Morning · 66-7 bank-slip regression = existing `test_given_real_bank_deposit_image_then_full_fields_correctly_persisted` (sanity) · 66-9 tracking list of existing tests to adjust. Removed: 66-5, 66-6, 66-8.

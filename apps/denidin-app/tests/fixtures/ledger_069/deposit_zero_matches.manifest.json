@@ -18,10 +18,10 @@
       "generated": "event_datetime"
     },
     "source_type": {
-      "tested": "בנק"
+      "tested": "הפקדה"
     },
     "event_subtype": {
-      "tested": "הפקדה"
+      "tested": "בנק"
     },
     "client_name": {
       "tested": "$client"
@@ -52,6 +52,9 @@
     },
     "bank_account": {
       "tested": "13008082"
+    },
+    "check_number": {
+      "null": true
     },
     "vat_status": {
       "tested": "כולל"

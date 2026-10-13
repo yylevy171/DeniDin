@@ -140,6 +140,18 @@ _MANIFEST: Dict[str, List[tuple]] = {
         ("reference", "אסמכתא", _subtype_not("יצירה")),
         ("reference_hint", "רמז אסמכתא", _subtype_not("יצירה")),
     ],
+    # Feature 066: every incoming-funds event is source_type הפקדה; its subtype is the
+    # method (בנק / ביט / פייבוקס / צ׳ק / מזומן). Bank details apply to a bank transfer
+    # and a cheque; the cheque number to a cheque only.
+    "הפקדה": [
+        ("bank_number", "מספר בנק", lambda r: (r.get("event_subtype") or "") in ("בנק", "צ׳ק")),
+        ("bank_branch", "מספר סניף", lambda r: (r.get("event_subtype") or "") in ("בנק", "צ׳ק")),
+        ("bank_account", "מספר חשבון", lambda r: (r.get("event_subtype") or "") in ("בנק", "צ׳ק")),
+        ("check_number", "מספר צ'ק", _subtype_is("צ׳ק")),
+        ("vat_status", 'סטטוס מע"מ', "ALWAYS"),
+        ("payer_name", "שם משלם", "IF"),
+    ],
+    # Pre-066 events, until scripts/migrate_066_deposit_flip.py has been run on a data root.
     "בנק": [
         ("bank_number", "מספר בנק", _subtype_is("הפקדה")),
         ("bank_branch", "מספר סניף", _subtype_is("הפקדה")),
@@ -164,12 +176,17 @@ _INVOICE_BANK_SUBTYPES = {"חשבונית מס קבלה", "חשבונית מס /
 def _invoice_bank_fields(record: Dict[str, Any]) -> List[tuple]:
     subtype = record.get("event_subtype") or ""
     method = record.get("accounting_document_payment_method") or ""
-    if subtype in _INVOICE_BANK_SUBTYPES and method == "העברה בנקאית":
-        return [
-            ("bank_number", "מספר בנק", "ALWAYS"),
-            ("bank_branch", "מספר סניף", "ALWAYS"),
-            ("bank_account", "מספר חשבון", "ALWAYS"),
-        ]
+    if subtype not in _INVOICE_BANK_SUBTYPES:
+        return []
+    bank = [
+        ("bank_number", "מספר בנק", "ALWAYS"),
+        ("bank_branch", "מספר סניף", "ALWAYS"),
+        ("bank_account", "מספר חשבון", "ALWAYS"),
+    ]
+    if method == "העברה בנקאית":
+        return bank
+    if _has_value(record.get("check_number")):  # Feature 066: paid by cheque
+        return bank + [("check_number", "מספר צ'ק", "ALWAYS")]
     return []
 
 

@@ -62,6 +62,9 @@
     "bank_account": {
       "null": true
     },
+    "check_number": {
+      "null": true
+    },
     "accounting_document_display_number": {
       "null": true
     },

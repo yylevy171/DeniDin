@@ -369,7 +369,7 @@ QUERY_LEDGER_EVENTS_TOOL: Dict[str, Any] = {
                                 "use this whenever the question is scoped to a period (this "
                                 "month, this week, since Monday, etc.); pass the "
                                 "period/date as the criterion's text. "
-                                "'event_type' = source type (הסכם/בנק/חשבונית) or event "
+                                "'event_type' = source type (הסכם/הפקדה/חשבונית) or event "
                                 "subtype (e.g. חשבונית מס, קבלה). "
                                 "'vat' = VAT status/treatment. "
                                 "'amount' = amount or hourly rate. "
