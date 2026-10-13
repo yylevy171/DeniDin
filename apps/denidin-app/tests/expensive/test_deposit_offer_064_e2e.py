@@ -53,11 +53,15 @@ _ARTIFACT_MANIFEST = "deposit_exact_match"  # payer is an existing Morning clien
 class DepositImageE2EBase:
     """Shared infrastructure (fixtures + image driver) for the deposit-image acceptance tests (064, 066)."""
 
+    MEDIA_DIR = _MEDIA_DIR  # the folder the fake Green API file server serves; a subclass may point elsewhere
+
     @pytest.fixture(scope="class")
     def http_server(self):
+        media_dir = self.MEDIA_DIR
+
         class Handler(SimpleHTTPRequestHandler):
             def __init__(self, *a, **kw):
-                super().__init__(*a, directory=str(_MEDIA_DIR), **kw)
+                super().__init__(*a, directory=str(media_dir), **kw)
 
             def translate_path(self, path):
                 return super().translate_path(unquote(path))
@@ -113,7 +117,7 @@ class DepositImageE2EBase:
         _wipe()
 
     # ------------------------------------------------------------------ driver
-    def _send_image(self, http_server, filename, caption, id_prefix):
+    def _send_image(self, http_server, filename, id_prefix):
         from denidin import handle_image_message
 
         notification = create_real_notification({
@@ -123,7 +127,7 @@ class DepositImageE2EBase:
             "senderData": _SENDER_DATA,
             "messageData": {"typeMessage": "imageMessage", "fileMessageData": {
                 "downloadUrl": f"{http_server}/{filename}", "fileName": filename, "mimeType": "image/jpeg",
-                "caption": caption, "jpegThumbnail": "", "isForwarded": False, "forwardingScore": 0}},
+                "caption": "", "jpegThumbnail": "", "isForwarded": False, "forwardingScore": 0}},
         })
         handle_image_message(notification)
         reply = get_response(notification)
@@ -134,7 +138,7 @@ class DepositImageE2EBase:
     def _slip_to_offer(self, denidin_app, http_server, id_prefix):
         manifest = seed_scenario(denidin_app, _ARTIFACT_MANIFEST)
         reply, notification = self._send_image(
-            http_server, manifest["source_file"], "הפקדה שנכנסה היום, תרשום ביומן", id_prefix)
+            http_server, manifest["source_file"], id_prefix)
         return manifest, reply, notification
 
     @staticmethod
@@ -178,7 +182,7 @@ class TestDepositOffer064E2E(DepositImageE2EBase):
 
         manifest = seed_scenario(denidin_app, "deposit_zero_matches")
         reply, notification = self._send_image(
-            http_server, manifest["source_file"], "הפקדה שנכנסה היום, תרשום ביומן", "F064_4")
+            http_server, manifest["source_file"], "F064_4")
         events, transcript, _ = drive_capture(
             denidin_app, "deposit_zero_matches", image_reply=reply, base_ts=int(time.time()),
             id_prefix="F064_4", max_turns=7)
