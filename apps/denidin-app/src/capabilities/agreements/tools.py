@@ -61,7 +61,7 @@ UPDATE_AGREEMENT_TOOL: Dict[str, Any] = {
         "type": "object",
         "properties": {
             "agreement_id": {"type": "string"},
-            "payer_name": {"type": ["string", "null"]},
+            "payer_name": {"type": ["string", "null"], "description": "Set only when the payer is different from the client; otherwise leave it null."},
             "partner_name": {"type": ["string", "null"]},
             "partner_percent": {"type": ["number", "string", "null"]},
         },

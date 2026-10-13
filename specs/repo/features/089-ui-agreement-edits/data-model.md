@@ -12,7 +12,8 @@ ledger (`_normalize_amount`).
 | `row_id` | TEXT PK | Internal uuid hex, never exposed. |
 | `agreement_id` | TEXT NOT NULL | Public id `MMYY-<client slug>-<title slug>` (`_slugify`), derived at creation; unique only among ACTIVE rows (partial unique index), so the id of a deleted agreement can be reused. Migrated rows keep their ledger value. |
 | `is_active` | INTEGER NOT NULL DEFAULT 1 | `0` = soft-deleted; nothing is ever physically deleted and every query filters `is_active = 1`. |
-| `title` | TEXT NOT NULL | Short agreement title (human decision 2026-10-09), part of the id. |
+| `title` | TEXT NOT NULL | Short agreement title (human decision 2026-10-09), part of the id. Editable (DB only). |
+| `agreement_description` | TEXT NULL | Free-text description of the agreement itself (2026-10-13). Editable, DB only (never in a ledger event). |
 | `client_name` | TEXT NOT NULL | Official Morning client name (resolved upfront; migration resolves from the Clients-tab mapping). |
 | `payer_name` | TEXT NULL | Only when different from the client. |
 | `partner_name` | TEXT NULL | |

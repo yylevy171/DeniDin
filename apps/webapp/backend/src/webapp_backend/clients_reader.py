@@ -91,21 +91,29 @@ def _parse_any_date(raw: Any) -> Optional[datetime]:
 
 
 def _fuzzy_match(name: Optional[str], official_clients: List[str],
-                  manual_mapping: Dict[str, str]) -> Tuple[Optional[str], Optional[str]]:
+                  manual_mapping: Dict[str, str],
+                  close_cache: Optional[Dict[str, Optional[str]]] = None,
+                  official_set: Optional[set] = None) -> Tuple[Optional[str], Optional[str]]:
+    """`close_cache` memoizes the (slow, ~O(official clients)) difflib lookup per raw name; it is only
+    valid for one official-client list, so the caller drops it whenever that list is re-fetched.
+    `official_set` is the same list as a set, for O(1) membership."""
     if not name:
         return None, name
     name = name.strip()
     if name in manual_mapping and manual_mapping[name]:
         if manual_mapping[name] == "Unknown":
             return None, name
-        if manual_mapping[name] in official_clients:
+        if manual_mapping[name] in (official_set if official_set is not None else official_clients):
             return manual_mapping[name], name
-    if name in official_clients:
+    if name in (official_set if official_set is not None else official_clients):
         return name, name
+    if close_cache is not None and name in close_cache:
+        return close_cache[name], name
     matches = difflib.get_close_matches(name, official_clients, n=1, cutoff=0.8)
-    if matches:
-        return matches[0], name
-    return None, name
+    found = matches[0] if matches else None
+    if close_cache is not None:
+        close_cache[name] = found
+    return found, name
 
 
 def _new_stat() -> Dict[str, Any]:
@@ -138,6 +146,7 @@ def _is_hours_line(data: Dict[str, Any]) -> bool:
 def _aggregate_events(
     all_events: List[Dict[str, Any]], official_clients: List[str], manual_mapping: Dict[str, str],
     agreements_totals: Optional[Dict[str, float]] = None,
+    close_cache: Optional[Dict[str, Optional[str]]] = None,
 ) -> Tuple[Dict[str, Dict[str, Any]], Dict[str, Dict[str, Any]], Dict[float, set]]:
     """`agreements_totals` (Feature 089, REQ-089-14): per-client sum of non-Cancelled
     Agreements-DB components. When given, the agreed total is that sum plus the hours-worked
@@ -145,6 +154,7 @@ def _aggregate_events(
     component, so adding its amount too would double count. None = the pre-089 behaviour
     (every `הסכם` event's amount is summed)."""
     stats = {c: _new_stat() for c in official_clients}
+    official_set = set(official_clients)
     unmatched: Dict[str, Dict[str, Any]] = collections.defaultdict(
         lambda: {"agreements": 0.0, "deposits": 0.0, "raw_text": set()}
     )
@@ -155,7 +165,7 @@ def _aggregate_events(
         event_date_obj = _parse_any_date(event_datetime)
 
         raw_client = _raw_client_name(data)
-        matched_client, original_name = _fuzzy_match(raw_client, official_clients, manual_mapping)
+        matched_client, original_name = _fuzzy_match(raw_client, official_clients, manual_mapping, close_cache, official_set)
 
         if event_date_obj and matched_client:
             current = stats[matched_client]["latest_activity"]
@@ -214,7 +224,7 @@ def _aggregate_events(
                 unmatched[original_name]["raw_text"].add(f"{prefix}חשבונית/מסמך (₪{amount:,.2f}): {text}")
 
     for total_name, total in (agreements_totals or {}).items():
-        matched_total, original_total = _fuzzy_match(total_name, official_clients, manual_mapping)
+        matched_total, original_total = _fuzzy_match(total_name, official_clients, manual_mapping, close_cache, official_set)
         if matched_total:
             stats[matched_total]["agreements"] += float(total)
         else:
@@ -576,7 +586,8 @@ def _build_client_rows(
 
 def _build_unmatched_rows(
     final_unmatched: Dict[str, Dict[str, Any]], notes: Dict[str, str],
-    amount_to_clients: Dict[float, set], official_clients: List[str], stats: Dict[str, Dict[str, Any]]
+    amount_to_clients: Dict[float, set], official_clients: List[str], stats: Dict[str, Dict[str, Any]],
+    fuzzy_cache: Optional[Dict[Any, List[str]]] = None,
 ) -> List[Dict[str, Any]]:
     """Port of mapping_server.py's "Smart Candidate Generation": for each unmatched raw
     name, suggest official clients by (a) an exact matching transaction amount, (b) fuzzy
@@ -585,11 +596,21 @@ def _build_unmatched_rows(
     so the frontend can render a searchable dropdown (all clients, smart candidates first)
     rather than a free-text field."""
     active_official = [c for c in official_clients if not stats.get(c, {}).get("is_merged_away")]
+    # The difflib suggestion search is ~O(official clients) per name, so its result is memoized per
+    # (name, active official list) - recomputing the report after an Agreements write must stay cheap.
+    active_signature = hash(tuple(active_official))
     rows = []
     for raw_name, data in sorted(final_unmatched.items()):
         agreed_val = data["agreements"]
         amount_candidates = amount_to_clients.get(agreed_val, set()) if agreed_val > 0 else set()
-        fuzzy_candidates = set(difflib.get_close_matches(raw_name, active_official, n=3, cutoff=0.5))
+        cache_key = (raw_name, active_signature)
+        if fuzzy_cache is not None and cache_key in fuzzy_cache:
+            close = fuzzy_cache[cache_key]
+        else:
+            close = difflib.get_close_matches(raw_name, active_official, n=3, cutoff=0.5)
+            if fuzzy_cache is not None:
+                fuzzy_cache[cache_key] = close
+        fuzzy_candidates = set(close)
         family_candidates: set = set()
         words = raw_name.split()
         if len(words) > 1:
@@ -651,6 +672,8 @@ class ClientsReader:
         # per page plus the full aggregation.
         self._official_cache: Optional[List[str]] = None
         self._report_cache: Optional[Tuple[int, Dict[str, Any]]] = None
+        self._close_cache: Dict[str, Optional[str]] = {}
+        self._close_cache_unmatched: Dict[Any, List[str]] = {}
         self._lock = threading.Lock()
         # `invalidate_report` runs on the event loop right after an Agreements write, while a
         # report compute may be holding `_lock` for minutes - so invalidation never takes `_lock`;
@@ -711,6 +734,8 @@ class ClientsReader:
     def _compute_report(self, status_override: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
         if self._official_cache is None:
             self._official_cache = self._official_clients_fn()
+            self._close_cache = {}  # difflib results are only valid for one official-client list
+            self._close_cache_unmatched = {}
         official_clients = self._official_cache
         paths = self._paths()
         manual_mapping = _load_json(paths["mapping"])
@@ -725,7 +750,7 @@ class ClientsReader:
 
         agreements_totals = self._agreements_totals_fn() if self._agreements_totals_fn is not None else None
         stats, unmatched, amount_to_clients = _aggregate_events(
-            all_events, official_clients, manual_mapping, agreements_totals)
+            all_events, official_clients, manual_mapping, agreements_totals, self._close_cache)
         _apply_comment_rules(stats, client_comments)
         _apply_merge_directives(stats, official_clients, client_comments)
         self._migrate_comment_status_once(stats, client_comments)
@@ -743,7 +768,8 @@ class ClientsReader:
 
         return {
             "clients": _build_client_rows(official_clients, stats, client_comments, manual_mapping),
-            "unmatched": _build_unmatched_rows(final_unmatched, notes, amount_to_clients, official_clients, stats),
+            "unmatched": _build_unmatched_rows(final_unmatched, notes, amount_to_clients, official_clients, stats,
+                                                    self._close_cache_unmatched),
         }
 
     def _migrate_comment_status_once(

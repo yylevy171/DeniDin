@@ -3,6 +3,22 @@ import { Image, Pressable, ScrollView, Text, TextInput, View } from "react-nativ
 import type { Theme } from "./theme";
 import { ContextMessage, fetchMediaObjectUrl, searchClients } from "./api";
 
+/** Hover text for anything clickable. react-native-web's Pressable drops a `title` prop, so the tooltip lives
+ * on a layout-neutral wrapper (`display: contents` generates no box) and shows when hovering the child. */
+export function Hint({ title, children }: { title?: string; children: any }) {
+  if (!title) return children;
+  return createElement("div", { title, style: { display: "contents" } }, children);
+}
+
+/** A Pressable with a working hover `title`. */
+export function HintPressable({ title, ...rest }: { title?: string; [prop: string]: any }) {
+  return (
+    <Hint title={title}>
+      <Pressable {...rest} accessibilityLabel={rest.accessibilityLabel ?? title} />
+    </Hint>
+  );
+}
+
 export function Button({
   label,
   onPress,
@@ -27,12 +43,12 @@ export function Button({
   const color =
     variant === "ghost" ? theme.text : variant === "danger" ? "#fff" : theme.accentText;
   return (
-    <Pressable
+    <HintPressable
       onPress={disabled ? undefined : onPress}
       testID={testID}
       disabled={!!disabled}
       accessibilityState={{ disabled: !!disabled }}
-      {...({ title } as any)}
+      {...({ title: title ?? label } as any)}
       style={{
         paddingVertical: iconSize ? 6 : 8,
         paddingHorizontal: iconSize ? 10 : 14,
@@ -48,7 +64,7 @@ export function Button({
       <Text style={{ color, fontWeight: "600", fontSize: iconSize || 14, lineHeight: (iconSize || 14) + 4 }}>
         {label}
       </Text>
-    </Pressable>
+    </HintPressable>
   );
 }
 
@@ -95,7 +111,7 @@ export function IconButton({
 }) {
   const fg = color || theme.accentSoftText;
   return (
-    <Pressable
+    <HintPressable
       onPress={disabled ? undefined : onPress}
       testID={testID}
       disabled={!!disabled}
@@ -133,7 +149,7 @@ export function IconButton({
           {glyph}
         </Text>
       )}
-    </Pressable>
+    </HintPressable>
   );
 }
 
@@ -324,8 +340,9 @@ export function ClientNameInput({
           ) : null}
           <ScrollView style={{ maxHeight: 260 }} showsVerticalScrollIndicator>
             {suggests.map((s, i) => (
-              <Pressable
+              <HintPressable
                 key={s}
+                {...({ title: `בחירת הלקוח: ${s}` } as any)}
                 testID={`client-suggest-${s}`}
                 onPress={() => choose(s)}
                 onHoverIn={() => setCursor(i)}
@@ -345,7 +362,7 @@ export function ClientNameInput({
                 >
                   {s}
                 </Text>
-              </Pressable>
+              </HintPressable>
             ))}
           </ScrollView>
         </View>
@@ -426,12 +443,12 @@ function OptionRow({
   testID?: string;
 }) {
   return (
-    <Pressable
+    <HintPressable
       onPress={disabled ? undefined : onPress}
       testID={testID}
       disabled={!!disabled}
       accessibilityState={{ disabled: !!disabled, checked: on }}
-      {...({ "aria-checked": on ? "true" : "false" } as any)}
+      {...({ "aria-checked": on ? "true" : "false", title: label } as any)}
       style={{
         flexDirection: "row",
         alignItems: "center",
@@ -454,7 +471,7 @@ function OptionRow({
       >
         {label}
       </Text>
-    </Pressable>
+    </HintPressable>
   );
 }
 
@@ -489,8 +506,9 @@ export function MultiSelect({
   const idBase = testID || `ms-${label}`;
   return (
     <View style={{ position: "relative", zIndex: open ? 120 : 1 }}>
-      <Pressable
+      <HintPressable
         onPress={onToggleOpen}
+        {...({ title: `סינון לפי ${label}` } as any)}
         testID={idBase}
         style={{
           borderWidth: 1,
@@ -511,7 +529,7 @@ export function MultiSelect({
           {`  (${summary})`}
         </Text>
         <Text style={{ color: theme.textDim, fontSize: 11 }}>{open ? "▲" : "▼"}</Text>
-      </Pressable>
+      </HintPressable>
       {open ? (
         <View
           testID={`${idBase}-menu`}
@@ -598,13 +616,13 @@ function ChatImage({
     );
   if (!url) return <Text style={{ color: theme.textDim }}>…טוען תמונה</Text>;
   return (
-    <Pressable testID="chat-image" onPress={() => onOpen(url)}>
+    <HintPressable testID="chat-image" onPress={() => onOpen(url)} {...({ title: "הגדלת התמונה" } as any)}>
       <Image
         source={{ uri: url }}
         style={{ width: 160, height: 160, borderRadius: 8, backgroundColor: theme.surfaceAlt }}
         resizeMode="cover"
       />
-    </Pressable>
+    </HintPressable>
   );
 }
 

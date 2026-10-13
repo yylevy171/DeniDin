@@ -172,31 +172,29 @@ class TestEditing:
         with pytest.raises(ValidationError):
             mgr.edit_agreement(agreement["agreement_id"], {"status": "Cancelled"}, "webapp")
 
-    def test_edit_title_and_id_renames_components_and_logs_new_ids(self, mgr):
+    def test_title_and_description_are_db_only_edits_and_the_id_is_not_editable(self, mgr):
         agreement, _ = _create(mgr)
-        old_id = agreement["agreement_id"]
-        keys = {c["label"]: c["component_key"] for c in agreement["components"]}
         events_before = len(_events(mgr))
-        updated, ids = mgr.edit_agreement(old_id, {"title": "ערעור חדש", "agreement_id": "my-id-1"}, "webapp")
-        assert updated["title"] == "ערעור חדש" and updated["agreement_id"] == "my-id-1"
-        assert {c["label"]: c["component_key"] for c in updated["components"]} == keys
-        assert all(c["component_id"].startswith("my-id-1-") for c in updated["components"])
-        assert len(ids) == 2 and len(_events(mgr)) == events_before + 2
-        assert all(e["agreement_id"] == "my-id-1" for e in _events(mgr)[-2:])
-        with pytest.raises(NotFoundError):
-            mgr.get_agreement(old_id)
-
-    def test_edit_id_to_one_in_use_is_rejected(self, mgr):
-        first, _ = _create(mgr)
-        second, _ = _create(mgr, title="תביעה אחרת")
+        updated, ids = mgr.edit_agreement(agreement["agreement_id"],
+                                          {"title": "שם חדש", "agreement_description": "תיאור חופשי להסכם"}, "webapp")
+        assert updated["title"] == "שם חדש" and updated["agreement_description"] == "תיאור חופשי להסכם"
+        assert updated["agreement_id"] == agreement["agreement_id"]
+        assert ids == [] and len(_events(mgr)) == events_before
         with pytest.raises(ValidationError):
-            mgr.edit_agreement(second["agreement_id"], {"agreement_id": first["agreement_id"]}, "webapp")
+            mgr.edit_agreement(agreement["agreement_id"], {"agreement_id": "other"}, "webapp")
 
-    def test_edit_blank_title_or_id_is_rejected(self, mgr):
+    def test_edit_blank_title_is_rejected(self, mgr):
         agreement, _ = _create(mgr)
-        for field in ("title", "agreement_id"):
-            with pytest.raises(ValidationError):
-                mgr.edit_agreement(agreement["agreement_id"], {field: "  "}, "webapp")
+        with pytest.raises(ValidationError):
+            mgr.edit_agreement(agreement["agreement_id"], {"title": "  "}, "webapp")
+
+    def test_updated_at_moves_on_any_real_write_including_components(self, mgr):
+        agreement, _ = _create(mgr, agreement_description="תיאור ראשוני")
+        assert agreement["agreement_description"] == "תיאור ראשוני"
+        key = _by_label(agreement, "ריטיינר")["component_key"]
+        updated, _ = mgr.edit_component(agreement["agreement_id"], key, {"amount": 6000}, "webapp")
+        assert updated["created_at"] == agreement["created_at"]
+        assert updated["updated_at"] > agreement["updated_at"]
 
     def test_add_component_default_status_and_event(self, mgr):
         agreement, _ = _create(mgr, components=[dict(RETAINER)])

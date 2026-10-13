@@ -256,6 +256,9 @@ export interface Agreement {
   agreement_id: string;
   client_name: string;
   title: string;
+  agreement_description: string | null;
+  created_at: string;
+  updated_at: string;
   payer_name: string | null;
   partner_name: string | null;
   partner_percent: number | null;

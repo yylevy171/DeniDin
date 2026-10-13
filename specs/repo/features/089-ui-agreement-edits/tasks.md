@@ -208,3 +208,14 @@ Phase 10 needs every story done; Phase 11 after Phase 10.
   the Agreements section above).
 - Bug fixed: `ClientsReader.invalidate_report()` waited on the report lock from the event loop, freezing the whole webapp while a
   slow report compute ran. It no longer takes that lock, and a compute overlapped by an invalidation is not cached.
+
+### Decisions 2026-10-13 (UI round 3)
+- The agreement id is no longer editable (reverts the title/id edit of round 2; the id stays an internal-looking, immutable handle). The
+  header shows "created / updated" dates instead of the id. `updated_at` moves on any real write to the agreement OR its components.
+- New agreement-level free-text `agreement_description` (DB column added to `agreements`, existing databases are ALTERed on start,
+  editable in the agreement form, shown under the header). Like the title it is DB-only: no ledger event (the approved ledger field
+  list is unchanged, so no schema bump); a title/description-only edit writes no `הסכם` events.
+- Buttons are disabled while a write on the same agreement is in flight, and the screen is re-read after a failed write.
+- Hover text on every clickable element of the webapp (react-native-web drops a Pressable `title`, so a layout-neutral wrapper carries it).
+- Clients report: the fuzzy name matching (client lines AND "names to resolve" suggestions) is memoized per official-client list, so
+  recomputing the report after an agreements write takes ~0.3s instead of ~17s.

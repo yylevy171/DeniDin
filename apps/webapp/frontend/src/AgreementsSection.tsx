@@ -18,7 +18,8 @@ import {
   setAgreementStatus,
   setComponentStatus,
 } from "./api";
-import { Button, Field, IconButton } from "./ui";
+import { Button, Field, IconButton, HintPressable } from "./ui";
+import { LINE_BUTTONS_OFFSET } from "./layout";
 
 // One status vocabulary for agreements and components (human decision 2026-10-13):
 // Pending = gray "לא פעיל", Active = green "פעיל", Completed = light blue "סגור", Cancelled = light red "מבוטל".
@@ -59,6 +60,15 @@ const NEW_AGREEMENT_TONE = (theme: Theme): Tone =>
 
 // Fixed-width button strip shared by agreement and component rows so the buttons line up:
 // [edit] gap [complete|activate|reopen] [cancel] gap [add|trash]; an unavailable button keeps its slot.
+// The agreement row's text block is as wide as the client row's columns before its line-status buttons, so the
+// button strip starts exactly under them. (client row content starts 11px in, an agreement card's 20px in.)
+const AGREEMENT_INFO_W = LINE_BUTTONS_OFFSET + 11 - 20 - 10; // - the 10px gap between the text block and the strip
+// A component sits one level under its agreement: indented, with a rail on the right edge (the page is RTL;
+// react-native-web's logical *Start props follow I18nManager, not the CSS direction, so physical right is used).
+const COMPONENT_INDENT = 24;
+const COMPONENT_RAIL = 2;
+const COMPONENT_PAD = 8;
+const COMPONENT_INFO_W = AGREEMENT_INFO_W - COMPONENT_INDENT - COMPONENT_RAIL - COMPONENT_PAD;
 const SLOT = 36;
 function Slot({ children }: { children?: React.ReactNode }) {
   return <View style={{ width: SLOT, height: SLOT }}>{children}</View>;
@@ -127,6 +137,12 @@ function describeError(e: unknown): string {
   return "הפעולה נכשלה. נסו שוב.";
 }
 
+/** ISO timestamp -> dd/mm/yyyy (Israel local, as stored). */
+export function dateText(iso: string | null | undefined): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || "");
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : "—";
+}
+
 function amountText(c: AgreementComponent): string {
   const parts: string[] = [];
   if (c.amount !== null && c.amount !== undefined) parts.push(`₪${c.amount.toLocaleString()}`);
@@ -163,7 +179,8 @@ function RadioGroup({ label, choices, value, onChange, theme, testPrefix }: {
       {choices.map((v) => {
         const on = value === v;
         return (
-          <Pressable key={v} testID={`${testPrefix}-${v}`} onPress={() => onChange(v)} accessibilityRole="radio"
+          <HintPressable key={v} testID={`${testPrefix}-${v}`} onPress={() => onChange(v)} accessibilityRole="radio"
+                     {...({ title: `${label} ${v}` } as any)}
                      accessibilityState={{ checked: on }}
                      style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
             <View style={{ width: 16, height: 16, borderRadius: 8, borderWidth: 2, borderColor: on ? theme.accent : theme.border,
@@ -171,7 +188,7 @@ function RadioGroup({ label, choices, value, onChange, theme, testPrefix }: {
               {on ? <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: theme.accent }} /> : null}
             </View>
             <Text style={{ color: theme.text, fontSize: 13 }}>{v}</Text>
-          </Pressable>
+          </HintPressable>
         );
       })}
     </View>
@@ -229,7 +246,7 @@ function AgreementForm({
   onSaved: () => Promise<void>; onCancel: () => void;
 }) {
   const [title, setTitle] = useState(agreement?.title ?? "");
-  const [publicId, setPublicId] = useState(agreement?.agreement_id ?? "");
+  const [description, setDescription] = useState(agreement?.agreement_description ?? "");
   const [payer, setPayer] = useState(agreement?.payer_name ?? "");
   const [partner, setPartner] = useState(agreement?.partner_name ?? "");
   const [percent, setPercent] = useState(agreement?.partner_percent != null ? String(agreement.partner_percent) : "");
@@ -249,13 +266,12 @@ function AgreementForm({
     try {
       if (agreement) {
         if (!title.trim()) { setSaving(false); return setError("יש להזין שם להסכם."); }
-        if (!publicId.trim()) { setSaving(false); return setError("יש להזין מזהה להסכם."); }
         await editAgreement(agreement.agreement_id,
-          { title: title.trim(), agreement_id: publicId.trim(), payer_name: blank(payer), partner_name: blank(partner),
+          { title: title.trim(), agreement_description: blank(description), payer_name: blank(payer), partner_name: blank(partner),
             partner_percent: blank(percent) });
       } else {
         await createAgreement({
-          client_name: clientId, title: title.trim(), payer_name: blank(payer), partner_name: blank(partner),
+          client_name: clientId, title: title.trim(), agreement_description: blank(description), payer_name: blank(payer), partner_name: blank(partner),
           partner_percent: blank(percent), components: [payloadOf(component)],
         });
       }
@@ -274,10 +290,9 @@ function AgreementForm({
         {agreement ? "עריכת הסכם" : "הסכם חדש"}
       </Text>
       <Field value={title} onChange={setTitle} placeholder="שם ההסכם" theme={theme} testID={`${prefix}-title`} />
-      {agreement ? (
-        <Field value={publicId} onChange={setPublicId} placeholder="מזהה ההסכם" theme={theme} testID={`${prefix}-agreement_id`} />
-      ) : null}
-      <Field value={payer} onChange={setPayer} placeholder="שם המשלם" theme={theme} testID={`${prefix}-payer_name`} />
+      <Field value={description} onChange={setDescription} placeholder="תיאור ההסכם (טקסט חופשי)" theme={theme}
+             testID={`${prefix}-agreement_description`} />
+      <Field value={payer} onChange={setPayer} placeholder="שם המשלם (רק אם שונה משם הלקוח)" theme={theme} testID={`${prefix}-payer_name`} />
       <Field value={partner} onChange={setPartner} placeholder="שם השותף" theme={theme} testID={`${prefix}-partner_name`} />
       <Field value={percent} onChange={setPercent} placeholder="אחוז שותף" theme={theme} testID={`${prefix}-partner_percent`} />
       {agreement ? null : (
@@ -299,15 +314,20 @@ function AgreementForm({
 }
 
 function ComponentRow({
-  agreement, component, theme, onChanged, onError,
+  agreement, component, theme, onChanged, onError, busy, setBusy,
 }: {
   agreement: Agreement; component: AgreementComponent; theme: Theme;
   onChanged: () => Promise<void>; onError: (m: string | null) => void;
+  busy: boolean; setBusy: (b: boolean) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const key = component.component_key;
+  // One write at a time per agreement: a second click while the first is in flight used to run against
+  // already-changed state (and fail with a conflict). After a failure the screen is re-read, so it shows the truth.
   const run = async (fn: () => Promise<unknown>) => {
+    if (busy) return;
+    setBusy(true);
     onError(null);
     try {
       await fn();
@@ -315,6 +335,9 @@ function ComponentRow({
     } catch (e) {
       if (e instanceof AuthError) throw e;
       onError(describeError(e));
+      try { await onChanged(); } catch { /* the original error is what the user needs to see */ }
+    } finally {
+      setBusy(false);
     }
   };
   const act = (action: "activate" | "complete" | "cancel" | "reopen") =>
@@ -324,31 +347,33 @@ function ComponentRow({
   const closed = status === "Completed" || status === "Cancelled";
   const t = (role: Role) => tone(theme, role, true);
   return (
-    <View testID={`component-${key}`} style={{ gap: 4, paddingVertical: 6, borderTopWidth: 1, borderColor: theme.border }}>
+    <View testID={`component-${key}`}
+          style={{ gap: 4, paddingVertical: 6, marginRight: COMPONENT_INDENT, paddingRight: COMPONENT_PAD,
+                   borderRightWidth: COMPONENT_RAIL, borderRightColor: theme.border }}>
       <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
-        <View style={{ flex: 1, flexDirection: "row", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+        <View style={{ width: COMPONENT_INFO_W, flexShrink: 1, flexDirection: "row", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <Text testID={`component-label-${key}`} style={{ color: theme.text, fontWeight: "700" }}>{component.label}</Text>
           <Text testID={`component-amount-${key}`} style={{ color: theme.text }}>{amountText(component)}</Text>
         </View>
         <Strip
-          edit={<IconButton icon="pen" title="עריכת רכיב" theme={theme} disabled={component.locked} testID={`component-edit-${key}`}
+          edit={<IconButton icon="pen" title="עריכת רכיב" theme={theme} disabled={component.locked || busy} testID={`component-edit-${key}`}
                             onPress={() => setEditing(true)} {...t("edit")} />}
           mid={status === "Pending" && agreementActive ? (
-            <IconButton icon="play" title="סמן רכיב כפעיל" theme={theme} testID={`component-activate-${key}`}
+            <IconButton icon="play" title="סמן רכיב כפעיל" theme={theme} disabled={busy} testID={`component-activate-${key}`}
                         onPress={() => act("activate")} {...t("complete")} />
           ) : status === "Active" && agreementActive ? (
-            <IconButton icon="check" title="סמן רכיב כהושלם" theme={theme} testID={`component-complete-${key}`}
+            <IconButton icon="check" title="סמן רכיב כהושלם" theme={theme} disabled={busy} testID={`component-complete-${key}`}
                         onPress={() => act("complete")} {...t("complete")} />
           ) : closed ? (
             <IconButton icon="undo" title={agreementActive ? "פתח רכיב מחדש" : "יש לפתוח את ההסכם מחדש תחילה"} theme={theme}
-                        disabled={!agreementActive} testID={`component-reopen-${key}`}
+                        disabled={!agreementActive || busy} testID={`component-reopen-${key}`}
                         onPress={() => act("reopen")} {...t("edit")} />
           ) : null}
           cancel={(status === "Pending" || status === "Active") && agreementActive ? (
-            <IconButton icon="x" title="ביטול רכיב" theme={theme} testID={`component-cancel-${key}`}
+            <IconButton icon="x" title="ביטול רכיב" theme={theme} disabled={busy} testID={`component-cancel-${key}`}
                         onPress={() => act("cancel")} {...t("cancel")} />
           ) : null}
-          last={<IconButton icon="trash" title="מחיקת רכיב" theme={theme} disabled={component.locked} testID={`component-delete-${key}`}
+          last={<IconButton icon="trash" title="מחיקת רכיב" theme={theme} disabled={component.locked || busy} testID={`component-delete-${key}`}
                             onPress={() => setConfirmDelete(true)} {...t("trash")} />}
         />
         <StatusBadge status={status} label={COMPONENT_STATUS_LABEL[status]} testID={`component-status-${key}`} theme={theme} />
@@ -388,10 +413,13 @@ function AgreementCard({
 }: { agreement: Agreement; theme: Theme; onChanged: () => Promise<void> }) {
   const [editing, setEditing] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const id = agreement.agreement_id;
   const changed = onChanged;
   const status = async (action: "complete" | "cancel" | "reopen") => {
+    if (busy) return;
+    setBusy(true);
     setError(null);
     try {
       await setAgreementStatus(id, action);
@@ -399,6 +427,9 @@ function AgreementCard({
     } catch (e) {
       if (e instanceof AuthError) throw e;
       setError(describeError(e));
+      try { await changed(); } catch { /* keep the original error visible */ }
+    } finally {
+      setBusy(false);
     }
   };
   const active = agreement.status === "Active";
@@ -406,30 +437,37 @@ function AgreementCard({
   return (
     <View testID={`agreement-${id}`} style={{ gap: 6, padding: 8, borderWidth: 1, borderColor: theme.border, borderRadius: 8 }}>
       <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
-        <View style={{ flex: 1, flexDirection: "row", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+        <View style={{ width: AGREEMENT_INFO_W, flexShrink: 1, flexDirection: "row", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <Text testID={`agreement-title-${id}`} style={{ color: theme.text, fontWeight: "800" }}>{agreement.title}</Text>
-          <Text style={{ color: theme.textDim, fontSize: 11 }}>{id}</Text>
+          <Text testID={`agreement-dates-${id}`} style={{ color: theme.textDim, fontSize: 11 }}>
+            נוצר {dateText(agreement.created_at)} · עודכן {dateText(agreement.updated_at)}
+          </Text>
         </View>
         <Strip
           edit={<IconButton icon="pen" title="עריכת הסכם" theme={theme} testID={`agreement-edit-${id}`}
                             onPress={() => setEditing(true)} {...t("edit")} />}
           mid={active ? (
-            <IconButton icon="check" title="סמן הסכם כהושלם" theme={theme} testID={`agreement-complete-${id}`}
+            <IconButton icon="check" title="סמן הסכם כהושלם" theme={theme} disabled={busy} testID={`agreement-complete-${id}`}
                         onPress={() => status("complete")} {...t("complete")} />
           ) : (
-            <IconButton icon="undo" title="פתח הסכם מחדש" theme={theme} testID={`agreement-reopen-${id}`}
+            <IconButton icon="undo" title="פתח הסכם מחדש" theme={theme} disabled={busy} testID={`agreement-reopen-${id}`}
                         onPress={() => status("reopen")} {...t("edit")} />
           )}
           cancel={active ? (
-            <IconButton icon="x" title="ביטול הסכם" theme={theme} testID={`agreement-cancel-${id}`}
+            <IconButton icon="x" title="ביטול הסכם" theme={theme} disabled={busy} testID={`agreement-cancel-${id}`}
                         onPress={() => status("cancel")} {...t("cancel")} />
           ) : null}
           last={<IconButton icon="plus" title={active ? "הוספת רכיב" : "יש לפתוח את ההסכם מחדש כדי להוסיף רכיב"} theme={theme}
-                            disabled={!active} testID={`component-add-${id}`}
+                            disabled={!active || busy} testID={`component-add-${id}`}
                             onPress={() => setAdding(true)} {...t("add")} />}
         />
         <StatusBadge status={agreement.status} label={AGREEMENT_STATUS_LABEL[agreement.status]} testID={`agreement-status-${id}`} theme={theme} />
       </View>
+      {agreement.agreement_description ? (
+        <Text testID={`agreement-description-${id}`} style={{ color: theme.text, fontSize: 13, textAlign: "right" }}>
+          {agreement.agreement_description}
+        </Text>
+      ) : null}
       <View style={{ flexDirection: "row", gap: 14, flexWrap: "wrap" }}>
         <Text testID={`agreement-payer-${id}`} style={{ color: theme.text, fontSize: 13 }}>משלם: {agreement.payer_name || "—"}</Text>
         <Text testID={`agreement-partner-${id}`} style={{ color: theme.text, fontSize: 13 }}>שותף: {agreement.partner_name || "—"}</Text>
@@ -444,7 +482,7 @@ function AgreementCard({
       ) : null}
       {agreement.components.map((c) => (
         <ComponentRow key={c.component_key} agreement={agreement} component={c} theme={theme}
-                      onChanged={changed} onError={setError} />
+                      onChanged={changed} onError={setError} busy={busy} setBusy={setBusy} />
       ))}
       {adding ? (
         <ComponentForm title="רכיב חדש" initial={EMPTY_COMPONENT} theme={theme} testPrefix={`component-add-${id}`}

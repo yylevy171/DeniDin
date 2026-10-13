@@ -171,13 +171,14 @@ test.describe("US4 - cross-channel consistency (the revision-history view was re
 
 // ================================================================ User Story 2 =============
 test.describe("US2 - edit agreements and components", () => {
-  test("UAT 2.1 - the agreement edit dialog exposes title, id, payer, partner and partner %", async ({ page, request }) => {
+  test("UAT 2.1 - the agreement edit dialog exposes title, description, payer, partner and partner % (never the id)", async ({ page, request }) => {
     await openClient(page, C.edit);
     const a = (await agreementsOf(request, C.edit))[0];
     await btn(page, `agreement-edit-${a.agreement_id}`).click();
     await expect(page.getByTestId("agreement-edit-form")).toBeVisible();
     await expect(page.getByTestId("agreement-edit-title")).toBeVisible();
-    await expect(page.getByTestId("agreement-edit-agreement_id")).toBeVisible();
+    await expect(page.getByTestId("agreement-edit-agreement_description")).toBeVisible();
+    await expect(page.getByTestId("agreement-edit-agreement_id")).toHaveCount(0);
     await expect(page.locator('[data-testid^="agreement-edit-component-"]')).toHaveCount(0);
     await page.getByTestId("agreement-edit-payer_name").fill("חברה בע״מ");
     await page.getByTestId("agreement-edit-partner_name").fill("עו״ד לוי");
@@ -192,21 +193,39 @@ test.describe("US2 - edit agreements and components", () => {
     for (const e of events) expect(e).toMatchObject({ payer_name: "חברה בע״מ", split_partner: "עו״ד לוי", split_percent: 30 });
   });
 
-  test("UAT 2.1b - changing the title and the id renames the agreement, keeps its components, and logs the new ids", async ({ page, request }) => {
+  test("UAT 2.1b - title and description are saved (DB only, no ledger event), the header shows created/updated dates, never the id", async ({ page, request }) => {
     await openClient(page, C.edit);
     const a = (await agreementsOf(request, C.edit))[0];
+    await expect(page.getByTestId(`agreement-dates-${a.agreement_id}`)).toContainText("נוצר");
+    await expect(page.getByTestId(`agreement-dates-${a.agreement_id}`)).toContainText("עודכן");
+    await expect(page.getByTestId(`agreement-${a.agreement_id}`)).not.toContainText(a.agreement_id);
     await btn(page, `agreement-edit-${a.agreement_id}`).click();
     await page.getByTestId("agreement-edit-title").fill("שם חדש להסכם");
-    await page.getByTestId("agreement-edit-agreement_id").fill("renamed-e2e-1");
+    await page.getByTestId("agreement-edit-agreement_description").fill("תיאור חופשי של ההסכם");
     await page.getByTestId("agreement-edit-save").click();
-    await expect(page.getByTestId("agreement-title-renamed-e2e-1")).toHaveText("שם חדש להסכם");
+    await expect(page.getByTestId(`agreement-title-${a.agreement_id}`)).toHaveText("שם חדש להסכם");
+    await expect(page.getByTestId(`agreement-description-${a.agreement_id}`)).toHaveText("תיאור חופשי של ההסכם");
     const after = (await agreementsOf(request, C.edit))[0];
-    expect(after).toMatchObject({ agreement_id: "renamed-e2e-1", title: "שם חדש להסכם" });
-    expect(after.components.map((c: any) => c.component_key)).toEqual(a.components.map((c: any) => c.component_key));
-    for (const c of after.components) expect(c.component_id.startsWith("renamed-e2e-1-")).toBe(true);
-    const events = newEvents();
-    expect(events).toHaveLength(a.components.length);
-    for (const e of events) expect(e).toMatchObject({ agreement_id: "renamed-e2e-1" });
+    expect(after).toMatchObject({ agreement_id: a.agreement_id, title: "שם חדש להסכם", agreement_description: "תיאור חופשי של ההסכם" });
+    expect(after.components).toEqual(a.components);
+    expect(newEvents()).toHaveLength(0);
+  });
+
+  test("UAT 2.1c - while a write is in flight the buttons are disabled (no double fire), and they come back after a failure", async ({ page, request }) => {
+    await openClient(page, C.edit);
+    const a = (await agreementsOf(request, C.edit))[0];
+    const key = comp(a, "שכר הצלחה").component_key;
+    // The request is held, then dropped: nothing is written, so the shared fixture state is untouched.
+    await page.route("**/api/agreements/**/components/*/status", async (route) => {
+      await new Promise((r) => setTimeout(r, 1500));
+      await route.abort();
+    });
+    await btn(page, `component-cancel-${key}`).click();
+    await expectDisabled(page, `component-cancel-${key}`);
+    await expectDisabled(page, `component-edit-${comp(a, "ריטיינר").component_key}`);
+    await expect(page.getByTestId(`agreement-error-${a.agreement_id}`)).toBeVisible({ timeout: 15000 });
+    await expect(btn(page, `component-cancel-${key}`)).toBeEnabled();
+    expect(comp((await agreementsOf(request, C.edit))[0], "שכר הצלחה").status).toBe("Pending");
   });
 
   test("UAT 2.2 - editing one component changes only that component", async ({ page, request }) => {
@@ -429,4 +448,54 @@ test("UAT 4.3 (UI half) - an edit made elsewhere is what the UI shows after a re
   await expect(page.getByTestId(`component-amount-${key}`)).toContainText("1,200");
   expect(comp(byTitle(await agreementsOf(request, C.view), M.titles.view), "ריטיינר").amount).toBe(1200);
   expect(newEvents()).toHaveLength(1);
+});
+
+// ================================================================ UI round 2 (2026-10-13) ====
+test.describe("UI round 2 - hierarchy, alignment, automatic totals, hover text", () => {
+  test("every clickable thing on the Clients tab has hover text", async ({ page }) => {
+    await openClient(page, C.edit);
+    const missing = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('[tabindex="0"], button, [role="button"], [role="radio"]'))
+        .filter((el) => !((el.closest("[title]")?.getAttribute("title")) || "").trim())
+        .map((el) => (el.getAttribute("data-testid") || el.textContent || el.tagName).slice(0, 60)),
+    );
+    expect(missing).toEqual([]);
+  });
+
+  test("the agreement's button strip starts exactly under the client line's status buttons, and components are indented", async ({ page, request }) => {
+    await openClient(page, C.edit);
+    const a = (await agreementsOf(request, C.edit))[0];
+    const lineBtn = row(page, C.edit).locator('[data-testid^="line-btn-"]').first();
+    await expect(lineBtn).toBeVisible();
+    const lineBox = (await lineBtn.boundingBox())!;
+    const editBox = (await btn(page, `agreement-edit-${a.agreement_id}`).boundingBox())!;
+    expect(Math.abs((lineBox.x + lineBox.width) - (editBox.x + editBox.width))).toBeLessThanOrEqual(3);
+    // component buttons line up with the agreement's, while the component text is indented under the agreement title
+    const key = comp(a, "ריטיינר").component_key;
+    const compEdit = (await btn(page, `component-edit-${key}`).boundingBox())!;
+    expect(Math.abs((compEdit.x + compEdit.width) - (editBox.x + editBox.width))).toBeLessThanOrEqual(3);
+    const titleBox = (await page.getByTestId(`agreement-title-${a.agreement_id}`).boundingBox())!;
+    const labelBox = (await page.getByTestId(`component-label-${key}`).boundingBox())!;
+    expect((titleBox.x + titleBox.width) - (labelBox.x + labelBox.width)).toBeGreaterThanOrEqual(20); // RTL: smaller right edge = indented
+  });
+
+  test("adding an active component, and reactivating a cancelled one, update the client line's agreed total at once", async ({ page, request }) => {
+    await openClient(page, C.edit);
+    const a = (await agreementsOf(request, C.edit))[0];
+    const clientRow = row(page, C.edit);
+    const before = await clientRow.innerText();
+    const form = `component-add-${a.agreement_id}`;
+    await btn(page, form).click();
+    await page.getByTestId(`${form}-label`).fill("תוספת מיידית");
+    await page.getByTestId(`${form}-amount`).fill("777");
+    await page.getByTestId(`${form}-save`).click();
+    await expect.poll(async () => await clientRow.innerText(), { timeout: 30000 }).not.toBe(before);
+    const afterAdd = await clientRow.innerText();
+    const added = comp((await agreementsOf(request, C.edit))[0], "תוספת מיידית");
+    await btn(page, `component-cancel-${added.component_key}`).click();
+    await expect.poll(async () => await clientRow.innerText(), { timeout: 30000 }).not.toBe(afterAdd);
+    const afterCancel = await clientRow.innerText();
+    await btn(page, `component-reopen-${added.component_key}`).click();
+    await expect.poll(async () => await clientRow.innerText(), { timeout: 30000 }).not.toBe(afterCancel);
+  });
 });

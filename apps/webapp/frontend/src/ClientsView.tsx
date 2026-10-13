@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { NAME_COL_W, RAW_NAMES_COL_W, AMOUNT_COL_W } from "./layout";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { Theme } from "./theme";
 import { AMOUNT_STATUS_TEXT_COLOR, CLIENT_STATUS_COLORS, CLIENT_STATUS_LABELS, LINE_BUTTONS } from "./clientsTheme";
@@ -15,7 +16,7 @@ import {
   setClientLineStatus,
   unlinkClientMapping,
 } from "./api";
-import { Field, IconButton } from "./ui";
+import { Field, IconButton, HintPressable } from "./ui";
 import AgreementsSection from "./AgreementsSection";
 
 const SECTION_ORDER: ClientRow["status"][] = ["check", "active", "debt", "missing_agreement", "settled", "past"];
@@ -23,9 +24,6 @@ const SECTION_ORDER: ClientRow["status"][] = ["check", "active", "debt", "missin
 // fixed-width column layout, mirroring EventsView's COLUMNS pattern — in this RTL page the
 // first column renders on the right, so keep the amount fields directly after the name instead
 // of pushing them away with a trailing flex spacer (that's what made them look "left-aligned").
-const NAME_COL_W = 170;
-const RAW_NAMES_COL_W = 170;
-const AMOUNT_COL_W = 92;
 
 // unmatched-names resolution table columns (client name | resolve-to dropdown | source | comment)
 const UNMATCHED_NAME_W = 140;
@@ -64,9 +62,10 @@ function LineStatusButtons({
   return (
     <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
       {buttons.map((b) => (
-        <Pressable
+        <HintPressable
           key={b.action}
           testID={`line-btn-${b.action}-${row.official_name}`}
+          {...({ title: `סימון שורת הלקוח: ${b.label}` } as any)}
           onPress={busy ? undefined : () => press(b.action)}
           disabled={busy}
           style={{
@@ -80,7 +79,7 @@ function LineStatusButtons({
           }}
         >
           <Text style={{ color: b.color, fontSize: 12, fontWeight: "700" }}>{b.label}</Text>
-        </Pressable>
+        </HintPressable>
       ))}
     </View>
   );
@@ -155,7 +154,8 @@ function ClientRowCard({
       testID={`client-row-${row.official_name}`}
       style={{ backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: 10 }}
     >
-      <Pressable onPress={() => setExpanded((e) => !e)} style={{ padding: 10, gap: 4 }}>
+      <HintPressable onPress={() => setExpanded((e) => !e)} style={{ padding: 10, gap: 4 }}
+        {...({ title: expanded ? "סגירת פרטי הלקוח" : "פתיחת פרטי הלקוח" } as any)}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
           <Text style={{ color: theme.accent, fontWeight: "800", width: 18, fontSize: 16 }}>
             {expanded ? "–" : "+"}
@@ -181,7 +181,7 @@ function ClientRowCard({
           <View style={{ flex: 1 }} />
         </View>
         {actionError ? <Text style={{ color: theme.danger, fontSize: 12 }}>{actionError}</Text> : null}
-      </Pressable>
+      </HintPressable>
 
       {expanded ? (
         <View style={{ borderTopWidth: 1, borderColor: theme.border, padding: 10, gap: 10 }}>
@@ -204,7 +204,7 @@ function ClientRowCard({
                   }}
                 >
                   <Text style={{ color: theme.text, fontSize: 12 }}>{alias}</Text>
-                  <Pressable
+                  <HintPressable
                     testID={`unlink-${alias}`}
                     onPress={unlinking ? undefined : () => unlink(alias)}
                     {...({ title: "בטל שיוך" } as any)}
@@ -212,7 +212,7 @@ function ClientRowCard({
                     <Text style={{ color: theme.danger, fontSize: 13, fontWeight: "800" }}>
                       {unlinking === alias ? "…" : "×"}
                     </Text>
-                  </Pressable>
+                  </HintPressable>
                 </View>
               ))}
             </View>
@@ -221,7 +221,7 @@ function ClientRowCard({
           <View testID="payments-section" style={{ gap: 6 }}>
             <Text style={{ color: theme.text, fontWeight: "800", fontSize: 15, textAlign: "right" }}>תשלומים</Text>
             {paymentEvents.length ? (
-              <View style={{ gap: 4 }}>
+              <View style={{ gap: 4, padding: 8, borderWidth: 1, borderColor: theme.border, borderRadius: 8 }}>
                 {paymentEvents.map((ev, i) => (
                   <View key={i} style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
                     <Text style={{ color: theme.textDim, fontSize: 12, width: 100 }}>{ev.date}</Text>
@@ -235,7 +235,9 @@ function ClientRowCard({
                 ))}
               </View>
             ) : (
-              <Text style={{ color: theme.textDim, fontSize: 12, textAlign: "center" }}>לא נמצאו תשלומים</Text>
+              <View style={{ padding: 8, borderWidth: 1, borderColor: theme.border, borderRadius: 8 }}>
+                <Text style={{ color: theme.textDim, fontSize: 12, textAlign: "center" }}>לא נמצאו תשלומים</Text>
+              </View>
             )}
           </View>
 
@@ -386,8 +388,9 @@ function ClientPicker({
                   הצעות חכמות
                 </Text>
                 {filteredSuggestions.map((s) => (
-                  <Pressable
+                  <HintPressable
                     key={s.name}
+                    {...({ title: `שיוך ללקוח: ${s.name}` } as any)}
                     onPress={() => choose(s.name)}
                     style={{ paddingVertical: 8, paddingHorizontal: 10 }}
                   >
@@ -397,7 +400,7 @@ function ClientPicker({
                         {s.reasons.join(" · ")}
                       </Text>
                     ) : null}
-                  </Pressable>
+                  </HintPressable>
                 ))}
               </>
             ) : null}
@@ -407,9 +410,9 @@ function ClientPicker({
                   כל הלקוחות
                 </Text>
                 {filteredRest.map((n) => (
-                  <Pressable key={n} onPress={() => choose(n)} style={{ paddingVertical: 7, paddingHorizontal: 10 }}>
+                  <HintPressable key={n} {...({ title: `שיוך ללקוח: ${n}` } as any)} onPress={() => choose(n)} style={{ paddingVertical: 7, paddingHorizontal: 10 }}>
                     <Text style={{ color: theme.text, fontSize: 13, textAlign: "right" }}>{n}</Text>
-                  </Pressable>
+                  </HintPressable>
                 ))}
               </>
             ) : null}
@@ -422,8 +425,9 @@ function ClientPicker({
         </View>
       ) : null}
       {open ? (
-        <Pressable
+        <HintPressable
           onPress={() => setOpen(false)}
+          {...({ title: "סגירת הרשימה" } as any)}
           style={{ position: "fixed" as any, top: 0, left: 0, right: 0, bottom: 0, zIndex: -1 }}
         />
       ) : null}
@@ -550,8 +554,9 @@ function UnmatchedRowCard({
           onPress={submitNote}
           disabled={noteSaving}
         />
-        <Pressable
+        <HintPressable
           testID={`hide-unmatched-${row.raw_name}`}
+          {...({ title: "הסרת השם מרשימת השמות לתיוג" } as any)}
           onPress={hiding ? undefined : hide}
           disabled={hiding}
           style={{
@@ -564,7 +569,7 @@ function UnmatchedRowCard({
           }}
         >
           <Text style={{ color: theme.danger, fontSize: 12, fontWeight: "700" }}>{hiding ? "…" : "הסר מהרשימה"}</Text>
-        </Pressable>
+        </HintPressable>
       </View>
     </View>
   );
@@ -594,8 +599,9 @@ function Section({
   const total = rows.reduce((s, r) => s + r.display_agreed, 0);
   return (
     <View testID={`section-${status}`} style={{ gap: 6 }}>
-      <Pressable
+      <HintPressable
         testID={`section-header-${status}`}
+        {...({ title: open ? "סגירת הקטגוריה" : "פתיחת הקטגוריה" } as any)}
         onPress={() => setOpen((o) => !o)}
         style={{
           flexDirection: "row",
@@ -614,7 +620,7 @@ function Section({
         <Text style={{ color: theme.textDim, fontSize: 12 }}>
           {rows.length} לקוחות · {fmt(total)}
         </Text>
-      </Pressable>
+      </HintPressable>
       {open ? (
         <View style={{ gap: 6 }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 10 }}>
@@ -669,8 +675,9 @@ function UnmatchedSection({
   if (!unmatched.length) return null;
   return (
     <View style={{ gap: 6 }}>
-      <Pressable
+      <HintPressable
         onPress={() => setOpen((o) => !o)}
+        {...({ title: open ? "סגירת הרשימה" : "פתיחת הרשימה" } as any)}
         style={{
           flexDirection: "row",
           alignItems: "center",
@@ -684,7 +691,7 @@ function UnmatchedSection({
         <Text style={{ color: theme.textDim, fontSize: 14 }}>{open ? "–" : "+"}</Text>
         <Text style={{ color: theme.danger, fontWeight: "800", fontSize: 15 }}>שמות לקוחות לתייג</Text>
         <Text style={{ color: theme.textDim, fontSize: 12 }}>{unmatched.length} לתיוג</Text>
-      </Pressable>
+      </HintPressable>
       {open ? (
         <View
           style={{

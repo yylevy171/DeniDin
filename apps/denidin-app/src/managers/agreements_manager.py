@@ -42,7 +42,7 @@ AGREEMENT_STATUSES = (ACTIVE, COMPLETED, CANCELLED)
 ACTORS = ("webapp", "whatsapp", "migration")
 
 # Fields a PATCH may touch (everything else, status included, has its own action).
-AGREEMENT_EDITABLE_FIELDS = ("title", "agreement_id", "payer_name", "partner_name", "partner_percent")
+AGREEMENT_EDITABLE_FIELDS = ("title", "agreement_description", "payer_name", "partner_name", "partner_percent")
 COMPONENT_EDITABLE_FIELDS = (
     "label", "description", "amount", "percent", "percent_base",
     "trigger_condition", "vat_status",
@@ -170,6 +170,7 @@ class AgreementsManager:
                     row_id          TEXT PRIMARY KEY,
                     agreement_id    TEXT NOT NULL,
                     title           TEXT NOT NULL,
+                    agreement_description TEXT,
                     client_name     TEXT NOT NULL,
                     payer_name      TEXT,
                     partner_name    TEXT,
@@ -200,6 +201,8 @@ class AgreementsManager:
                 """
             )
             self._upgrade_legacy_schema(conn)
+            if "agreement_description" not in {r["name"] for r in conn.execute("PRAGMA table_info(agreements)").fetchall()}:
+                conn.execute("ALTER TABLE agreements ADD COLUMN agreement_description TEXT")  # added 2026-10-13
             # An agreement_id only has to be unique among ACTIVE rows: a deleted agreement's id can be reused.
             conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_agreements_active_id "
                          "ON agreements(agreement_id) WHERE is_active = 1")
@@ -302,6 +305,7 @@ class AgreementsManager:
         return {
             "agreement_id": row["agreement_id"],
             "title": row["title"],
+            "agreement_description": row["agreement_description"],
             "client_name": row["client_name"],
             "payer_name": row["payer_name"],
             "partner_name": row["partner_name"],
@@ -492,6 +496,8 @@ class AgreementsManager:
     ) -> Tuple[Dict[str, Any], List[str]]:
         """Writes ledger events for the given component keys (current state), stores their
         ids as origin ids, returns (agreement dict, event ids)."""
+        conn.execute("UPDATE agreements SET updated_at = ? WHERE agreement_id = ? AND is_active = 1",
+                     (local_isoformat(), agreement_id))  # "last modified" covers its components too
         conn.commit()  # DB first (REQ-089-01): the ledger events follow the committed write
         agreement = self._agreement_dict(conn, agreement_id)
         wanted = [c for c in agreement["components"] if c["component_key"] in components_to_log]
@@ -516,7 +522,7 @@ class AgreementsManager:
         payer_name: Optional[str] = None, partner_name: Optional[str] = None,
         partner_percent: Any = None, agreement_id: Optional[str] = None,
         session_id: Optional[str] = None, message_id: Optional[str] = None,
-        message_timestamp: Optional[int] = None,
+        message_timestamp: Optional[int] = None, agreement_description: Optional[str] = None,
     ) -> Tuple[Dict[str, Any], List[str]]:
         """Creates an agreement with >=1 component. Returns (agreement, ledger_event_ids)."""
         self._check_actor(actor)
@@ -542,10 +548,11 @@ class AgreementsManager:
                                       {"title": "an agreement with this title already exists for the client this month"})
             now = local_isoformat()
             conn.execute(
-                "INSERT INTO agreements (row_id, agreement_id, title, client_name, payer_name, partner_name, "
-                "partner_percent, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
-                (uuid.uuid4().hex, agreement_id, title, client_name, _clean_text(payer_name),
-                 _clean_text(partner_name), percent, ACTIVE, now, now),
+                "INSERT INTO agreements (row_id, agreement_id, title, agreement_description, client_name, "
+                "payer_name, partner_name, partner_percent, status, created_at, updated_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                (uuid.uuid4().hex, agreement_id, title, _clean_text(agreement_description), client_name,
+                 _clean_text(payer_name), _clean_text(partner_name), percent, ACTIVE, now, now),
             )
             keys: List[str] = []
             for order, fields in enumerate(cleaned):
@@ -567,8 +574,8 @@ class AgreementsManager:
 
     def edit_agreement(self, agreement_id: str, fields: Dict[str, Any], actor: str,
                        **ledger_kwargs: Any) -> Tuple[Dict[str, Any], List[str]]:
-        """Edits title / public id / payer / partner / partner %. One ledger event per component when anything changed.
-        Changing the id renames the agreement's components' ids too (their ledger events are rewritten under the new ids)."""
+        """Edits title / description / payer / partner / partner %. One ledger event per component when anything changed
+        (the description is DB-only: it is not part of the approved ledger event fields)."""
         self._check_actor(actor)
         unknown = [k for k in fields if k not in AGREEMENT_EDITABLE_FIELDS]
         if unknown:
@@ -581,14 +588,8 @@ class AgreementsManager:
                 if title is None:
                     raise ValidationError("invalid agreement", {"title": "required"})
                 new_values["title"] = title
-            if "agreement_id" in fields:
-                new_id = _clean_text(fields["agreement_id"])
-                if new_id is None:
-                    raise ValidationError("invalid agreement", {"agreement_id": "required"})
-                if new_id != current["agreement_id"] and conn.execute(
-                        "SELECT 1 FROM agreements WHERE agreement_id = ? AND is_active = 1", (new_id,)).fetchone():
-                    raise ValidationError("invalid agreement", {"agreement_id": "already used by another agreement"})
-                new_values["agreement_id"] = new_id
+            if "agreement_description" in fields:
+                new_values["agreement_description"] = _clean_text(fields["agreement_description"])
             if "payer_name" in fields:
                 new_values["payer_name"] = _clean_text(fields["payer_name"])
             if "partner_name" in fields:
@@ -598,17 +599,15 @@ class AgreementsManager:
             changed = {k: [current[k], v] for k, v in new_values.items() if current[k] != v}
             if not changed:
                 return current, []
-            self._require_ledger_slots(len(current["components"]), ledger_kwargs.get("message_timestamp"))
+            ledger_visible = any(k not in ("title", "agreement_description") for k in changed)
+            if ledger_visible:
+                self._require_ledger_slots(len(current["components"]), ledger_kwargs.get("message_timestamp"))
             sets = ", ".join(f"{k} = ?" for k in changed)
             conn.execute(f"UPDATE agreements SET {sets}, updated_at = ? WHERE agreement_id = ? AND is_active = 1",  # noqa: S608
                          [new_values[k] for k in changed] + [local_isoformat(), agreement_id])
-            if "agreement_id" in changed:
-                new_id = new_values["agreement_id"]
-                conn.execute(
-                    "UPDATE components SET agreement_id = ?, "
-                    "component_id = ? || substr(component_id, ?) WHERE agreement_id = ?",
-                    (new_id, new_id, len(agreement_id) + 1, agreement_id))
-                agreement_id = new_id
+            if not ledger_visible:  # title / description never appear in a ledger event: DB only
+                conn.commit()
+                return self._agreement_dict(conn, agreement_id), []
             return self._finish_write(
                 conn, agreement_id,
                 components_to_log=[c["component_key"] for c in current["components"]], **ledger_kwargs,
