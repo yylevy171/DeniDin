@@ -171,12 +171,13 @@ test.describe("US4 - cross-channel consistency (the revision-history view was re
 
 // ================================================================ User Story 2 =============
 test.describe("US2 - edit agreements and components", () => {
-  test("UAT 2.1 - the agreement edit dialog exposes only payer / partner / partner %", async ({ page, request }) => {
+  test("UAT 2.1 - the agreement edit dialog exposes title, id, payer, partner and partner %", async ({ page, request }) => {
     await openClient(page, C.edit);
     const a = (await agreementsOf(request, C.edit))[0];
     await btn(page, `agreement-edit-${a.agreement_id}`).click();
     await expect(page.getByTestId("agreement-edit-form")).toBeVisible();
-    await expect(page.getByTestId("agreement-edit-title")).toHaveCount(0);
+    await expect(page.getByTestId("agreement-edit-title")).toBeVisible();
+    await expect(page.getByTestId("agreement-edit-agreement_id")).toBeVisible();
     await expect(page.locator('[data-testid^="agreement-edit-component-"]')).toHaveCount(0);
     await page.getByTestId("agreement-edit-payer_name").fill("חברה בע״מ");
     await page.getByTestId("agreement-edit-partner_name").fill("עו״ד לוי");
@@ -191,12 +192,29 @@ test.describe("US2 - edit agreements and components", () => {
     for (const e of events) expect(e).toMatchObject({ payer_name: "חברה בע״מ", split_partner: "עו״ד לוי", split_percent: 30 });
   });
 
+  test("UAT 2.1b - changing the title and the id renames the agreement, keeps its components, and logs the new ids", async ({ page, request }) => {
+    await openClient(page, C.edit);
+    const a = (await agreementsOf(request, C.edit))[0];
+    await btn(page, `agreement-edit-${a.agreement_id}`).click();
+    await page.getByTestId("agreement-edit-title").fill("שם חדש להסכם");
+    await page.getByTestId("agreement-edit-agreement_id").fill("renamed-e2e-1");
+    await page.getByTestId("agreement-edit-save").click();
+    await expect(page.getByTestId("agreement-title-renamed-e2e-1")).toHaveText("שם חדש להסכם");
+    const after = (await agreementsOf(request, C.edit))[0];
+    expect(after).toMatchObject({ agreement_id: "renamed-e2e-1", title: "שם חדש להסכם" });
+    expect(after.components.map((c: any) => c.component_key)).toEqual(a.components.map((c: any) => c.component_key));
+    for (const c of after.components) expect(c.component_id.startsWith("renamed-e2e-1-")).toBe(true);
+    const events = newEvents();
+    expect(events).toHaveLength(a.components.length);
+    for (const e of events) expect(e).toMatchObject({ agreement_id: "renamed-e2e-1" });
+  });
+
   test("UAT 2.2 - editing one component changes only that component", async ({ page, request }) => {
     await openClient(page, C.edit);
     const a = (await agreementsOf(request, C.edit))[0];
     const key = comp(a, "ריטיינר").component_key;
     await btn(page, `component-edit-${key}`).click();
-    for (const f of ["label", "description", "amount", "percent", "percent_base", "trigger_condition", "txn_date"]) {
+    for (const f of ["label", "description", "amount", "percent", "percent_base", "trigger_condition"]) {
       await expect(page.getByTestId(`component-edit-${key}-${f}`)).toBeVisible();
     }
     await page.getByTestId(`component-edit-${key}-amount`).fill("6000");
@@ -366,8 +384,8 @@ test.describe("US3 - component and agreement lifecycle", () => {
     expect(comp(after, "ממתין").status).toBe("Cancelled"); // Pending -> Cancelled
     expect(comp(after, "שולם").status).toBe("Completed");  // already closed: unchanged
     for (const c of after.components) await expectDisabled(page, `component-edit-${c.component_key}`);
-    // reopening a component of a still-closed agreement is not offered
-    await expect(page.locator('[data-testid^="component-reopen-"]')).toHaveCount(0);
+    // reopening a component of a still-closed agreement is shown but disabled
+    for (const c of after.components) await expectDisabled(page, `component-reopen-${c.component_key}`);
     const events = newEvents();
     expect(events).toHaveLength(after.components.length);
     for (const e of events) expect(e.agreement_status).toBe("Completed");

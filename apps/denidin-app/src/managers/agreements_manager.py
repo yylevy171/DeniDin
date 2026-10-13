@@ -42,10 +42,10 @@ AGREEMENT_STATUSES = (ACTIVE, COMPLETED, CANCELLED)
 ACTORS = ("webapp", "whatsapp", "migration")
 
 # Fields a PATCH may touch (everything else, status included, has its own action).
-AGREEMENT_EDITABLE_FIELDS = ("payer_name", "partner_name", "partner_percent")
+AGREEMENT_EDITABLE_FIELDS = ("title", "agreement_id", "payer_name", "partner_name", "partner_percent")
 COMPONENT_EDITABLE_FIELDS = (
     "label", "description", "amount", "percent", "percent_base",
-    "trigger_condition", "vat_status", "txn_date",
+    "trigger_condition", "vat_status",
 )
 
 COMPONENT_ACTIONS = ("activate", "complete", "cancel", "reopen")
@@ -285,7 +285,6 @@ class AgreementsManager:
             "percent_base": row["percent_base"],
             "trigger_condition": row["trigger_condition"],
             "vat_status": row["vat_status"],
-            "txn_date": row["txn_date"],
             "status": row["status"],
             "origin_event_id": row["origin_event_id"],
             "locked": locked,
@@ -371,7 +370,7 @@ class AgreementsManager:
         """Returns the cleaned component fields present in `data` (only keys given)."""
         fields: Dict[str, Any] = {}
         errors: Dict[str, str] = {}
-        for key in ("label", "description", "percent_base", "trigger_condition", "vat_status", "txn_date"):
+        for key in ("label", "description", "percent_base", "trigger_condition", "vat_status"):
             if key in data:
                 fields[key] = _clean_text(data[key])
         if "label" in fields and fields["label"] is None:
@@ -437,7 +436,6 @@ class AgreementsManager:
             "percent_base": component.get("percent_base"),
             "hours": None,
             "hourly_rate": None,
-            "txn_date": component.get("txn_date"),
             "vat_status": component.get("vat_status"),
             "trigger_condition": component.get("trigger_condition"),
             "reference_hint": None,
@@ -556,11 +554,11 @@ class AgreementsManager:
                 keys.append(key)
                 conn.execute(
                     "INSERT INTO components (component_key, component_id, agreement_id, label, description, "
-                    "amount, percent, percent_base, trigger_condition, vat_status, txn_date, status, "
-                    "origin_event_id, sort_order) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    "amount, percent, percent_base, trigger_condition, vat_status, status, "
+                    "origin_event_id, sort_order) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (key, component_id, agreement_id, fields["label"], fields.get("description"),
                      fields.get("amount"), fields.get("percent"), fields.get("percent_base"),
-                     fields.get("trigger_condition"), fields.get("vat_status"), fields.get("txn_date"),
+                     fields.get("trigger_condition"), fields.get("vat_status"),
                      self._default_status(fields.get("trigger_condition")), None, order),
                 )
             return self._finish_write(conn, agreement_id, components_to_log=keys,
@@ -569,7 +567,8 @@ class AgreementsManager:
 
     def edit_agreement(self, agreement_id: str, fields: Dict[str, Any], actor: str,
                        **ledger_kwargs: Any) -> Tuple[Dict[str, Any], List[str]]:
-        """Edits payer / partner / partner %. One ledger event per component when anything changed."""
+        """Edits title / public id / payer / partner / partner %. One ledger event per component when anything changed.
+        Changing the id renames the agreement's components' ids too (their ledger events are rewritten under the new ids)."""
         self._check_actor(actor)
         unknown = [k for k in fields if k not in AGREEMENT_EDITABLE_FIELDS]
         if unknown:
@@ -577,6 +576,19 @@ class AgreementsManager:
         with self._lock, self._connect() as conn:
             current = self._agreement_dict(conn, agreement_id)
             new_values: Dict[str, Any] = {}
+            if "title" in fields:
+                title = _clean_text(fields["title"])
+                if title is None:
+                    raise ValidationError("invalid agreement", {"title": "required"})
+                new_values["title"] = title
+            if "agreement_id" in fields:
+                new_id = _clean_text(fields["agreement_id"])
+                if new_id is None:
+                    raise ValidationError("invalid agreement", {"agreement_id": "required"})
+                if new_id != current["agreement_id"] and conn.execute(
+                        "SELECT 1 FROM agreements WHERE agreement_id = ? AND is_active = 1", (new_id,)).fetchone():
+                    raise ValidationError("invalid agreement", {"agreement_id": "already used by another agreement"})
+                new_values["agreement_id"] = new_id
             if "payer_name" in fields:
                 new_values["payer_name"] = _clean_text(fields["payer_name"])
             if "partner_name" in fields:
@@ -590,6 +602,13 @@ class AgreementsManager:
             sets = ", ".join(f"{k} = ?" for k in changed)
             conn.execute(f"UPDATE agreements SET {sets}, updated_at = ? WHERE agreement_id = ? AND is_active = 1",  # noqa: S608
                          [new_values[k] for k in changed] + [local_isoformat(), agreement_id])
+            if "agreement_id" in changed:
+                new_id = new_values["agreement_id"]
+                conn.execute(
+                    "UPDATE components SET agreement_id = ?, "
+                    "component_id = ? || substr(component_id, ?) WHERE agreement_id = ?",
+                    (new_id, new_id, len(agreement_id) + 1, agreement_id))
+                agreement_id = new_id
             return self._finish_write(
                 conn, agreement_id,
                 components_to_log=[c["component_key"] for c in current["components"]], **ledger_kwargs,
@@ -609,11 +628,11 @@ class AgreementsManager:
             order = len(agreement["components"])
             conn.execute(
                 "INSERT INTO components (component_key, component_id, agreement_id, label, description, "
-                "amount, percent, percent_base, trigger_condition, vat_status, txn_date, status, "
-                "origin_event_id, sort_order) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "amount, percent, percent_base, trigger_condition, vat_status, status, "
+                "origin_event_id, sort_order) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (key, component_id, agreement_id, fields["label"], fields.get("description"),
                  fields.get("amount"), fields.get("percent"), fields.get("percent_base"),
-                 fields.get("trigger_condition"), fields.get("vat_status"), fields.get("txn_date"),
+                 fields.get("trigger_condition"), fields.get("vat_status"),
                  self._default_status(fields.get("trigger_condition")), None, order),
             )
             conn.execute("UPDATE agreements SET updated_at = ? WHERE agreement_id = ? AND is_active = 1",
@@ -807,11 +826,11 @@ class AgreementsManager:
                 component_id = self._assert_label_free(conn, agreement_id, fields["label"])
                 conn.execute(
                     "INSERT INTO components (component_key, component_id, agreement_id, label, description, "
-                    "amount, percent, percent_base, trigger_condition, vat_status, txn_date, status, "
-                    "origin_event_id, sort_order) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    "amount, percent, percent_base, trigger_condition, vat_status, status, "
+                    "origin_event_id, sort_order) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (uuid.uuid4().hex, component_id, agreement_id, fields["label"], fields.get("description"),
                      fields.get("amount"), fields.get("percent"), fields.get("percent_base"),
-                     fields.get("trigger_condition"), fields.get("vat_status"), fields.get("txn_date"),
+                     fields.get("trigger_condition"), fields.get("vat_status"),
                      data["status"], data.get("origin_event_id"), order),
                 )
             return self._agreement_dict(conn, agreement_id)
@@ -890,7 +909,6 @@ class AgreementsManager:
             "percent_base": merged.get("percent_base"),
             "trigger_condition": merged.get("trigger_condition"),
             "vat_status": merged.get("vat_status"),
-            "txn_date": merged.get("txn_date"),
         }
 
     def _amend_from_capture(self, existing: Dict[str, Any], shared: Dict[str, Any],

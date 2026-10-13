@@ -117,7 +117,7 @@ def main() -> None:
     ledger.add_ledger_events_from_call(
         session_id=None, message_id=None, message_timestamp=ts(),
         call_arguments={"source_type": "הסכם", "client_name": VIEW, "description": "שעות עבודה",
-                        "components": [{"amount": "1000", "hours": "5", "txn_date": "01/10/2026"}],
+                        "components": [{"amount": "1000", "hours": "5"}],
                         "component_count": 1})
 
     # ---- EDIT: UAT 2.1-2.3, 2.5, 3.1-3.4

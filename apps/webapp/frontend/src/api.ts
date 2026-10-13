@@ -249,7 +249,6 @@ export interface AgreementComponent {
   percent_base: string | null;
   trigger_condition: string | null;
   vat_status: string | null;
-  txn_date: string | null;
   status: ComponentStatus;
   locked: boolean;
 }

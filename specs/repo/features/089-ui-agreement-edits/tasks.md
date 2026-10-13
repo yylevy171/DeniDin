@@ -192,3 +192,19 @@ Phase 10 needs every story done; Phase 11 after Phase 10.
   all on the soft-green fill. Component: edit/complete/cancel all blue glyph on light blue. New agreement: black plus on gray.
 - The revision log is removed entirely (UI, API route, webapp proxy, manager recording, `revisions` table); UAT 4.1 is gone. Webapp status boxes: Pending gray `לא פעיל`, Active green `פעיל`, Completed light blue `סגור`, Cancelled light red `מבוטל`, same for agreements and components. Component delete is a trash-can icon.
 - Still text buttons, pending a decision: delete component (מחק), mark component active (סמן פעיל), reopen (פתח מחדש).
+
+### Decisions 2026-10-13 (UI round 2)
+- Edit agreement now also edits `title` and the public `agreement_id` (the internal `row_id` is never shown). A new id must be
+  non-blank and not used by another active agreement (422). Renaming rewrites the agreement's components' `agreement_id` and
+  the `component_id` prefix, then writes one ledger event per component under the new ids; ledger events written earlier keep the
+  old ids (immutable).
+- `txn_date` is not an agreement variable: removed from the UI, API whitelist, bot tool schemas and ledger mapping.
+- VAT in the component form is a radio group (כולל / לא כולל / לא צוין), default לא צוין.
+- Button strip is a fixed-slot row (edit, gap, complete | activate | reopen(undo), cancel, gap, add | trash) so agreement and
+  component buttons line up; the status box sits after (left of) the strip. Glyph colours: edit black, complete dark green,
+  cancel red, add blue, trash gray; reopen uses the black "undo" icon.
+- Component reopen is shown (disabled with an explanation) while the agreement is closed.
+- Clients tab: the deposits/invoices list gets a "תשלומים" header; `הסכם` ledger events are no longer listed there (they mirror
+  the Agreements section above).
+- Bug fixed: `ClientsReader.invalidate_report()` waited on the report lock from the event loop, freezing the whole webapp while a
+  slow report compute ran. It no longer takes that lock, and a compute overlapped by an invalidation is not cached.

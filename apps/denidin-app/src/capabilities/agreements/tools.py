@@ -19,7 +19,6 @@ _COMPONENT_FIELDS: Dict[str, Any] = {
     "percent_base": {"type": ["string", "null"], "description": "What the percent applies to."},
     "trigger_condition": {"type": ["string", "null"], "description": "Condition that makes it payable."},
     "vat_status": {"type": ["string", "null"], "description": "כולל / לא כולל / לא צוין."},
-    "txn_date": {"type": ["string", "null"], "description": "Transaction date, DD/MM/YYYY."},
 }
 
 FIND_AGREEMENTS_TOOL: Dict[str, Any] = {

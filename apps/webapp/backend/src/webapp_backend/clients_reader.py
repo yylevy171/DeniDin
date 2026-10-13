@@ -652,6 +652,12 @@ class ClientsReader:
         self._official_cache: Optional[List[str]] = None
         self._report_cache: Optional[Tuple[int, Dict[str, Any]]] = None
         self._lock = threading.Lock()
+        # `invalidate_report` runs on the event loop right after an Agreements write, while a
+        # report compute may be holding `_lock` for minutes - so invalidation never takes `_lock`;
+        # it only bumps this counter under its own tiny lock (bug found 2026-10-13: it froze the
+        # whole webapp until the compute finished).
+        self._invalidation_lock = threading.Lock()
+        self._invalidations = 0
 
     def _paths(self) -> Dict[str, Path]:
         d = self._clients_dir
@@ -678,14 +684,19 @@ class ClientsReader:
         generation = self._generation_fn()
         if self._report_cache is not None and self._report_cache[0] == generation:
             return self._report_cache[1]
+        with self._invalidation_lock:
+            seen = self._invalidations
         report = self._compute_report()
-        self._report_cache = (generation, report)
+        with self._invalidation_lock:
+            if seen == self._invalidations:  # nothing was invalidated while computing
+                self._report_cache = (generation, report)
         return report
 
     def invalidate_report(self) -> None:
         """Drop the cached report so the next read recomputes (called after an Agreements
         write, which changes the agreed totals without touching the ledger generation)."""
-        with self._lock:
+        with self._invalidation_lock:
+            self._invalidations += 1
             self._report_cache = None
 
     def warm(self) -> None:

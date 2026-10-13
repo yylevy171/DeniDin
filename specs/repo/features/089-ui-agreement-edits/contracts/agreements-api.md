@@ -36,7 +36,7 @@ Served by `apps/denidin-app/src/services/agreements_api.py` (Starlette). Consume
       "component_key": "<uuid hex, immutable, used in URL paths>", "component_id": "<ledger-style slug>",
       "origin_event_id": "<ledger event id or null>", "label": "ריטיינר", "description": "...",
       "amount": 5000, "percent": null, "percent_base": null,
-      "trigger_condition": null, "vat_status": "לא כולל מע״מ", "txn_date": "2026-10-01",
+      "trigger_condition": null, "vat_status": "לא כולל מע״מ",
       "status": "Active", "locked": false
     }
   ]
@@ -57,7 +57,7 @@ Served by `apps/denidin-app/src/services/agreements_api.py` (Starlette). Consume
 | `PATCH /agreements/{agreement_id}` | edit `payer_name`, `partner_name`, `partner_percent` only | 2.1 |
 | `POST /agreements/{agreement_id}/status` | body `{"action": "complete"\|"cancel"\|"reopen"}`, cascades per data-model.md | 3.5, 3.6 |
 | `POST /agreements/{agreement_id}/components` | add a component (default status per UAT 3.1) | 2.3 |
-| `PATCH /agreements/{agreement_id}/components/{component_key}` | edit component fields (`label`, `description`, `amount`, `percent`, `percent_base`, `trigger_condition`, `vat_status`, `txn_date`) | 2.2, 2.2b |
+| `PATCH /agreements/{agreement_id}/components/{component_key}` | edit component fields (`label`, `description`, `amount`, `percent`, `percent_base`, `trigger_condition`, `vat_status`) | 2.2, 2.2b |
 | `POST /agreements/{agreement_id}/components/{component_key}/status` | body `{"action": "activate"\|"complete"\|"cancel"\|"reopen"}` | 3.2-3.4, 3.6 |
 | `DELETE /agreements/{agreement_id}/components/{component_key}` | soft delete (`is_active = 0`) + `ביטול` ledger event | 2.5 |
 | `DELETE /agreements/{agreement_id}?actor=webapp` | **API-only** soft delete of a whole agreement (`is_active = 0` on the agreement, and its components); writes **no** ledger events; `200 {"deleted": true, "agreement_id": ...}`, `404` if absent or already deleted. Neither the UI nor WhatsApp exposes it - it exists for test cleanup and admin use. | tests |

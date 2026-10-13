@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 ACTOR = "whatsapp"
 _COMPONENT_FIELD_NAMES = (
-    "label", "description", "amount", "percent", "percent_base", "trigger_condition", "vat_status", "txn_date",
+    "label", "description", "amount", "percent", "percent_base", "trigger_condition", "vat_status",
 )
 
 

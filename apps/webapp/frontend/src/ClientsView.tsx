@@ -106,6 +106,8 @@ function ClientRowCard({
   const [expanded, setExpanded] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [unlinking, setUnlinking] = useState<string | null>(null);
+  // Agreement ("הסכם") events mirror the Agreements section above; this list is deposits and invoice documents only.
+  const paymentEvents = row.events.filter((ev) => ev.type !== "הסכם");
 
   const lineAction = async (clientId: string, action: LineAction) => {
     setActionError(null);
@@ -216,23 +218,26 @@ function ClientRowCard({
             </View>
           ) : null}
           <AgreementsSection clientId={row.official_name} theme={theme} onAuthErr={onAuthErr} onTotalsChanged={onAgreementsChanged} />
-          {row.events.length ? (
-            <View style={{ gap: 4 }}>
-              {row.events.map((ev, i) => (
-                <View key={i} style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-                  <Text style={{ color: theme.textDim, fontSize: 12, width: 100 }}>{ev.date}</Text>
-                  <Text style={{ color: theme.textDim, fontSize: 12, width: 70 }}>{ev.type}</Text>
-                  <Text style={{ color: theme.textDim, fontSize: 12, width: 110 }}>{ev.subtype}</Text>
-                  <Text style={{ color: theme.text, fontSize: 12, width: 280 }}>{ev.desc}</Text>
-                  <Text style={{ color: theme.text, fontSize: 12, fontWeight: "700", width: 90 }}>
-                    {fmt(ev.amount)}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          ) : (
-            <Text style={{ color: theme.textDim, fontSize: 12, textAlign: "center" }}>לא נמצאו אירועים</Text>
-          )}
+          <View testID="payments-section" style={{ gap: 6 }}>
+            <Text style={{ color: theme.text, fontWeight: "800", fontSize: 15, textAlign: "right" }}>תשלומים</Text>
+            {paymentEvents.length ? (
+              <View style={{ gap: 4 }}>
+                {paymentEvents.map((ev, i) => (
+                  <View key={i} style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+                    <Text style={{ color: theme.textDim, fontSize: 12, width: 100 }}>{ev.date}</Text>
+                    <Text style={{ color: theme.textDim, fontSize: 12, width: 70 }}>{ev.type}</Text>
+                    <Text style={{ color: theme.textDim, fontSize: 12, width: 110 }}>{ev.subtype}</Text>
+                    <Text style={{ color: theme.text, fontSize: 12, width: 280 }}>{ev.desc}</Text>
+                    <Text style={{ color: theme.text, fontSize: 12, fontWeight: "700", width: 90 }}>
+                      {fmt(ev.amount)}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <Text style={{ color: theme.textDim, fontSize: 12, textAlign: "center" }}>לא נמצאו תשלומים</Text>
+            )}
+          </View>
 
           <View style={{ gap: 6 }}>
             <Text style={{ color: theme.textDim, fontSize: 12, textAlign: "right" }}>הערות תפעוליות</Text>

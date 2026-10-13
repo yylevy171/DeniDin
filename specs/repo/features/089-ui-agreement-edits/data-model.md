@@ -34,7 +34,7 @@ ledger (`_normalize_amount`).
 | `percent_base` | TEXT NULL | |
 | `trigger_condition` | TEXT NULL | Non-empty means the component starts `Pending`. |
 | `vat_status` | TEXT NULL | Same vocabulary as the ledger. |
-| `txn_date` | TEXT NULL | |
+| `txn_date` | TEXT NULL | Retired 2026-10-13 (human decision: not an agreement variable). Kept only as an unused legacy column on existing databases; nothing reads or writes it, the UI/API/bot never expose it. |
 | `status` | TEXT NOT NULL | `Pending` / `Active` / `Completed` / `Cancelled`. |
 | `origin_event_id` | TEXT NULL | Event id of the component's first ledger event; target of a delete's `reference`. |
 | `sort_order` | INTEGER NOT NULL | Display order. |
@@ -83,13 +83,13 @@ locked component other than Reopen-of-the-component (when allowed) fails with `l
 | add component | 1 | the new component |
 | edit component (any field, incl. wording) | 1 | the component's full new state |
 | set component status | 1 | the component, with `component_status` |
-| edit agreement (payer/partner/partner %) | 1 per component | each component's full state + new agreement-level values |
+| edit agreement (title / public id / payer / partner / partner %) | 1 per component | each component's full state + new agreement-level values |
 | set agreement status (close / reopen) | 1 per component (after the cascade) | each component's full state + `agreement_status` |
 | delete component | 1, `הסכם`/`ביטול` | `reference` = component's `origin_event_id` |
 
 Event field mapping: `client_name`, `payer_name`, `split_partner` <- `partner_name`,
 `split_percent` <- `partner_percent`, `agreement_id`, `component_id`, `component_label` <- `label`,
-`description`, `amount`, `percent`, `percent_base`, `trigger_condition`, `vat_status`, `txn_date`,
+`description`, `amount`, `percent`, `percent_base`, `trigger_condition`, `vat_status`,
 and the new `component_status`, `agreement_status` (schema v4). `source_type` = `הסכם`,
 `hours` = null, `session_id`/`message_id` = null for UI and migration writes (the bot supplies its
 own). **Field list approved by the human, 2026-10-09 (research.md R5).**
