@@ -17,7 +17,7 @@ Served by `apps/denidin-app/src/services/agreements_api.py` (Starlette). Consume
   nothing is written, and the caller retries in a minute). A ledger failure AFTER a committed DB write
   is out of scope, logged only.
 - **Writes return** `{"agreement": <full agreement with components>, "ledger_event_ids": [...]}`. A save that changes nothing returns `200` with the
-  unchanged state, `ledger_event_ids: []`, and creates no revision.
+  unchanged state, `ledger_event_ids: []`, and writes no ledger event.
 - **Last write wins**: no `If-Match`, no versions. Writes are serialized.
 
 ## Agreement JSON
@@ -53,7 +53,6 @@ Served by `apps/denidin-app/src/services/agreements_api.py` (Starlette). Consume
 | `GET /agreements?client_name=<official name>` | all agreements of a client, with components | 1.1, 1.2, 1.4 |
 | `GET /agreements/{agreement_id}` | one agreement | 1.2 |
 | `GET /agreements/totals` | `{client_name: sum of non-Cancelled component amounts}` for all clients | 6.1 |
-| `GET /agreements/{agreement_id}/revisions` | chronological revisions, each `{revision_id, created_at, actor, action, component_key, snapshot, changed}` | 4.1 |
 | `POST /agreements` | create agreement + >=1 component | 2.4 |
 | `PATCH /agreements/{agreement_id}` | edit `payer_name`, `partner_name`, `partner_percent` only | 2.1 |
 | `POST /agreements/{agreement_id}/status` | body `{"action": "complete"\|"cancel"\|"reopen"}`, cascades per data-model.md | 3.5, 3.6 |
@@ -61,7 +60,7 @@ Served by `apps/denidin-app/src/services/agreements_api.py` (Starlette). Consume
 | `PATCH /agreements/{agreement_id}/components/{component_key}` | edit component fields (`label`, `description`, `amount`, `percent`, `percent_base`, `trigger_condition`, `vat_status`, `txn_date`) | 2.2, 2.2b |
 | `POST /agreements/{agreement_id}/components/{component_key}/status` | body `{"action": "activate"\|"complete"\|"cancel"\|"reopen"}` | 3.2-3.4, 3.6 |
 | `DELETE /agreements/{agreement_id}/components/{component_key}` | soft delete (`is_active = 0`) + `ביטול` ledger event | 2.5 |
-| `DELETE /agreements/{agreement_id}?actor=webapp` | **API-only** soft delete of a whole agreement (`is_active = 0` on the agreement, its components and its revisions); writes **no** ledger events; `200 {"deleted": true, "agreement_id": ...}`, `404` if absent or already deleted. Neither the UI nor WhatsApp exposes it - it exists for test cleanup and admin use. | tests |
+| `DELETE /agreements/{agreement_id}?actor=webapp` | **API-only** soft delete of a whole agreement (`is_active = 0` on the agreement, and its components); writes **no** ledger events; `200 {"deleted": true, "agreement_id": ...}`, `404` if absent or already deleted. Neither the UI nor WhatsApp exposes it - it exists for test cleanup and admin use. | tests |
 
 Request validation: `POST /agreements` requires `client_name`, `title` (the agreement id is derived as `MMYY-client-title`, an id already held by an ACTIVE agreement is `422`; the id of a deleted agreement can be reused) and a non-empty `components` array; component labels must be unique within an agreement (`422`);
 each component needs `label` and an `amount` or `percent`; a `PATCH` accepts only the whitelisted

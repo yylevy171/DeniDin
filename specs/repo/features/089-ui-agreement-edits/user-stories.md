@@ -16,8 +16,8 @@
 | **[MIG]** | The one-time migration | `integration` test run against a copy of a real-shaped ledger fixture. No OpenAI. |
 
 **Every UAT that changes data also asserts three things**, even where its text does not repeat them:
-(a) the Agreements DB holds the new state, (b) a new revision exists, and (c) the ledger effect named
-in that UAT happened, and nothing else was written to the ledger.
+(a) the Agreements DB holds the new state and (b) the ledger effect named
+in that UAT happened, and nothing else was written to the ledger. (The revision log was removed 2026-10-13.)
 
 **Ledger effect rule (REQ-089-07):** every write goes to the Agreements DB first, and the DB write
 produces the ledger event. Component create / financial edit / status change produces one
@@ -88,7 +88,7 @@ As a law firm partner, I want to edit top-level agreement data (payer, partner) 
 
 3. **UAT 2.2b - Wording-Only Edit** **[UI]** *(added 2026-10-09)*:
    * **User Action**: The user edits only the `Description (Wording)` of a component and saves.
-   * **Expected Result**: The new wording is saved and a revision is recorded.
+   * **Expected Result**: The new wording is saved.
    * **Ledger effect**: One new `הסכם`/`יצירה` event with the component's full new state, so the ledger copy of the wording never goes stale (decision 2).
 
 4. **UAT 2.3 - Add New Component** **[UI]**:
@@ -167,7 +167,7 @@ As a user interacting with both the UI and the WhatsApp bot, I want a single sou
 
 **Acceptance Scenarios**:
 
-1. **UAT 4.1 - View Revision History** **[UI]** *(REMOVED from the UI by human decision 2026-10-13: nobody asked for a history view. The API still records and serves revisions; no screen shows them.)*:
+1. **UAT 4.1 - View Revision History** **[UI]** *(REMOVED from the UI by human decision 2026-10-13: nobody asked for a history view. The revision log itself was removed too: no table, no API, no screen.)*:
    * **User Action**: The user looks at an agreement's expanded view in the UI, after a UI edit and a (seeded) WhatsApp edit have both happened.
    * **Expected Result**: They see a "Revision History" timeline that lists each revision to the agreement or its components chronologically, showing the date, the actor (Webapp UI or WhatsApp Bot), and a snapshot of the changed values. Both edits appear, in order.
    * **Ledger effect**: None (read-only).
@@ -179,7 +179,7 @@ As a user interacting with both the UI and the WhatsApp bot, I want a single sou
 
 3. **UAT 4.3 - Last Write Wins** **[UI+WA]** *(added 2026-10-09, REQ-089-08)*:
    * **User Action**: The user edits a component's fee in the UI to 1,000, then tells the bot to change the same fee to 1,200, then reloads the UI.
-   * **Expected Result**: The UI shows 1,200. The revision history shows both changes in order. Neither write was rejected.
+   * **Expected Result**: The UI shows 1,200. Neither write was rejected.
    * **Ledger effect**: Two `הסכם`/`יצירה` events, in order; the latest carries 1,200.
 
 ---
@@ -206,12 +206,12 @@ As a law firm partner (godfather/admin), I want to query and manage agreements b
 2. **UAT 5.2 - Edit a Component-Level Field**:
    * **User Action:** User says, "We agreed with Israel on the appeal to raise the retainer to 6,000₪."
    * **System (Success):** "הבנתי. עדכנתי את רכיב הריטיינר בהסכם 'ייצוג בבית הדין הארצי' עבור ישראל ישראלי. הסכום החדש הוא 6,000 ₪. נשמרה גרסה חדשה."
-   * **DB / ledger effect:** Retainer amount is 6,000 in the Agreements DB as a new revision (actor: WhatsApp Bot); sibling components unchanged. Exactly one `הסכם`/`יצירה` event, produced by the DB write, not written by the bot directly. The existing approval step for write actions is preserved as today.
+   * **DB / ledger effect:** Retainer amount is 6,000 in the Agreements DB; sibling components unchanged. Exactly one `הסכם`/`יצירה` event, produced by the DB write, not written by the bot directly. The existing approval step for write actions is preserved as today.
 
 3. **UAT 5.3 - Edit Top-Level Agreement Fields**:
    * **User Action:** User says, "For Israel's appeal, add Adv. Cohen as a partner for 25%. Also, the payer is actually the Histadrut, not Israel."
    * **System (Success):** "עדכנתי את נתוני ההסכם 'ייצוג בבית הדין הארצי' של ישראל ישראלי: משלם: ההסתדרות, שותף: עו״ד כהן (25%)."
-   * **DB / ledger effect:** The agreement record holds the new payer and partner as a new revision. Ledger: one `הסכם`/`יצירה` event per component of the agreement (as UAT 2.1, decision 1 revised).
+   * **DB / ledger effect:** The agreement record holds the new payer and partner. Ledger: one `הסכם`/`יצירה` event per component of the agreement (as UAT 2.1, decision 1 revised).
 
 4. **UAT 5.4 - Add a New Component**:
    * **User Action:** User says, "Add a new fee to Israel's appeal agreement: 1,500₪ for every additional court hearing."

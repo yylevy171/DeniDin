@@ -49,12 +49,11 @@ def test_find_agreements_unknown_client_is_empty(backbone):
     assert json.loads(_call(backbone, "find_agreements", client_name="אין כזה"))["agreements"] == []
 
 
-def test_update_component_is_stamped_whatsapp_and_reports_events(backbone, mgr):
+def test_update_component_reports_events(backbone, mgr):
     agreement = _seed(mgr)
     out = json.loads(_call(backbone, "update_component", agreement_id=agreement["agreement_id"],
                            component_key=_key(agreement, "ריטיינר"), amount=6000))
     assert out["ledger_event_ids"]
-    assert mgr.revisions(agreement["agreement_id"])[-1]["actor"] == "whatsapp"
 
 
 def test_set_component_status_and_locked_error_string(backbone, mgr):

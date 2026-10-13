@@ -42,19 +42,10 @@ ledger (`_normalize_amount`).
 A component must have an `amount` or a `percent` (a fee has a value). Hours-worked lines never
 enter this table (REQ-089-13).
 
-### `revisions`
-| Column | Type | Notes |
-|---|---|---|
-| `revision_id` | INTEGER PK AUTOINCREMENT | Total order = chronological order. |
-| `agreement_id` | TEXT NOT NULL | Kept after a component delete. |
-| `is_active` | INTEGER NOT NULL DEFAULT 1 | Set to 0 for every revision of a deleted agreement. |
-| `component_key` | TEXT NULL | Null for agreement-level revisions. |
-| `actor` | TEXT NOT NULL | `webapp` / `whatsapp` / `migration`. |
-| `action` | TEXT NOT NULL | `create_agreement`, `edit_agreement`, `add_component`, `edit_component`, `set_component_status`, `set_agreement_status`, `delete_component`, `cascade`. |
-| `snapshot_json` | TEXT NOT NULL | Full new state of the agreement or component after the change. |
-| `changed_json` | TEXT NOT NULL | `{field: [old, new]}` for display. |
-| `ledger_event_ids_json` | TEXT NOT NULL | Event ids this write produced (empty list if the ledger write failed; the failure is logged at ERROR). |
-| `created_at` | TEXT NOT NULL | |
+### Revisions - removed (human decision 2026-10-13)
+The earlier `revisions` table (an append-only log of every write) no longer exists: no table, no API route, no UI
+view. A write that changes nothing is still a no-op (no ledger event). The ledger events are the only history. A
+database created before this decision may still carry an unused `revisions` table; nothing reads or writes it.
 
 ## State rules (REQ-089-05/06)
 

@@ -2,13 +2,13 @@
 AgreementsManager - the Agreements DB (Feature 089).
 
 The living source of truth for fee agreements: an agreement container holding fee
-components, a four-state component lifecycle, and an append-only revision log. Owns
+components and a four-state component lifecycle. Owns
 {data_root}/agreements/agreements.db (SQLite - same precedent as reminders.db and
 chat_index.db).
 
 Every write, from the webapp (through the Agreements API), the WhatsApp bot, or the
 one-time migration, goes through this class: it validates, applies the state rules and
-the agreement-close cascade, commits the DB change plus a revision in one transaction,
+the agreement-close cascade, commits the DB change in one transaction,
 and THEN writes the matching ledger events (one `הסכם` event per affected component) via
 LedgerEventManager. Nobody else writes agreement ledger events or touches the SQLite
 file. Last write wins: every write is serialized under one lock, no version precondition.
@@ -17,7 +17,6 @@ Hours-worked lines (a `הסכם` ledger event with `hours`) are never components
 ledger-only (REQ-089-13). See specs/repo/features/089-ui-agreement-edits/data-model.md.
 """
 
-import json
 import sqlite3
 import threading
 import uuid
@@ -198,19 +197,6 @@ class AgreementsManager:
                     is_active         INTEGER NOT NULL DEFAULT 1
                 );
                 CREATE INDEX IF NOT EXISTS idx_components_agreement ON components(agreement_id);
-                CREATE TABLE IF NOT EXISTS revisions (
-                    revision_id           INTEGER PRIMARY KEY AUTOINCREMENT,
-                    agreement_id          TEXT NOT NULL,
-                    component_key         TEXT,
-                    actor                 TEXT NOT NULL,
-                    action                TEXT NOT NULL,
-                    snapshot_json         TEXT NOT NULL,
-                    changed_json          TEXT NOT NULL,
-                    ledger_event_ids_json TEXT NOT NULL,
-                    created_at            TEXT NOT NULL,
-                    is_active             INTEGER NOT NULL DEFAULT 1
-                );
-                CREATE INDEX IF NOT EXISTS idx_revisions_agreement ON revisions(agreement_id);
                 """
             )
             self._upgrade_legacy_schema(conn)
@@ -222,7 +208,7 @@ class AgreementsManager:
     def _upgrade_legacy_schema(conn: sqlite3.Connection) -> None:
         """Databases created before `is_active` / the internal `row_id` existed: add the flag
         (existing rows = active) and rebuild `agreements` with a uuid primary key."""
-        for table in ("agreements", "components", "revisions"):
+        for table in ("agreements", "components"):
             columns = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}  # noqa: S608
             if "is_active" not in columns:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")  # noqa: S608
@@ -377,26 +363,6 @@ class AgreementsManager:
             ).fetchall()
         return {r["client_name"]: int(r["total"] or 0) for r in rows}
 
-    def revisions(self, agreement_id: str) -> List[Dict[str, Any]]:
-        with self._connect() as conn:
-            if conn.execute("SELECT 1 FROM agreements WHERE agreement_id = ? AND is_active = 1",
-                            (agreement_id,)).fetchone() is None:
-                raise NotFoundError(f"agreement {agreement_id!r} not found")
-            rows = conn.execute(
-                "SELECT * FROM revisions WHERE agreement_id = ? AND is_active = 1 ORDER BY revision_id",
-                (agreement_id,),
-            ).fetchall()
-        return [{
-            "revision_id": r["revision_id"],
-            "created_at": r["created_at"],
-            "actor": r["actor"],
-            "action": r["action"],
-            "component_key": r["component_key"],
-            "snapshot": json.loads(r["snapshot_json"]),
-            "changed": json.loads(r["changed_json"]),
-            "ledger_event_ids": json.loads(r["ledger_event_ids_json"]),
-        } for r in rows]
-
     # ------------------------------------------------------------------ #
     # Validation helpers
     # ------------------------------------------------------------------ #
@@ -521,31 +487,13 @@ class AgreementsManager:
                     (event_id, component_key),
                 )
 
-    def _add_revision(
-        self, conn: sqlite3.Connection, agreement_id: str, component_key: Optional[str], actor: str,
-        action: str, snapshot: Dict[str, Any], changed: Dict[str, Any], event_ids: List[str],
-    ) -> int:
-        cursor = conn.execute(
-            "INSERT INTO revisions (agreement_id, component_key, actor, action, snapshot_json, "
-            "changed_json, ledger_event_ids_json, created_at) VALUES (?,?,?,?,?,?,?,?)",
-            (agreement_id, component_key, actor, action,
-             json.dumps(snapshot, ensure_ascii=False, sort_keys=True),
-             json.dumps(changed, ensure_ascii=False, sort_keys=True),
-             json.dumps(event_ids), local_isoformat()),
-        )
-        return int(cursor.lastrowid or 0)
-
-    def _set_revision_events(self, conn: sqlite3.Connection, revision_id: int, event_ids: List[str]) -> None:
-        conn.execute("UPDATE revisions SET ledger_event_ids_json = ? WHERE revision_id = ?",
-                     (json.dumps(event_ids), revision_id))
-
     def _finish_write(
-        self, conn: sqlite3.Connection, agreement_id: str, revision_id: int, *,
+        self, conn: sqlite3.Connection, agreement_id: str, *,
         components_to_log: List[str], session_id: Optional[str] = None, message_id: Optional[str] = None,
         message_timestamp: Optional[int] = None,
     ) -> Tuple[Dict[str, Any], List[str]]:
         """Writes ledger events for the given component keys (current state), stores their
-        ids on the revision and as origin ids, returns (agreement dict, event ids)."""
+        ids as origin ids, returns (agreement dict, event ids)."""
         conn.commit()  # DB first (REQ-089-01): the ledger events follow the committed write
         agreement = self._agreement_dict(conn, agreement_id)
         wanted = [c for c in agreement["components"] if c["component_key"] in components_to_log]
@@ -555,11 +503,10 @@ class AgreementsManager:
         )
         self._record_origin_events(conn, event_map)
         event_ids = [e for e in event_map.values() if e is not None]
-        self._set_revision_events(conn, revision_id, event_ids)
         conn.commit()
         if len(event_ids) != len(wanted):
-            logger.error("AgreementsManager: %d of %d ledger events missing for revision %s of %s",
-                         len(wanted) - len(event_ids), len(wanted), revision_id, agreement_id)
+            logger.error("AgreementsManager: %d of %d ledger events missing for a write to %s",
+                         len(wanted) - len(event_ids), len(wanted), agreement_id)
         return self._agreement_dict(conn, agreement_id), event_ids
 
     # ------------------------------------------------------------------ #
@@ -616,10 +563,7 @@ class AgreementsManager:
                      fields.get("trigger_condition"), fields.get("vat_status"), fields.get("txn_date"),
                      self._default_status(fields.get("trigger_condition")), None, order),
                 )
-            snapshot = self._agreement_dict(conn, agreement_id)
-            revision_id = self._add_revision(conn, agreement_id, None, actor, "create_agreement",
-                                             snapshot, {"created": True}, [])
-            return self._finish_write(conn, agreement_id, revision_id, components_to_log=keys,
+            return self._finish_write(conn, agreement_id, components_to_log=keys,
                                       session_id=session_id, message_id=message_id,
                                       message_timestamp=message_timestamp)
 
@@ -646,11 +590,9 @@ class AgreementsManager:
             sets = ", ".join(f"{k} = ?" for k in changed)
             conn.execute(f"UPDATE agreements SET {sets}, updated_at = ? WHERE agreement_id = ? AND is_active = 1",  # noqa: S608
                          [new_values[k] for k in changed] + [local_isoformat(), agreement_id])
-            snapshot = self._agreement_dict(conn, agreement_id)
-            revision_id = self._add_revision(conn, agreement_id, None, actor, "edit_agreement", snapshot, changed, [])
             return self._finish_write(
-                conn, agreement_id, revision_id,
-                components_to_log=[c["component_key"] for c in snapshot["components"]], **ledger_kwargs,
+                conn, agreement_id,
+                components_to_log=[c["component_key"] for c in current["components"]], **ledger_kwargs,
             )
 
     def add_component(self, agreement_id: str, data: Dict[str, Any], actor: str,
@@ -676,17 +618,7 @@ class AgreementsManager:
             )
             conn.execute("UPDATE agreements SET updated_at = ? WHERE agreement_id = ? AND is_active = 1",
                          (local_isoformat(), agreement_id))
-            snapshot = self._component_snapshot(conn, agreement_id, key)
-            revision_id = self._add_revision(conn, agreement_id, key, actor, "add_component", snapshot,
-                                             {"created": True}, [])
-            return self._finish_write(conn, agreement_id, revision_id, components_to_log=[key], **ledger_kwargs)
-
-    def _component_snapshot(self, conn: sqlite3.Connection, agreement_id: str, key: str) -> Dict[str, Any]:
-        agreement = self._agreement_dict(conn, agreement_id)
-        for comp in agreement["components"]:
-            if comp["component_key"] == key:
-                return cast(Dict[str, Any], comp)
-        raise NotFoundError(f"component {key!r} not found")
+            return self._finish_write(conn, agreement_id, components_to_log=[key], **ledger_kwargs)
 
     def edit_component(self, agreement_id: str, component_key: str, fields: Dict[str, Any], actor: str,
                        **ledger_kwargs: Any) -> Tuple[Dict[str, Any], List[str]]:
@@ -718,10 +650,7 @@ class AgreementsManager:
                          list(updates.values()) + [component_key])
             conn.execute("UPDATE agreements SET updated_at = ? WHERE agreement_id = ? AND is_active = 1",
                          (local_isoformat(), agreement_id))
-            snapshot = self._component_snapshot(conn, agreement_id, component_key)
-            revision_id = self._add_revision(conn, agreement_id, component_key, actor, "edit_component",
-                                             snapshot, changed, [])
-            return self._finish_write(conn, agreement_id, revision_id, components_to_log=[component_key],
+            return self._finish_write(conn, agreement_id, components_to_log=[component_key],
                                       **ledger_kwargs)
 
     def set_component_status(self, agreement_id: str, component_key: str, action: str, actor: str,
@@ -740,10 +669,7 @@ class AgreementsManager:
             conn.execute("UPDATE components SET status = ? WHERE component_key = ?", (target, component_key))
             conn.execute("UPDATE agreements SET updated_at = ? WHERE agreement_id = ? AND is_active = 1",
                          (local_isoformat(), agreement_id))
-            snapshot = self._component_snapshot(conn, agreement_id, component_key)
-            revision_id = self._add_revision(conn, agreement_id, component_key, actor, "set_component_status",
-                                             snapshot, {"status": [current, target]}, [])
-            return self._finish_write(conn, agreement_id, revision_id, components_to_log=[component_key],
+            return self._finish_write(conn, agreement_id, components_to_log=[component_key],
                                       **ledger_kwargs)
 
     @staticmethod
@@ -770,7 +696,6 @@ class AgreementsManager:
         with self._lock, self._connect() as conn:
             agreement = self._agreement_dict(conn, agreement_id)
             current = agreement["status"]
-            changed: Dict[str, Any] = {}
             if action == "reopen":
                 if current == ACTIVE:
                     raise IllegalTransitionError("the agreement is already Active")
@@ -786,17 +711,11 @@ class AgreementsManager:
                     if new_status != comp["status"]:
                         conn.execute("UPDATE components SET status = ? WHERE component_key = ?",
                                      (new_status, comp["component_key"]))
-                        changed[comp["component_key"]] = [comp["status"], new_status]
             conn.execute("UPDATE agreements SET status = ?, updated_at = ? WHERE agreement_id = ? AND is_active = 1",
                          (target, local_isoformat(), agreement_id))
-            snapshot = self._agreement_dict(conn, agreement_id)
-            revision_id = self._add_revision(
-                conn, agreement_id, None, actor,
-                "cascade" if changed else "set_agreement_status", snapshot,
-                {"status": [current, target], "components": changed}, [])
             return self._finish_write(
-                conn, agreement_id, revision_id,
-                components_to_log=[c["component_key"] for c in snapshot["components"]], **ledger_kwargs)
+                conn, agreement_id,
+                components_to_log=[c["component_key"] for c in agreement["components"]], **ledger_kwargs)
 
     @staticmethod
     def _cascade_status(agreement_target: str, component_status: str) -> str:
@@ -822,8 +741,6 @@ class AgreementsManager:
             conn.execute("UPDATE components SET is_active = 0 WHERE component_key = ?", (component_key,))
             conn.execute("UPDATE agreements SET updated_at = ? WHERE agreement_id = ? AND is_active = 1",
                          (local_isoformat(), agreement_id))
-            revision_id = self._add_revision(conn, agreement_id, component_key, actor, "delete_component",
-                                             comp, {"deleted": True}, [])
             conn.commit()  # DB first, then the ledger event
             after = self._agreement_dict(conn, agreement_id)
             event_ids: List[str] = []
@@ -845,8 +762,6 @@ class AgreementsManager:
                     event_id = None
                 if event_id:
                     event_ids.append(event_id)
-            self._set_revision_events(conn, revision_id, event_ids)
-            conn.commit()
             return after, event_ids
 
     def delete_agreement(self, agreement_id: str, actor: str) -> None:
@@ -855,15 +770,10 @@ class AgreementsManager:
         WhatsApp offers it. Writes NO ledger events (the ledger keeps what it recorded)."""
         self._check_actor(actor)
         with self._lock, self._connect() as conn:
-            snapshot = self._agreement_dict(conn, agreement_id)  # NotFoundError if absent/already deleted
+            self._agreement_dict(conn, agreement_id)  # NotFoundError if absent/already deleted
             conn.execute("UPDATE components SET is_active = 0 WHERE agreement_id = ? AND is_active = 1", (agreement_id,))
             conn.execute("UPDATE agreements SET is_active = 0, updated_at = ? WHERE agreement_id = ? AND is_active = 1",
                          (local_isoformat(), agreement_id))
-            self._add_revision(conn, agreement_id, None, actor, "delete_agreement", snapshot, {"deleted": True}, [])
-            # Every row of the deleted agreement goes inactive together, so a later agreement that
-            # reuses this agreement_id starts with a clean history.
-            conn.execute("UPDATE revisions SET is_active = 0 WHERE agreement_id = ? AND is_active = 1",
-                         (agreement_id,))
 
     # ------------------------------------------------------------------ #
     # Capture (WhatsApp / documents) and migration entry points
@@ -875,8 +785,7 @@ class AgreementsManager:
     ) -> Dict[str, Any]:
         """One-time migration entry (REQ-089-09): stores an agreement and its components exactly
         as given - explicit statuses and `origin_event_id`s, the ledger events already exist
-        (the script rewrites them in place) so NONE are written here. Revision actor is
-        `migration`. Raises ValidationError on a bad value or a duplicate agreement/label."""
+        (the script rewrites them in place) so NONE are written here. Raises ValidationError on a bad value or a duplicate agreement/label."""
         if status not in AGREEMENT_STATUSES:
             raise ValidationError("invalid agreement", {"status": f"must be one of {list(AGREEMENT_STATUSES)}"})
         percent = _to_percent(partner_percent, "partner_percent")
@@ -905,10 +814,7 @@ class AgreementsManager:
                      fields.get("trigger_condition"), fields.get("vat_status"), fields.get("txn_date"),
                      data["status"], data.get("origin_event_id"), order),
                 )
-            snapshot = self._agreement_dict(conn, agreement_id)
-            self._add_revision(conn, agreement_id, None, "migration", "migrate_agreement",
-                               snapshot, {"migrated": True}, [])
-            return snapshot
+            return self._agreement_dict(conn, agreement_id)
 
     def create_from_capture(
         self, event: Dict[str, Any], session_id: Optional[str], message_id: Optional[str],

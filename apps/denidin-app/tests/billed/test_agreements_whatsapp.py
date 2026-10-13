@@ -85,7 +85,7 @@ class TestAgreementsWhatsAppBilled:
         if db.exists():
             con = sqlite3.connect(str(db))
             try:
-                for table in ("revisions", "components", "agreements"):
+                for table in ("components", "agreements"):
                     con.execute(f"DELETE FROM {table}")
                 con.commit()
             finally:
@@ -143,17 +143,13 @@ class TestAgreementsWhatsAppBilled:
                 out.append(event)
         return out
 
-    @staticmethod
-    def _revision_actors(app, agreement_id):
-        return [r["actor"] for r in app.agreements_manager.revisions(agreement_id)]
-
     # ------------------------------------------------------------------ tests
 
     def test_uat_5_1_query_with_agreement_ambiguity(self, denidin_app, config):
         phone, chat = self._godfather(config)
         appeal = self._seed(denidin_app, APPEAL)
         self._seed(denidin_app, DAMAGES, [{"label": "ריטיינר", "amount": 1000}])
-        revisions_before = len(denidin_app.agreements_manager.revisions(appeal["agreement_id"]))
+        state_before = denidin_app.agreements_manager.get_agreement(appeal["agreement_id"])
 
         ask = self._say(chat, phone, f"מה ההסכם שלנו עם {CLIENT}?", "q1")
         assert ask and "ארצי" in ask and "נזיק" in ask, f"expected a which-agreement question naming both: {ask!r}"
@@ -164,7 +160,7 @@ class TestAgreementsWhatsAppBilled:
         assert "20%" in answer or "20" in answer
         assert "1,000" not in answer  # the other agreement's component never leaks in
 
-        assert len(denidin_app.agreements_manager.revisions(appeal["agreement_id"])) == revisions_before
+        assert denidin_app.agreements_manager.get_agreement(appeal["agreement_id"]) == state_before  # a read changes nothing
         assert len(self._agreement_events(config, appeal["agreement_id"])) == 2  # only the seed's events
 
     def test_uat_5_2_edit_component_amount(self, denidin_app, config):
@@ -181,7 +177,6 @@ class TestAgreementsWhatsAppBilled:
         assert confirmation
         assert self._component(denidin_app, agreement_id, "ריטיינר")["amount"] == 6000
         assert self._component(denidin_app, agreement_id, "שכר טרחה באחוזים")["percent"] == 20
-        assert "whatsapp" in self._revision_actors(denidin_app, agreement_id)
         assert len(self._agreement_events(config, agreement_id)) == events_before + 1
 
     def test_uat_5_3_edit_payer_and_partner(self, denidin_app, config):
@@ -255,10 +250,10 @@ class TestAgreementsWhatsAppBilled:
         phone, chat = self._godfather(config)
         agreement = self._seed(denidin_app)
         agreement_id = agreement["agreement_id"]
-        revisions_before = len(denidin_app.agreements_manager.revisions(agreement_id))
+        state_before = denidin_app.agreements_manager.get_agreement(agreement_id)
         reminders_before = len(denidin_app.reminder_manager.list_active())
 
         reply = self._say(chat, phone, "כן", "s1")
         assert reply, "an ambiguous reply must be answered (a clarifying question), not ignored"
-        assert len(denidin_app.agreements_manager.revisions(agreement_id)) == revisions_before
+        assert denidin_app.agreements_manager.get_agreement(agreement_id) == state_before
         assert len(denidin_app.reminder_manager.list_active()) == reminders_before

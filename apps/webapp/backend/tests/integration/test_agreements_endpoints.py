@@ -106,11 +106,6 @@ class TestFacade:
         listed = api.get(f"/api/clients/{quote(CLIENT)}/agreements").json()["agreements"]
         assert created["agreement_id"] in [a["agreement_id"] for a in listed]
 
-    def test_writes_are_stamped_with_the_webapp_actor(self, api):
-        agreement = _create(api, "שחקן")
-        revisions = api.get(f"/api/agreements/{agreement['agreement_id']}/revisions").json()["revisions"]
-        assert {r["actor"] for r in revisions} == {"webapp"}
-
     def test_edit_status_and_delete_flow(self, api):
         agreement = _create(api, "זרימה")
         aid = agreement["agreement_id"]
@@ -131,11 +126,6 @@ class TestFacade:
         assert response.status_code == 404
         assert response.json()["error"]["code"] == "not_found"
 
-    def test_browser_cannot_forge_the_actor(self, api):
-        agreement = _create(api, "זיוף")
-        api.patch(f"/api/agreements/{agreement['agreement_id']}", json={"actor": "whatsapp", "payer_name": "חברה"})
-        revisions = api.get(f"/api/agreements/{agreement['agreement_id']}/revisions").json()["revisions"]
-        assert {r["actor"] for r in revisions} == {"webapp"}
 
 
 class TestUnavailable:

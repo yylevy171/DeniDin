@@ -29,7 +29,7 @@ The Webapp UI will integrate this into the existing "Clients" tab, allowing user
 - **Agreement status**: `Active`, `Completed`, `Cancelled`. A closed agreement locks all its components.
 - **Locked**: a component that cannot be edited or have its status changed except by Reopen: Completed or Cancelled, or belonging to a non-Active agreement.
 - **Cascade**: the component status changes forced by closing an agreement (see REQ-089-06).
-- **Revision**: one immutable history row per Agreements DB write, with actor and a snapshot.
+- ~~**Revision**~~: removed 2026-10-13 (no revision log).
 - **Actor**: who made a write: `webapp`, `whatsapp` or `migration`.
 - **Agreements DB**: the SQLite source of truth for current agreement state, owned by denidin-app.
 - **Agreements API**: the bearer-authenticated HTTP API on denidin-app through which the webapp reads and writes the Agreements DB.
@@ -75,7 +75,7 @@ The Webapp UI will integrate this into the existing "Clients" tab, allowing user
 *   **User Story 1:** View Client Agreements & Components List
 *   **User Story 2:** Create & Edit Agreement & Components Data (Top-Level vs Component-Level, incl. create agreement and delete component)
 *   **User Story 3:** Manage Component Lifecycle (Pending / Active / Completed / Cancelled)
-*   **User Story 4:** View Revision History & Cross-Platform Consistency
+*   **User Story 4:** Cross-Platform Consistency (the revision-history view and log were removed 2026-10-13)
 *   **User Story 5:** WhatsApp Agreement Conversations (Flows 1–5 as numbered UATs)
 *   **User Story 6:** Clients-Tab Agreed Total (REQ-089-14)
 *   **User Story 7:** One-Time Migration of Existing Agreements (REQ-089-09..12)
@@ -101,7 +101,7 @@ The Webapp UI will integrate this into the existing "Clients" tab, allowing user
 - **REQ-089-07: Ledger Synchronization**  
   Any UI or WhatsApp write that creates a component, changes any field of a component (including wording-only edits) or changes a component's status (including by an agreement-level close cascade, REQ-089-06) MUST push a new event to the financial Ledger, produced by the Agreements DB write. Agreement-level changes (edits to payer, partner, partner %, and the agreement's own close/reopen) also write ledger events: one per component of the agreement, each carrying that component's full state with the agreement-level values. The event is `source_type=הסכם`, `event_subtype=יצירה`, and carries the component's full new state. Deleting a component (REQ-089-15) pushes a `source_type=הסכם`, `event_subtype=ביטול` event whose `reference` is the event_id of the component's original ledger event.
 - **REQ-089-08: Concurrency Strategy**  
-  The system MUST adopt a "last write wins" strategy if concurrent edits are made between the Webapp UI and the WhatsApp Bot. Revisions MUST be chronologically viewable.
+  The system MUST adopt a "last write wins" strategy if concurrent edits are made between the Webapp UI and the WhatsApp Bot. (The revision log originally required here was removed by human decision 2026-10-13: there is no revision history anywhere.)
 - **REQ-089-13: Hours-Worked Lines Stay Ledger-Only**  
   A `הסכם` ledger event with a non-null `hours` value is an hours-worked line, not an agreement component. Hours-worked lines MUST NOT enter the Agreements DB, by migration or by new captures, and keep being written to the ledger as today.
 - **REQ-089-14: Clients-Tab Agreed Total**  
@@ -117,7 +117,7 @@ The Webapp UI will integrate this into the existing "Clients" tab, allowing user
 
 - **Agreement (Top-Level)**: Represents the engagement container. Contains Client Name, Payer Name, Partner Name, Partner %, and an overall lifecycle status.
 - **Component (Child)**: Represents a distinct financial rule or trigger (e.g., Retainer, Success Fee). Contains Label, Description, Value (Amount/Percent), VAT Status, Trigger Condition, and its own lifecycle status.
-- **Agreement Revision**: A historical snapshot of an Agreement or Component. Created upon any mutation (via UI or Bot).
+- ~~**Agreement Revision**~~: removed 2026-10-13 (no revision log).
 - **Hours-Worked Line** *(not an entity of the Agreements DB)*: A `הסכם` ledger event with `hours` set. Lives only in the ledger (REQ-089-13).
 
 ---

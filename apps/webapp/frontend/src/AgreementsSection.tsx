@@ -20,14 +20,20 @@ import {
 } from "./api";
 import { Button, Field, IconButton } from "./ui";
 
-const AGREEMENT_STATUS_LABEL: Record<string, string> = { Active: "פעיל", Completed: "הושלם", Cancelled: "בוטל" };
-const COMPONENT_STATUS_LABEL: Record<string, string> = {
-  Pending: "ממתין", Active: "פעיל", Completed: "הושלם", Cancelled: "בוטל",
-};
-const STATUS_COLOR: Record<string, string> = {
-  Pending: "#eab308", Active: "#38bdf8", Completed: "#10b981", Cancelled: "#888888",
-};
-
+// One status vocabulary for agreements and components (human decision 2026-10-13):
+// Pending = gray "לא פעיל", Active = green "פעיל", Completed = light blue "סגור", Cancelled = light red "מבוטל".
+const STATUS_LABEL: Record<string, string> = { Pending: "לא פעיל", Active: "פעיל", Completed: "סגור", Cancelled: "מבוטל" };
+const AGREEMENT_STATUS_LABEL = STATUS_LABEL;
+const COMPONENT_STATUS_LABEL = STATUS_LABEL;
+function statusColors(theme: Theme, status: string): { color: string; background: string } {
+  const dark = theme.name === "dark";
+  switch (status) {
+    case "Active": return { color: "#ffffff", background: dark ? "#2f8f68" : "#1c7c54" };
+    case "Completed": return dark ? { color: "#8ab8ff", background: "#1f3556" } : { color: "#2563b8", background: "#dbeafe" };
+    case "Cancelled": return dark ? { color: "#ff9b9b", background: "#4a2626" } : { color: "#b23b3b", background: "#fde2e2" };
+    default: return dark ? { color: "#d0d8d4", background: "#3a4440" } : { color: "#4a5651", background: "#e3e6e5" };
+  }
+}
 // Icon-button colour tones (Feature 089 UI decision, 2026-10-13). "green" is IconButton's default
 // (the same fill as refresh/settings); the others override glyph colour and fill.
 type Tone = { color?: string; background?: string };
@@ -99,11 +105,14 @@ export function vatText(c: AgreementComponent): string {
   return `מע״מ: ${raw}`;
 }
 
-function StatusBadge({ status, label, testID }: { status: string; label: string; testID: string }) {
+function StatusBadge({ status, label, testID, theme }: { status: string; label: string; testID: string; theme: Theme }) {
+  const { color, background } = statusColors(theme, status);
   return (
-    <Text testID={testID} style={{ color: STATUS_COLOR[status], fontWeight: "700", fontSize: 12 }}>
-      {label}
-    </Text>
+    <View style={{ backgroundColor: background, borderRadius: 6, paddingVertical: 2, paddingHorizontal: 10 }}>
+      <Text testID={testID} style={{ color, fontWeight: "700", fontSize: 12 }}>
+        {label}
+      </Text>
+    </View>
   );
 }
 
@@ -258,12 +267,12 @@ function ComponentRow({
         <Text testID={`component-amount-${key}`} style={{ color: theme.text }}>{amountText(component)}</Text>
         <Text testID={`component-vat-${key}`} style={{ color: theme.textDim, fontSize: 12, minWidth: 90 }}>{vatText(component)}</Text>
         <Text style={{ color: theme.textDim, fontSize: 12 }}>{component.trigger_condition || ""}</Text>
-        <StatusBadge status={status} label={COMPONENT_STATUS_LABEL[status]} testID={`component-status-${key}`} />
+        <StatusBadge status={status} label={COMPONENT_STATUS_LABEL[status]} testID={`component-status-${key}`} theme={theme} />
         <View style={{ flexDirection: "row", gap: 6, alignItems: "center", marginStart: "auto" as any }}>
           <IconButton icon="pen" title="עריכת רכיב" theme={theme} disabled={component.locked} testID={`component-edit-${key}`}
                       onPress={() => setEditing(true)} {...tone.blue} />
-          <Button label="מחק" theme={theme} variant="ghost" disabled={component.locked} testID={`component-delete-${key}`}
-                  onPress={() => setConfirmDelete(true)} />
+          <IconButton icon="trash" title="מחיקת רכיב" theme={theme} disabled={component.locked} testID={`component-delete-${key}`}
+                      onPress={() => setConfirmDelete(true)} {...tone.blue} />
           {status === "Pending" && agreementActive ? (
             <Button label="סמן פעיל" theme={theme} variant="ghost" testID={`component-activate-${key}`} onPress={() => act("activate")} />
           ) : null}
@@ -326,7 +335,7 @@ function AgreementCard({
       <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
         <Text testID={`agreement-title-${id}`} style={{ color: theme.text, fontWeight: "800" }}>{agreement.title}</Text>
         <Text style={{ color: theme.textDim, fontSize: 11 }}>{id}</Text>
-        <StatusBadge status={agreement.status} label={AGREEMENT_STATUS_LABEL[agreement.status]} testID={`agreement-status-${id}`} />
+        <StatusBadge status={agreement.status} label={AGREEMENT_STATUS_LABEL[agreement.status]} testID={`agreement-status-${id}`} theme={theme} />
         <View style={{ flexDirection: "row", gap: 6, alignItems: "center", marginStart: "auto" as any }}>
           <IconButton icon="pen" title="עריכת הסכם" theme={theme} testID={`agreement-edit-${id}`}
                       onPress={() => setEditing(true)} {...tone.green} />

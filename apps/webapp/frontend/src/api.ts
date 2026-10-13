@@ -263,15 +263,6 @@ export interface Agreement {
   status: AgreementStatus;
   components: AgreementComponent[];
 }
-export interface AgreementRevision {
-  revision_id: number;
-  created_at: string;
-  actor: "webapp" | "whatsapp";
-  action: string;
-  component_key: string | null;
-  snapshot: Record<string, any>;
-  changed: Record<string, any>;
-}
 export class AgreementsApiError extends Error {
   code: string;
   fields: Record<string, string>;
@@ -298,9 +289,6 @@ async function agreementsCall(method: string, path: string, body?: Record<string
 
 export async function fetchClientAgreements(clientId: string): Promise<Agreement[]> {
   return (await agreementsCall("GET", `/api/clients/${encodeURIComponent(clientId)}/agreements`)).agreements;
-}
-export async function fetchAgreementRevisions(agreementId: string): Promise<AgreementRevision[]> {
-  return (await agreementsCall("GET", `/api/agreements/${encodeURIComponent(agreementId)}/revisions`)).revisions;
 }
 export async function createAgreement(body: Record<string, unknown>): Promise<Agreement> {
   return (await agreementsCall("POST", "/api/agreements", body)).agreement;

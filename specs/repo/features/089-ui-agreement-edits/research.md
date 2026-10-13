@@ -109,16 +109,16 @@ the agreement-level values and the agreement status. The current schema cannot c
   test may assert on the `schema_version` value.
 - **Delete** keeps its own shape: `הסכם`/`ביטול` with `reference` = the component's original
   event_id (stored on the component row as `origin_event_id`).
-- **Idempotent edits**: a save that changes nothing still writes a revision? **Decision**: no. A
-  save whose resulting state equals the current state is a no-op (no revision, no ledger event,
+- **Idempotent edits**: a save that changes nothing still writes anything? **Decision**: no. A
+  save whose resulting state equals the current state is a no-op (no ledger event,
   returns the current state). Avoids duplicate events from double clicks.
 
 ## R6. Concurrency and failure
 
 - **Last write wins** (REQ-089-08): every write runs in one transaction under a manager-level
-  lock; no version precondition, no 409. The newest revision is the current state.
+  lock; no version precondition, no 409. The DB row is the current state.
 - **DB commit first, then ledger events** (REQ-089-01/07). DB-ok/ledger-failed is out of scope
-  per the 2026-10-05 clarification; the manager logs it at ERROR with the revision id so it is at
+  per the 2026-10-05 clarification; the manager logs it at ERROR so it is at
   least findable, and builds nothing more.
 - Event-id allocation: `LedgerEventManager._next_seq` is per-minute; a cascade writes N events in
   one request, so the manager's write lock must wrap the ledger writes too. Covered by an

@@ -167,14 +167,6 @@ class TestWritesAndErrors:
         assert {c["status"] for c in data["components"]} == {"Cancelled"}
         assert all(c["locked"] for c in data["components"])
 
-    def test_revisions_are_chronological_and_changed_marks_edits(self, client):
-        agreement_id = _new_agreement(client)["agreement"]["agreement_id"]
-        client.patch(f"/agreements/{agreement_id}", headers=AUTH, json={"actor": "webapp", "payer_name": "חברה"})
-        revisions = client.get(f"/agreements/{agreement_id}/revisions", headers=AUTH).json()["revisions"]
-        assert [r["action"] for r in revisions][:1] == ["create_agreement"]
-        assert revisions[-1]["action"] == "edit_agreement"
-        assert json.dumps(revisions[-1]["changed"], ensure_ascii=False)
-
     def test_ledger_busy_is_503_and_writes_nothing(self, client, manager):
         """Fill this minute's ten `הסכם` event-id slots; a write needing one more is refused
         whole (human decision 2026-10-09), and nothing lands in the DB."""
@@ -201,7 +193,6 @@ class TestDeleteAgreement:
         assert response.status_code == 200
         assert response.json() == {"deleted": True, "agreement_id": agreement_id}
         assert client.get(f"/agreements/{agreement_id}", headers=AUTH).status_code == 404
-        assert client.get(f"/agreements/{agreement_id}/revisions", headers=AUTH).status_code == 404
         assert client.get("/agreements", params={"client_name": "ישראל ישראלי"}, headers=AUTH).json()["agreements"] == []
         assert client.get("/agreements/totals", headers=AUTH).json()["totals"] == {}
 

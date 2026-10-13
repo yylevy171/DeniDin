@@ -1,6 +1,6 @@
 """
 Unit tests for AgreementsManager (Feature 089, T007-T009): the Agreements DB, the component
-state machine, the agreement-close cascade, revisions, and the ledger events each write
+state machine, the agreement-close cascade, and the ledger events each write
 produces. Runs on a real LedgerEventManager over a throwaway data root (no mocks).
 
 Deliberately never asserts on the ledger's schema_version value (CLAUDE.md).
@@ -124,13 +124,13 @@ class TestEditing:
         assert len(ids) == 1 and len(_events(mgr)) == before + 1
         assert _events(mgr)[-1]["description"] == "נוסח חדש"
 
-    def test_no_op_save_creates_no_revision_and_no_event(self, mgr):
+    def test_no_op_save_creates_no_event(self, mgr):
         agreement, _ = _create(mgr)
         aid = agreement["agreement_id"]
         key = _by_label(agreement, "ריטיינר")["component_key"]
-        revisions, events = len(mgr.revisions(aid)), len(_events(mgr))
+        events = len(_events(mgr))
         _, ids = mgr.edit_component(aid, key, {"amount": 5000}, "webapp")
-        assert ids == [] and len(mgr.revisions(aid)) == revisions and len(_events(mgr)) == events
+        assert ids == [] and len(_events(mgr)) == events
 
     def test_rename_label_updates_component_id_and_rejects_duplicates(self, mgr):
         agreement, _ = _create(mgr)
@@ -307,27 +307,7 @@ class TestAgreementCloseCascade:
             mgr.set_agreement_status(aid, "cancel", "webapp")
 
 
-class TestRevisionsAndLedger:
-    def test_every_mutation_writes_one_revision_with_actor_and_event_ids(self, mgr):
-        agreement, create_ids = _create(mgr)
-        aid = agreement["agreement_id"]
-        key = _by_label(agreement, "ריטיינר")["component_key"]
-        _, edit_ids = mgr.edit_component(aid, key, {"amount": 6000}, "whatsapp")
-        revisions = mgr.revisions(aid)
-        assert [r["action"] for r in revisions] == ["create_agreement", "edit_component"]
-        assert [r["actor"] for r in revisions] == ["webapp", "whatsapp"]
-        assert revisions[0]["ledger_event_ids"] == create_ids
-        assert revisions[1]["ledger_event_ids"] == edit_ids
-        assert revisions[1]["changed"] == {"amount": [5000, 6000]}
-        assert revisions[1]["snapshot"]["amount"] == 6000
-        assert revisions[0]["created_at"] <= revisions[1]["created_at"]
-
-    def test_revisions_survive_component_delete(self, mgr):
-        agreement, _ = _create(mgr)
-        key = _by_label(agreement, "ריטיינר")["component_key"]
-        mgr.delete_component(agreement["agreement_id"], key, "webapp")
-        assert mgr.revisions(agreement["agreement_id"])[-1]["action"] == "delete_component"
-
+class TestLedger:
     def test_create_event_carries_full_component_and_agreement_state(self, mgr):
         _create(mgr, payer_name="ההסתדרות", partner_name="עו״ד כהן", partner_percent=25)
         event = next(e for e in _events(mgr) if e["component_label"] == "שכר הצלחה")
@@ -363,9 +343,8 @@ class TestRevisionsAndLedger:
         for t in threads:
             t.join()
         assert not errors
-        revisions = mgr.revisions(aid)
-        last = [r for r in revisions if r["action"] == "edit_component"][-1]
-        assert _by_label(mgr.get_agreement(aid), "ריטיינר")["amount"] == last["snapshot"]["amount"]
+        # last write wins: the amount is one of the values written, never a torn/lost state
+        assert _by_label(mgr.get_agreement(aid), "ריטיינר")["amount"] in {1000 + i for i in range(8)}
 
 
 class TestCreateFromCapture:
@@ -425,12 +404,12 @@ class TestLedgerCapacity:
         agreement, _ = _create(mgr, components=[{"label": f"רכיב {i}", "amount": 100} for i in range(6)],
                                message_timestamp=BASE_TS)
         aid = agreement["agreement_id"]
-        revisions, events = len(mgr.revisions(aid)), len(_events(mgr))
+        events = len(_events(mgr))
         with pytest.raises(LedgerCapacityError) as exc:
             mgr.set_agreement_status(aid, "complete", "webapp", **at(0))   # same minute: 6 + 6 > 10
         assert exc.value.code == "ledger_busy"
         assert mgr.get_agreement(aid)["status"] == "Active"
-        assert len(mgr.revisions(aid)) == revisions and len(_events(mgr)) == events
+        assert len(_events(mgr)) == events
         mgr.set_agreement_status(aid, "complete", "webapp", **at(1))        # next minute: fine
         assert mgr.get_agreement(aid)["status"] == "Completed"
 
@@ -453,8 +432,6 @@ class TestSoftDelete:
         mgr.delete_agreement(agreement_id, "webapp")
         with pytest.raises(NotFoundError):
             mgr.get_agreement(agreement_id)
-        with pytest.raises(NotFoundError):
-            mgr.revisions(agreement_id)
         assert mgr.find_agreements("ישראל ישראלי") == []
         assert mgr.list_agreements() == []
         assert mgr.totals() == {}
@@ -465,7 +442,6 @@ class TestSoftDelete:
         mgr.delete_agreement(agreement_id, "webapp")
         assert self._rows(mgr, "agreements", "agreement_id = ?", (agreement_id,)) == [(0,)]
         assert self._rows(mgr, "components", "agreement_id = ?", (agreement_id,)) == [(0,), (0,)]
-        assert len(self._rows(mgr, "revisions", "agreement_id = ?", (agreement_id,))) >= 2  # create + delete
 
     def test_delete_writes_no_ledger_events(self, mgr):
         agreement, _ = _create(mgr)
@@ -504,14 +480,13 @@ class TestSoftDelete:
         again, _ = mgr.add_component(agreement["agreement_id"], dict(RETAINER), "webapp")
         assert "ריטיינר" in [c["label"] for c in again["components"]]
 
-    def test_same_agreement_id_can_be_created_again_after_a_delete_with_a_clean_history(self, mgr):
+    def test_same_agreement_id_can_be_created_again_after_a_delete(self, mgr):
         first, _ = _create(mgr)
         agreement_id = first["agreement_id"]
         mgr.delete_agreement(agreement_id, "webapp")
         second, _ = _create(mgr)                      # same client + title -> same agreement_id
         assert second["agreement_id"] == agreement_id
         assert [c["label"] for c in second["components"]] == ["ריטיינר", "שכר הצלחה"]
-        assert [r["action"] for r in mgr.revisions(agreement_id)] == ["create_agreement"]
         assert len(self._rows(mgr, "agreements", "agreement_id = ?", (agreement_id,))) == 2
         assert sorted(r[0] for r in self._rows(mgr, "agreements", "agreement_id = ?", (agreement_id,))) == [0, 1]
         # edits hit only the live agreement

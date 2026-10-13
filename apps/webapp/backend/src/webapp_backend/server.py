@@ -316,8 +316,6 @@ def build_app(
             "GET", "/agreements", params={"client_name": request.path_params["client_id"]}
         )
 
-    async def agreement_revisions(request: Request) -> JSONResponse:
-        return await _agreements_call("GET", f"/agreements/{request.path_params['agreement_id']}/revisions")
 
     async def agreement_create(request: Request) -> JSONResponse:
         return await _agreements_call("POST", "/agreements", body=await _json_body(request))
@@ -376,7 +374,6 @@ def build_app(
             Route("/api/clients/{client_id}/agreements", client_agreements, methods=["GET"]),
             Route("/api/agreements", agreement_create, methods=["POST"]),
             Route("/api/agreements/{agreement_id}", agreement_edit, methods=["PATCH"]),
-            Route("/api/agreements/{agreement_id}/revisions", agreement_revisions, methods=["GET"]),
             Route("/api/agreements/{agreement_id}/status", agreement_status, methods=["POST"]),
             Route("/api/agreements/{agreement_id}/components", component_add, methods=["POST"]),
             Route("/api/agreements/{agreement_id}/components/{component_key}", component_edit, methods=["PATCH"]),

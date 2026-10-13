@@ -81,7 +81,7 @@
 
 - [x] T023 **A** [US4] Backend integration tests: `GET /api/agreements/{id}/revisions` proxy, chronological order, actor shown
 - [x] T024 **B** [US4] (blocked on T023 approval) Proxy route in `server.py`
-- [x] T025 [P] [US4] Frontend: "Revision History" timeline in the expanded agreement (date, actor, changed values) - **REMOVED 2026-10-13 by human decision**; revisions stay in the DB and the API only
+- [x] T025 [P] [US4] Frontend: "Revision History" timeline in the expanded agreement (date, actor, changed values) - **REMOVED 2026-10-13 by human decision** (the whole revision log was removed, not just the screen)
 
 ---
 
@@ -190,5 +190,5 @@ Phase 10 needs every story done; Phase 11 after Phase 10.
 - Icon buttons (tooltip carries the Hebrew label): edit = pen, complete = check, cancel = X, add component = plus.
   Agreement: edit green (as refresh/settings), complete dark-green glyph, cancel red glyph, add-component green plus,
   all on the soft-green fill. Component: edit/complete/cancel all blue glyph on light blue. New agreement: black plus on gray.
-- The revision-history view is removed from the UI (UAT 4.1); API and DB revisions unchanged.
+- The revision log is removed entirely (UI, API route, webapp proxy, manager recording, `revisions` table); UAT 4.1 is gone. Webapp status boxes: Pending gray `לא פעיל`, Active green `פעיל`, Completed light blue `סגור`, Cancelled light red `מבוטל`, same for agreements and components. Component delete is a trash-can icon.
 - Still text buttons, pending a decision: delete component (מחק), mark component active (סמן פעיל), reopen (פתח מחדש).

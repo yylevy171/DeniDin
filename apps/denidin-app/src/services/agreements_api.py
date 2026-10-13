@@ -107,8 +107,6 @@ def build_app(manager: AgreementsManager, auth_token: str) -> Starlette:
     async def get_one(request: Request) -> Response:
         return JSONResponse({"agreement": manager.get_agreement(request.path_params["agreement_id"])})
 
-    async def revisions(request: Request) -> Response:
-        return JSONResponse({"revisions": manager.revisions(request.path_params["agreement_id"])})
 
     async def create(request: Request) -> Response:
         body = await _json_body(request)
@@ -168,7 +166,6 @@ def build_app(manager: AgreementsManager, auth_token: str) -> Starlette:
         Route("/agreements/{agreement_id}", guarded(get_one), methods=["GET"]),
         Route("/agreements/{agreement_id}", guarded(edit), methods=["PATCH"]),
         Route("/agreements/{agreement_id}", guarded(delete_agreement), methods=["DELETE"]),
-        Route("/agreements/{agreement_id}/revisions", guarded(revisions), methods=["GET"]),
         Route("/agreements/{agreement_id}/status", guarded(agreement_status), methods=["POST"]),
         Route("/agreements/{agreement_id}/components", guarded(add_component), methods=["POST"]),
         Route("/agreements/{agreement_id}/components/{component_key}", guarded(edit_component), methods=["PATCH"]),

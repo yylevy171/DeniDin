@@ -1,11 +1,11 @@
 /**
  * Feature 089 — Agreements section of the Clients tab. One test per APPROVED acceptance
  * scenario tagged [UI] in specs/repo/features/089-ui-agreement-edits/user-stories.md
- * (UAT 1.1-1.4, 2.1-2.6, 3.1-3.6, 4.1, 6.1, plus the UI halves of 4.2 / 4.3).
+ * (UAT 1.1-1.4, 2.1-2.6, 3.1-3.6, 6.1, plus the UI halves of 4.2 / 4.3; 4.1 was removed with the history view).
  *
  * Real stack, no stand-in server: see playwright.agreements.config.ts. Every test that changes
  * data also asserts the three things the UAT preamble requires: the Agreements DB (read back
- * through the real API), a new revision, and the ledger effect on the real ledger files - and
+ * through the real API) and the ledger effect on the real ledger files - and
  * that nothing ELSE was written to the ledger.
  *
  * Run: npx playwright test -c playwright.agreements.config.ts
@@ -50,12 +50,6 @@ async function agreementsOf(request: APIRequestContext, client: string): Promise
     headers: { Authorization: `Bearer ${await token(request)}` },
   });
   return (await r.json()).agreements;
-}
-async function revisionsOf(request: APIRequestContext, agreementId: string): Promise<any[]> {
-  const r = await request.get(`${AGREEMENTS_API}/api/agreements/${encodeURIComponent(agreementId)}/revisions`, {
-    headers: { Authorization: `Bearer ${await token(request)}` },
-  });
-  return (await r.json()).revisions;
 }
 const comp = (agreement: any, label: string) => agreement.components.find((c: any) => c.label === label);
 const byTitle = (list: any[], title: string) => list.find((a) => a.title === title);
@@ -114,7 +108,7 @@ test.describe("US1 - view agreements and components", () => {
     await expect(page.getByTestId(`component-amount-${retainer}`)).toContainText("5,000");
     await expect(page.getByTestId(`component-status-${retainer}`)).toHaveText("פעיל");
     const success = comp(a, "שכר הצלחה").component_key;
-    await expect(page.getByTestId(`component-status-${success}`)).toHaveText("ממתין");
+    await expect(page.getByTestId(`component-status-${success}`)).toHaveText("לא פעיל");
     expect(newEvents()).toHaveLength(0);
   });
 
@@ -158,8 +152,8 @@ test.describe("US6 - agreed total follows the Agreements DB", () => {
 });
 
 // ================================================================ User Story 4 =============
-test.describe("US4 - revision history and cross-channel consistency", () => {
-  test("UAT 4.1 / 4.2 (UI half) - the DB holds the UI edit and its revisions are in order (no history view)", async ({ page, request }) => {
+test.describe("US4 - cross-channel consistency (the revision-history view was removed 2026-10-13)", () => {
+  test("UAT 4.2 (UI half) - the DB holds the UI edit and exactly one ledger event is written", async ({ page, request }) => {
     await openClient(page, C.view);
     const a = byTitle(await agreementsOf(request, C.view), M.titles.view);
     const key = comp(a, "ריטיינר").component_key;
@@ -167,15 +161,8 @@ test.describe("US4 - revision history and cross-channel consistency", () => {
     await page.getByTestId(`component-edit-${key}-amount`).fill("1000");
     await page.getByTestId(`component-edit-${key}-save`).click();
     await expect(page.getByTestId(`component-amount-${key}`)).toContainText("1,000");
-    // 4.2: the DB (what the bot reads) now holds 1,000 from the latest revision
+    // 4.2: the DB (what the bot reads) now holds 1,000
     expect(comp(byTitle(await agreementsOf(request, C.view), M.titles.view), "ריטיינר").amount).toBe(1000);
-    // The revision history is no longer shown in the UI (human decision 2026-10-13); the API still
-    // records it. The chronological order is checked on the revisions the API returns.
-    const revisions = await revisionsOf(request, a.agreement_id);
-    const actors = revisions.map((r) => r.actor);
-    expect(actors).toContain("whatsapp");
-    expect(actors.indexOf("whatsapp")).toBeLessThan(actors.length - 1);
-    expect(actors[actors.length - 1]).toBe("webapp");
     const events = newEvents();
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ component_label: "ריטיינר", amount: 1000 });
@@ -187,7 +174,6 @@ test.describe("US2 - edit agreements and components", () => {
   test("UAT 2.1 - the agreement edit dialog exposes only payer / partner / partner %", async ({ page, request }) => {
     await openClient(page, C.edit);
     const a = (await agreementsOf(request, C.edit))[0];
-    const revisionsBefore = (await revisionsOf(request, a.agreement_id)).length;
     await btn(page, `agreement-edit-${a.agreement_id}`).click();
     await expect(page.getByTestId("agreement-edit-form")).toBeVisible();
     await expect(page.getByTestId("agreement-edit-title")).toHaveCount(0);
@@ -199,7 +185,7 @@ test.describe("US2 - edit agreements and components", () => {
     await expect(page.getByTestId(`agreement-payer-${a.agreement_id}`)).toContainText("חברה בע״מ");
     const after = (await agreementsOf(request, C.edit))[0];
     expect(after.components).toEqual(a.components); // components untouched
-    expect((await revisionsOf(request, a.agreement_id)).length).toBe(revisionsBefore + 1);
+    expect(after).toMatchObject({ payer_name: "חברה בע״מ", partner_name: "עו״ד לוי", partner_percent: 30 });
     const events = newEvents();
     expect(events).toHaveLength(a.components.length); // one per component
     for (const e of events) expect(e).toMatchObject({ payer_name: "חברה בע״מ", split_partner: "עו״ד לוי", split_percent: 30 });
@@ -350,7 +336,7 @@ test.describe("US3 - component and agreement lifecycle", () => {
     const a = (await agreementsOf(request, C.edit))[0];
     const key = comp(a, "ריטיינר").component_key;
     await btn(page, `component-complete-${key}`).click();
-    await expect(page.getByTestId(`component-status-${key}`)).toHaveText("הושלם");
+    await expect(page.getByTestId(`component-status-${key}`)).toHaveText("סגור");
     await expectDisabled(page, `component-edit-${key}`);
     const events = newEvents();
     expect(events).toHaveLength(1);
@@ -362,7 +348,7 @@ test.describe("US3 - component and agreement lifecycle", () => {
     const a = (await agreementsOf(request, C.edit))[0];
     const key = comp(a, "תוספת דיון").component_key;
     await btn(page, `component-cancel-${key}`).click();
-    await expect(page.getByTestId(`component-status-${key}`)).toHaveText("בוטל");
+    await expect(page.getByTestId(`component-status-${key}`)).toHaveText("מבוטל");
     await expectDisabled(page, `component-edit-${key}`);
     const events = newEvents();
     expect(events).toHaveLength(1);
@@ -373,7 +359,7 @@ test.describe("US3 - component and agreement lifecycle", () => {
     await openClient(page, C.cascade);
     const a = (await agreementsOf(request, C.cascade))[0];
     await btn(page, `agreement-complete-${a.agreement_id}`).click();
-    await expect(page.getByTestId(`agreement-status-${a.agreement_id}`)).toHaveText("הושלם");
+    await expect(page.getByTestId(`agreement-status-${a.agreement_id}`)).toHaveText("סגור");
     const after = (await agreementsOf(request, C.cascade))[0];
     expect(after.status).toBe("Completed");
     expect(comp(after, "פעיל").status).toBe("Completed");  // Active -> Completed
@@ -423,7 +409,6 @@ test("UAT 4.3 (UI half) - an edit made elsewhere is what the UI shows after a re
   await showRow(page, C.view);
   await row(page, C.view).getByText(C.view, { exact: true }).first().click();
   await expect(page.getByTestId(`component-amount-${key}`)).toContainText("1,200");
-  const revisions = await revisionsOf(request, a.agreement_id);
-  expect(revisions[revisions.length - 1].snapshot.amount).toBe(1200);
+  expect(comp(byTitle(await agreementsOf(request, C.view), M.titles.view), "ריטיינר").amount).toBe(1200);
   expect(newEvents()).toHaveLength(1);
 });

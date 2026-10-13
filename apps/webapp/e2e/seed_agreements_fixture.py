@@ -111,7 +111,7 @@ def main() -> None:
         component("רכיב שבוטל", amount=2000),
     ], payer_name="ישראל ישראלי", partner_name="עו״ד כהן", partner_percent=25)
     set_status(view, "רכיב שבוטל", "cancel")
-    # a WhatsApp-sourced edit, for the revision history (UAT 4.1)
+    # a WhatsApp-sourced edit (UAT 4.3 reads the latest value)
     manager.edit_component(view["agreement_id"], key(view, "ריטיינר"), {"description": "ריטיינר חודשי (עודכן בוואטסאפ)"},
                            "whatsapp", message_timestamp=ts())
     ledger.add_ledger_events_from_call(
