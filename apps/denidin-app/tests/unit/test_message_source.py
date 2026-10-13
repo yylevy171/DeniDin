@@ -75,7 +75,8 @@ class _BotFactorySpy:
 
 def _config(instance_id="test-instance", token="test-token"):
     from types import SimpleNamespace
-    return SimpleNamespace(green_api_instance_id=instance_id, green_api_token=token)
+    return SimpleNamespace(green_api_instance_id=instance_id, green_api_token=token,
+                           green_api_host_mode='instance', green_api_media_host=None)
 
 
 class TestMessageSourceIsAnAbc:

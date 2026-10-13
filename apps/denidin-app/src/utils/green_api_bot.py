@@ -25,6 +25,22 @@ from src.utils.wire_log import audit_wire, debug_wire
 logger = get_logger(__name__)
 
 
+def instance_api_host(instance_id: Any) -> Optional[str]:
+    """Feature 101: the instance's own Green API host - `https://<first 4 digits of the instance
+    id>.api.greenapi.com` - or None when the id isn't a real one (placeholder/test ids), which
+    makes the library fall back to its own default.
+
+    The library's default, `https://api.green-api.com`, is a shared front door that went down
+    on 2026-10-11 while the instance hosts kept answering (prod's `7107.api.greenapi.com` returned
+    `authorized` the whole time). The prefix is verified for the API host only - the media host has
+    no such pattern (`7107.media.*` does not exist in DNS), hence `green_api_media_host` below.
+    """
+    text = str(instance_id)
+    if len(text) < 4 or not text.isdigit():
+        return None
+    return f"https://{text[:4]}.api.greenapi.com"
+
+
 def _notification_data_or_none(data: Any) -> Optional[dict]:
     """Returns `data` if it is a real notification payload (a dict), else None.
 
