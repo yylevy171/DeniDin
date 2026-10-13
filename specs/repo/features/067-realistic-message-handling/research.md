@@ -224,3 +224,17 @@ None (product owner, 2026-10-12). Rollback is the previous release.
   `ledger_recognition_context_window_hours` from the session (every stored user message, individually),
   so one reply covering several merged user messages is recognized from all of them. No change needed.
 - **V1 - Gate Zero (user item beside `function_call_output`)**: VERIFIED 2026-10-12 - the Responses API accepts a user message together with a `function_call_output` under `previous_response_id`, and the model reads it (`tests/billed/test_067_gate_zero.py` PASSED). Fallback D4 not needed.
+
+## Gate Zero - response chaining (2026-10-13, real calls, `tests/billed/test_067_gate_zero_chain.py`)
+Needed by the "no turn" redesign (no-turn-redesign.md, decision 10). Observed on `config.ai_model`:
+- **C1 confirmed**: a chain continues across separate calls even when `instructions` change between them
+  (the model recalled a word from the first call). Instructions are NOT carried by the chain.
+- **C2 confirmed, with a cost**: on a ~4,000-token chain, an unchanged-instructions continuation was served from
+  cache (4,021 of 4,039 input tokens cached); a continuation with CHANGED instructions got 0 cached tokens of 4,061.
+  Every call that follows a flow/capability load (which rewrites `instructions`) therefore pays full input price for
+  the whole chain, so the longer the chain, the more such a call costs.
+- **C3 confirmed**: `truncation="auto"` is accepted on a continued call.
+- **C4 confirmed**: an unknown/expired id fails with HTTP 400, `BadRequestError`, `code=previous_response_not_found`,
+  `param=previous_response_id` - the exact signal the "start a new chain from the stored window" fallback must catch.
+- NOT verifiable with a short probe: the retention period of stored responses (believed ~30 days; the idle reset
+  keeps chains far younger than that, and C4's fallback covers an expired id).
