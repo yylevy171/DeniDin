@@ -87,9 +87,9 @@ PLAIN_TEXT_REPLY_REMINDER = (
     "To reply, call send_to_user (or approval_with_yes_no_buttons for a yes/no approval)."
 )
 
-# Hebrew label per MediaFileManager.validate_format result, used in the
-# first-round "[מדיה מצורפת: ...]" marker of a media turn.
-MEDIA_TYPE_LABELS = {"image": "תמונה", "pdf": "PDF", "docx": "מסמך Word"}
+# English label per MediaFileManager.validate_format result, used in the
+# first-round "[ATTACHED MEDIA: ...]" marker of a media turn.
+MEDIA_TYPE_LABELS = {"image": "image", "pdf": "PDF", "docx": "Word document"}
 
 _DEFAULT_BACKBONE_CONFIG = {
     "file": "backbone.md",
@@ -615,9 +615,9 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
         cap_media_analysis and call analyze_media, which does the real extraction."""
         if request.media is None:
             return request.user_prompt
-        type_label = MEDIA_TYPE_LABELS.get(request.media.media_type or "", "קובץ")
+        type_label = MEDIA_TYPE_LABELS.get(request.media.media_type or "", "file")
         filename = request.media.filename or ""
-        marker = f"[מדיה מצורפת: {type_label}, קובץ: {filename}]"
+        marker = f"[ATTACHED MEDIA: {type_label}, file: {filename}]"
         return f"{marker}\n{request.user_prompt}" if request.user_prompt else marker
 
     def _run_resolution_loop(self, request: AIRequest, turn_context: Dict[str, Any]) -> str:

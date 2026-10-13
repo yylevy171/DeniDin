@@ -263,7 +263,7 @@ def test_media_analysis_reads_the_file_attached_to_the_request(env):
                           filename="slip.jpg", media_type="image")
     env.make().handle_message(request, chat_id="chat1", user_role="godfather")
     kws = _sent_kwargs(env)
-    assert kws[0]["input"][-1]["content"] == "[מדיה מצורפת: תמונה, קובץ: slip.jpg]\nמה זה"
+    assert kws[0]["input"][-1]["content"] == "[ATTACHED MEDIA: image, file: slip.jpg]\nמה זה"
     assert "analyze_media" in _tool_names(kws[1])
     assert kws[2]["input"][0]["content"][1]["type"] == "input_image"  # the vision call got the file
     assert "קבלה 500" in kws[3]["input"][0]["output"]

@@ -1147,7 +1147,7 @@ def _process_media_message_via_backbone(notification: Notification, message, kee
 
     media = Media(data=content, mime_type=mime_type, filename=filename, media_type=media_type)
     # user_prompt is the caption only ("" when none) - the backbone prepends the
-    # "[מדיה מצורפת: ...]" marker itself. The turn runs on config.ai_model like any
+    # "[ATTACHED MEDIA: ...]" marker itself. The turn runs on config.ai_model like any
     # other turn; only analyze_media's extractor uses config.ai_vision_model.
     request = AIRequest(
         user_prompt=caption,

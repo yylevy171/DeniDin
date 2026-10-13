@@ -1,5 +1,5 @@
 """Unit tests (Feature 063, 2026-09-30): the Backbone media turn -
-the first-round "[מדיה מצורפת: ...]" marker, analyze_media filling the extracted
+the first-round "[ATTACHED MEDIA: ...]" marker, analyze_media filling the extracted
 text into the already-stored media message (same field the legacy MediaHandler
 path sets), record_planning_status storing its note the moment it's recorded,
 and MediaFileManager.store_media."""
@@ -72,15 +72,15 @@ class TestFirstRoundMarker:
 
     def test_media_turn_with_caption_prefixes_the_marker(self):
         content = Backbone._first_round_user_content(_request("מה זה?", _media()))
-        assert content == "[מדיה מצורפת: תמונה, קובץ: receipt.jpg]\nמה זה?"
+        assert content == "[ATTACHED MEDIA: image, file: receipt.jpg]\nמה זה?"
 
     def test_media_turn_without_caption_is_the_marker_only(self):
         content = Backbone._first_round_user_content(_request("", _media("pdf", "agreement.pdf")))
-        assert content == "[מדיה מצורפת: PDF, קובץ: agreement.pdf]"
+        assert content == "[ATTACHED MEDIA: PDF, file: agreement.pdf]"
 
     def test_docx_label(self):
         content = Backbone._first_round_user_content(_request("", _media("docx", "a.docx")))
-        assert content.startswith("[מדיה מצורפת: מסמך Word,")
+        assert content.startswith("[ATTACHED MEDIA: Word document,")
 
 
 class TestAnalyzeMediaFillsExtractedTextIntoTheStoredMessage:
