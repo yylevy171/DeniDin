@@ -10,13 +10,26 @@ live tunnel (the shared `denidin_app` fixture fails fast if it is down).
 import pytest
 
 from tests.billed._067_harness import WireCapture, intake_rig
-from tests.billed.denidin_mcp_e2e_helpers import ADMIN_ISOLATED_CHAT_ID, GODFATHER_CHAT_ID
+from tests.billed.denidin_mcp_e2e_helpers import (
+    ADMIN_ISOLATED_CHAT_ID, GODFATHER_CHAT_ID, _load_sandbox_clients, pick_existing_client,
+)
 
 pytestmark = pytest.mark.billed
 
 
 def _normalized(text: str) -> str:
     return (text or "").replace("₪", "").replace(",", "")
+
+
+def existing_client_name() -> str:
+    """A client that really exists in the Morning sandbox (the committed sandbox-client fixture)."""
+    return pick_existing_client()["name"]
+
+
+def assert_no_sandbox_client_named(first_name: str) -> None:
+    """Precondition for a scenario whose premise is "this client does not exist"."""
+    clients = [c["name"] for c in _load_sandbox_clients() if first_name in c["name"]]
+    assert not clients, f"the sandbox now has a client named like {first_name!r}: {clients} - pick another unknown name"
 
 
 def send_spaced(rig, texts, **who):
@@ -58,20 +71,26 @@ def test_a0_count_together_messages_sent_a_second_apart(denidin_app):
         assert rig.stored_user_messages() == [first] + later
 
 
-def test_a1_additive_messages_give_one_coherent_answer(denidin_app):
-    texts = ["תפיק לי חשבונית", "ללקוח דנה", "על 500 שקל"]
+def test_a1_additive_messages_end_with_a_question_about_the_unknown_client(denidin_app):
+    """The client's name arrives LAST, as the third message. The sandbox has no such client, so the
+    model - having read all three messages - asks about client דנה (to add her) instead of inventing."""
+    assert_no_sandbox_client_named("דנה")
+    texts = ["תפיק לי חשבונית", "על 500 שקל", "ללקוח דנה"]
     with intake_rig(denidin_app, ADMIN_ISOLATED_CHAT_ID) as rig:
         send_spaced(rig, texts)
         rig.wait_until_idle()
         assert_first_call_carried_only(rig, texts[0], texts[1:])
         assert_every_later_message_reached_the_model(rig, texts[1:])
         reply = rig.last_reply()
-        assert "דנה" in reply and "500" in _normalized(reply), reply
+        assert "דנה" in reply, reply  # the model asks about client דנה (to add her): it names her
+        created = [c for c in (denidin_app.last_response.mcp_calls or []) if c["name"].startswith("create_")]
+        assert not created, created  # nothing invented for an unknown client
         assert rig.stored_user_messages() == texts
 
 
 def test_a2_ten_messages_lose_nothing(denidin_app):
-    facts = ["אני רוצה להפיק חשבונית", "ללקוח דנה כהן", "על סך 1200 שקל", "עבור ייעוץ", "כולל מע״מ",
+    client = existing_client_name()
+    facts = ["אני רוצה להפיק חשבונית", f"ללקוח {client}", "על סך 1200 שקל", "עבור ייעוץ", "כולל מע״מ",
              "לתאריך היום", "שלח במייל", "שמור עותק", "בדוק שהפרטים נכונים", "ובסוף תבקש ממני אישור"]
     with intake_rig(denidin_app, ADMIN_ISOLATED_CHAT_ID) as rig:
         send_spaced(rig, facts)
@@ -85,7 +104,7 @@ def test_a2_ten_messages_lose_nothing(denidin_app):
 
 def test_a3_stop_after_a_request_creates_nothing(denidin_app):
     with intake_rig(denidin_app, GODFATHER_CHAT_ID) as rig:
-        send_spaced(rig, ["תפיק קבלה ללקוח דנה על 300 שקל", "עצור, אל תעשה את זה"])
+        send_spaced(rig, [f"תפיק קבלה ללקוח {existing_client_name()} על 300 שקל", "עצור, אל תעשה את זה"])
         rig.wait_until_idle()
         before = len(rig.sent_texts())
         send_spaced(rig, ["כן"])
@@ -97,7 +116,7 @@ def test_a3_stop_after_a_request_creates_nothing(denidin_app):
 
 def test_a4_message_during_an_approved_action_creates_exactly_one_document(denidin_app):
     with intake_rig(denidin_app, GODFATHER_CHAT_ID) as rig:
-        send_spaced(rig, ["תפיק חשבונית ללקוח דנה על 400 שקל כולל מע״מ עבור ייעוץ"])
+        send_spaced(rig, [f"תפיק חשבונית ללקוח {existing_client_name()} על 400 שקל כולל מע״מ עבור ייעוץ"])
         rig.wait_until_idle()
         send_spaced(rig, ["כן", "רגע, תבטל"])
         rig.wait_until_idle()
@@ -118,7 +137,7 @@ def test_a5_confusing_sequence_settles_on_dana_or_asks(denidin_app):
 def test_a6_group_second_member_detail_is_accounted_for(denidin_app):
     group = "120363000000000067@g.us"
     with intake_rig(denidin_app, group, sender=GODFATHER_CHAT_ID, sender_name="Avi") as rig:
-        rig.send_text("תפיק חשבונית ללקוח דנה")
+        rig.send_text(f"תפיק חשבונית ללקוח {existing_client_name()}")
         rig.pause(1.0)
         rig.send_text("על 700 שקל", sender=ADMIN_ISOLATED_CHAT_ID, sender_name="Bina")
         rig.wait_until_idle()
