@@ -20,6 +20,7 @@ from whatsapp_chatbot_python import Notification
 
 from src.utils.bounded_queue import BoundedQueue, QueueLimitExceeded, QueueSettings
 from src.utils.logger import get_logger
+from src.utils.wire_log import audit_wire, debug_wire
 
 logger = get_logger(__name__)
 
@@ -40,6 +41,7 @@ class PendingItem:
     chat_id: str
     id_message: str
     message: Optional[Any] = None  # WhatsAppMessage
+    inbound_logged: bool = False   # the raw webhook was wire-logged at receipt
 
 
 @dataclass
@@ -79,6 +81,7 @@ class IntakeCoordinator:
         the worker queue is full: the caller then drops the message WITHOUT storing it
         (REQ-RMH-033 - a full queue means something is very wrong)."""
         if not self._queue.has_room():
+            self._log_inbound(event)  # received, even though it is dropped
             self._queue.note_drop(str(event.get("idMessage", "?")))
             raise QueueLimitExceeded(f"queue {self._queue.name!r} is full")
 
@@ -86,9 +89,16 @@ class IntakeCoordinator:
         """Store the message if it is one of the stored types (raises if storing fails -
         the caller then does not acknowledge, REQ-RMH-021) and wrap it as a PendingItem."""
         event = notification.event
+        self._log_inbound(event)  # logged at receipt: a message merged at a hand-back never reaches a handler
         return PendingItem(
             notification=notification, type_message=_event_type(event), chat_id=_event_chat_id(event),
-            id_message=str(event.get("idMessage", "")), message=self._denidin.prestore(notification))
+            id_message=str(event.get("idMessage", "")), message=self._denidin.prestore(notification),
+            inbound_logged=True)
+
+    @staticmethod
+    def _log_inbound(event: dict) -> None:
+        audit_wire("whatsapp", "in", "webhook", event)
+        debug_wire("whatsapp", "in", "webhook", event)
 
     def submit(self, item: PendingItem) -> None:
         self._queue.put_or_raise(item, item_id=item.id_message)
@@ -107,6 +117,12 @@ class IntakeCoordinator:
         except queue.Empty:
             return None
         return self._current
+
+    def inbound_logged_for(self, notification: Notification) -> bool:
+        """Whether the item being handled now had its raw webhook wire-logged at receipt."""
+        current = self._current
+        return bool(current is not None and current.inbound_logged
+                    and current.id_message == str(notification.event.get("idMessage", "")))
 
     def prestored_for(self, notification: Notification) -> Optional[Any]:
         """The WhatsAppMessage the poller already stored for the item being handled now."""

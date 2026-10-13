@@ -164,3 +164,22 @@ def test_pending_item_for_unstored_type_has_no_message():
     item = coord.prepare(SimpleNamespace(event=_event("t1", "interactiveButtonsResponse")))
     assert isinstance(item, PendingItem) and item.message is None
 
+
+
+def test_inbound_webhook_is_wire_logged_at_receipt_and_the_handler_skips_its_copy(caplog):
+    coord = IntakeCoordinator(_denidin())
+    with caplog.at_level("INFO", logger="src.utils.wire_log"):
+        item = _submit(coord, "m1")
+    lines = [r.getMessage() for r in caplog.records if "context='webhook'" in r.getMessage()]
+    assert len(lines) == 1 and "m1" in lines[0] and item.inbound_logged
+    handled = coord.next_work_item(0.01)
+    assert coord.inbound_logged_for(handled.notification)  # the handler must not log it again
+
+
+def test_a_message_dropped_by_a_full_queue_is_still_logged_as_received(caplog):
+    coord = IntakeCoordinator(_denidin(worker_queue_max=1))
+    _submit(coord, "m1")
+    with caplog.at_level("INFO", logger="src.utils.wire_log"):
+        with pytest.raises(QueueLimitExceeded):
+            coord.check_room(_event("m2"))
+    assert any("m2" in r.getMessage() and "context='webhook'" in r.getMessage() for r in caplog.records)

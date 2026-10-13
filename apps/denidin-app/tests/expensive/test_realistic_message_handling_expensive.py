@@ -42,6 +42,7 @@ def http_server():
 def test_a8_image_sent_while_a_text_request_is_handled_is_analyzed_on_its_own(denidin_app, http_server):
     with intake_rig(denidin_app, GODFATHER_CHAT_ID) as rig:
         text = rig.send_text("מה השעה עכשיו?")
+        rig.pause(1.0)
         image = rig.send_image(_IMAGE, "", f"{http_server}/{_IMAGE}")
         rig.wait_until_idle(timeout=420)
         assert text._test_sent_messages, "the text request was not answered"

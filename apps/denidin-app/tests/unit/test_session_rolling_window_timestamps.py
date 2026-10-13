@@ -20,3 +20,17 @@ def test_default_window_is_unchanged_and_opt_in_prefixes_user_items_only(tmp_pat
         assert [i["role"] for i in stamped] == [i["role"] for i in plain]
     finally:
         sm.close()
+
+
+def test_before_message_id_leaves_out_that_message_and_every_newer_one(tmp_path):
+    sm = make_session_manager(storage_dir=str(tmp_path / "sessions"))
+    try:
+        seed_message(sm, CHAT, "user", "ישן", 1)
+        current = seed_message(sm, CHAT, "user", "הנוכחי", 0)
+        seed_message(sm, CHAT, "user", "חדש יותר", 0)
+        seed_message(sm, CHAT, "user", "חדש עוד יותר", 0)
+        window = sm.get_rolling_window(CHAT, before_message_id=current)
+        assert [i["content"] for i in window] == ["ישן"]
+        assert len(sm.get_rolling_window(CHAT)) == 4  # default unchanged
+    finally:
+        sm.close()

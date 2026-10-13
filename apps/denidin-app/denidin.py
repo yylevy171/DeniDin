@@ -1253,6 +1253,17 @@ def _process_media_message(notification: Notification) -> None:
         _process_conversational_message(notification, internal=True)
 
 
+def _log_inbound_webhook(notification: Notification) -> None:
+    """Wire-log the raw inbound webhook - unless it was already logged when the poller
+    received it (Feature 067: a message is logged at receipt, because one that joins the
+    model's work at a hand-back never reaches a handler)."""
+    intake = getattr(denidin_app, "intake", None) if denidin_app is not None else None
+    if intake is not None and intake.inbound_logged_for(notification):
+        return
+    audit_wire("whatsapp", "in", "webhook", notification.event)
+    debug_wire("whatsapp", "in", "webhook", notification.event)
+
+
 def handle_text_message(notification: Notification) -> None:
     """
     Handle incoming text messages from WhatsApp with comprehensive error handling.
@@ -1261,8 +1272,7 @@ def handle_text_message(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing message data
     """
-    audit_wire("whatsapp", "in", "webhook", notification.event)
-    debug_wire("whatsapp", "in", "webhook", notification.event)
+    _log_inbound_webhook(notification)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "text")
         return
@@ -1283,8 +1293,7 @@ def handle_contact_message(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing message data
     """
-    audit_wire("whatsapp", "in", "webhook", notification.event)
-    debug_wire("whatsapp", "in", "webhook", notification.event)
+    _log_inbound_webhook(notification)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "contact")
         return
@@ -1305,8 +1314,7 @@ def handle_contacts_array_message(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing message data
     """
-    audit_wire("whatsapp", "in", "webhook", notification.event)
-    debug_wire("whatsapp", "in", "webhook", notification.event)
+    _log_inbound_webhook(notification)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "contacts array")
         return
@@ -1323,8 +1331,7 @@ def handle_image_message(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing image data
     """
-    audit_wire("whatsapp", "in", "webhook", notification.event)
-    debug_wire("whatsapp", "in", "webhook", notification.event)
+    _log_inbound_webhook(notification)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "image")
         return
@@ -1340,8 +1347,7 @@ def handle_document_message(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing document data
     """
-    audit_wire("whatsapp", "in", "webhook", notification.event)
-    debug_wire("whatsapp", "in", "webhook", notification.event)
+    _log_inbound_webhook(notification)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "document")
         return
@@ -1357,8 +1363,7 @@ def handle_video_message(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing video data
     """
-    audit_wire("whatsapp", "in", "webhook", notification.event)
-    debug_wire("whatsapp", "in", "webhook", notification.event)
+    _log_inbound_webhook(notification)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "video")
         return
@@ -1418,8 +1423,7 @@ def handle_edited_message(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing the edit
     """
-    audit_wire("whatsapp", "in", "webhook", notification.event)
-    debug_wire("whatsapp", "in", "webhook", notification.event)
+    _log_inbound_webhook(notification)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "editedMessage")
         return
@@ -1444,8 +1448,7 @@ def handle_deleted_message(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing the deletion
     """
-    audit_wire("whatsapp", "in", "webhook", notification.event)
-    debug_wire("whatsapp", "in", "webhook", notification.event)
+    _log_inbound_webhook(notification)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "deletedMessage")
         return
@@ -1474,8 +1477,7 @@ def handle_ignored_message_default(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing message data
     """
-    audit_wire("whatsapp", "in", "webhook", notification.event)
-    debug_wire("whatsapp", "in", "webhook", notification.event)
+    _log_inbound_webhook(notification)
 def handle_button_tap(notification: Notification) -> None:
     """
     Feature 047: handle a WhatsApp interactive-buttons tap resolving a pending
@@ -1496,8 +1498,7 @@ def handle_button_tap(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing the tap
     """
-    audit_wire("whatsapp", "in", "webhook", notification.event)
-    debug_wire("whatsapp", "in", "webhook", notification.event)
+    _log_inbound_webhook(notification)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "interactiveButtonsResponse")
         return
@@ -1575,8 +1576,7 @@ def handle_unsupported_message_default(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing message data
     """
-    audit_wire("whatsapp", "in", "webhook", notification.event)
-    debug_wire("whatsapp", "in", "webhook", notification.event)
+    _log_inbound_webhook(notification)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "unsupported")
         return

@@ -729,8 +729,15 @@ class SessionStore:
         max_tokens: Optional[int] = None,
         exclude_message_ids: Optional[Collection[str]] = None,
         with_timestamps: bool = False,
+        before_message_id: Optional[str] = None,
     ) -> List[Dict]:
         """The per-turn conversation context under Feature 070 (REQ-MEM-001).
+
+        `before_message_id` (Feature 067): only messages stored BEFORE this one are returned -
+        it and everything stored after it are left out. A message is stored the moment it
+        arrives, so while one is being handled newer ones may already be stored; they must
+        reach the model only at a hand-back, never in the history ahead of the message
+        being handled.
 
         `exclude_message_ids` (2026-09-30): messages left out of the window - the
         current turn's own inbound message, which is stored the moment it arrives
@@ -763,6 +770,8 @@ class SessionStore:
         in_window: List[Dict] = []
         excluded = set(exclude_message_ids or ())
         for _mid, mdata in self._iter_persisted_messages(session, live_only=True):
+            if before_message_id is not None and _mid == before_message_id:
+                break
             if _mid in excluded:
                 continue
             mdate = self._message_local_date(mdata)

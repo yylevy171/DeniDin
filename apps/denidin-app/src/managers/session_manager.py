@@ -171,10 +171,11 @@ class SessionManager:
         max_tokens: Optional[int] = None,
         exclude_message_ids: Optional[Collection[str]] = None,
         with_timestamps: bool = False,
+        before_message_id: Optional[str] = None,
     ) -> List[Dict]:
         return self._call("get_rolling_window", whatsapp_chat, now=now, window_days=window_days,
                           max_tokens=max_tokens, exclude_message_ids=exclude_message_ids,
-                          with_timestamps=with_timestamps)
+                          with_timestamps=with_timestamps, before_message_id=before_message_id)
 
     def update_message(self, whatsapp_chat: str, message_id: str, **fields: Any) -> bool:
         return self._call("update_message", whatsapp_chat, message_id, **fields)

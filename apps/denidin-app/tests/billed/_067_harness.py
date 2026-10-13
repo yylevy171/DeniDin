@@ -5,6 +5,9 @@ prepared and submitted to the IntakeCoordinator exactly as DeniDinGreenAPIBot do
 DeniDinDispatcher thread hands it to denidin.dispatch_notification. Only the WhatsApp send boundary is
 the usual test notification stub (create_real_notification). Nothing here is mocked.
 """
+import json
+import logging
+import re
 import time
 import uuid
 from contextlib import contextmanager
@@ -15,7 +18,43 @@ from src.intake.intake_coordinator import IntakeCoordinator
 from src.utils.time_utils import now_local
 from tests.e2e_helpers import create_real_notification, get_response
 
-__all__ = ["IntakeRig", "intake_rig"]
+__all__ = ["IntakeRig", "WireCapture", "intake_rig"]
+
+
+class WireCapture(logging.Handler):
+    """Records every request the app sends to the model (the INFO wire-audit line), so a test can
+    assert on exactly what each call carried. Nothing is mocked: it only listens to the app's own log."""
+
+    def __init__(self):
+        super().__init__(level=logging.INFO)
+        self.calls = []  # [{"context": str, "input": [...]}]
+
+    def emit(self, record):
+        text = record.getMessage()
+        if not text.startswith("[WIRE-AUDIT]") or "boundary='openai'" not in text or "direction='out'" not in text:
+            return
+        context = re.search(r"context='([^']*)'", text)
+        body = text[text.index("{", text.index("context=")):]
+        try:
+            payload = json.loads(body)
+        except ValueError:
+            return
+        self.calls.append({"context": context.group(1) if context else "", "input": payload.get("input", [])})
+
+    def conversation_calls(self):
+        return [c for c in self.calls if c["context"].startswith("_run_resolution_loop")]
+
+    @staticmethod
+    def user_texts(call):
+        """The user-message texts in one call's input, with the [HH:MM:SS dd/mm] stamp and the
+        hand-back header removed."""
+        out = []
+        for item in call["input"]:
+            if isinstance(item, dict) and item.get("role") == "user" and isinstance(item.get("content"), str):
+                text = re.sub(r"^\[[^\]]*\]\s*", "", item["content"])      # [11:55:07 13/10] or [הודעה מהמשתמש · ...]
+                out.append(text.strip())
+        return out
+
 
 
 class IntakeRig:
@@ -24,6 +63,7 @@ class IntakeRig:
         self.sender = sender or chat_id
         self.sender_name = sender_name
         self.notifications: List = []
+        self.wire = WireCapture()
         self.intake = IntakeCoordinator(app)
         app.intake = self.intake
         import denidin
@@ -55,6 +95,10 @@ class IntakeRig:
         return self._submit(self._event("imageMessage", {"fileMessageData": {
             "downloadUrl": download_url, "caption": caption, "fileName": file_name,
             "mimeType": "image/jpeg"}}))
+
+    def pause(self, seconds: float = 1.0) -> None:
+        """Wait between a user's messages (a real person does not send them in the same instant)."""
+        time.sleep(seconds)
 
     # -- what the test observes -------------------------------------------
     def wait_until_idle(self, timeout: float = 240.0) -> None:
@@ -92,12 +136,26 @@ class IntakeRig:
         return [m["content"] for m in rows if (m.get("ai_required_role") or m.get("role")) == "user"]
 
 
+def _wipe(app, chat_id: str) -> None:
+    """A clean conversation for the scenario: no history from an earlier run or test."""
+    from tests.e2e_helpers import wipe_chat_messages_on_disk
+    wipe_chat_messages_on_disk(app.session_manager.storage_dir, chat_id)
+
+
 @contextmanager
 def intake_rig(app, chat_id: str, **kwargs):
     rig = IntakeRig(app, chat_id, **kwargs)
+    wire_logger = logging.getLogger("src.utils.wire_log")
+    previous_level = wire_logger.level
+    wire_logger.setLevel(min(previous_level or logging.INFO, logging.INFO))
+    wire_logger.addHandler(rig.wire)
+    _wipe(app, chat_id)
     rig.dispatcher.start()
     try:
         yield rig
     finally:
         rig.dispatcher.stop()
+        _wipe(app, chat_id)
+        wire_logger.removeHandler(rig.wire)
+        wire_logger.setLevel(previous_level)
         app.intake = None

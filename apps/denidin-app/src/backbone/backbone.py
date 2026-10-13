@@ -1014,7 +1014,7 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
             chat_id,
             window_days=session_config.get('window_days', 14),
             max_tokens=session_config.get('max_tokens_by_role', {}).get('godfather', 100000),
-            exclude_message_ids=[exclude_message_id] if exclude_message_id else None,
+            before_message_id=exclude_message_id,  # Feature 067: only what came before this message
             with_timestamps=True,  # Feature 067 (REQ-RMH-007): the model reads the timeline
         )
 

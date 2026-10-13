@@ -552,7 +552,8 @@ class AIManager(ABC):  # pylint: disable=too-many-instance-attributes,too-many-p
 
     def load_rolling_window(self, chat_id: Optional[str], *, window_days: int, max_tokens: int,
                             exclude_message_ids: Optional[List[str]] = None,
-                            with_timestamps: bool = False) -> List[Dict[str, Any]]:
+                            with_timestamps: bool = False,
+                            before_message_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """Feature 070: the chat's rolling verbatim window (oldest-first
         {"role", "content"} dicts, trimmed oldest-first to `max_tokens`, read-only).
         `exclude_message_ids`: the current turn's own inbound message (already stored on
@@ -565,7 +566,7 @@ class AIManager(ABC):  # pylint: disable=too-many-instance-attributes,too-many-p
             history = self.session_manager.get_rolling_window(
                 chat_id, window_days=window_days, max_tokens=max_tokens,
                 exclude_message_ids=[m for m in (exclude_message_ids or []) if m],
-                with_timestamps=with_timestamps,
+                with_timestamps=with_timestamps, before_message_id=before_message_id,
             )
             if history:
                 logger.info(f"Retrieved {len(history)} messages from session history")

@@ -1104,7 +1104,7 @@ class AIHandler(AIManager):
             conversation_history = self.load_rolling_window(
                 effective_chat_id,
                 window_days=self.window_days, max_tokens=max_tokens,
-                exclude_message_ids=[request.message_id],
+                before_message_id=request.message_id,
             ) or None
 
         try:

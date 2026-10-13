@@ -111,7 +111,7 @@ BILLED=(
   "den|tests/billed/test_e2e_ledger_069_text_billed.py::TestLedgerPostTurnCaptureText::test_us4_new_client_agreement_full_detour"
   "den|tests/billed/test_e2e_ledger_069_text_billed.py::TestLedgerPostTurnCaptureText::test_us5_ambiguous_agreement_operator_picks"
   "den|tests/billed/test_e2e_ledger_069_text_billed.py::TestLedgerPostTurnCaptureText::test_us6_exact_match_captures_without_a_question"
-  "den|tests/billed/test_realistic_message_handling_billed.py::test_a0_count_with_me_three_quick_messages_get_the_next_number"
+  "den|tests/billed/test_realistic_message_handling_billed.py::test_a0_count_together_messages_sent_a_second_apart"
 )
 
 EXPENSIVE=(
