@@ -51,7 +51,7 @@ class WireCapture(logging.Handler):
         out = []
         for item in call["input"]:
             if isinstance(item, dict) and item.get("role") == "user" and isinstance(item.get("content"), str):
-                text = re.sub(r"^\[[^\]]*\]\s*", "", item["content"])      # [11:55:07 13/10] or [הודעה מהמשתמש · ...]
+                text = re.sub(r"^\[[^\]]*\]\s*", "", item["content"])      # [11:55:07 13/10] or [USER MESSAGE · ...]
                 out.append(text.strip())
         return out
 

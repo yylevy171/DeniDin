@@ -78,7 +78,7 @@ def test_messages_waiting_at_a_hand_back_join_the_tool_results_in_order(env):
     assert follow_up[0]["type"] == "function_call_output"
     assert [i["role"] for i in follow_up[1:]] == ["user", "user"]
     assert "ללקוח דנה" in follow_up[1]["content"] and "על 500 שקל" in follow_up[2]["content"]
-    assert all("נשלחה אחרי הפלט האחרון שלך" in i["content"] for i in follow_up[1:])
+    assert all("sent after your last output" in i["content"] for i in follow_up[1:])
 
 
 def test_the_first_message_and_history_carry_timestamps(env):
@@ -110,7 +110,7 @@ def test_media_is_mentioned_to_the_model_and_left_for_its_own_handling(env):
     env.queue(_event(1, "imageMessage"))
     env.backbone.handle_message(env.request(), chat_id=CHAT, user_role="godfather")
     follow_up = _inputs(env)[1]
-    assert follow_up[1]["content"].startswith("[קובץ התקבל")
+    assert follow_up[1]["content"].startswith("[FILE RECEIVED")
     assert env.app.intake.next_work_item(0.01).id_message == "ID1"  # handled on its own right after
 
 

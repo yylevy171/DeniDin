@@ -19,7 +19,9 @@ def test_backbone_has_the_section(backbone_text):
 
 
 @pytest.mark.parametrize("phrase", [
-    "נשלחה לפני / אחרי הפלט האחרון שלך",  # how to read the markers
+    "sent before your last output",  # how to read the markers
+    "sent after your last output",
+    "[USER MESSAGE ·",
     "Finish a pending approval before starting the next request",
     "**ask**",                             # may ask when confused
     "never repeat it",                     # what was already done stays done

@@ -18,13 +18,13 @@ follow-up `responses.create`. **Not** on a round that produced `send_to_user` /
 
 ## Item text
 ```
-[הודעה מהמשתמש · 14:32:05 02/10 · נשלחה לפני הפלט האחרון שלך]     # or: ... · נשלחה אחרי הפלט האחרון שלך
+[USER MESSAGE · 14:32:05 02/10 · sent before your last output]     # or: ... · sent after your last output
 <message text>
 ```
 Group chats keep the existing `[sender name]` prefix inside the text. Media:
 ```
-[קובץ התקבל · 14:32:07 02/10 · נשלח אחרי הפלט האחרון שלך · <filename>] <caption>
-(הקובץ ינותח בנפרד אחרי שתסיים עם הבקשה הנוכחית)
+[FILE RECEIVED · 14:32:07 02/10 · sent after your last output · <filename>] <caption>
+(the file will be analyzed separately after you finish the current request)
 ```
 Timestamps are the stored Israel-local message timestamps. "before" = `sent_at < last_output_at`.
 The first round of handling a message uses the same timestamp prefix on history items (D13).

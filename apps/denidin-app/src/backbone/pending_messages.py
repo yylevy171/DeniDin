@@ -13,11 +13,11 @@ from typing import Any, Dict, List
 from src.intake.intake_coordinator import MEDIA_TYPES, Drained, PendingItem
 from src.utils.time_utils import local_from_timestamp, now_local, sane_source_epoch
 
-BEFORE_LAST_OUTPUT = "נשלחה לפני הפלט האחרון שלך"
-AFTER_LAST_OUTPUT = "נשלחה אחרי הפלט האחרון שלך"
-MEDIA_SENT_BEFORE = "נשלח לפני הפלט האחרון שלך"
-MEDIA_SENT_AFTER = "נשלח אחרי הפלט האחרון שלך"
-MEDIA_HANDLED_SEPARATELY = "(הקובץ ינותח בנפרד אחרי שתסיים עם הבקשה הנוכחית)"
+BEFORE_LAST_OUTPUT = "sent before your last output"
+AFTER_LAST_OUTPUT = "sent after your last output"
+MEDIA_SENT_BEFORE = "sent before your last output"
+MEDIA_SENT_AFTER = "sent after your last output"
+MEDIA_HANDLED_SEPARATELY = "(the file will be analyzed separately after you finish the current request)"
 
 
 def message_sent_at(message: Any) -> datetime:
@@ -40,7 +40,7 @@ def _format_item(item: PendingItem, last_output_at: datetime) -> Dict[str, str]:
     stamp = _clock_label(sent_at)
     if item.type_message in MEDIA_TYPES:
         file_data = item.notification.event.get("messageData", {}).get("fileMessageData", {})
-        header = (f"[קובץ התקבל · {stamp} · {MEDIA_SENT_BEFORE if before else MEDIA_SENT_AFTER}"
+        header = (f"[FILE RECEIVED · {stamp} · {MEDIA_SENT_BEFORE if before else MEDIA_SENT_AFTER}"
                   f" · {file_data.get('fileName', '')}]")
         caption = file_data.get("caption", "")
         body = f"{header} {caption}".rstrip() + f"\n{MEDIA_HANDLED_SEPARATELY}"
@@ -49,7 +49,7 @@ def _format_item(item: PendingItem, last_output_at: datetime) -> Dict[str, str]:
     text = message.text_content
     if getattr(message, "is_group", False) and getattr(message, "sender_display_name", ""):
         text = f"[{message.sender_display_name}] {text}"
-    header = f"[הודעה מהמשתמש · {stamp} · {BEFORE_LAST_OUTPUT if before else AFTER_LAST_OUTPUT}]"
+    header = f"[USER MESSAGE · {stamp} · {BEFORE_LAST_OUTPUT if before else AFTER_LAST_OUTPUT}]"
     return {"role": "user", "content": f"{header}\n{text}"}
 
 

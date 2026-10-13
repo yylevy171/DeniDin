@@ -31,7 +31,7 @@ def test_text_item_carries_clock_and_after_marker():
     items = format_pending_items(_drained(_item("textMessage", int(sent.timestamp()), "על 500 שקל")), last)
     assert len(items) == 1 and items[0]["role"] == "user"
     stamp = local_from_timestamp(int(sent.timestamp())).strftime("%H:%M:%S %d/%m")
-    assert items[0]["content"] == f"[הודעה מהמשתמש · {stamp} · {AFTER_LAST_OUTPUT}]\nעל 500 שקל"
+    assert items[0]["content"] == f"[USER MESSAGE · {stamp} · {AFTER_LAST_OUTPUT}]\nעל 500 שקל"
 
 
 def test_message_sent_before_the_last_output_is_marked_before():
@@ -61,7 +61,7 @@ def test_media_is_only_mentioned_and_handled_separately():
     media = _item("imageMessage", int(last.timestamp()) + 1,
                   file_data={"fileName": "slip.jpg", "caption": "העברה"})
     content = format_pending_items(_drained(media), last)[0]["content"]
-    assert content.startswith("[קובץ התקבל · ") and MEDIA_SENT_AFTER in content and "slip.jpg" in content
+    assert content.startswith("[FILE RECEIVED · ") and MEDIA_SENT_AFTER in content and "slip.jpg" in content
     assert "העברה" in content and content.endswith(MEDIA_HANDLED_SEPARATELY)
 
 
