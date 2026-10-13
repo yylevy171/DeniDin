@@ -12,7 +12,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.handlers.ai_handler import AIHandler
+from src.backbone.backbone import Backbone as AIHandler
 from src.managers.memory_collections import collection_name_for_chat
 from src.models.message import WhatsAppMessage
 from src.utils.time_utils import local_calendar_date, now_local

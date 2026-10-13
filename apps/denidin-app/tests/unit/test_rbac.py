@@ -21,7 +21,7 @@ from openai import OpenAI
 from src.models.config import AppConfiguration
 from src.models.user import Role, MemoryScope
 from src.models.message import WhatsAppMessage, AIRequest
-from src.handlers.ai_handler import AIHandler
+from src.backbone.backbone import Backbone as AIHandler
 from src.managers.user_manager import UserManager
 from src.managers.memory_manager import MemoryManager
 from src.managers.session_manager import SessionManager

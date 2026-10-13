@@ -11,7 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.handlers.ai_handler import AIHandler
+from src.backbone.backbone import Backbone as AIHandler
 from src.models.config import AppConfiguration
 from src.models.message import WhatsAppMessage
 from tests.helpers.seed import seed_message

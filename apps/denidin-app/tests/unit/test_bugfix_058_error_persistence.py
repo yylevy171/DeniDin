@@ -19,7 +19,7 @@ from openai import APIError, APITimeoutError, RateLimitError
 
 import denidin as denidin_module
 from src.constants.error_messages import ERROR_PROCESSING_MESSAGE_TRY_AGAIN
-from src.handlers.ai_handler import AIHandler
+from src.backbone.backbone import Backbone as AIHandler
 from src.models.config import AppConfiguration
 from tests.ai_handler_test_support import make_ai_handler
 

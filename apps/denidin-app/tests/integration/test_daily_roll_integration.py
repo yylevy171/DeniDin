@@ -10,7 +10,7 @@ from datetime import timedelta
 
 import pytest
 
-from src.handlers.ai_handler import AIHandler
+from src.backbone.backbone import Backbone as AIHandler
 from src.managers.memory_collections import collection_name_for_chat
 from src.services import daily_summary_roll_service as svc
 from src.utils.time_utils import local_calendar_date, now_local

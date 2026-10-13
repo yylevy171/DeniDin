@@ -28,7 +28,7 @@ from tests.extractor_test_support import make_extractor_ai_manager
 class TestCaptureLedgerEventsFromTextThreadsReferenceTimestamp:
     def test_passes_today_timestamp_into_build_instructions(self, tmp_path):
         from unittest.mock import MagicMock
-        from src.handlers.ai_handler import AIHandler
+        from src.backbone.backbone import Backbone as AIHandler
         from src.models.config import AppConfiguration
 
         config = AppConfiguration(
@@ -53,7 +53,7 @@ class TestCaptureLedgerEventsFromTextThreadsReferenceTimestamp:
     def test_omitted_today_timestamp_still_works(self, tmp_path):
         """No TypeError, no behavior change, when the caller doesn't pass it."""
         from unittest.mock import MagicMock
-        from src.handlers.ai_handler import AIHandler
+        from src.backbone.backbone import Backbone as AIHandler
         from src.models.config import AppConfiguration
 
         config = AppConfiguration(

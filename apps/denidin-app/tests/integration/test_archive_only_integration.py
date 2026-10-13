@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from src.handlers.ai_handler import AIHandler
+from src.backbone.backbone import Backbone as AIHandler
 from src.managers.message_integrity import assert_message_integrity
 from src.services import daily_summary_roll_service as svc
 from src.utils.time_utils import local_calendar_date, now_local

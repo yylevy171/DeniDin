@@ -17,7 +17,7 @@ from unittest.mock import MagicMock, Mock
 import pytest
 from apscheduler.triggers.interval import IntervalTrigger  # type: ignore[import-untyped]
 
-from src.handlers.ai_handler import AIHandler
+from src.backbone.backbone import Backbone as AIHandler
 from src.models.config import AppConfiguration
 from src.utils.time_utils import now_local
 import src.services.accounting_reconciliation_service as svc

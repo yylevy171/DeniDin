@@ -139,8 +139,8 @@ def test_write_capabilities_carry_only_write_tools_never_read_tools():
 
 def test_backbone_morning_tool_groups_cover_exactly_the_legacy_tool_lists():
     """The backbone groups Morning tools per capability; together they must be
-    exactly the tools the legacy path lists (approval-required + no-approval)."""
+    exactly the Morning tools the app knows (write + read)."""
     from src.capabilities.toolsets import MORNING_MCP_TOOL_NAMES  # pylint: disable=import-outside-toplevel
-    from src.handlers.ai_handler import APPROVAL_REQUIRED_MCP_TOOLS, NO_APPROVAL_MCP_TOOLS  # pylint: disable=import-outside-toplevel
+    from src.core.ai_manager import MORNING_READ_MCP_TOOLS, MORNING_WRITE_MCP_TOOLS  # pylint: disable=import-outside-toplevel
     backbone = {name for names in MORNING_MCP_TOOL_NAMES.values() for name in names}
-    assert backbone == set(APPROVAL_REQUIRED_MCP_TOOLS) | set(NO_APPROVAL_MCP_TOOLS)
+    assert backbone == set(MORNING_WRITE_MCP_TOOLS) | set(MORNING_READ_MCP_TOOLS)
