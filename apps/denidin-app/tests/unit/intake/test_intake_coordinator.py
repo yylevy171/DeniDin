@@ -63,7 +63,7 @@ def test_drain_returns_text_and_contact_in_order_and_empties_chat():
     drained = coord.drain_attachable("c1@c.us")
     assert first.id_message == "m0"
     assert _ids(drained.attachable) == ["m1", "m2"] and drained.media == []
-    assert coord.next_work_item(0.01) is None  # stale arrival ids are skipped
+    assert coord.next_work_item(0.01) is None
 
 
 def test_taps_edits_deletes_contacts_array_are_deferred_in_order_not_attached():
@@ -124,35 +124,43 @@ def test_prestored_for_matches_only_the_item_being_handled():
     assert coord.prestored_for(SimpleNamespace(event=taken.notification.event)) is None
 
 
-def test_full_chat_queue_drops_without_storing_and_keeps_dropping():
-    d = _denidin(intake_max_per_chat=2)
+def test_full_queue_drops_without_storing_and_keeps_dropping():
+    d = _denidin(worker_queue_max=2)
     coord = IntakeCoordinator(d)
-    _submit(coord, "m0")
     _submit(coord, "m1")
-    for i in (2, 3):
+    _submit(coord, "m2")
+    for i in (3, 4):
         with pytest.raises(QueueLimitExceeded):
             coord.check_room(_event(f"m{i}"))
-    assert d.stored == ["m0", "m1"]  # nothing stored for the dropped ones
-    assert coord.queues()[1].dropped == 2
+    assert d.stored == ["m1", "m2"]  # the dropped ones were never stored
+    assert coord.queues()[0].dropped == 2
     coord.next_work_item(0.01)
-    coord.check_room(_event("m4"))  # room again
+    coord.check_room(_event("m5"))  # room again
 
 
-def test_full_arrival_queue_also_drops():
-    coord = IntakeCoordinator(_denidin(intake_max_total=1))
-    _submit(coord, "m0", chat="a")
-    with pytest.raises(QueueLimitExceeded):
-        coord.check_room(_event("m1", chat="b"))
+def test_there_is_exactly_one_queue():
+    coord = IntakeCoordinator(_denidin())
+    _submit(coord, "m1", chat="a")
+    _submit(coord, "m2", chat="b")
+    assert [q.name for q in coord.queues()] == ["worker"]
 
 
-def test_queues_lists_arrival_and_every_chat():
+def test_drain_takes_only_the_same_chat_at_the_front_and_stops_at_another_chat():
     coord = IntakeCoordinator(_denidin())
     _submit(coord, "m0", chat="a")
-    _submit(coord, "m1", chat="b")
-    assert {q.name for q in coord.queues()} == {"intake:arrival", "intake:a", "intake:b"}
+    coord.next_work_item(0.01)
+    _submit(coord, "m1", chat="a")
+    _submit(coord, "m2", chat="a")
+    _submit(coord, "m3", chat="b")
+    _submit(coord, "m4", chat="a")  # behind another chat's message: stays in line
+    drained = coord.drain_attachable("a")
+    assert _ids(drained.attachable) == ["m1", "m2"]
+    assert [coord.next_work_item(0.01).id_message for _ in range(2)] == ["m3", "m4"]
+
 
 
 def test_pending_item_for_unstored_type_has_no_message():
     coord = IntakeCoordinator(SimpleNamespace(config=make_config(), user_manager=_Users(), prestore=lambda n: None))
     item = coord.prepare(SimpleNamespace(event=_event("t1", "interactiveButtonsResponse")))
     assert isinstance(item, PendingItem) and item.message is None
+

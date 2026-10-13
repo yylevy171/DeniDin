@@ -61,7 +61,7 @@ class IntakeRig:
         """Everything submitted has been dispatched and finished (3 consecutive quiet polls)."""
         deadline, quiet = time.time() + timeout, 0
         while time.time() < deadline:
-            busy = (any(q.size() for q in self.intake.queues) or self.intake.deferred
+            busy = (any(q.size() for q in self.intake.queues()) or self.intake.deferred
                     or self.app._turns_in_progress or getattr(self.intake, "_current", None) is not None)
             quiet = 0 if busy else quiet + 1
             if quiet >= 3:

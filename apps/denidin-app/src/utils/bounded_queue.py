@@ -24,8 +24,7 @@ class QueueLimitExceeded(Exception):
 class QueueSettings:
     """The ``message_queues`` config block, defaults applied (Feature 067)."""
 
-    intake_max_per_chat: int = 50
-    intake_max_total: int = 100
+    worker_queue_max: int = 100
     session_max: int = 50
     warn_fraction: float = 0.3
     stall_seconds: float = 120.0
@@ -93,6 +92,12 @@ class BoundedQueue(Generic[T]):
         item = self._queue.get_nowait()
         self.last_progress_at = time.monotonic()
         return item
+
+    def peek(self) -> Optional[T]:
+        """The next item to be taken, without taking it; None when empty. Only meaningful with a
+        single consumer (the producer only appends, so the front cannot change under it)."""
+        with self._queue.mutex:
+            return self._queue.queue[0] if self._queue.queue else None
 
     def size(self) -> int:
         return self._queue.qsize()

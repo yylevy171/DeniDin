@@ -1,19 +1,20 @@
-"""Intake (Feature 067): what the poller received and the dispatcher has not handled yet.
+"""Intake (Feature 067): what the poller received and the worker has not handled yet.
 
 The poller thread (``DeniDinGreenAPIBot.run_forever``) receives a webhook, stores the
-message (``DeniDin.prestore``), acknowledges it upstream and ``submit``s it here; the
-``DeniDinDispatcher`` thread takes items out with ``next_work_item`` and the backbone
-takes the ones that can join a running conversation out with ``drain_attachable`` at a
-hand-back (REQ-RMH-001..004). Every queue is a ``BoundedQueue`` (REQ-RMH-025/033): the
-one thread-safe building block, with a hard limit.
+message (``DeniDin.prestore``), acknowledges it upstream and ``submit``s it to the ONE worker
+queue; the ``DeniDinDispatcher`` thread (the worker) takes the next item with ``next_work_item``,
+and the backbone takes the following messages of the same chat with ``drain_attachable`` at a
+hand-back (REQ-RMH-001..004). The queue is a ``BoundedQueue`` (REQ-RMH-025/033): the one
+thread-safe building block, with a hard limit. It is already in arrival order, so the worker
+just takes the first one waiting. (Later: one worker per chat/session.)
 
-Single-thread parts: ``deferred`` and ``_current`` belong to the dispatcher thread
+Single-thread parts: ``deferred`` and ``_current`` belong to the worker thread
 (the backbone runs on it too); the poller only calls ``check_room``/``prepare``/``submit``.
 """
 import queue
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Any, Deque, Dict, List, Optional
+from typing import Any, Deque, List, Optional
 
 from whatsapp_chatbot_python import Notification
 
@@ -27,7 +28,7 @@ ATTACHABLE_TYPES = frozenset({"textMessage", "extendedTextMessage", "contactMess
 # Media: stored, noted to the model, handled on its own afterwards (REQ-RMH-019).
 MEDIA_TYPES = frozenset({"imageMessage", "documentMessage", "videoMessage"})
 
-ARRIVAL_QUEUE_NAME = "intake:arrival"
+WORKER_QUEUE_NAME = "worker"
 
 
 @dataclass
@@ -43,7 +44,7 @@ class PendingItem:
 
 @dataclass
 class Drained:
-    """What a hand-back drain pulled out of one chat's queue (arrival order kept in each list)."""
+    """What a hand-back drain pulled out of the worker queue (arrival order kept in each list)."""
     attachable: List[PendingItem]  # text/contact from non-blocked senders -> go to the model now
     media: List[PendingItem]       # stored; the model is told, handled afterwards
     ordered: List[PendingItem] = field(default_factory=list)  # attachable + media, in arrival order
@@ -61,39 +62,25 @@ class IntakeCoordinator:
     def __init__(self, denidin: Any):
         self._denidin = denidin
         settings = QueueSettings.from_config(denidin.config)
-        self._settings = settings
-        self._chats: Dict[str, BoundedQueue] = {}
-        self._arrival: BoundedQueue = BoundedQueue(
-            ARRIVAL_QUEUE_NAME, settings.intake_max_total, settings.warn_size(settings.intake_max_total))
+        self._queue: BoundedQueue = BoundedQueue(
+            WORKER_QUEUE_NAME, settings.worker_queue_max, settings.warn_size(settings.worker_queue_max))
         self.deferred: Deque[PendingItem] = deque()
         self._current: Optional[PendingItem] = None
 
     # ------------------------------------------------------------------ monitoring
 
     def queues(self) -> List[BoundedQueue]:
-        return [self._arrival] + list(self._chats.values())
-
-    def _chat_queue(self, chat_id: str) -> BoundedQueue:
-        q = self._chats.get(chat_id)
-        if q is None:
-            limit = self._settings.intake_max_per_chat
-            q = self._chats.setdefault(
-                chat_id, BoundedQueue(f"intake:{chat_id}", limit, self._settings.warn_size(limit)))
-        return q
+        return [self._queue]
 
     # ------------------------------------------------------------------ poller side
 
     def check_room(self, event: dict) -> None:
         """Raise ``QueueLimitExceeded`` (after logging ERROR and counting the drop) when
-        this chat's queue or the arrival queue is full: the caller then drops the message
-        WITHOUT storing it (REQ-RMH-033 - a full intake means something is very wrong)."""
-        chat_id = _event_chat_id(event)
-        item_id = str(event.get("idMessage", "?"))
-        chat_queue = self._chat_queue(chat_id)
-        for q in (chat_queue, self._arrival):
-            if not q.has_room():
-                q.note_drop(item_id)
-                raise QueueLimitExceeded(f"queue {q.name!r} is full")
+        the worker queue is full: the caller then drops the message WITHOUT storing it
+        (REQ-RMH-033 - a full queue means something is very wrong)."""
+        if not self._queue.has_room():
+            self._queue.note_drop(str(event.get("idMessage", "?")))
+            raise QueueLimitExceeded(f"queue {self._queue.name!r} is full")
 
     def prepare(self, notification: Notification) -> PendingItem:
         """Store the message if it is one of the stored types (raises if storing fails -
@@ -104,28 +91,22 @@ class IntakeCoordinator:
             id_message=str(event.get("idMessage", "")), message=self._denidin.prestore(notification))
 
     def submit(self, item: PendingItem) -> None:
-        self._chat_queue(item.chat_id).put_or_raise(item, item_id=item.id_message)
-        self._arrival.put_or_raise(item.chat_id, item_id=item.id_message)
+        self._queue.put_or_raise(item, item_id=item.id_message)
 
-    # ------------------------------------------------------------------ dispatcher side
+    # ------------------------------------------------------------------ worker side
 
     def next_work_item(self, timeout: float = 0.5) -> Optional[PendingItem]:
         """The next item to handle: deferred ones first (in the order they were set aside),
-        then the oldest waiting chat's oldest message; None after ``timeout`` with nothing."""
+        then the first message waiting in the queue; None after ``timeout`` with nothing."""
         self._current = None
         if self.deferred:
             self._current = self.deferred.popleft()
             return self._current
-        while True:
-            try:
-                chat_id = self._arrival.get(timeout=timeout)
-            except queue.Empty:
-                return None
-            try:
-                self._current = self._chat_queue(chat_id).get_nowait()
-            except queue.Empty:
-                continue  # stale id: that message was already drained at a hand-back
-            return self._current
+        try:
+            self._current = self._queue.get(timeout=timeout)
+        except queue.Empty:
+            return None
+        return self._current
 
     def prestored_for(self, notification: Notification) -> Optional[Any]:
         """The WhatsAppMessage the poller already stored for the item being handled now."""
@@ -136,19 +117,18 @@ class IntakeCoordinator:
         return None
 
     def drain_attachable(self, chat_id: str) -> Drained:
-        """At a hand-back: take everything waiting in ``chat_id``'s queue. Text/contact
-        messages from non-blocked senders are returned to join the model's next input;
-        media is returned separately (the model is told, REQ-RMH-019) and set aside to be
-        handled on its own afterwards; everything else is set aside untouched. Order kept."""
+        """At a hand-back: take the messages waiting at the FRONT of the queue for as long as
+        they belong to ``chat_id`` - the first message of another chat stops the drain and stays
+        in line (nothing is skipped or reordered). Text/contact messages from non-blocked
+        senders are returned to join the model's next input; media is returned separately (the
+        model is told, REQ-RMH-019) and set aside to be handled on its own afterwards;
+        everything else is set aside untouched. Order kept."""
         drained = Drained(attachable=[], media=[])
-        chat_queue = self._chats.get(chat_id)
-        if chat_queue is None:
-            return drained
         while True:
-            try:
-                item = chat_queue.get_nowait()
-            except queue.Empty:
+            front = self._queue.peek()
+            if front is None or front.chat_id != chat_id:
                 break
+            item = self._queue.get_nowait()
             if item.type_message in ATTACHABLE_TYPES and item.message is not None \
                     and not self._sender_blocked(item.message):
                 drained.attachable.append(item)

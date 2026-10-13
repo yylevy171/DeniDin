@@ -67,7 +67,7 @@ Green API queue
        receive → read-receipt hook → store via SessionManager (actor) → deleteNotification
               → intake.submit(body, stored_message)
   └─ SessionManager ACTOR  (own thread; ONE thread-safe queue for reads + writes; sole owner of session files)
-  └─ IntakeCoordinator  (per-chat bounded queue of (notification, stored message) + bounded arrival queue)
+  └─ IntakeCoordinator  (ONE bounded worker queue of (notification, stored message), in arrival order)
   └─ DISPATCHER (one thread; knows nothing about Green API)  DeniDinDispatcher.run
        next item (deferred first, then arrival order) → dispatch(type, notification)   # injected, same as the player's;
                                                           # handlers unchanged; DeniDin.receive() returns the pre-stored message

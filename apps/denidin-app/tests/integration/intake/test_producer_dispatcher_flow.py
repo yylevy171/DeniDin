@@ -124,7 +124,7 @@ def test_a_failed_store_is_not_acknowledged_and_the_loop_carries_on(app, monkeyp
 
 
 def test_full_intake_drops_without_storing_but_acknowledges(app, caplog):
-    cfg = make_config(data_root=app.config.data_root, memory=app.config.memory, message_queues={"intake_max_per_chat": 2})
+    cfg = make_config(data_root=app.config.data_root, memory=app.config.memory, message_queues={"worker_queue_max": 2})
     app.config = cfg
     app.intake = IntakeCoordinator(app)  # no dispatcher running: nothing is taken out
     bot = _bot(app, [_body(i) for i in range(4)])

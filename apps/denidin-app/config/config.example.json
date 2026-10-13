@@ -3,8 +3,7 @@
   "allocation_threshold_nis": 5000,
   "capabilities_reset_minutes": 60,
   "message_queues": {
-    "intake_max_per_chat": 50,
-    "intake_max_total": 100,
+    "worker_queue_max": 100,
     "session_max": 50,
     "warn_fraction": 0.3,
     "stall_seconds": 120,

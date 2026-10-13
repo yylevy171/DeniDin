@@ -52,9 +52,7 @@ REQ-RMH-003 is now met literally: the message is durable before it is acknowledg
 Per chat: a `queue.Queue(maxsize=…)` of **pre-received items** `(notification, WhatsAppMessage)`;
 plus one `arrival` `queue.Queue` of chat ids that preserves cross-chat order and is what the
 dispatcher blocks on (`get(timeout)`) — no separate wake-up Event. The dispatcher takes a chat id from
-`arrival`, then `get_nowait()` from that chat's queue (an empty queue = stale id, skip). A
-hand-back drain is `get_nowait()` until `queue.Empty` on that chat's queue. The hard limit is
-`maxsize` on the per-chat queue; a global ceiling is the `arrival` queue's `maxsize`. Both
+the first item of the single worker queue. A hand-back drain takes items from the front for as long as they belong to the same chat (the first message of another chat stops it; nothing is skipped or reordered). The hard limit is the worker queue's `maxsize`. (Decided 2026-10-13: no per-chat queues and no arrival-order queue.) Both
 `SessionManager`'s queue (D15) and these use the same class and the same limit/warn/health
 machinery (D16). The dispatcher-private `deferred` list and media backlog are not queues.
 
@@ -193,9 +191,9 @@ None (product owner, 2026-10-12). Rollback is the previous release.
 - A small `BoundedQueue` wrapper around `queue.Queue` (composition, no subclass tricks) adds:
   `put_or_raise(item)` → `queue.Full` becomes `QueueLimitExceeded` (ERROR log with name, size,
   limit, item id; dropped counter++); `last_get_at`; `size()`; high-water mark. All queues
-  (per-chat intake, `arrival`, `SessionManager`'s) are `BoundedQueue`s — one tech, one set of behavior.
+  (the worker queue, `SessionManager`'s) are `BoundedQueue`s — one tech, one set of behavior.
 - Config (names settled in tasks.md): per-queue max, a warning size, a stall-seconds threshold,
-  defaults in `config.example.json` — a `message_queues` block: `intake_max_per_chat` 500, `intake_max_total` 2000, `session_max` 200, `warn_fraction` 0.5, `stall_seconds` 30, `queue_check_interval_seconds` 10, `thread_check_interval_seconds` 5, `thread_max_restarts` 3, `thread_restart_window_seconds` 600, `session_call_timeout_seconds` 60, `slow_call_seconds` 5.
+  defaults in `config.example.json` — a `message_queues` block: `worker_queue_max` 100, `session_max` 50, `warn_fraction` 0.5, `stall_seconds` 30, `queue_check_interval_seconds` 10, `thread_check_interval_seconds` 5, `thread_max_restarts` 3, `thread_restart_window_seconds` 600, `session_call_timeout_seconds` 60, `slow_call_seconds` 5.
 - A `QueueMonitor` (an existing APScheduler job style, every ~10 s) logs WARNING when a queue's
   size ≥ warning size or `size > 0` and `now - last_get_at` > stall seconds (rate-limited), logs INFO
   depths when non-empty, and publishes **boolean** fields into `/health`'s info (`build_health_info_fns` fields are pass/fail strings): `queues_within_limits` and `queues_not_stalled`, report-only like `whatsapp_authorized`; numeric depths/limits/dropped go to the INFO log line. Thread liveness is a real `build_health_check_fns` check (flips `status`).

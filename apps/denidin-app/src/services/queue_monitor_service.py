@@ -1,7 +1,7 @@
 """Queue monitor (Feature 067, REQ-RMH-034/035).
 
-Periodically inspects every registered ``BoundedQueue`` (the per-chat intake queues,
-the arrival queue, the SessionManager actor queue): WARNING when a queue reaches its
+Periodically inspects every registered ``BoundedQueue`` (the worker queue and the
+SessionManager actor queue): WARNING when a queue reaches its
 warning size or has items waiting with nothing taken for ``stall_seconds`` (rate
 limited per queue and kind), and an INFO line with the numbers whenever any queue is
 non-empty. ``/health`` reads the two booleans (``within_limits``, ``not_stalled``).
