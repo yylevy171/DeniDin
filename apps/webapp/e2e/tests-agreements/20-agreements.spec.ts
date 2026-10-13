@@ -159,7 +159,7 @@ test.describe("US6 - agreed total follows the Agreements DB", () => {
 
 // ================================================================ User Story 4 =============
 test.describe("US4 - revision history and cross-channel consistency", () => {
-  test("UAT 4.1 / 4.2 (UI half) - history lists the WhatsApp edit then the UI edit, in order", async ({ page, request }) => {
+  test("UAT 4.1 / 4.2 (UI half) - the DB holds the UI edit and its revisions are in order (no history view)", async ({ page, request }) => {
     await openClient(page, C.view);
     const a = byTitle(await agreementsOf(request, C.view), M.titles.view);
     const key = comp(a, "ריטיינר").component_key;
@@ -169,12 +169,13 @@ test.describe("US4 - revision history and cross-channel consistency", () => {
     await expect(page.getByTestId(`component-amount-${key}`)).toContainText("1,000");
     // 4.2: the DB (what the bot reads) now holds 1,000 from the latest revision
     expect(comp(byTitle(await agreementsOf(request, C.view), M.titles.view), "ריטיינר").amount).toBe(1000);
-    await btn(page, `agreement-history-${a.agreement_id}`).click();
-    const actors = await page.locator('[data-testid^="revision-actor-"]').allTextContents();
-    // chronological: the seeded WhatsApp edit appears, and the UI edit just made comes after it
-    expect(actors).toContain("בוט הוואטסאפ");
-    expect(actors.indexOf("בוט הוואטסאפ")).toBeLessThan(actors.length - 1);
-    expect(actors[actors.length - 1]).toBe("ממשק הווב");
+    // The revision history is no longer shown in the UI (human decision 2026-10-13); the API still
+    // records it. The chronological order is checked on the revisions the API returns.
+    const revisions = await revisionsOf(request, a.agreement_id);
+    const actors = revisions.map((r) => r.actor);
+    expect(actors).toContain("whatsapp");
+    expect(actors.indexOf("whatsapp")).toBeLessThan(actors.length - 1);
+    expect(actors[actors.length - 1]).toBe("webapp");
     const events = newEvents();
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ component_label: "ריטיינר", amount: 1000 });

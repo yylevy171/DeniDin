@@ -81,7 +81,7 @@
 
 - [x] T023 **A** [US4] Backend integration tests: `GET /api/agreements/{id}/revisions` proxy, chronological order, actor shown
 - [x] T024 **B** [US4] (blocked on T023 approval) Proxy route in `server.py`
-- [x] T025 [P] [US4] Frontend: "Revision History" timeline in the expanded agreement (date, actor, changed values)
+- [x] T025 [P] [US4] Frontend: "Revision History" timeline in the expanded agreement (date, actor, changed values) - **REMOVED 2026-10-13 by human decision**; revisions stay in the DB and the API only
 
 ---
 
@@ -183,3 +183,12 @@ Phase 10 needs every story done; Phase 11 after Phase 10.
 - **Deferred:** letting denidin start (and serve the Agreements API) while Green API is unreachable. Not now.
 - Soft delete (`is_active`) in the Agreements DB; `DELETE /agreements/{id}` is API-only (tests/admin), used for test cleanup against dev. Deleting an agreement leaves its `הסכם` ledger events untouched (no `ביטול` events).
 - **Migration, duplicate component labels (human, 2026-10-11 "do whatever, move on"):** prod census (453 `הסכם` events, 252 agreements) found 5 agreements with duplicate labels. Rule implemented: events sharing a label in one agreement are merged into one component - latest event's values win, empty fields filled from earlier ones, `origin_event_id` = earliest event, all contributing events rewritten with the merged component's status; the report lists every merge (`merged_duplicates`) and the script no longer blocks. Known judgement call: איילת שוסטר "צו מניעה" (17,000 / 2,500 / 25,000) merges to the latest (25,000) - review that one after a dry run.
+
+## Decisions 2026-10-13 (UI polish, human instruction)
+
+- Agreement buttons sit on the agreement's title row, component buttons on the component's row.
+- Icon buttons (tooltip carries the Hebrew label): edit = pen, complete = check, cancel = X, add component = plus.
+  Agreement: edit green (as refresh/settings), complete dark-green glyph, cancel red glyph, add-component green plus,
+  all on the soft-green fill. Component: edit/complete/cancel all blue glyph on light blue. New agreement: black plus on gray.
+- The revision-history view is removed from the UI (UAT 4.1); API and DB revisions unchanged.
+- Still text buttons, pending a decision: delete component (מחק), mark component active (סמן פעיל), reopen (פתח מחדש).

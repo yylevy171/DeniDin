@@ -55,6 +55,10 @@ export function Button({
 // Feather-style icon paths, drawn inline as real DOM <svg> (react-native-web renders View as a
 // div, so a raw SVG element nests fine on web). currentColor picks up the wrapper's `color`.
 const ICON_PATHS: Record<string, string> = {
+  pen: '<path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>',
+  check: '<polyline points="20 6 9 17 4 12"/>',
+  x: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+  plus: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
   refresh:
     '<path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>',
   gear:
@@ -70,6 +74,8 @@ export function IconButton({
   title,
   disabled,
   glyphSize = 17,
+  color,
+  background,
   testID,
 }: {
   glyph?: string;
@@ -79,20 +85,24 @@ export function IconButton({
   title?: string;
   disabled?: boolean;
   glyphSize?: number;
+  color?: string; // glyph colour override (default: theme.accentSoftText)
+  background?: string; // fill override (default: theme.accentSoft)
   testID?: string;
 }) {
+  const fg = color || theme.accentSoftText;
   return (
     <Pressable
       onPress={disabled ? undefined : onPress}
       testID={testID}
       disabled={!!disabled}
       accessibilityState={{ disabled: !!disabled }}
+      accessibilityLabel={title}
       {...({ title } as any)}
       style={{
         width: 36,
         height: 36,
         borderRadius: 8,
-        backgroundColor: theme.accentSoft,
+        backgroundColor: background || theme.accentSoft,
         alignItems: "center",
         justifyContent: "center",
         opacity: disabled ? 0.45 : 1,
@@ -102,14 +112,14 @@ export function IconButton({
         createElement("div", {
           style: { width: glyphSize, height: glyphSize, lineHeight: 0 },
           dangerouslySetInnerHTML: {
-            __html: `<svg width="${glyphSize}" height="${glyphSize}" viewBox="0 0 24 24" fill="none" stroke="${theme.accentSoftText}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:block">${ICON_PATHS[icon]}</svg>`,
+            __html: `<svg width="${glyphSize}" height="${glyphSize}" viewBox="0 0 24 24" fill="none" stroke="${fg}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:block">${ICON_PATHS[icon]}</svg>`,
           },
         })
       ) : (
         <Text
           selectable={false}
           style={{
-            color: theme.accentSoftText,
+            color: fg,
             fontSize: glyphSize,
             lineHeight: glyphSize,
             fontWeight: "700",

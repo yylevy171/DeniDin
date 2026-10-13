@@ -167,7 +167,7 @@ As a user interacting with both the UI and the WhatsApp bot, I want a single sou
 
 **Acceptance Scenarios**:
 
-1. **UAT 4.1 - View Revision History** **[UI]**:
+1. **UAT 4.1 - View Revision History** **[UI]** *(REMOVED from the UI by human decision 2026-10-13: nobody asked for a history view. The API still records and serves revisions; no screen shows them.)*:
    * **User Action**: The user looks at an agreement's expanded view in the UI, after a UI edit and a (seeded) WhatsApp edit have both happened.
    * **Expected Result**: They see a "Revision History" timeline that lists each revision to the agreement or its components chronologically, showing the date, the actor (Webapp UI or WhatsApp Bot), and a snapshot of the changed values. Both edits appear, in order.
    * **Ledger effect**: None (read-only).
