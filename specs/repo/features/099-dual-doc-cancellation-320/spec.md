@@ -1,38 +1,29 @@
-# Feature 099: Dual-Document Generation for 320 Cancellations
+# Feature Specification: Dual-Document Cancellation of a 320
 
-**Feature Branch**: `feature/099-dual-doc-cancellation-320`
-**Status**: Backlog
+**Feature Branch**: `feature/f64-f66-f71-f99-f100-b72-b73` (bundle)
+**Specified**: 2026-10-09
+**Status**: Specified (acceptance scenarios approved 2026-10-09) - `speckit.clarify` / `plan` pending
+**Dependency**: Feature 063 (Backbone)
 
-## 1. Business & Architectural Goals
+## Problem
+A 320 (חשבונית מס / קבלה) records both revenue and a cash receipt. Cancelling it today produces only a 330 credit note, which reverses the revenue but leaves the cash side unbalanced.
 
-A `320` document (חשבונית מס קבלה - Tax Invoice Receipt) represents two distinct accounting events:
-1. Recognizing revenue (Invoice).
-2. Recognizing a cash inflow (Receipt).
+## Requirements
+- **REQ-099-01 (Detect)**: When a full cancellation targets a 320, the bot recognises it.
+- **REQ-099-02 (Two documents, in order)**: A 330 matching the 320's lines first, then a 400 receipt with a negative amount: a single line for the total, using the first payment line's method.
+- **REQ-099-03 (Two approvals)**: Each document has its own approval step; the 330 is approved before the negative 400 is offered.
+- **REQ-099-04 (Linking)**: Both documents reference the original 320, and their descriptions mention its number.
+- **REQ-099-05 (Declined 400)**: If the user declines the negative 400, the bot says the cash side is still not reversed.
+- **REQ-099-06 (Failure of the 400)**: If the negative 400 fails after the 330 succeeded, the bot says so plainly and offers a retry; nothing is rolled back. (Not covered by a dedicated test - the model's error handling is trusted.)
+- **REQ-099-07 (Already cancelled)**: A 320 that already has a 330 against it is refused as already cancelled.
+- **REQ-099-08 (Other documents unchanged)**: Cancelling a 305 produces only a 330, as today. Partial credits are unchanged (full cancellation only).
+- **REQ-099-09 (Feedback)**: The bot tells the user both documents were created.
+- **REQ-099-10 (Ledger)**: The 330 and the 400 are captured as any created document is today.
+- **REQ-099-11 (Scope)**: Backbone pipeline only; no feature flag.
 
-Currently, when a user asks DeniDin to "cancel" a 320, we generate a `330` (חשבונית זיכוי - Credit Note). This properly reverses the *revenue* aspect, but leaves the *cash inflow* aspect unbalanced in the ledger. 
-To fully and correctly cancel a 320, we must issue TWO documents: a `330` (Credit Note for the invoice portion) and a `Negative 400` (Negative Receipt to refund the cash portion).
+## Success criteria
+- **SC-001**: After cancelling a 320, the client's books net to zero on both the revenue and the cash side.
+- **SC-002**: A user never gets a half-cancelled 320 without being told.
 
-## 2. PM Requirements (Functional)
-
-- **REQ-099-01 (Detection)**: When the user requests a cancellation, the system must detect if the target document being cancelled is a `320`.
-- **REQ-099-02 (Dual Generation)**: If cancelling a 320, the system must automatically execute two Morning API calls in sequence:
-  1. Generate a `330` (Credit Note) matching the original `320` line items.
-  2. Generate a `400` (Receipt) with a negative amount matching the original payment method/amount of the `320`.
-- **REQ-099-03 (Atomicity/Linking)**: Both generated documents MUST explicitly reference the original cancelled document's ID in the Morning API payload (`reference_docs_ids` or equivalent field). Additionally, their descriptions and comments SHOULD mention the original document number for human readability (e.g., "ביטול לחשבונית מס קבלה X").
-- **REQ-099-04 (User Feedback)**: The AI must inform the user that *both* a credit note and a negative receipt were generated to properly balance the books.
-
-## 3. User Acceptance Tests (UAT)
-
-- **UAT-1 (Standard Cancellation)**:
-  - *Given* a 320 document exists for 1,000 NIS paid via Bit,
-  - *When* the user says "Cancel the last invoice",
-  - *Then* the system generates a 330 for 1,000 NIS AND a 400 for -1,000 NIS (Bit), and links them to the client.
-- **UAT-2 (Edge Case - Cancellation of purely 300)**:
-  - *Given* a 300 document (חשבונית מס),
-  - *When* the user cancels it,
-  - *Then* the system ONLY generates a 330, as there was no cash receipt to reverse.
-
-## 4. Complexity & Open Questions
-
-- Does the Morning API allow creating a `400` with a strictly negative amount? Sometimes accounting systems use a specific "Refund Receipt" document type instead. (Dev must verify the Morning API payload for reversing a receipt).
-- What if one API call succeeds (the 330) but the negative 400 fails? We need error handling to ensure we don't end up in a partially-cancelled state without alerting the user.
+## Open points for planning
+Confirm in the Morning sandbox that creating a negative 400 is accepted (Morning's own cancellation documents carry negative amounts - Feature 062 - so likely, but unverified). Note the "first payment's method" rule mis-states a 320 paid by two methods; recorded as decided.

@@ -21,16 +21,16 @@ export interface EventsSettings {
 // Canonical event types + subtypes (from prod data + runtime_constitution.md). The subtype
 // dropdown always offers the full union; options invalid for the currently-selected type(s)
 // are shown disabled rather than hidden.
-const EVENT_TYPES = ["הסכם", "בנק", "חשבונית"];
+const EVENT_TYPES = ["הסכם", "הפקדה", "חשבונית"];
 const SUBTYPES_BY_TYPE: Record<string, string[]> = {
   הסכם: ["יצירה", "עדכון", "מבוטל"],
-  בנק: ["הפקדה", "מבוטל"],
+  הפקדה: ["בנק", "ביט", "פייבוקס", "צ׳ק", "מזומן", "מבוטל"],
   חשבונית: ["חשבונית מס / קבלה", "חשבונית מס", "חשבונית זיכוי", "קבלה", "חשבון עסקה"],
 };
 const ALL_SUBTYPES = [
   ...new Set([
     ...SUBTYPES_BY_TYPE["הסכם"],
-    ...SUBTYPES_BY_TYPE["בנק"],
+    ...SUBTYPES_BY_TYPE["הפקדה"],
     ...SUBTYPES_BY_TYPE["חשבונית"],
   ]),
 ];
@@ -107,7 +107,7 @@ export default function EventsView({
 
   const [expanded, setExpanded] = useState<Record<string, { detail: any; ctx: any }>>({});
   const [sigma, setSigma] = useState<{ n: number; total: number } | null>(null);
-  const [lightbox, setLightbox] = useState<{ rowId: string; url: string } | null>(null);
+  const [lightbox, setLightbox] = useState<{ rowId: string; url: string; isPdf: boolean } | null>(null);
   const [openMenu, setOpenMenu] = useState<"type" | "sub" | "client" | null>(null);
   // sort direction — session-only (resets on reload / re-login), never persisted; default desc
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
@@ -379,7 +379,7 @@ export default function EventsView({
                   messages={expanded[r.event_id].ctx?.messages}
                   error={expanded[r.event_id].ctx?.error}
                   theme={theme}
-                  onOpenImage={(url) => setLightbox({ rowId: r.event_id, url })}
+                  onOpenImage={(url, isPdf) => setLightbox({ rowId: r.event_id, url, isPdf })}
                 />
               </View>
             </View>
@@ -658,7 +658,7 @@ export default function EventsView({
 
       {/* full-app image viewer */}
       {lightbox ? (
-        <ImageOverlay url={lightbox.url} theme={theme} onClose={() => setLightbox(null)} />
+        <ImageOverlay url={lightbox.url} isPdf={lightbox.isPdf} theme={theme} onClose={() => setLightbox(null)} />
       ) : null}
     </View>
   );

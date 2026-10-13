@@ -1,14 +1,17 @@
 # Capability: Approval with buttons
 
 `approval_with_yes_no_buttons(text)` ends the turn showing the user WhatsApp yes/no
-buttons alongside `text`. It is plain and stateless: it does not know what the write
-is, and there is no pending-approval state to track. On the user's next turn, read
+buttons alongside `text`. It asks the user a yes/no question - about a write, an offer,
+or anything else a flow needs answered - and the buttons are only a way to answer
+(a tap or a typed "כן"/"לא" mean exactly the same). A yes means yes to what `text` asked,
+nothing more. It is plain and stateless: it does not know what is being asked, and there is no pending-approval state to track. On the user's next turn, read
 their reply (a typed "כן"/"לא" or a button tap; both arrive as an ordinary turn) from
 the conversation, and act accordingly. Your own `cap_record_planning_status` note is
 what carries "I am waiting for approval of X" across the gap.
 
-The flow that needs the approval decides that an approval is required. The write
-capability you are about to use defines which details the approval must state.
+The flow that needs the answer decides that a yes/no is required. The capability you
+are about to use (for a write, its write capability) defines which details the text must state. The rules below apply when the question is the approval of an action; when a
+flow uses the tool for another question, it words that question as the flow says.
 
 - Start the text with `📋 לאישור:` (or, for a document-creation approval,
   `📋 לאישור — <what it is>:`, e.g. `📋 לאישור — לקוח חדש:`) on its own line,

@@ -89,6 +89,7 @@ INTERNAL_FIELDS = {
     "session_id", "message_id", "captured_at",
     "reference_hint", "schema_version",
     "bank_number", "bank_branch", "bank_account",
+    "check_number",  # Feature 066
 }
 # trigger_condition removed (Feature 043, 2026-08-18, finding #10): now wired to
 # the AI's own component-level input for הסכם (LEDGER_EVENT_TOOL exposes it) -
@@ -207,7 +208,7 @@ class TestEventIdGeneration:
 
     def test_source_type_bank_gets_B_prefix(self, manager):
         event_id = manager.add_ledger_event(
-            session_id="s", event=dict(SAMPLE_EVENT, source_type="בנק", event_subtype="הפקדה"),
+            session_id="s", event=dict(SAMPLE_EVENT, source_type="הפקדה", event_subtype="בנק"),
             message_id="m", message_timestamp=FIXED_TS,
         )
         assert event_id.startswith("B")
@@ -254,7 +255,7 @@ class TestEventIdGeneration:
             message_id="m1", message_timestamp=FIXED_TS,
         )
         bank_id = manager.add_ledger_event(
-            session_id="s", event=dict(SAMPLE_EVENT, source_type="בנק", event_subtype="הפקדה"),
+            session_id="s", event=dict(SAMPLE_EVENT, source_type="הפקדה", event_subtype="בנק"),
             message_id="m2", message_timestamp=FIXED_TS,
         )
         assert agreement_id == "A28072614060"
@@ -511,7 +512,7 @@ class TestAgreementAndComponentIds:
         self, manager, temp_events_dir
     ):
         event_id = manager.add_ledger_event(
-            session_id="s", event=dict(SAMPLE_EVENT, source_type="בנק", event_subtype="הפקדה"),
+            session_id="s", event=dict(SAMPLE_EVENT, source_type="הפקדה", event_subtype="בנק"),
             message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
@@ -690,7 +691,7 @@ class TestTxnDate:
 
     def test_txn_date_normalized_for_bank_transaction_date(self, manager, temp_events_dir):
         event_id = manager.add_ledger_event(
-            session_id="s", event=dict(SAMPLE_EVENT, source_type="בנק", txn_date="2026-07-26"),
+            session_id="s", event=dict(SAMPLE_EVENT, source_type="הפקדה", txn_date="2026-07-26"),
             message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
@@ -701,7 +702,7 @@ class TestTxnDate:
         a txn_date DIFFERENT from event_datetime (derived from FIXED_TS = 28/07/2026
         local, the message's own arrival time)."""
         event_id = manager.add_ledger_event(
-            session_id="s", event=dict(SAMPLE_EVENT, source_type="בנק", txn_date="2026-07-26"),
+            session_id="s", event=dict(SAMPLE_EVENT, source_type="הפקדה", txn_date="2026-07-26"),
             message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
@@ -710,7 +711,7 @@ class TestTxnDate:
 
     def test_txn_date_null_by_default_for_bank_event(self, manager, temp_events_dir):
         event_id = manager.add_ledger_event(
-            session_id="s", event=dict(SAMPLE_EVENT, source_type="בנק"),
+            session_id="s", event=dict(SAMPLE_EVENT, source_type="הפקדה"),
             message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
@@ -721,7 +722,7 @@ class TestTxnDate:
     ):
         with caplog.at_level(logging.WARNING):
             event_id = manager.add_ledger_event(
-                session_id="s", event=dict(SAMPLE_EVENT, source_type="בנק", txn_date="אתמול"),
+                session_id="s", event=dict(SAMPLE_EVENT, source_type="הפקדה", txn_date="אתמול"),
                 message_id="m", message_timestamp=FIXED_TS,
             )
         data = _read(temp_events_dir, event_id)
@@ -831,7 +832,7 @@ class TestAddLedgerEventsFromCall:
         self, manager, temp_events_dir
     ):
         call_arguments = {
-            "source_type": "בנק", "event_subtype": "הפקדה",
+            "source_type": "הפקדה", "event_subtype": "בנק",
             "client_name": None, "payer_name": None,
             "agreement_id": None, "reference_hint": None,
             "component_count": 1,
@@ -850,7 +851,7 @@ class TestAddLedgerEventsFromCall:
 
         assert len(event_ids) == 1
         data = _read(temp_events_dir, event_ids[0])
-        assert data["source_type"] == "בנק"
+        assert data["source_type"] == "הפקדה"
         assert data["agreement_id"] is None
         assert data["component_id"] is None
         assert data["amount"] == 9440
@@ -971,7 +972,7 @@ class TestBankPaymentDetailFields:
     def test_bank_event_persists_all_three_fields_verbatim(self, manager, temp_events_dir):
         event_id = manager.add_ledger_event(
             session_id="s", event=dict(
-                SAMPLE_EVENT, source_type="בנק",
+                SAMPLE_EVENT, source_type="הפקדה",
                 bank_number="31", bank_branch="123", bank_account="456789",
             ),
             message_id="m", message_timestamp=FIXED_TS,
@@ -989,7 +990,7 @@ class TestBankPaymentDetailFields:
         doesn't supply them (e.g. a genuinely unstated screenshot) must never
         crash."""
         event_id = manager.add_ledger_event(
-            session_id="s", event=dict(SAMPLE_EVENT, source_type="בנק"),
+            session_id="s", event=dict(SAMPLE_EVENT, source_type="הפקדה"),
             message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
@@ -1026,7 +1027,7 @@ class TestPayerNameBankHandling:
 
     def test_payer_name_forced_null_for_bank_event(self, manager, temp_events_dir):
         event_id = manager.add_ledger_event(
-            session_id="s", event=dict(SAMPLE_EVENT, source_type="בנק", client_name="דני כהן", payer_name="דני כהן"),
+            session_id="s", event=dict(SAMPLE_EVENT, source_type="הפקדה", client_name="דני כהן", payer_name="דני כהן"),
             message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
@@ -1037,7 +1038,7 @@ class TestPayerNameBankHandling:
     ):
         with caplog.at_level(logging.WARNING):
             event_id = manager.add_ledger_event(
-                session_id="s", event=dict(SAMPLE_EVENT, source_type="בנק", client_name=None, payer_name="דני כהן"),
+                session_id="s", event=dict(SAMPLE_EVENT, source_type="הפקדה", client_name=None, payer_name="דני כהן"),
                 message_id="m", message_timestamp=FIXED_TS,
             )
         data = _read(temp_events_dir, event_id)
@@ -1054,7 +1055,7 @@ class TestPayerNameBankHandling:
         rather than discarded - never lose a real captured name to the same
         conflation the original nulling guard was meant to catch."""
         event_id = manager.add_ledger_event(
-            session_id="s", event=dict(SAMPLE_EVENT, source_type="בנק", client_name="שם נכון", payer_name="שם אחר"),
+            session_id="s", event=dict(SAMPLE_EVENT, source_type="הפקדה", client_name="שם נכון", payer_name="שם אחר"),
             message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
@@ -1067,7 +1068,7 @@ class TestPayerNameBankHandling:
         Collapse to one field: keep client_name, null payer_name."""
         event_id = manager.add_ledger_event(
             session_id="s",
-            event=dict(SAMPLE_EVENT, source_type="בנק", client_name="שם נכון", payer_name="שם נכון"),
+            event=dict(SAMPLE_EVENT, source_type="הפקדה", client_name="שם נכון", payer_name="שם נכון"),
             message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
@@ -1094,7 +1095,7 @@ class TestVatStatusBankDefault:
     @pytest.mark.parametrize("given", ["לא צוין", "לא כולל", "כולל", None])
     def test_vat_status_always_kolel_for_bank_event(self, manager, temp_events_dir, given):
         event_id = manager.add_ledger_event(
-            session_id="s", event=dict(SAMPLE_EVENT, source_type="בנק", vat_status=given),
+            session_id="s", event=dict(SAMPLE_EVENT, source_type="הפקדה", vat_status=given),
             message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
@@ -1135,7 +1136,7 @@ class TestTriggerConditionField:
 
     def test_trigger_condition_forced_null_for_bank_event(self, manager, temp_events_dir):
         event_id = manager.add_ledger_event(
-            session_id="s", event=dict(SAMPLE_EVENT, source_type="בנק", trigger_condition="אם משהו"),
+            session_id="s", event=dict(SAMPLE_EVENT, source_type="הפקדה", trigger_condition="אם משהו"),
             message_id="m", message_timestamp=FIXED_TS,
         )
         data = _read(temp_events_dir, event_id)
@@ -1479,12 +1480,12 @@ class TestQueryEventsCriteriaMatching:
         perfect amount match was "carrying" an irrelevant identity score past
         a mean-of-scores gate)."""
         manager.add_ledger_event(
-            session_id="s", event=dict(SAMPLE_EVENT, source_type="בנק", event_subtype="הפקדה",
+            session_id="s", event=dict(SAMPLE_EVENT, source_type="הפקדה", event_subtype="בנק",
                                         client_name="אלי אבירם", amount="100"),
             message_id="m1", message_timestamp=FIXED_TS,
         )
         manager.add_ledger_event(
-            session_id="s", event=dict(SAMPLE_EVENT, source_type="בנק", event_subtype="הפקדה",
+            session_id="s", event=dict(SAMPLE_EVENT, source_type="הפקדה", event_subtype="בנק",
                                         client_name="דוד כרמון", amount="100"),
             message_id="m2", message_timestamp=FIXED_TS,
         )
@@ -1777,7 +1778,7 @@ class TestAccountingDocumentFields:
         self, manager, temp_events_dir
     ):
         event = dict(
-            SAMPLE_EVENT, source_type="בנק", event_subtype="הפקדה",
+            SAMPLE_EVENT, source_type="הפקדה", event_subtype="בנק",
             **{f: "should be dropped" for f in ACCOUNTING_DOCUMENT_FIELDS},
         )
         event_id = manager.add_ledger_event(
@@ -1785,7 +1786,7 @@ class TestAccountingDocumentFields:
         )
         data = _read(temp_events_dir, event_id)
         for field in ACCOUNTING_DOCUMENT_FIELDS:
-            assert data[field] is None, f"{field} must be null for source_type='בנק'"
+            assert data[field] is None, f"{field} must be null for source_type='הפקדה'"
 
     def test_non_applicable_fields_forced_null_for_accounting_document(
         self, manager, temp_events_dir
@@ -1867,7 +1868,7 @@ class TestScanAccountingDocuments:
             message_id="m", message_timestamp=FIXED_TS,
         )
         manager.add_ledger_event(
-            session_id="s", event=dict(SAMPLE_EVENT, source_type="בנק", event_subtype="הפקדה"),
+            session_id="s", event=dict(SAMPLE_EVENT, source_type="הפקדה", event_subtype="בנק"),
             message_id="m2", message_timestamp=FIXED_TS,
         )
         assert manager.scan_accounting_documents() == {}
@@ -2463,7 +2464,7 @@ class TestAccountingDocumentSubtypeIsTheMorningDocType:
         a = manager.add_ledger_event(session_id="s", event=dict(SAMPLE_EVENT),
                                      message_id="m", message_timestamp=FIXED_TS)
         b = manager.add_ledger_event(
-            session_id="s", event=dict(SAMPLE_EVENT, source_type="בנק", event_subtype="הפקדה"),
+            session_id="s", event=dict(SAMPLE_EVENT, source_type="הפקדה", event_subtype="בנק"),
             message_id="m2", message_timestamp=FIXED_TS)
         assert _read(temp_events_dir, a)["event_subtype"] == "יצירה"
-        assert _read(temp_events_dir, b)["event_subtype"] == "הפקדה"
+        assert _read(temp_events_dir, b)["event_subtype"] == "בנק"

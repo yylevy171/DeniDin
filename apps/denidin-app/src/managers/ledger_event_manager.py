@@ -82,7 +82,7 @@ _HINT_GROUPS: Dict[str, Tuple[str, ...]] = {
         "accounting_document_display_number", "accounting_document_payment_method",
         "accounting_document_status", "accounting_document_status_label",
     ),
-    "banking": ("bank_number", "bank_branch", "bank_account"),
+    "banking": ("bank_number", "bank_branch", "bank_account", "check_number"),
 }
 
 # Flat set of every field any criterion can ever match against - the union of
@@ -148,7 +148,7 @@ _CRITERION_MATCH_FLOOR = 55
 # _SHORT_VALUE_MATCH_THRESHOLD below - never just _CRITERION_MATCH_FLOOR.
 # Confirmed empirically necessary (2026-08-24): several of this schema's
 # fields hold short, near-universal filler/categorical values
-# (event_subtype="יצירה", component_label="בסיס", source_type="הסכם"/"בנק",
+# (event_subtype="יצירה", component_label="בסיס", source_type="הסכם"/"הפקדה",
 # vat_status="כולל"/"לא צוין") - both WRatio AND partial_ratio can find
 # enough coincidental character overlap between a short value and a
 # COMPLETELY unrelated, longer query to clear the general floor (real cases
@@ -183,7 +183,7 @@ ISRAEL_TZ = LOCAL_TZ  # retained name; the canonical definition lives in time_ut
 # conversational capture path (_handle_ledger_event_capture stays unmodified).
 _LETTER_BY_SOURCE_TYPE = {
     "הסכם": "A",
-    "בנק": "B",
+    "הפקדה": "B",
     "חשבונית": "H",
 }
 
@@ -265,7 +265,7 @@ _STATUS_HE = {"paid": "שולם", "unpaid": "לא שולם", "cancelled": "בו�
 # Both reverts land on the same value (2); Feature 061's contribution kept on
 # merge is the lasting enforcement mechanism below (SCHEMA_VERSION_HISTORY +
 # _verify_schema_version_history()), which neither branch had before.
-CURRENT_SCHEMA_VERSION = 2
+CURRENT_SCHEMA_VERSION = 3
 
 # Every entry here is a human-approved decision, added in the SAME commit that
 # changes CURRENT_SCHEMA_VERSION above it - never after the fact.
@@ -311,6 +311,18 @@ SCHEMA_VERSION_HISTORY = [
             "added SCHEMA_VERSION_HISTORY/_verify_schema_version_history() itself, plus "
             "CLAUDE.md's 'LEDGER SCHEMA VERSION BUMPS ARE HUMAN-ONLY' rule - the lasting "
             "enforcement Feature 044's fix didn't add."
+        ),
+    },
+    {
+        "version": 3,
+        "date": "2026-10-09",
+        "feature": "066",
+        "decision": (
+            "Human-approved (\"v3\") for Feature 066: incoming-funds events change shape - "
+            "source_type 'בנק' becomes 'הפקדה' and event_subtype carries the method "
+            "(בנק/ביט/פייבוקס/צ׳ק/מזומן); new optional check_number field. Existing 'בנק' "
+            "events are migrated by scripts/migrate_066_deposit_flip.py. No feature flag - "
+            "this bump is the gate."
         ),
     },
 ]
@@ -372,6 +384,7 @@ LEDGER_EVENT_FIELDS: Tuple[str, ...] = (
     "bank_number",
     "bank_branch",
     "bank_account",
+    "check_number",
     "schema_version",
 )
 
@@ -601,7 +614,13 @@ def _expand_accounting_document_json(event: Dict) -> Optional[Dict]:
         # of event_datetime and was removed entirely - event_datetime is the
         # only creation-date field now).
         "_source_creation_ts_raw": doc.get("creation_date"),
-        "accounting_document_payment_method": payment.get("method"),
+        # Feature 066: Morning files Bit and PayBox under one generic "app" payment type
+        # (10); the appType tells them apart, so name the real method.
+        "accounting_document_payment_method": (
+            _APP_PAYMENT_METHOD_BY_APP_TYPE.get(payment.get("app_type") or 0, payment.get("method"))
+            if payment.get("type") == 10 else payment.get("method")
+        ),
+        "check_number": payment.get("cheque_number"),
         "client_name": doc.get("client_name"),
         "description": _first_line_item_description(doc),
         # str(): the JSON carries a real number, but _normalize_amount (and the
@@ -621,6 +640,10 @@ def _expand_accounting_document_json(event: Dict) -> Optional[Dict]:
         "_linked_document": doc.get("linked_document"),
     })
     return expanded
+
+
+# Morning `appType` on a type-10 (app) payment -> the method the ledger names (Feature 066).
+_APP_PAYMENT_METHOD_BY_APP_TYPE = {1: "ביט", 3: "פייבוקס"}
 
 
 def _first_line_item_description(doc: Dict) -> Optional[str]:
@@ -930,7 +953,7 @@ class LedgerEventManager:
                 is first created, and repeats the identical string for every later
                 component/message referencing that same matter) - code no longer computes
                 or slugifies any part of it. Ignored entirely when event["source_type"] ==
-                "בנק" (agreement_id/component_id always None for bank events - no
+                "הפקדה" (agreement_id/component_id always None for bank events - no
                 agreement concept applies).
 
         Returns:
@@ -1094,7 +1117,7 @@ class LedgerEventManager:
         # the same real-world meaning (which bank account the money moved
         # through), so it reuses these fields rather than duplicating them.
         # הסכם still forces them null: no payment mechanics apply there.
-        if source_type in ("בנק", "חשבונית"):
+        if source_type in ("הפקדה", "חשבונית"):
             bank_number = event.get("bank_number")
             bank_branch = event.get("bank_branch")
             bank_account = event.get("bank_account")
@@ -1102,6 +1125,13 @@ class LedgerEventManager:
             bank_number = None
             bank_branch = None
             bank_account = None
+        # Feature 066: a cheque's own number applies to a הפקדה with subtype צ׳ק only.
+        # A חשבונית carries its own payment's cheque number (Morning document capture).
+        check_number = (
+            event.get("check_number")
+            if (source_type == "הפקדה" and event.get("event_subtype") == "צ׳ק")
+            or source_type == "חשבונית" else None
+        )
 
         # payer_name used to be treated as a הסכם-only concept and was forced null
         # for בנק regardless of what the AI passed (finding #4, 2026-08-18 player
@@ -1124,10 +1154,10 @@ class LedgerEventManager:
         # exists for) - never when the model has genuinely distinguished the two.
         client_name = event.get("client_name")
         payer_name_raw = event.get("payer_name")
-        if source_type == "בנק":
+        if source_type == "הפקדה":
             if not client_name and payer_name_raw:
                 logger.warning(
-                    f"בנק event: client_name empty but payer_name={payer_name_raw!r} "
+                    f"הפקדה event: client_name empty but payer_name={payer_name_raw!r} "
                     f"given - rescuing its value into client_name instead of discarding it"
                 )
                 client_name = payer_name_raw
@@ -1157,7 +1187,7 @@ class LedgerEventManager:
         # for Morning payment-reference documents - "money already deposited
         # necessarily contains the VAT element already" - so this needs code-side
         # enforcement, not just prompt guidance, same reasoning as payer_name above).
-        vat_status = "כולל" if source_type == "בנק" else event.get("vat_status")
+        vat_status = "כולל" if source_type == "הפקדה" else event.get("vat_status")
 
         # Feature 025 Phase 9: document linkage maps onto the EXISTING
         # reference/reference_hint mechanism (user correction, 2026-08-23) -
@@ -1249,6 +1279,7 @@ class LedgerEventManager:
             "bank_number": bank_number,
             "bank_branch": bank_branch,
             "bank_account": bank_account,
+            "check_number": check_number,
             "schema_version": CURRENT_SCHEMA_VERSION,  # Feature 043, US5
         }
 
@@ -1404,7 +1435,7 @@ class LedgerEventManager:
     # Feature 069 - THE LEDGERER (zero-AI consumer of the recognition verdict)
     # ------------------------------------------------------------------ #
 
-    _TYPE_TOKEN_BY_SOURCE = {"בנק": "deposit", "הסכם": "agreement", "חשבונית": "invoice"}
+    _TYPE_TOKEN_BY_SOURCE = {"הפקדה": "deposit", "הסכם": "agreement", "חשבונית": "invoice"}
 
     # --- Feature 069 content-fingerprint dedup + completeness validation ---
 
@@ -1430,13 +1461,17 @@ class LedgerEventManager:
             )
             if not components or not (has_priced or not _blank(event.get("hours"))):
                 gaps.append("רכיב מתומחר או שעות")
-        elif source_type == "בנק":
+        elif source_type == "הפקדה":
             # vat_status is deliberately NOT checked here - add_ledger_event
-            # force-sets it to `כולל` for every בנק component unconditionally.
+            # force-sets it to `כולל` for every הפקדה component unconditionally.
+            # Feature 066: cash may legitimately carry no date at all (not a gap).
+            cash = event.get("event_subtype") == "מזומן"
             for key, label in (
                 ("client_name", "שם לקוח"), ("txn_date", "תאריך עסקה"),
                 ("amount", "סכום"), ("description", "תיאור"),
             ):
+                if key == "txn_date" and cash:
+                    continue
                 if _blank(event.get(key)):
                     gaps.append(label)
         # source_type == "חשבונית" is intentionally not handled here: a חשבונית
@@ -1463,12 +1498,19 @@ class LedgerEventManager:
                 return None
             return _normalize_amount(str(v))
 
-        if source_type == "בנק":
+        def txn_date_key(v):
+            # An incoming verdict carries txn_date as ISO YYYY-MM-DD while a persisted
+            # record holds the DD/MM/YYYY form (the stored format is unchanged) - compare
+            # both in the persisted form, or a dated deposit never matches itself.
+            return _normalize_iso_date(v) or v or ""
+
+        if source_type == "הפקדה":
             parts = [
-                "בנק", (event.get("client_name") or "").strip(), event.get("txn_date") or "",
+                "הפקדה", event.get("event_subtype") or "",
+                (event.get("client_name") or "").strip(), txn_date_key(event.get("txn_date")),
                 str(amt(event.get("amount"))),
                 event.get("bank_number") or "", event.get("bank_branch") or "",
-                event.get("bank_account") or "", date_str,
+                event.get("bank_account") or "", event.get("check_number") or "", date_str,
             ]
         elif source_type == "הסכם":
             comps = sorted(
@@ -1503,8 +1545,10 @@ class LedgerEventManager:
             if record.get("source_type") != source_type:
                 continue
             rec_date = (record.get("event_datetime") or "").split(" ")[0]
-            if source_type == "בנק":
+            if source_type == "הפקדה":
                 rec_event = {
+                    "event_subtype": record.get("event_subtype"),
+                    "check_number": record.get("check_number"),
                     "client_name": record.get("client_name"),
                     "txn_date": record.get("txn_date"),
                     "amount": record.get("amount"),
@@ -1512,7 +1556,7 @@ class LedgerEventManager:
                     "bank_branch": record.get("bank_branch"),
                     "bank_account": record.get("bank_account"),
                 }
-                if self._content_fingerprint("בנק", rec_event, rec_date) == fp:
+                if self._content_fingerprint("הפקדה", rec_event, rec_date) == fp:
                     return True
             elif source_type == "הסכם" and record.get("agreement_id") == event.get("agreement_id"):
                 # הסכם is exploded per component - reassemble this agreement_id's

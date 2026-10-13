@@ -314,6 +314,7 @@ _PAYMENT_METHOD_LABELS = {
     "credit_card": "כרטיס אשראי",
     "paypal": "פייפאל",
     "bit": "ביט",
+    "paybox": "פייבוקס",
 }
 
 APPROVAL_QUESTION = "אישור — כן/לא?"
@@ -506,6 +507,8 @@ def _build_pending_approval_details(
     bank_bits = [b for b in bank_bits if b]
     if bank_bits:
         lines.append(f"פרטי בנק: {', '.join(bank_bits)}")
+    if args.get("cheque_number"):
+        lines.append(f"מספר צ׳ק: {args['cheque_number']}")
     if args.get("transaction_reference"):
         lines.append(f"אסמכתה: {args['transaction_reference']}")
     if args.get("invoice_number") or args.get("original_invoice_number"):

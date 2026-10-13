@@ -62,7 +62,7 @@ client), count it **once**. When they genuinely diverge, ask the user which
 figure they mean.
 
 **Received (credit) signals** (also non-exclusive):
-- **Bank deposit** (`בנק`, subtype הפקדה).
+- **Deposit** (`הפקדה`, subtype = method: בנק, ביט, פייבוקס, צ׳ק or מזומן).
 - **Receipt** (`חשבונית`, subtype 320 or 400).
 
 The same payment normally produces BOTH — same client + same amount means

@@ -85,6 +85,7 @@ BILLED=(
   "den|tests/billed/test_denidin_morning_document_creation_e2e.py::test_godfather_creates_combo_document_via_whatsapp"
   "den|tests/billed/test_denidin_morning_document_creation_e2e.py::test_godfather_creates_credit_note_against_real_invoice"
   "den|tests/billed/test_denidin_morning_document_creation_e2e.py::test_godfather_creates_receipt_against_unpaid_invoice"
+  "den|tests/billed/test_cancel_combo_099_billed.py::test_99_1_cancel_320_creates_330_then_negative_400"
   "den|tests/billed/test_standalone_receipt_billed.py::test_godfather_records_a_deposit_as_a_standalone_receipt"
   "den|tests/billed/test_denidin_morning_invoice_lifecycle_e2e.py::test_godfather_gets_invoice_details_via_whatsapp"
   "den|tests/billed/test_denidin_morning_list_invoices_e2e.py::test_godfather_lists_invoices_via_whatsapp"
@@ -125,6 +126,7 @@ EXPENSIVE=(
   "den|tests/expensive/test_ledger_event_capture_e2e.py::TestLedgerEventCaptureE2E::test_given_real_six_component_agreement_image_mor_ben_shaya_then_all_components_correctly_persisted"
   "den|tests/expensive/test_e2e_media_client_resolution.py::TestMediaClientResolutionE2E::test_us7d_deposit_image_exact_match_no_question"
   "den|tests/expensive/test_image_classification_e2e.py::test_kehunai_deposit_is_classified_as_a_bank_deposit"
+  "den|tests/expensive/test_deposit_offer_064_e2e.py::TestDepositOffer064E2E::test_64_1_yes_starts_the_320_flow"
 )
 
 ALL_ENTRIES=( "${GATE[@]}" "${BILLED[@]}" "${EXPENSIVE[@]}" )

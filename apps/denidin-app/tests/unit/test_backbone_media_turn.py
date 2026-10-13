@@ -131,7 +131,7 @@ class TestAnalyzeMediaStoresTheReadDocumentInTheConversation:
         assert stash["whatsapp_id_message"] is None
         assert stash["content"].splitlines() == [
             "📸 התקבלה תמונה של אסמכתת העברה/הפקדה בנקאית.",
-            "פעולה: הפקדה",
+            "אמצעי תשלום: בנק",
             "סכום: 554",
             "תאריך הפקדה: 05/08/2026",
             "מספר בנק: 12",

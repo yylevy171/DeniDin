@@ -140,3 +140,45 @@ def test_follow_up_failure_falls_back_to_first_round_text(prompts_root):
     with patch("src.handlers.whatsapp_handler.send_reaction", return_value=True):
         response = _run(backbone)
     assert response.response_text == "טקסט מקורי."
+
+
+def test_send_to_user_with_end_turn_false_sends_now_and_the_turn_continues(prompts_root):
+    client = MagicMock()
+    client.responses.create.side_effect = [
+        _resp([_function_call_item("send_to_user", "call_1", {"text": "קראתי את האסמכתה", "end_turn": False})], "resp_1"),
+        _resp([_function_call_item("send_to_user", "call_2", {"text": "תשובה סופית.", "end_turn": True})], "resp_2"),
+    ]
+    backbone = _backbone(prompts_root, client)
+    backbone.denidin.send_progress_update = MagicMock(return_value=True)
+    response = _run(backbone)
+    backbone.denidin.send_progress_update.assert_called_once_with("chat1", "קראתי את האסמכתה")
+    assert response.response_text == "תשובה סופית."
+    follow = client.responses.create.call_args_list[1].kwargs
+    assert follow["input"][0] == {"type": "function_call_output", "call_id": "call_1", "output": "ok"}
+
+
+def test_send_to_user_with_end_turn_true_ends_the_turn_and_sends_nothing_itself(prompts_root):
+    client = MagicMock()
+    client.responses.create.side_effect = [
+        _resp([_function_call_item("send_to_user", "call_1", {"text": "סיום", "end_turn": True})], "resp_1"),
+    ]
+    backbone = _backbone(prompts_root, client)
+    backbone.denidin.send_progress_update = MagicMock(return_value=True)
+    response = _run(backbone)
+    backbone.denidin.send_progress_update.assert_not_called()
+    assert response.response_text == "סיום"
+    assert client.responses.create.call_count == 1
+
+
+def test_a_continue_send_that_fails_tells_the_model_and_the_turn_goes_on(prompts_root):
+    client = MagicMock()
+    client.responses.create.side_effect = [
+        _resp([_function_call_item("send_to_user", "call_1", {"text": "x", "end_turn": False})], "resp_1"),
+        _resp([_function_call_item("send_to_user", "call_2", {"text": "סיום", "end_turn": True})], "resp_2"),
+    ]
+    backbone = _backbone(prompts_root, client)
+    backbone.denidin.send_progress_update = MagicMock(return_value=False)
+    response = _run(backbone)
+    follow = client.responses.create.call_args_list[1].kwargs
+    assert follow["input"][0]["output"].startswith("error:")
+    assert response.response_text == "סיום"

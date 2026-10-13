@@ -143,8 +143,8 @@ class TestOtherCommentBehaviourUnchanged:
 
     def test_remove_duplicate_deposit_keyword_still_marks_paid_gray(self, tmp_path):
         events = _events() + [
-            ev("B1", DEBT, "בנק", 700, subtype="הפקדה"),
-            ev("B2", DEBT, "בנק", 700, subtype="הפקדה"),
+            ev("B1", DEBT, "הפקדה", 700, subtype="בנק"),
+            ev("B2", DEBT, "הפקדה", 700, subtype="בנק"),
         ]
         report = make_reader(tmp_path, OFFICIAL, events, comments={DEBT: "להוריד כפילות"}).get_report()
         assert row(report, DEBT)["paid_status"] == "GRAY"

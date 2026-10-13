@@ -135,21 +135,27 @@ SEND_TO_USER_TOOL: Dict[str, Any] = {
     "type": "function",
     "name": "send_to_user",
     "description": (
-        "Sends your actual reply to the user - a real capability like any "
-        "other, called whenever you're ready to speak (not just at the very "
-        "end). Pass the literal text '[[NO_REPLY]]' to deliberately say "
-        "nothing this turn (e.g. a group message clearly addressed to someone "
-        "else). For a yes/no confirmation question, use "
-        "approval_with_yes_no_buttons instead - it gives the user tappable "
-        "buttons."
+        "Sends a message to the user - a real capability like any other, "
+        "called whenever you're ready to speak (not just at the very end). "
+        "end_turn=true is your final reply: it ends your turn. end_turn=false "
+        "sends the message right away and your turn continues, so you can "
+        "report something and then keep working (finish with end_turn=true or "
+        "approval_with_yes_no_buttons). Pass the literal text '[[NO_REPLY]]' "
+        "(end_turn=true only) to deliberately say nothing this turn (e.g. a "
+        "group message clearly addressed to someone else). For a yes/no "
+        "question, use approval_with_yes_no_buttons instead - it gives the "
+        "user tappable buttons."
     ),
     "strict": True,
     "parameters": {
         "type": "object",
         "properties": {
-            "text": {"type": "string", "description": "The reply text, or '[[NO_REPLY]]'."},
+            "text": {"type": "string", "description": "The message text, or '[[NO_REPLY]]'."},
+            "end_turn": {"type": "boolean",
+                         "description": "true: this is your final reply, the turn ends. "
+                                        "false: send it now and keep working."},
         },
-        "required": ["text"],
+        "required": ["text", "end_turn"],
         "additionalProperties": False,
     },
 }

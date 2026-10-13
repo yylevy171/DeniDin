@@ -19,7 +19,7 @@ import {
   rows,
 } from "./_helpers";
 
-const TYPES = ["הסכם", "בנק", "חשבונית"];
+const TYPES = ["הסכם", "הפקדה", "חשבונית"];
 
 test.describe("3.1 Apply gating (10)", () => {
   test("3.1.1 selecting an event type without Apply leaves the list unchanged", async ({ page }) => {
@@ -113,11 +113,11 @@ test.describe("3.2 Event type filter (7)", () => {
 
   test("3.2.2 selecting two types shows rows matching either (OR)", async ({ page }) => {
     await login(page);
-    await msSelectOnly(page, "type", ["הסכם", "בנק"]);
+    await msSelectOnly(page, "type", ["הסכם", "הפקדה"]);
     await applyFilters(page);
     const got = new Set(await rowIds(page));
-    for (const id of got) expect(["הסכם", "בנק"]).toContain(readEvent(id).source_type);
-    for (const id of [...idsBySourceType("הסכם"), ...idsBySourceType("בנק")]) expect(got.has(id)).toBe(true);
+    for (const id of got) expect(["הסכם", "הפקדה"]).toContain(readEvent(id).source_type);
+    for (const id of [...idsBySourceType("הסכם"), ...idsBySourceType("הפקדה")]) expect(got.has(id)).toBe(true);
   });
 
   test("3.2.3 selecting all types equals no type filter at all", async ({ page }) => {
@@ -130,7 +130,7 @@ test.describe("3.2 Event type filter (7)", () => {
 
   test("3.2.4 deselecting one of several narrows correctly on the next Apply", async ({ page }) => {
     await login(page);
-    await msToggle(page, "type", "חשבונית"); // now הסכם + בנק
+    await msToggle(page, "type", "חשבונית"); // now הסכם + הפקדה
     await applyFilters(page);
     const got = new Set(await rowIds(page));
     for (const id of got) expect(readEvent(id).source_type).not.toBe("חשבונית");
@@ -162,8 +162,8 @@ test.describe("3.2 Event type filter (7)", () => {
 
   test("3.2.7 a selected type with zero matches shows the empty state, not an error", async ({ page }) => {
     await login(page);
-    // filter to בנק then also restrict date to today only -> E7 is today/בנק, so use client too
-    await msSelectOnly(page, "type", ["בנק"]);
+    // filter to הפקדה then also restrict date to today only -> E7 is today/הפקדה, so use client too
+    await msSelectOnly(page, "type", ["הפקדה"]);
     await page.getByTestId("filter-client-name").fill("no-such-bank-client");
     await page.keyboard.press("Escape");
     await applyFilters(page);
@@ -176,26 +176,26 @@ test.describe("3.3 Event subtype filter — dynamic scoping (8)", () => {
   test("3.3.1 with no event type selected, every subtype is selectable", async ({ page }) => {
     await login(page);
     await page.getByTestId("filter-subtype").click();
-    for (const s of ["יצירה", "הפקדה", "קבלה", "חשבונית מס"]) {
+    for (const s of ["יצירה", "בנק", "קבלה", "חשבונית מס"]) {
       await expect(page.getByTestId(`filter-subtype-opt-${s}`)).not.toHaveAttribute("aria-disabled", "true");
     }
   });
 
   test("3.3.2 selecting one event type grays out subtypes invalid for it", async ({ page }) => {
     await login(page);
-    await msSelectOnly(page, "type", ["בנק"]);
+    await msSelectOnly(page, "type", ["הפקדה"]);
     await page.getByTestId("filter-subtype").click();
-    await expect(page.getByTestId("filter-subtype-opt-הפקדה")).not.toHaveAttribute("aria-disabled", "true");
+    await expect(page.getByTestId("filter-subtype-opt-בנק")).not.toHaveAttribute("aria-disabled", "true");
     await expect(page.getByTestId("filter-subtype-opt-יצירה")).toHaveAttribute("aria-disabled", "true");
   });
 
   test("3.3.3 selecting a second type un-grays subtypes valid for either", async ({ page }) => {
     await login(page);
-    await msSelectOnly(page, "type", ["בנק"]);
-    await msToggle(page, "type", "הסכם"); // בנק + הסכם
+    await msSelectOnly(page, "type", ["הפקדה"]);
+    await msToggle(page, "type", "הסכם"); // הפקדה + הסכם
     await page.getByTestId("filter-subtype").click();
     await expect(page.getByTestId("filter-subtype-opt-יצירה")).not.toHaveAttribute("aria-disabled", "true");
-    await expect(page.getByTestId("filter-subtype-opt-הפקדה")).not.toHaveAttribute("aria-disabled", "true");
+    await expect(page.getByTestId("filter-subtype-opt-בנק")).not.toHaveAttribute("aria-disabled", "true");
     await expect(page.getByTestId("filter-subtype-opt-קבלה")).toHaveAttribute("aria-disabled", "true");
   });
 
@@ -206,9 +206,9 @@ test.describe("3.3 Event subtype filter — dynamic scoping (8)", () => {
         "types selected it greys every subtype instead. PLAYWRIGHT-TEST-PLAN 3.3.4 / 3.3.1."
     );
     await login(page);
-    await msSelectOnly(page, "type", ["בנק"]);
+    await msSelectOnly(page, "type", ["הפקדה"]);
     await page.getByTestId("filter-type").click();
-    await page.getByTestId("filter-type-opt-בנק").click(); // now none selected
+    await page.getByTestId("filter-type-opt-הפקדה").click(); // now none selected
     await page.getByTestId("filter-type").click();
     await page.getByTestId("filter-subtype").click();
     await expect(page.getByTestId("filter-subtype-opt-יצירה")).not.toHaveAttribute("aria-disabled", "true");
@@ -222,16 +222,16 @@ test.describe("3.3 Event subtype filter — dynamic scoping (8)", () => {
         "removing it when the type selection changes. PLAYWRIGHT-TEST-PLAN 3.3.5."
     );
     await login(page);
-    await msSelectOnly(page, "subtype", ["הפקדה"]);
+    await msSelectOnly(page, "subtype", ["בנק"]);
     await msSelectOnly(page, "type", ["הסכם"]); // הפקדה now invalid
     await page.getByTestId("filter-subtype").click();
-    await expect(page.getByTestId("filter-subtype-opt-הפקדה")).toHaveAttribute("aria-checked", "false");
+    await expect(page.getByTestId("filter-subtype-opt-בנק")).toHaveAttribute("aria-checked", "false");
   });
 
   test("3.3.6 grayed-out options are genuinely unclickable", async ({ page }) => {
     await login(page);
-    await msSelectOnly(page, "subtype", ["הפקדה"]); // start: only הפקדה checked
-    await msSelectOnly(page, "type", ["בנק"]);
+    await msSelectOnly(page, "subtype", ["בנק"]); // start: only בנק checked
+    await msSelectOnly(page, "type", ["הפקדה"]);
     await page.getByTestId("filter-subtype").click();
     const opt = page.getByTestId("filter-subtype-opt-קבלה");
     await expect(opt).toHaveAttribute("aria-disabled", "true");
@@ -256,11 +256,11 @@ test.describe("3.3 Event subtype filter — dynamic scoping (8)", () => {
   test("3.3.8 the subtype dropdown's enabled/grayed state updates live without reopening", async ({ page }) => {
     await login(page);
     await page.getByTestId("filter-subtype").click();
-    await expect(page.getByTestId("filter-subtype-opt-הפקדה")).not.toHaveAttribute("aria-disabled", "true");
+    await expect(page.getByTestId("filter-subtype-opt-בנק")).not.toHaveAttribute("aria-disabled", "true");
     await page.getByTestId("filter-subtype").click();
     await msSelectOnly(page, "type", ["הסכם"]);
     await page.getByTestId("filter-subtype").click();
-    await expect(page.getByTestId("filter-subtype-opt-הפקדה")).toHaveAttribute("aria-disabled", "true");
+    await expect(page.getByTestId("filter-subtype-opt-בנק")).toHaveAttribute("aria-disabled", "true");
   });
 });
 
@@ -671,8 +671,8 @@ test.describe("3.7 Combined filters — AND across, OR within (6)", () => {
 
   test("3.7.5 all five set so no row satisfies all -> zero rows", async ({ page }) => {
     await login(page);
-    await msSelectOnly(page, "type", ["בנק"]);
-    await page.getByTestId("filter-client-name").fill("ישראל ישראלי"); // no בנק event for this client
+    await msSelectOnly(page, "type", ["הפקדה"]);
+    await page.getByTestId("filter-client-name").fill("ישראל ישראלי"); // no הפקדה event for this client
     await page.keyboard.press("Escape");
     await applyFilters(page);
     await expect(page.getByTestId("empty-state")).toBeVisible();
@@ -730,11 +730,11 @@ test.describe("3.8 No clear button, manual reset (4)", () => {
     await msSelectOnly(page, "type", ["הסכם"]);
     await applyFilters(page);
     const viaHelper = (await rowIds(page)).slice().sort();
-    // reset to all, then path B: open once, uncheck בנק & חשבונית by hand
+    // reset to all, then path B: open once, uncheck הפקדה & חשבונית by hand
     await msSelectOnly(page, "type", TYPES);
     await applyFilters(page);
     await page.getByTestId("filter-type").click();
-    await page.getByTestId("filter-type-opt-בנק").click();
+    await page.getByTestId("filter-type-opt-הפקדה").click();
     await page.getByTestId("filter-type-opt-חשבונית").click();
     await page.getByTestId("filter-type").click();
     await applyFilters(page);

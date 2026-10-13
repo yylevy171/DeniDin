@@ -467,13 +467,11 @@ MediaExtractor (Abstract Base)
 - Quality assessment: high, medium, low based on AI confidence
 
 **PDFExtractor** (`pdf_extractor.py`):
-- Converts PDF pages to images using PyMuPDF
-- Delegates to ImageExtractor for per-page processing
-- Aggregates document analysis from all pages:
-  - Document type: Most common across pages
-  - Summary: Combined from all pages
-  - Key points: Merged and deduplicated
-- Returns List[str] for per-page text
+- A subclass of ImageExtractor (Feature 071): the whole PDF goes to the model in ONE call as an
+  `input_file` (no page conversion, no per-page calls, no PyMuPDF)
+- Same extraction contract as an image: extracted text, document analysis, doc type, ledger fields
+- A PDF is never classified as a deposit (a deposit classification becomes `unknown`)
+- The app-wide 10 MB media limit applies; a larger file gets a friendly "send a smaller file" reply
 
 **DOCXExtractor** (`docx_extractor.py`):
 - Uses python-docx for deterministic text extraction

@@ -54,7 +54,6 @@ these manual-only, never automated.
 | `3.4.18` fuzzy client-name match tolerates a typo | `03-filters` | **G4** | client-name filter is `norm(a).includes(norm(b))` — plain folded substring, not fuzzy |
 | `3.5.5` fuzzy free-text match tolerates a typo | `03-filters` | **G4** | same — global search is substring-only |
 | `4.4.16` video/audio message shows a non-playable placeholder | `04-expand-single` | **G6** | no placeholder for video/audio; also no fixture message carries one yet |
-| `4.4.17` document attachment renders as a clickable thumbnail | `04-expand-single` | **G6** | `ChatImage` renders every `media_url` as `<img>`; a PDF/DOCX URL fails to decode → shows `[מדיה לא זמינה]`, no thumbnail, no click-to-open |
 | `5.2.1` one-click "collapse all" closes every open row regardless of how it was opened | `05-expand-multi` | **G7** | header toggle-all derives from a separate `allMode` state that only tracks the last toggle-all press; rows expanded individually need expand-all first, then collapse-all (two presses) |
 | `6.5.4` mobile chat panel holds its fixed ~240px height, not full page height | `06-mobile` | **G2** | context panel sets `height:240` but inner `ChatPanel` `ScrollView` `flex:1` wins → panel grows to content height |
 | `6.5.6` scrolling inside the mobile chat panel doesn't scroll the outer row list | `06-mobile` | **G2** | no bounded scroll region → wheel/touch inside the chat falls through to the page (`overscroll-behavior: contain` missing) |
@@ -130,7 +129,7 @@ Sub-blocks: 4.1 expand/collapse toggle + icon, 4.2 detail panel field manifest p
 type (`detail-field-<key>`), 4.3 context/chat panel (message window by `message_id`,
 `side`/`sender_name`, `context_unavailable`), 4.4 media — image thumbnails + lightbox
 (4.4.13 needs the 2nd fixture thumbnail added this session), **4.4.16 video/audio `fixme` —
-G6**, **4.4.17 documents `fixme` — G6**. 50 pass.
+G6**, **4.4.17 now passes (PDF tile + viewer, G6 document half fixed)**.
 
 ### Component 5 — `05-expand-multi.spec.ts` (19 pass, 1 fixme)
 Sub-blocks: 5.1 multiple independent expansions don't interfere, 5.2 expand-all /

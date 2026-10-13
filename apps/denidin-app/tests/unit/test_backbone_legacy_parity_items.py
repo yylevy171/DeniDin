@@ -16,7 +16,7 @@ from src.capabilities.media_analysis.handler import (
     _build_extractor, _format_result,
 )
 from src.constants.error_messages import (
-    APPROVED_WRITE_NOT_PERFORMED_NOTE, APPROVED_WRITE_POSSIBLY_DUPLICATED_NOTE,
+    APPROVED_WRITE_POSSIBLY_DUPLICATED_NOTE,
     BACKBONE_UNEXPECTED_ERROR, LEDGER_FOLLOWUP_FAILED_TRY_AGAIN,
 )
 from src.core.ai_manager import AIManager
@@ -137,17 +137,19 @@ def test_a_client_and_an_invoice_in_one_approved_turn_are_not_a_duplicate(prompt
     assert response.response_text == "הלקוח נוסף והחשבונית הופקה"
 
 
-def test_approved_turn_where_no_write_was_attempted_keeps_the_reply_and_appends_the_note(prompts_root):
+def test_a_yes_that_ran_no_write_keeps_the_reply_untouched(prompts_root):
+    """An approval is a plain yes/no on whatever was asked, not necessarily a write: no
+    write running on the turn is not a defect, so nothing is appended."""
     _, response = _approved_turn(prompts_root, [
         _response([_mcp("get_invoice_details", output=None,
                         error={"content": [{"type": "text", "text": "המסמך לא נמצא"}]}),
                    _send("הופקה בהצלחה")]),
     ])
-    assert response.response_text == f"הופקה בהצלחה\n\n{APPROVED_WRITE_NOT_PERFORMED_NOTE}"
+    assert response.response_text == "הופקה בהצלחה"
     assert response.offer_approval_buttons is False
 
 
-def test_no_write_note_is_appended_after_a_reminder_reply_too(prompts_root):
+def test_a_yes_to_a_non_write_question_keeps_the_reply_untouched_for_a_reminder_flow_too(prompts_root):
     client = MagicMock()
     client.with_options.return_value.responses.create.side_effect = [
         _response([_call("load_capabilities", {"capabilities": ["cap_reminders_write"]}, "c1")], "r1"),
@@ -156,7 +158,22 @@ def test_no_write_note_is_appended_after_a_reminder_reply_too(prompts_root):
     backbone = _backbone(prompts_root, client)
     backbone.session_manager.set_approval_message_id("chat1", "approval-msg")
     response = backbone.handle_message(_request("כן"), chat_id="chat1")
-    assert response.response_text == f"נוצרה\n\n{APPROVED_WRITE_NOT_PERFORMED_NOTE}"
+    assert response.response_text == "נוצרה"
+
+
+def test_a_yes_that_answers_an_offer_and_asks_the_next_approval_keeps_that_approval_and_its_buttons(prompts_root):
+    """064: a yes to an offer starts a flow whose first step is its own approval. The
+    new approval must reach the user as buttons, with no 'nothing was done' note."""
+    approval_text = "📋 לאישור:\nפרטי המסמך\nלאישור — כן/לא?"
+    client = MagicMock()
+    client.with_options.return_value.responses.create.side_effect = [
+        _response([_call("approval_with_yes_no_buttons", {"text": approval_text}, "a1")], "r1"),
+    ]
+    backbone = _backbone(prompts_root, client)
+    backbone.session_manager.set_approval_message_id("chat1", "offer-msg")
+    response = backbone.handle_message(_request("כן"), chat_id="chat1")
+    assert response.response_text == approval_text
+    assert response.offer_approval_buttons is True
 
 
 def test_never_ran_message_is_hebrew_only():

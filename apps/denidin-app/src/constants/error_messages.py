@@ -26,14 +26,13 @@ CONTACT_CARD_ONE_AT_A_TIME = "אני יכול לטפל באיש קשר אחד ב
 # the approval-resolution call was observed to re-execute the already-
 # approved MCP tool server-side, creating two invoices for one approval.
 APPROVAL_FAILED_TRY_AGAIN = "לא הצלחתי לבצע את הפעולה כרגע. אנא נסה לאשר שוב בעוד רגע."
-# Backbone (2026-10-04): appended AFTER the model's own reply on an approved-write
-# turn - never replacing it. Duplicated: the same write succeeded twice with identical
-# arguments. Not performed: the user approved and no write was even attempted.
+# Backbone (2026-10-04): appended AFTER the model's own reply on the turn that answers
+# an approval - never replacing it. Duplicated: the same write succeeded twice with
+# identical arguments.
 APPROVED_WRITE_POSSIBLY_DUPLICATED_NOTE = (
     "⚠️ שים לב: המערכת רשמה שאותה פעולה בוצעה פעמיים עם אותם פרטים. "
     "כדאי לבדוק במורנינג שלא נוצר מסמך כפול."
 )
-APPROVED_WRITE_NOT_PERFORMED_NOTE = "⚠️ לא בוצעה בפועל אף פעולה במערכת."
 APPROVAL_POSSIBLY_DUPLICATED = (
     "אירעה שגיאה באישור הפעולה וייתכן שהיא בוצעה יותר מפעם אחת. "
     "אנא בדוק ידנית במערכת לפני שתנסה שוב, ואל תאשר שוב בינתיים."
@@ -74,3 +73,7 @@ BACKBONE_UNEXPECTED_ERROR = "אני נתקלתי בשגיאה בעיבוד הו�
 BACKBONE_AI_TIMEOUT = "יש לי בעיה להתחבר לשירות ה-AI כרגע. אנא נסה שוב מאוחר יותר."
 BACKBONE_AI_RATE_LIMITED = "אני עמוס כרגע. אנא נסה שוב בעוד דקה."
 BACKBONE_AI_API_ERROR = "נתקלתי בשגיאה בעיבוד הבקשה שלך. אנא נסה שוב."
+
+# Feature 071: a PDF over the model's document limits is refused before any model
+# call - friendly, says what to do next ("[emoji] [what happened]. [what to do next].").
+FILE_TOO_LARGE_REFUSAL = "📄 הקובץ גדול מדי בשבילי לקרוא. אפשר לשלוח לי קובץ קטן יותר?"

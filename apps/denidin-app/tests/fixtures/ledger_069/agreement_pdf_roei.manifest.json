@@ -1,0 +1,18 @@
+{
+  "source_kind": "document",
+  "story": "Feature 071 (71-1) - the fee-proposal PDF 'רועי שדה הצעת שכט.pdf'. The client already exists in Morning (seeded), so the client is resolved without a detour and the agreement is recorded against it. Used by the PDF ledger test only; no field-fidelity assertions (shared_fields is intentionally empty).",
+  "source_file": "רועי שדה הצעת שכט.pdf",
+  "seed_clients": [
+    {
+      "id_prefix": "F071_PDF_ROEI",
+      "name": "רועי שדה",
+      "ensure_exists": true
+    }
+  ],
+  "resolution": {
+    "mode": "exact",
+    "name": "רועי שדה"
+  },
+  "files": "single",
+  "shared_fields": {}
+}
