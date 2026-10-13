@@ -1,7 +1,7 @@
 // Feature 089: the "הסכמים" section of an expanded client row - list, edit, lifecycle, history.
 // Every write goes through the webapp backend to the Agreements DB; the screen always shows the
 // state the server returned (and the server's `locked` flag), never a locally guessed one.
-import React, { useCallback, useEffect, useState } from "react";
+import React, { createElement, useCallback, useEffect, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { Theme } from "./theme";
 import {
@@ -15,17 +15,17 @@ import {
   editAgreement,
   editComponent,
   fetchClientAgreements,
-  setAgreementStatus,
-  setComponentStatus,
+  setAgreementStatusTo,
+  setComponentStatusTo,
 } from "./api";
 import { Button, Field, IconButton, HintPressable } from "./ui";
 import { LINE_BUTTONS_OFFSET } from "./layout";
 
 // One status vocabulary for agreements and components (human decision 2026-10-13):
 // Pending = gray "לא פעיל", Active = green "פעיל", Completed = light blue "סגור", Cancelled = light red "מבוטל".
+const COMPONENT_STATUS_ORDER = ["Pending", "Active", "Completed", "Cancelled"];
+const AGREEMENT_STATUS_ORDER = ["Active", "Completed", "Cancelled"];
 const STATUS_LABEL: Record<string, string> = { Pending: "לא פעיל", Active: "פעיל", Completed: "סגור", Cancelled: "מבוטל" };
-const AGREEMENT_STATUS_LABEL = STATUS_LABEL;
-const COMPONENT_STATUS_LABEL = STATUS_LABEL;
 function statusColors(theme: Theme, status: string): { color: string; background: string } {
   const dark = theme.name === "dark";
   switch (status) {
@@ -59,7 +59,7 @@ const NEW_AGREEMENT_TONE = (theme: Theme): Tone =>
   theme.name === "dark" ? { color: "#ffffff", background: "#3a4440" } : { color: "#000000", background: "#e1e4e3" };
 
 // Fixed-width button strip shared by agreement and component rows so the buttons line up:
-// [edit] gap [complete|activate|reopen] [cancel] gap [add|trash]; an unavailable button keeps its slot.
+// [edit] gap [add|trash]; the status dropdown follows. An unavailable button keeps its slot.
 // The agreement row's text block is as wide as the client row's columns before its line-status buttons, so the
 // button strip starts exactly under them. (client row content starts 11px in, an agreement card's 20px in.)
 const AGREEMENT_INFO_W = LINE_BUTTONS_OFFSET + 11 - 20 - 10; // - the 10px gap between the text block and the strip
@@ -73,15 +73,10 @@ const SLOT = 36;
 function Slot({ children }: { children?: React.ReactNode }) {
   return <View style={{ width: SLOT, height: SLOT }}>{children}</View>;
 }
-function Strip({ edit, mid, cancel, last }: {
-  edit: React.ReactNode; mid: React.ReactNode; cancel: React.ReactNode; last: React.ReactNode;
-}) {
+function Strip({ edit, last }: { edit: React.ReactNode; last: React.ReactNode }) {
   return (
     <View style={{ flexDirection: "row", gap: 4, alignItems: "center" }}>
       <Slot>{edit}</Slot>
-      <View style={{ width: 14 }} />
-      <Slot>{mid}</Slot>
-      <Slot>{cancel}</Slot>
       <View style={{ width: 14 }} />
       <Slot>{last}</Slot>
     </View>
@@ -159,14 +154,28 @@ export function vatText(c: AgreementComponent): string {
   return `מע״מ: ${raw}`;
 }
 
-function StatusBadge({ status, label, testID, theme }: { status: string; label: string; testID: string; theme: Theme }) {
+/** The status of an agreement or component as a coloured dropdown (gray / green / blue / red). It always shows the
+ * status the server last returned - so a change the user did not pick directly (closing an agreement cancels its
+ * pending components) simply shows up as a new value after the reload - and which options are enabled is recomputed
+ * from the current state on every render. */
+function StatusSelect({ status, options, disabledOptions, disabled, onChange, testID, theme, title }: {
+  status: string; options: string[]; disabledOptions?: string[]; disabled?: boolean;
+  onChange: (next: string) => void; testID: string; theme: Theme; title: string;
+}) {
   const { color, background } = statusColors(theme, status);
-  return (
-    <View style={{ backgroundColor: background, borderRadius: 6, paddingVertical: 2, paddingHorizontal: 10, width: 64, alignItems: "center" }}>
-      <Text testID={testID} style={{ color, fontWeight: "700", fontSize: 12 }}>
-        {label}
-      </Text>
-    </View>
+  return createElement(
+    "select",
+    {
+      "data-testid": testID, title, "aria-label": title, value: status, disabled: !!disabled,
+      onChange: (e: any) => onChange(e.target.value),
+      style: {
+        width: 88, height: 28, borderRadius: 6, border: "none", fontWeight: 700, fontSize: 12, color, background,
+        textAlignLast: "center", cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.6 : 1,
+        paddingInline: 6,
+      },
+    },
+    options.map((o) =>
+      createElement("option", { key: o, value: o, disabled: (disabledOptions || []).includes(o) }, STATUS_LABEL[o])),
   );
 }
 
@@ -340,11 +349,9 @@ function ComponentRow({
       setBusy(false);
     }
   };
-  const act = (action: "activate" | "complete" | "cancel" | "reopen") =>
-    run(() => setComponentStatus(agreement.agreement_id, key, action));
+  const act = (next: string) => run(() => setComponentStatusTo(agreement.agreement_id, key, next));
   const agreementActive = agreement.status === "Active";
   const status = component.status;
-  const closed = status === "Completed" || status === "Cancelled";
   const t = (role: Role) => tone(theme, role, true);
   return (
     <View testID={`component-${key}`}
@@ -358,25 +365,12 @@ function ComponentRow({
         <Strip
           edit={<IconButton icon="pen" title="עריכת רכיב" theme={theme} disabled={component.locked || busy} testID={`component-edit-${key}`}
                             onPress={() => setEditing(true)} {...t("edit")} />}
-          mid={status === "Pending" && agreementActive ? (
-            <IconButton icon="play" title="סמן רכיב כפעיל" theme={theme} disabled={busy} testID={`component-activate-${key}`}
-                        onPress={() => act("activate")} {...t("complete")} />
-          ) : status === "Active" && agreementActive ? (
-            <IconButton icon="check" title="סמן רכיב כהושלם" theme={theme} disabled={busy} testID={`component-complete-${key}`}
-                        onPress={() => act("complete")} {...t("complete")} />
-          ) : closed ? (
-            <IconButton icon="undo" title={agreementActive ? "פתח רכיב מחדש" : "יש לפתוח את ההסכם מחדש תחילה"} theme={theme}
-                        disabled={!agreementActive || busy} testID={`component-reopen-${key}`}
-                        onPress={() => act("reopen")} {...t("edit")} />
-          ) : null}
-          cancel={(status === "Pending" || status === "Active") && agreementActive ? (
-            <IconButton icon="x" title="ביטול רכיב" theme={theme} disabled={busy} testID={`component-cancel-${key}`}
-                        onPress={() => act("cancel")} {...t("cancel")} />
-          ) : null}
           last={<IconButton icon="trash" title="מחיקת רכיב" theme={theme} disabled={component.locked || busy} testID={`component-delete-${key}`}
                             onPress={() => setConfirmDelete(true)} {...t("trash")} />}
         />
-        <StatusBadge status={status} label={COMPONENT_STATUS_LABEL[status]} testID={`component-status-${key}`} theme={theme} />
+        <StatusSelect status={status} options={COMPONENT_STATUS_ORDER} theme={theme} testID={`component-status-${key}`}
+                      title={agreementActive ? "סטטוס הרכיב" : "יש לפתוח את ההסכם מחדש כדי לשנות סטטוס רכיב"}
+                      disabled={busy || !agreementActive} onChange={(next) => act(next)} />
       </View>
       <View testID={`component-details-${key}`} style={{ flexDirection: "row", gap: 12, flexWrap: "wrap" }}>
         {component.description ? (
@@ -417,12 +411,12 @@ function AgreementCard({
   const [error, setError] = useState<string | null>(null);
   const id = agreement.agreement_id;
   const changed = onChanged;
-  const status = async (action: "complete" | "cancel" | "reopen") => {
+  const status = async (next: string) => {
     if (busy) return;
     setBusy(true);
     setError(null);
     try {
-      await setAgreementStatus(id, action);
+      await setAgreementStatusTo(id, next);
       await changed();
     } catch (e) {
       if (e instanceof AuthError) throw e;
@@ -446,22 +440,12 @@ function AgreementCard({
         <Strip
           edit={<IconButton icon="pen" title="עריכת הסכם" theme={theme} testID={`agreement-edit-${id}`}
                             onPress={() => setEditing(true)} {...t("edit")} />}
-          mid={active ? (
-            <IconButton icon="check" title="סמן הסכם כהושלם" theme={theme} disabled={busy} testID={`agreement-complete-${id}`}
-                        onPress={() => status("complete")} {...t("complete")} />
-          ) : (
-            <IconButton icon="undo" title="פתח הסכם מחדש" theme={theme} disabled={busy} testID={`agreement-reopen-${id}`}
-                        onPress={() => status("reopen")} {...t("edit")} />
-          )}
-          cancel={active ? (
-            <IconButton icon="x" title="ביטול הסכם" theme={theme} disabled={busy} testID={`agreement-cancel-${id}`}
-                        onPress={() => status("cancel")} {...t("cancel")} />
-          ) : null}
           last={<IconButton icon="plus" title={active ? "הוספת רכיב" : "יש לפתוח את ההסכם מחדש כדי להוסיף רכיב"} theme={theme}
                             disabled={!active || busy} testID={`component-add-${id}`}
                             onPress={() => setAdding(true)} {...t("add")} />}
         />
-        <StatusBadge status={agreement.status} label={AGREEMENT_STATUS_LABEL[agreement.status]} testID={`agreement-status-${id}`} theme={theme} />
+        <StatusSelect status={agreement.status} options={AGREEMENT_STATUS_ORDER} theme={theme} testID={`agreement-status-${id}`}
+                      title="סטטוס ההסכם" disabled={busy} onChange={(next) => status(next)} />
       </View>
       {agreement.agreement_description ? (
         <Text testID={`agreement-description-${id}`} style={{ color: theme.text, fontSize: 13, textAlign: "right" }}>

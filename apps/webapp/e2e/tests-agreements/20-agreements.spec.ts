@@ -83,7 +83,9 @@ async function openClient(page: Page, name: string) {
 }
 const btn = (page: Page, id: string) => page.getByTestId(id);
 async function expectDisabled(page: Page, id: string) {
-  await expect(btn(page, id)).toHaveAttribute("aria-disabled", "true");
+  const el = btn(page, id);
+  if ((await el.evaluate((n) => n.tagName)) === "SELECT") await expect(el).toBeDisabled();
+  else await expect(el).toHaveAttribute("aria-disabled", "true");
 }
 
 // ================================================================ User Story 1 =============
@@ -102,13 +104,13 @@ test.describe("US1 - view agreements and components", () => {
     await expect(page.getByTestId(`agreement-payer-${id}`)).toContainText("ישראל ישראלי");
     await expect(page.getByTestId(`agreement-partner-${id}`)).toContainText("עו״ד כהן");
     await expect(page.getByTestId(`agreement-partner-percent-${id}`)).toContainText("25%");
-    await expect(page.getByTestId(`agreement-status-${id}`)).toHaveText("פעיל");
+    await expect(page.getByTestId(`agreement-status-${id}`)).toHaveValue("Active");
     const retainer = comp(a, "ריטיינר").component_key;
     await expect(page.getByTestId(`component-label-${retainer}`)).toHaveText("ריטיינר");
     await expect(page.getByTestId(`component-amount-${retainer}`)).toContainText("5,000");
-    await expect(page.getByTestId(`component-status-${retainer}`)).toHaveText("פעיל");
+    await expect(page.getByTestId(`component-status-${retainer}`)).toHaveValue("Active");
     const success = comp(a, "שכר הצלחה").component_key;
-    await expect(page.getByTestId(`component-status-${success}`)).toHaveText("לא פעיל");
+    await expect(page.getByTestId(`component-status-${success}`)).toHaveValue("Pending");
     expect(newEvents()).toHaveLength(0);
   });
 
@@ -142,7 +144,7 @@ test.describe("US6 - agreed total follows the Agreements DB", () => {
     await openClient(page, C.view);
     await expect(row(page, C.view)).toContainText("₪9,000.00");
     const a = byTitle(await agreementsOf(request, C.view), M.titles.view);
-    await btn(page, `component-cancel-${comp(a, "שכר הצלחה").component_key}`).click();
+    await page.getByTestId(`component-status-${comp(a, "שכר הצלחה").component_key}`).selectOption("Cancelled");
     await showRow(page, C.view);
     await expect(row(page, C.view)).toContainText("₪6,000.00");
     const events = newEvents();
@@ -220,11 +222,11 @@ test.describe("US2 - edit agreements and components", () => {
       await new Promise((r) => setTimeout(r, 1500));
       await route.abort();
     });
-    await btn(page, `component-cancel-${key}`).click();
-    await expectDisabled(page, `component-cancel-${key}`);
+    await page.getByTestId(`component-status-${key}`).selectOption("Cancelled");
+    await expectDisabled(page, `component-status-${key}`);
     await expectDisabled(page, `component-edit-${comp(a, "ריטיינר").component_key}`);
     await expect(page.getByTestId(`agreement-error-${a.agreement_id}`)).toBeVisible({ timeout: 15000 });
-    await expect(btn(page, `component-cancel-${key}`)).toBeEnabled();
+    await expect(btn(page, `component-status-${key}`)).toBeEnabled();
     expect(comp((await agreementsOf(request, C.edit))[0], "שכר הצלחה").status).toBe("Pending");
   });
 
@@ -358,8 +360,8 @@ test.describe("US3 - component and agreement lifecycle", () => {
     await openClient(page, C.edit);
     const a = (await agreementsOf(request, C.edit))[0];
     const key = comp(a, "שכר הצלחה").component_key;
-    await btn(page, `component-activate-${key}`).click();
-    await expect(page.getByTestId(`component-status-${key}`)).toHaveText("פעיל");
+    await page.getByTestId(`component-status-${key}`).selectOption("Active");
+    await expect(page.getByTestId(`component-status-${key}`)).toHaveValue("Active");
     const after = (await agreementsOf(request, C.edit))[0];
     expect(comp(after, "שכר הצלחה").status).toBe("Active");
     expect(comp(after, "ריטיינר").status).toBe("Active");
@@ -368,12 +370,40 @@ test.describe("US3 - component and agreement lifecycle", () => {
     expect(events[0]).toMatchObject({ component_label: "שכר הצלחה", component_status: "Active" });
   });
 
+  test("UAT 3.2b - an Active component can go back to Pending (and on to any status) from its dropdown", async ({ page, request }) => {
+    await openClient(page, C.edit);
+    const a = (await agreementsOf(request, C.edit))[0];
+    const key = comp(a, "ריטיינר").component_key;
+    const select = page.getByTestId(`component-status-${key}`);
+    await expect(select).toHaveValue("Active");
+    await select.selectOption("Pending");
+    await expect(select).toHaveValue("Pending");
+    expect(comp((await agreementsOf(request, C.edit))[0], "ריטיינר").status).toBe("Pending");
+    await select.selectOption("Active"); // leave the shared fixture as it was
+    await expect(select).toHaveValue("Active");
+    expect(newEvents().map((e) => e.component_status)).toEqual(["Pending", "Active"]);
+  });
+
+  test("UAT 3.2c - the status dropdowns are coloured: green active, blue completed, red cancelled, gray pending", async ({ page, request }) => {
+    await openClient(page, C.cascade);
+    const a = (await agreementsOf(request, C.cascade))[0];
+    const bg = (id: string) => page.getByTestId(id).evaluate((el) => getComputedStyle(el).backgroundColor);
+    const rgb = (c: string) => c.match(/\d+/g)!.slice(0, 3).map(Number) as [number, number, number];
+    const dominant = (c: [number, number, number]) => ["r", "g", "b"][c.indexOf(Math.max(...c))];
+    const colours: Record<string, string> = {};
+    for (const c of a.components) colours[c.status] = dominant(rgb(await bg(`component-status-${c.component_key}`)));
+    expect(colours["Active"]).toBe("g");
+    expect(colours["Pending"]).toBeDefined();
+    expect(colours["Completed"]).toBe("b");
+    expect(dominant(rgb(await bg(`agreement-status-${a.agreement_id}`)))).toBe("g");
+  });
+
   test("UAT 3.3 - Mark Completed locks an Active component", async ({ page, request }) => {
     await openClient(page, C.edit);
     const a = (await agreementsOf(request, C.edit))[0];
     const key = comp(a, "ריטיינר").component_key;
-    await btn(page, `component-complete-${key}`).click();
-    await expect(page.getByTestId(`component-status-${key}`)).toHaveText("סגור");
+    await page.getByTestId(`component-status-${key}`).selectOption("Completed");
+    await expect(page.getByTestId(`component-status-${key}`)).toHaveValue("Completed");
     await expectDisabled(page, `component-edit-${key}`);
     const events = newEvents();
     expect(events).toHaveLength(1);
@@ -384,8 +414,8 @@ test.describe("US3 - component and agreement lifecycle", () => {
     await openClient(page, C.edit);
     const a = (await agreementsOf(request, C.edit))[0];
     const key = comp(a, "תוספת דיון").component_key;
-    await btn(page, `component-cancel-${key}`).click();
-    await expect(page.getByTestId(`component-status-${key}`)).toHaveText("מבוטל");
+    await page.getByTestId(`component-status-${key}`).selectOption("Cancelled");
+    await expect(page.getByTestId(`component-status-${key}`)).toHaveValue("Cancelled");
     await expectDisabled(page, `component-edit-${key}`);
     const events = newEvents();
     expect(events).toHaveLength(1);
@@ -395,16 +425,18 @@ test.describe("US3 - component and agreement lifecycle", () => {
   test("UAT 3.5 - completing the agreement cascades per the decision and locks everything", async ({ page, request }) => {
     await openClient(page, C.cascade);
     const a = (await agreementsOf(request, C.cascade))[0];
-    await btn(page, `agreement-complete-${a.agreement_id}`).click();
-    await expect(page.getByTestId(`agreement-status-${a.agreement_id}`)).toHaveText("סגור");
+    await page.getByTestId(`agreement-status-${a.agreement_id}`).selectOption("Completed");
+    await expect(page.getByTestId(`agreement-status-${a.agreement_id}`)).toHaveValue("Completed");
     const after = (await agreementsOf(request, C.cascade))[0];
     expect(after.status).toBe("Completed");
     expect(comp(after, "פעיל").status).toBe("Completed");  // Active -> Completed
     expect(comp(after, "ממתין").status).toBe("Cancelled"); // Pending -> Cancelled
     expect(comp(after, "שולם").status).toBe("Completed");  // already closed: unchanged
     for (const c of after.components) await expectDisabled(page, `component-edit-${c.component_key}`);
-    // reopening a component of a still-closed agreement is shown but disabled
-    for (const c of after.components) await expectDisabled(page, `component-reopen-${c.component_key}`);
+    // the components' dropdowns follow the cascade by themselves (nobody touched them) and are locked while the agreement is closed
+    await expect(page.getByTestId(`component-status-${comp(after, "ממתין").component_key}`)).toHaveValue("Cancelled");
+    await expect(page.getByTestId(`component-status-${comp(after, "פעיל").component_key}`)).toHaveValue("Completed");
+    for (const c of after.components) await expectDisabled(page, `component-status-${c.component_key}`);
     const events = newEvents();
     expect(events).toHaveLength(after.components.length);
     for (const e of events) expect(e.agreement_status).toBe("Completed");
@@ -414,8 +446,8 @@ test.describe("US3 - component and agreement lifecycle", () => {
   test("UAT 3.6 - reopening the agreement, then one component, unlocks only what was reopened", async ({ page, request }) => {
     await openClient(page, C.cascade);
     const a = (await agreementsOf(request, C.cascade))[0];
-    await btn(page, `agreement-reopen-${a.agreement_id}`).click();
-    await expect(page.getByTestId(`agreement-status-${a.agreement_id}`)).toHaveText("פעיל");
+    await page.getByTestId(`agreement-status-${a.agreement_id}`).selectOption("Active");
+    await expect(page.getByTestId(`agreement-status-${a.agreement_id}`)).toHaveValue("Active");
     let after = (await agreementsOf(request, C.cascade))[0];
     expect(after.status).toBe("Active");
     expect(comp(after, "ממתין").status).toBe("Cancelled"); // components stay as the close left them
@@ -424,8 +456,8 @@ test.describe("US3 - component and agreement lifecycle", () => {
     expect(agreementEvents).toHaveLength(after.components.length);
     for (const e of agreementEvents) expect(e.agreement_status).toBe("Active");
     const key = comp(after, "ממתין").component_key;
-    await btn(page, `component-reopen-${key}`).click();
-    await expect(page.getByTestId(`component-status-${key}`)).toHaveText("פעיל");
+    await page.getByTestId(`component-status-${key}`).selectOption("Active");
+    await expect(page.getByTestId(`component-status-${key}`)).toHaveValue("Active");
     after = (await agreementsOf(request, C.cascade))[0];
     expect(comp(after, "ממתין").status).toBe("Active");
     expect(newEvents().filter((e) => e.component_label === "ממתין").pop()).toMatchObject({ component_status: "Active" });
@@ -492,10 +524,10 @@ test.describe("UI round 2 - hierarchy, alignment, automatic totals, hover text",
     await expect.poll(async () => await clientRow.innerText(), { timeout: 30000 }).not.toBe(before);
     const afterAdd = await clientRow.innerText();
     const added = comp((await agreementsOf(request, C.edit))[0], "תוספת מיידית");
-    await btn(page, `component-cancel-${added.component_key}`).click();
+    await page.getByTestId(`component-status-${added.component_key}`).selectOption("Cancelled");
     await expect.poll(async () => await clientRow.innerText(), { timeout: 30000 }).not.toBe(afterAdd);
     const afterCancel = await clientRow.innerText();
-    await btn(page, `component-reopen-${added.component_key}`).click();
+    await page.getByTestId(`component-status-${added.component_key}`).selectOption("Active");
     await expect.poll(async () => await clientRow.innerText(), { timeout: 30000 }).not.toBe(afterCancel);
   });
 });

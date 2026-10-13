@@ -307,6 +307,12 @@ export async function addComponent(agreementId: string, fields: Record<string, u
 export async function editComponent(agreementId: string, key: string, fields: Record<string, unknown>): Promise<Agreement> {
   return (await agreementsCall("PATCH", `/api/agreements/${encodeURIComponent(agreementId)}/components/${encodeURIComponent(key)}`, fields)).agreement;
 }
+export async function setAgreementStatusTo(agreementId: string, status: string): Promise<Agreement> {
+  return (await agreementsCall("POST", `/api/agreements/${encodeURIComponent(agreementId)}/status`, { status })).agreement;
+}
+export async function setComponentStatusTo(agreementId: string, key: string, status: string): Promise<Agreement> {
+  return (await agreementsCall("POST", `/api/agreements/${encodeURIComponent(agreementId)}/components/${encodeURIComponent(key)}/status`, { status })).agreement;
+}
 export async function setComponentStatus(
   agreementId: string, key: string, action: "activate" | "complete" | "cancel" | "reopen"
 ): Promise<Agreement> {

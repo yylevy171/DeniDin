@@ -127,6 +127,8 @@ def build_app(manager: AgreementsManager, auth_token: str) -> Starlette:
     async def agreement_status(request: Request) -> Response:
         body = await _json_body(request)
         actor = actor_of(body)
+        if "status" in body:  # status dropdown: a target status instead of an action
+            return _written(manager.set_agreement_status_to(request.path_params["agreement_id"], body["status"], actor))
         return _written(manager.set_agreement_status(request.path_params["agreement_id"], body.get("action", ""), actor))
 
     async def add_component(request: Request) -> Response:
@@ -143,6 +145,9 @@ def build_app(manager: AgreementsManager, auth_token: str) -> Starlette:
     async def component_status(request: Request) -> Response:
         body = await _json_body(request)
         actor = actor_of(body)
+        if "status" in body:  # status dropdown: a target status instead of an action
+            return _written(manager.set_component_status_to(
+                request.path_params["agreement_id"], request.path_params["component_key"], body["status"], actor))
         return _written(manager.set_component_status(
             request.path_params["agreement_id"], request.path_params["component_key"],
             body.get("action", ""), actor))

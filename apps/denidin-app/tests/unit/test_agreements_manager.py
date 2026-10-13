@@ -546,3 +546,41 @@ class TestSoftDelete:
         upgraded = make_agreements_manager(tmp_path)
         assert [a["agreement_id"] for a in upgraded.find_agreements("לקוח ישן")] == ["old-1"]
         assert upgraded.totals() == {"לקוח ישן": 900}
+
+
+class TestStatusDropdownPath:
+    """2026-10-13: a status dropdown picks a target status; any component status -> any other while the agreement is Active."""
+
+    def test_component_can_go_back_to_pending_and_to_any_other_status(self, mgr):
+        agreement, _ = _create(mgr, components=[dict(RETAINER)])
+        aid, key = agreement["agreement_id"], agreement["components"][0]["component_key"]
+        for target in ("Pending", "Completed", "Pending", "Cancelled", "Active"):
+            updated, ids = mgr.set_component_status_to(aid, key, target, "webapp")
+            assert updated["components"][0]["status"] == target and len(ids) == 1
+        assert _events(mgr)[-1]["component_status"] == "Active"
+
+    def test_same_status_is_a_noop_and_closed_agreement_locks_components(self, mgr):
+        agreement, _ = _create(mgr, components=[dict(RETAINER)])
+        aid, key = agreement["agreement_id"], agreement["components"][0]["component_key"]
+        events = len(_events(mgr))
+        _, ids = mgr.set_component_status_to(aid, key, "Active", "webapp")
+        assert ids == [] and len(_events(mgr)) == events
+        mgr.set_agreement_status_to(aid, "Completed", "webapp")
+        with pytest.raises(LockedError):
+            mgr.set_component_status_to(aid, key, "Pending", "webapp")
+        with pytest.raises(ValidationError):
+            mgr.set_component_status_to(aid, key, "Bogus", "webapp")
+
+    def test_agreement_target_status_cascades_like_complete_and_cancel(self, mgr):
+        agreement, _ = _create(mgr)  # retainer Active, success Pending
+        aid = agreement["agreement_id"]
+        closed, _ = mgr.set_agreement_status_to(aid, "Cancelled", "webapp")
+        assert closed["status"] == "Cancelled"
+        assert {c["label"]: c["status"] for c in closed["components"]} == {"ריטיינר": "Cancelled", "שכר הצלחה": "Cancelled"}
+        reopened, _ = mgr.set_agreement_status_to(aid, "Active", "webapp")
+        assert reopened["status"] == "Active"  # components unchanged by a reopen
+        assert all(c["status"] == "Cancelled" for c in reopened["components"])
+        done, _ = mgr.set_agreement_status_to(aid, "Completed", "webapp")
+        assert done["status"] == "Completed"
+        with pytest.raises(ValidationError):
+            mgr.set_agreement_status_to(aid, "Pending", "webapp")

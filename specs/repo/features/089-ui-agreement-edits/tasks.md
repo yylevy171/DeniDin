@@ -219,3 +219,9 @@ Phase 10 needs every story done; Phase 11 after Phase 10.
 - Hover text on every clickable element of the webapp (react-native-web drops a Pressable `title`, so a layout-neutral wrapper carries it).
 - Clients report: the fuzzy name matching (client lines AND "names to resolve" suggestions) is memoized per official-client list, so
   recomputing the report after an agreements write takes ~0.3s instead of ~17s.
+
+### Decisions 2026-10-13 (UI round 5)
+- Lifecycle buttons replaced by colour-coded status dropdowns on agreements and components (green Active, red Cancelled, blue
+  Completed, gray Pending). Any status to any (API `{status}` body); a component's dropdown is disabled while its agreement is not
+  Active or a write is in flight. The value always shows server state (re-read after each write), so cascaded changes (cancelling an
+  agreement cancels its pending components) appear without user action. The bot keeps its action-based tools.

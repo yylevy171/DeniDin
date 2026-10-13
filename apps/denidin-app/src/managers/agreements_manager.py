@@ -735,6 +735,48 @@ class AgreementsManager:
                 conn, agreement_id,
                 components_to_log=[c["component_key"] for c in agreement["components"]], **ledger_kwargs)
 
+    def set_component_status_to(self, agreement_id: str, component_key: str, target: str, actor: str,
+                                **ledger_kwargs: Any) -> Tuple[Dict[str, Any], List[str]]:
+        """Status-dropdown path (2026-10-13): any component status -> any other, while its agreement is Active.
+        Choosing the current status is a no-op (nothing written)."""
+        self._check_actor(actor)
+        if target not in COMPONENT_STATUSES:
+            raise ValidationError(f"status must be one of {list(COMPONENT_STATUSES)}", {"status": "invalid"})
+        with self._lock, self._connect() as conn:
+            agreement = self._agreement_dict(conn, agreement_id)
+            row = self._component_row(conn, agreement_id, component_key)
+            if agreement["status"] != ACTIVE:
+                raise LockedError("the agreement is closed - reopen it first")
+            if row["status"] == target:
+                return agreement, []
+            self._require_ledger_slots(1, ledger_kwargs.get("message_timestamp"))
+            conn.execute("UPDATE components SET status = ? WHERE component_key = ?", (target, component_key))
+            return self._finish_write(conn, agreement_id, components_to_log=[component_key], **ledger_kwargs)
+
+    def set_agreement_status_to(self, agreement_id: str, target: str, actor: str,
+                                **ledger_kwargs: Any) -> Tuple[Dict[str, Any], List[str]]:
+        """Status-dropdown path (2026-10-13): Active / Completed / Cancelled -> any other. Closing applies the
+        same component cascade as complete/cancel; moving to Active changes only the agreement."""
+        self._check_actor(actor)
+        if target not in AGREEMENT_STATUSES:
+            raise ValidationError(f"status must be one of {list(AGREEMENT_STATUSES)}", {"status": "invalid"})
+        with self._lock, self._connect() as conn:
+            agreement = self._agreement_dict(conn, agreement_id)
+            if agreement["status"] == target:
+                return agreement, []
+            self._require_ledger_slots(len(agreement["components"]), ledger_kwargs.get("message_timestamp"))
+            if target != ACTIVE:
+                for comp in agreement["components"]:
+                    new_status = self._cascade_status(target, comp["status"])
+                    if new_status != comp["status"]:
+                        conn.execute("UPDATE components SET status = ? WHERE component_key = ?",
+                                     (new_status, comp["component_key"]))
+            conn.execute("UPDATE agreements SET status = ? WHERE agreement_id = ? AND is_active = 1",
+                         (target, agreement_id))
+            return self._finish_write(
+                conn, agreement_id,
+                components_to_log=[c["component_key"] for c in agreement["components"]], **ledger_kwargs)
+
     @staticmethod
     def _cascade_status(agreement_target: str, component_status: str) -> str:
         """Close cascade (human decision 2026-10-09)."""
