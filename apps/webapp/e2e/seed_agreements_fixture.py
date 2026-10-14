@@ -64,8 +64,6 @@ def main() -> None:
     webapp_data = FIXTURE_ROOT / "webapp_data"
     for d in (data, webapp_data / "clients", FIXTURE_ROOT / "auth"):
         d.mkdir(parents=True, exist_ok=True)
-    (webapp_data / "clients" / "migrations.json").write_text(
-        json.dumps({"092_comment_line_status": "2026-10-01T00:00:00+03:00"}), encoding="utf-8")
     (FIXTURE_ROOT / "auth" / "password.hash").write_text(
         hashlib.sha256((PASSWORD_SALT + PASSWORD).encode()).hexdigest(), encoding="utf-8")
 

@@ -10,8 +10,9 @@ source the Events tab uses instead of a hardcoded sshfs path or a separate
 Morning-docs CSV merge (ledger events already include Morning-sourced חשבונית
 events via Feature 025's reconciliation sweep).
 
-``get_report()`` still writes ``removed_clients.json``/``new_morning_clients.json``
-as a side effect on every call — preserved exactly, per Clarifications.
+``get_report()`` still writes ``new_morning_clients.json`` as a side effect on every call —
+preserved exactly, per Clarifications. Client comments are free-text notes only: nothing is
+parsed out of them (2026-10-14).
 """
 import collections
 import difflib
@@ -34,7 +35,6 @@ PAST_CUTOFF = datetime(2025, 9, 1)
 # comment keywords as the source of a line's check/active/closed routing.
 LINE_STATUSES = ("closed", "check", "active")
 LINE_ACTIONS = ("close", "reopen", "check", "active")
-MIGRATION_092_KEY = "092_comment_line_status"
 
 
 class ClientNotFoundError(LookupError):
@@ -120,7 +120,6 @@ def _new_stat() -> Dict[str, Any]:
     return {
         "agreements": 0.0, "deposits": 0.0, "invoices_net": 0.0,
         "raw_names": set(), "events": [], "latest_activity": None,
-        "agreed_status": "WHITE", "paid_status": "WHITE",
     }
 
 
@@ -233,177 +232,25 @@ def _aggregate_events(
     return stats, unmatched, amount_to_clients
 
 
-def _apply_comment_rules(stats: Dict[str, Dict[str, Any]], client_comments: Dict[str, str]) -> None:
-    """Hebrew free-text-comment-driven status overrides — ported verbatim from
-    generate_client_status.py's get_report_data()."""
-    for c, data in stats.items():
-        comment = client_comments.get(c, "")
-        if not comment:
-            continue
-        unclear_flags = ["לבדוק", "לא ברור", "חסר"]
-        is_unclear = any(flag in comment for flag in unclear_flags)
+def _finalize_stats(stats: Dict[str, Dict[str, Any]]) -> None:
+    """Comments are free-text notes only (2026-10-14): nothing is read out of them. This just puts every
+    client's aggregated data into its final shape - events oldest first, JSON-friendly dates and names."""
+    def _sort_key(e: Dict[str, Any]) -> str:
+        dt = e["date"]
+        if not dt:
+            return "00000000"
+        parts = dt.split(" ")
+        d_parts = parts[0].split("/")
+        d_str = (d_parts[2] + d_parts[1] + d_parts[0]) if len(d_parts) == 3 else dt
+        if len(parts) > 1:
+            d_str += parts[1]
+        return d_str
 
-        # Agreements are no longer read from comment text (2026-10-14): they live in the Agreements DB;
-        # scripts/migrate_comments_to_agreements.py moved the old comment-defined ones there once.
-        if is_unclear:
-            data["agreed_status"] = "YELLOW"
-
-        if "remove" in comment.lower() or "להוריד" in comment:
-            dep_events = [ev for ev in data["events"] if ev["type"] in ("הפקדה", "בנק")]
-            if dep_events:
-                amounts = [ev["amount"] for ev in dep_events]
-                counts = collections.Counter(amounts)
-                dups = [amt for amt, count in counts.items() if count > 1]
-                if len(dups) == 1:
-                    data["deposits"] -= dups[0]
-                    data["paid_status"] = "YELLOW" if is_unclear else "GRAY"
-                else:
-                    data["paid_status"] = "YELLOW"
-            else:
-                data["paid_status"] = "YELLOW"
-        elif is_unclear and data["paid_status"] == "WHITE":
-            data["paid_status"] = "YELLOW"
-
-        if data["latest_activity"] and hasattr(data["latest_activity"], "isoformat"):
-            data["latest_activity"] = data["latest_activity"].isoformat()
-
-        data["raw_names"] = list(data["raw_names"])
-
-        def _sort_key(e: Dict[str, Any]) -> str:
-            dt = e["date"]
-            if not dt:
-                return "00000000"
-            parts = dt.split(" ")
-            d_parts = parts[0].split("/")
-            d_str = (d_parts[2] + d_parts[1] + d_parts[0]) if len(d_parts) == 3 else dt
-            if len(parts) > 1:
-                d_str += parts[1]
-            return d_str
-
-        data["events"].sort(key=_sort_key)
-
-    # finalize latest_activity/raw_names/events sort for clients with no comment too
-    for c, data in stats.items():
+    for data in stats.values():
         if isinstance(data["latest_activity"], datetime):
             data["latest_activity"] = data["latest_activity"].isoformat()
-        if not isinstance(data["raw_names"], list):
-            data["raw_names"] = list(data["raw_names"])
-
-
-_STRIP_CHARS = str.maketrans("", "", "׳״'\"")
-
-
-def _apply_merge_directives(
-    stats: Dict[str, Dict[str, Any]], official_clients: List[str], client_comments: Dict[str, str]
-) -> None:
-    """Merge (לאחד / אוחד) directives — ported verbatim."""
-    merges: List[Tuple[str, str]] = []
-    for c, comment_text in client_comments.items():
-        if not comment_text or ("לאחד" not in comment_text and "אוחד" not in comment_text):
-            continue
-        m = re.search(r'[״"\'׳]([^״"\'׳]+)[״"\'׳]', comment_text)
-        if not m:
-            continue
-        target_raw = m.group(1).strip()
-        norm = target_raw.translate(_STRIP_CHARS).strip()
-        resolved_target = None
-        if target_raw in stats:
-            resolved_target = target_raw
-        else:
-            for oc in official_clients:
-                if norm == oc.translate(_STRIP_CHARS).strip():
-                    resolved_target = oc
-                    break
-            if not resolved_target:
-                words = [w for w in norm.split() if len(w) > 2]
-                best_candidate, best_score = None, 0
-                for oc in official_clients:
-                    if "קאולה" in oc and (
-                        "קואלה" in norm or "פאות" in norm
-                    ):
-                        best_candidate, best_score = oc, 999
-                        break
-                    score = sum(1 for w in words if w in oc)
-                    if score > best_score:
-                        best_score, best_candidate = score, oc
-                if best_score > 0:
-                    resolved_target = best_candidate
-                else:
-                    fuzzy = difflib.get_close_matches(target_raw, official_clients, n=1, cutoff=0.4)
-                    if fuzzy:
-                        resolved_target = fuzzy[0]
-        if resolved_target and resolved_target in stats and resolved_target != c:
-            merges.append((c, resolved_target))
-
-    for src, tgt in merges:
-        if src not in stats or tgt not in stats:
-            continue
-        src_data, tgt_data = stats[src], stats[tgt]
-        tgt_data["agreements"] += src_data["agreements"]
-        tgt_data["deposits"] += src_data["deposits"]
-        tgt_data["invoices_net"] += src_data["invoices_net"]
-        tgt_data["events"].extend(src_data["events"])
-        merged = tgt_data.setdefault("merged_names", set())
-        for r in src_data["raw_names"]:
-            merged.add(r)
-            if r not in tgt_data["raw_names"]:
-                tgt_data["raw_names"].append(r)
-        merged.add(src)
-        if src not in tgt_data["raw_names"]:
-            tgt_data["raw_names"].append(src)
-        src_data["is_merged_away"] = True
-
-
-def _apply_status_directives(
-    stats: Dict[str, Dict[str, Any]], client_comments: Dict[str, str]
-) -> List[Dict[str, Any]]:
-    """Delete directives — ported verbatim. Returns the removed-clients list (also the
-    side-effect payload for removed_clients.json).
-
-    Feature 092: the check / active / close comment keywords no longer route a line (the
-    persisted client_status.json does - see ``_apply_line_status``), and closing no longer
-    rewrites agreed/paid amounts (bugfix-068)."""
-    removed_clients: List[Dict[str, Any]] = []
-    for c, data in stats.items():
-        comment_text = client_comments.get(c, "")
-        if not comment_text:
-            continue
-        if (
-            "למחוק" in comment_text
-            or comment_text.strip() == "להסיר"
-            or ("להסיר מהרשימה" in comment_text and not data.get("is_merged_away"))
-        ):
-            data["is_delete_past"] = True
-            removed_clients.append({
-                "client_name": c, "reason": comment_text,
-                "agreements": data["agreements"], "invoices_net": data["invoices_net"],
-            })
-    return removed_clients
-
-
-def _legacy_comment_status(comment_text: str, is_merged_away: bool) -> Optional[str]:
-    """FROZEN pre-092 comment→routing detection, used ONLY by the one-time migration
-    (research R-4). Returns the single status that reproduces the section the comment
-    produced before 092: the highest of check > active > closed, or None."""
-    if not comment_text or is_merged_away:
-        return None
-    is_active = "לקוח פעיל" in comment_text or "לקוחה פעילה" in comment_text
-    is_delete = (
-        "למחוק" in comment_text
-        or comment_text.strip() == "להסיר"
-        or "להסיר מהרשימה" in comment_text
-    )
-    is_check = is_close = False
-    if not is_delete:
-        is_check = "לבדוק" in comment_text
-        is_close = ("לסגור" in comment_text or "אפשר לסגור" in comment_text) and not is_check
-    if is_check:
-        return "check"
-    if is_active:
-        return "active"
-    if is_close:
-        return "closed"
-    return None
+        data["raw_names"] = list(data["raw_names"])
+        data["events"].sort(key=_sort_key)
 
 
 def _valid_statuses(client_status: Dict[str, Any]) -> Dict[str, str]:
@@ -484,9 +331,6 @@ def _build_client_rows(
     rows: List[Dict[str, Any]] = []
     for client in sorted(official_clients):
         data = stats[client]
-        if data.get("is_merged_away"):
-            continue
-
         agreed = data["agreements"]
         invoices_net = data.get("invoices_net", 0.0)
         latest_act = data.get("latest_activity")
@@ -498,8 +342,6 @@ def _build_client_rows(
                     is_past = False
             except (ValueError, TypeError):
                 pass
-        if data.get("is_delete_past"):
-            is_past = True
 
         display_agreed = agreed
         display_paid = invoices_net
@@ -517,8 +359,6 @@ def _build_client_rows(
             "agreements_total": agreed,
             "deposits_total": data["deposits"],
             "invoices_net": invoices_net,
-            "agreed_status": data.get("agreed_status", "WHITE"),
-            "paid_status": data.get("paid_status", "WHITE"),
             "display_agreed": display_agreed,
             "display_paid": display_paid,
             "status": status,
@@ -533,10 +373,10 @@ def _build_client_rows(
                 r for r in data["raw_names"] if manual_mapping.get(r) == client
             ),
             # 2026-10-14: names attached to this client by fuzzy matching - also unlinkable
-            # (stored as a rejected match). Merge sources (comment "לאחד") are still not.
+            # (stored as a rejected match).
             "auto_aliases": sorted(
                 r for r in data["raw_names"]
-                if r != client and manual_mapping.get(r) != client and r not in data.get("merged_names", ())
+                if r != client and manual_mapping.get(r) != client
             ),
         })
     return rows
@@ -553,7 +393,7 @@ def _build_unmatched_rows(
     it was suggested for, and the full active official-client list is returned separately
     so the frontend can render a searchable dropdown (all clients, smart candidates first)
     rather than a free-text field."""
-    active_official = [c for c in official_clients if not stats.get(c, {}).get("is_merged_away")]
+    active_official = list(official_clients)
     # The difflib suggestion search is ~O(official clients) per name, so its result is memoized per
     # (name, active official list) - recomputing the report after an Agreements write must stay cheap.
     active_signature = hash(tuple(active_official))
@@ -646,12 +486,10 @@ class ClientsReader:
             "mapping": d / "client_mapping.json",
             "notes": d / "mapping_notes.json",
             "comments": d / "client_comments.json",
-            "removed": d / "removed_clients.json",
             "new_morning": d / "new_morning_clients.json",
             # Feature 092
             "status": d / "client_status.json",
             "hidden": d / "hidden_unmatched.json",
-            "migrations": d / "migrations.json",
             "rejected": d / "rejected_matches.json",
         }
 
@@ -716,10 +554,7 @@ class ClientsReader:
         agreements_totals = self._agreements_totals_fn() if self._agreements_totals_fn is not None else None
         stats, unmatched, amount_to_clients = _aggregate_events(
             all_events, official_clients, manual_mapping, agreements_totals, self._close_cache)
-        _apply_comment_rules(stats, client_comments)
-        _apply_merge_directives(stats, official_clients, client_comments)
-        self._migrate_comment_status_once(stats, client_comments)
-        removed_clients = _apply_status_directives(stats, client_comments)
+        _finalize_stats(stats)
         if status_override is None:
             client_status = _valid_statuses(_load_json(paths["status"]))
         else:
@@ -728,7 +563,6 @@ class ClientsReader:
         final_unmatched, new_morning_clients = _split_unmatched(unmatched, notes, hidden)
 
         # Preserved side effect (Clarifications 2026-09-17): write on every (re)compute.
-        _save_json(paths["removed"], removed_clients)
         _save_json(paths["new_morning"], new_morning_clients)
 
         return {
@@ -736,31 +570,6 @@ class ClientsReader:
             "unmatched": _build_unmatched_rows(final_unmatched, notes, amount_to_clients, official_clients, stats,
                                                     self._close_cache_unmatched),
         }
-
-    def _migrate_comment_status_once(
-        self, stats: Dict[str, Dict[str, Any]], client_comments: Dict[str, str]
-    ) -> None:
-        """Feature 092 R10: one-time conversion of today's comment routing keywords into
-        persisted line statuses, so no line changes section on deploy. Never overwrites an
-        existing status; never touches client_comments.json; recorded in migrations.json so
-        it runs exactly once. Called under ``self._lock`` (via ``_compute_report``)."""
-        paths = self._paths()
-        migrations = _load_json(paths["migrations"])
-        if MIGRATION_092_KEY in migrations:
-            return
-        client_status = _load_json(paths["status"])
-        added: Dict[str, int] = collections.Counter()
-        for c, data in stats.items():
-            if c in client_status:
-                continue
-            value = _legacy_comment_status(client_comments.get(c, ""), bool(data.get("is_merged_away")))
-            if value:
-                client_status[c] = value
-                added[value] += 1
-        _save_json(paths["status"], client_status)
-        migrations[MIGRATION_092_KEY] = now_local().isoformat()
-        _save_json(paths["migrations"], migrations)
-        logger.info("Feature 092 migration: comment keywords -> line statuses %s", dict(added))
 
     def set_line_status(self, client_id: str, action: str) -> Dict[str, Any]:
         """Feature 092 R5-R8: the line-status buttons. ``reopen`` stores ``active`` when the

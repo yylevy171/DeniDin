@@ -85,8 +85,6 @@ class TestBugfix068CloseKeepsRealAmounts:
         assert r["display_agreed"] == 10000
         assert r["display_paid"] == 2000
         assert r["invoices_net"] == 2000
-        assert r["agreed_status"] == "WHITE"
-        assert r["paid_status"] == "WHITE"
 
     def test_closed_line_without_payment_keeps_zero_paid(self, tmp_path):
         report = make_reader(tmp_path, OFFICIAL, _events(), status={NO_AGREEMENT: "closed"}).get_report()
@@ -115,43 +113,21 @@ class TestCommentsNoLongerRoute:
             assert r["comment"] == kw
 
 
-class TestOtherCommentBehaviourUnchanged:
-    """T006 - delete / merge / agreement amount / להוריד / unclear-colouring keep working."""
+class TestCommentsAreNotParsed:
+    """2026-10-14: a comment is a free-text note. No keyword in it changes anything."""
 
-    def test_delete_keyword_still_moves_to_past_and_records_removal(self, tmp_path):
-        reader = make_reader(tmp_path, OFFICIAL, _events(), comments={DEBT: "למחוק"})
-        report = reader.get_report()
-        assert section(report, DEBT) == "past"
-        removed = read_json(tmp_path / "clients" / "removed_clients.json", [])
-        assert [r["client_name"] for r in removed] == [DEBT]
-
-    def test_merge_keyword_still_merges(self, tmp_path):
-        comments = {NO_AGREEMENT: f'לאחד עם "{DEBT}"'}
-        report = make_reader(tmp_path, OFFICIAL, _events(), comments=comments).get_report()
-        names = [r["official_name"] for r in report["clients"]]
-        assert NO_AGREEMENT not in names
-        assert row(report, DEBT)["display_paid"] == 2500
-        assert NO_AGREEMENT in row(report, DEBT)["raw_names"]
-
-    def test_agreement_text_in_a_comment_no_longer_sets_the_agreed_amount(self, tmp_path):
-        """2026-10-14: agreements come from the Agreements DB only; comment text is never parsed for them."""
-        report = make_reader(
-            tmp_path, OFFICIAL, _events(), comments={NO_AGREEMENT: "הסכם 5,000. סה״כ הסכמים 9000"}).get_report()
-        r = row(report, NO_AGREEMENT)
-        assert "manual_agreement_amount" not in r
-        assert r["display_agreed"] == r["agreements_total"] != 5000
-
-    def test_remove_duplicate_deposit_keyword_still_marks_paid_gray(self, tmp_path):
-        events = _events() + [
-            ev("B1", DEBT, "הפקדה", 700, subtype="בנק"),
-            ev("B2", DEBT, "הפקדה", 700, subtype="בנק"),
-        ]
-        report = make_reader(tmp_path, OFFICIAL, events, comments={DEBT: "להוריד כפילות"}).get_report()
-        assert row(report, DEBT)["paid_status"] == "GRAY"
-
-    def test_unclear_keywords_still_colour_amounts_yellow(self, tmp_path):
-        comments = {DEBT: "לבדוק", PAID: "לא ברור", NO_AGREEMENT: "חסר מסמך"}
-        report = make_reader(tmp_path, OFFICIAL, _events(), comments=comments).get_report()
-        for c in comments:
-            assert row(report, c)["agreed_status"] == "YELLOW", c
-        assert section(report, DEBT) == "debt"
+    def test_no_keyword_in_a_comment_changes_a_row(self, tmp_path):
+        keywords = {
+            DEBT: "למחוק", NO_AGREEMENT: f'לאחד עם "{DEBT}". הסכם 5,000. סה״כ הסכמים 9000',
+            PAID: "לבדוק, לא ברור, חסר. להוריד כפילות",
+        }
+        events = _events() + [ev("B1", DEBT, "הפקדה", 700, subtype="בנק"), ev("B2", DEBT, "הפקדה", 700, subtype="בנק")]
+        plain = make_reader(tmp_path / "a", OFFICIAL, events).get_report()
+        noted = make_reader(tmp_path / "b", OFFICIAL, events, comments=keywords).get_report()
+        assert [r["official_name"] for r in plain["clients"]] == [r["official_name"] for r in noted["clients"]]
+        for c in OFFICIAL:
+            a, b = row(plain, c), row(noted, c)
+            for key in ("status", "display_agreed", "display_paid", "raw_names", "events"):
+                assert a[key] == b[key], (c, key)
+            assert b["comment"] == keywords.get(c, "")
+        assert not (tmp_path / "b" / "clients" / "removed_clients.json").exists()

@@ -144,8 +144,6 @@ export interface ClientRow {
   agreements_total: number;
   deposits_total: number;
   invoices_net: number;
-  agreed_status: "WHITE" | "YELLOW" | "GRAY";
-  paid_status: "WHITE" | "YELLOW" | "GRAY";
   display_agreed: number;
   display_paid: number;
   status: "active" | "settled" | "debt" | "missing_agreement" | "check" | "past";

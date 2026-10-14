@@ -87,27 +87,26 @@ async function mapUnmatched(page: Page, raw: string, official: string) {
 }
 
 test.describe("Feature 092 acceptance", () => {
-  test("UAT 5 — after deploy, comment-driven lines stay in their section, comments untouched", async ({ page }) => {
+  test("UAT 5 — comments are free text: routing keywords in them route nothing, and nothing is migrated", async ({ page }) => {
     await login(page);
     await openClientsTab(page);
 
-    for (const [name, section, comment] of [
-      [M.mig_check, "check", "לבדוק"],
-      [M.mig_active, "active", "לקוח פעיל"],
-      [M.mig_closed, "settled", "לסגור"],
-    ] as [string, Section, string][]) {
+    for (const [name, comment] of [
+      [M.mig_check, "לבדוק"],
+      [M.mig_active, "לקוח פעיל"],
+      [M.mig_closed, "לסגור"],
+    ] as [string, string][]) {
       await focusClient(page, name);
-      const row = await expectInSection(page, name, section);
+      const row = await expectInSection(page, name, "debt"); // by the numbers, not the keyword
       await row.getByText(name, { exact: true }).first().click(); // expand
       await expect(row.getByPlaceholder("הנחיות תפעול / הערות ללקוח...")).toHaveValue(comment);
     }
-    // the closed line shows its REAL numbers (bugfix-068), not agreed == paid
     const closed = rowOf(page, M.mig_closed);
     await expect(closed).toContainText("₪5,000.00");
     await expect(closed).toContainText("₪1,000.00");
 
     expect(readJson(M.comments_file)[M.mig_closed]).toBe("לסגור");
-    expect(readJson(M.migrations_file)).toHaveProperty("092_comment_line_status");
+    expect(readJson(M.status_file)[M.mig_closed]).toBeUndefined(); // no comment->status conversion any more
   });
 
   test("UAT 1 — לסגור moves a debt line to green without faking its numbers; לפתוח sends it back", async ({ page }) => {

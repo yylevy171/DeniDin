@@ -25,13 +25,6 @@ export const CLIENT_STATUS_LABELS: Record<string, string> = {
   past: "לקוח עבר",
 };
 
-// amount-field text colors (agreed_status / paid_status), from mapping_server.py
-export const AMOUNT_STATUS_TEXT_COLOR: Record<string, string | undefined> = {
-  YELLOW: "#eab308", // inferred / uncertain
-  GRAY: "#888888", // overridden by an explicit close/settle directive
-  WHITE: undefined, // no override — inherit the surrounding theme text color
-};
-
 // Feature 092: line-status buttons. Each is shaded with the colour of the section it moves the
 // line to (לפתוח uses the neutral gray). Which buttons a line shows depends on its section;
 // gray (past) lines get none.

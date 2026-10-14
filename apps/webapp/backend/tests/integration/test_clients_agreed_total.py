@@ -9,7 +9,7 @@ from urllib.parse import quote
 
 import pytest
 
-from tests.clients_helpers import MIGRATION_KEY, ev, write_json
+from tests.clients_helpers import ev, write_json
 
 pytestmark = pytest.mark.integration
 
@@ -41,7 +41,6 @@ def make_api(tmp_path, password_hash_file, known_password):
         events_dir.mkdir(parents=True, exist_ok=True)
         for e in events:
             (events_dir / f"{e['event_id']}.json").write_text(json.dumps(e, ensure_ascii=False), encoding="utf-8")
-        write_json(tmp_path / "webapp_data" / "clients" / "migrations.json", {MIGRATION_KEY: "2026-10-01T00:00:00+03:00"})
         config = AppConfig(
             environment="test", password_hash_file=str(password_hash_file), denidin_data_root=str(data_root),
             webapp_data_root=str(tmp_path / "webapp_data"))

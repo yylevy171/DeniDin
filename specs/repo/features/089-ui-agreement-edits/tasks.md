@@ -255,3 +255,13 @@ Phase 10 needs every story done; Phase 11 after Phase 10.
 - The red x also appears on automatically (fuzzy) matched names ("שמות ששויכו אוטומטית"). Rejecting one stores the raw name in
   `rejected_matches.json` (a list) so it is never auto-matched again, returns it to "Names to resolve" with its note; an explicit mapping
   still overrides. Merge sources (comment `לאחד`) remain non-unlinkable. API: `POST /api/clients/mapping/reject {raw_name}`.
+
+### Decision 2026-10-14 (all comment parsing removed)
+- Human decision: comments are free-text notes only; **nothing** is parsed out of them any more. Removed from `clients_reader.py`:
+  the agreement keywords (see above), unclear-amount yellow (`לבדוק`/`לא ברור`/`חסר`), `להוריד` duplicate-deposit removal, the merge
+  keywords (`לאחד`/`אוחד`), the hide-client keywords (`למחוק`/`להסיר`) and `removed_clients.json`, and the one-time 092
+  comment->status migration with `scripts/preview_092_migration.py`. `agreed_status`/`paid_status` colouring is gone from the API and UI.
+  The only remaining reader of comment text is the one-time, human-run `scripts/migrate_comments_to_agreements.py`.
+- **Order of rollout (human-stated): ship this only AFTER the agreements migration has run.** If the 092 line-status migration has not yet
+  run on prod (it ran automatically on the first report after that release), run a build that still has it before deploying this one.
+- Mapping *notes* (name-resolution notes such as "להסיר", "לקוח חדש במורנינג") are not comments and are untouched.

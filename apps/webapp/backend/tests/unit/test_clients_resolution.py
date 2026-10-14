@@ -84,14 +84,6 @@ class TestMappedAliasesAndUnlink:
         assert "Yisrael I" in r["raw_names"] and "דנה כהנ" in r["raw_names"]
         assert r["mapped_aliases"] == ["Yisrael I"]
 
-    def test_merge_source_is_not_unlinkable(self, tmp_path):
-        events = self._events() + [agreement("A2", DAN, 100)]
-        reader = make_reader(
-            tmp_path, OFFICIAL, events, comments={DAN: f'לאחד עם "{DANA}"'}, mapping={"Yisrael I": DANA}
-        )
-        r = row(reader.get_report(), DANA)
-        assert DAN in r["raw_names"]
-        assert DAN not in r["mapped_aliases"]
 
     def test_unlink_restores_unmatched_row_with_note_and_reverts_totals(self, tmp_path):
         reader = make_reader(
@@ -160,10 +152,6 @@ class TestRejectAutoMatch:
         r = row(reader.get_report(), DANA)
         assert r["auto_aliases"] == ["דנה כהנ"] and r["mapped_aliases"] == ["Yisrael I"]
 
-    def test_merge_source_is_not_an_auto_alias(self, tmp_path):
-        events = self._events() + [agreement("A2", DAN, 100)]
-        r = row(make_reader(tmp_path, OFFICIAL, events, comments={DAN: f'לאחד עם "{DANA}"'}).get_report(), DANA)
-        assert DAN in r["raw_names"] and DAN not in r["auto_aliases"]
 
     def test_reject_returns_the_name_to_the_list_and_it_stays_there(self, tmp_path):
         reader = make_reader(tmp_path, OFFICIAL, self._events(), notes={"דנה כהנ": "הערה"})

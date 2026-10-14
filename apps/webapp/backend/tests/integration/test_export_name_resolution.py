@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.clients_helpers import MIGRATION_KEY, ev, payment, write_json
+from tests.clients_helpers import ev, payment, write_json
 
 pytestmark = pytest.mark.integration
 
@@ -45,7 +45,6 @@ def _events():
 
 def test_export_resolves_names_line_status_and_totals(tmp_path):
     clients_dir = tmp_path / "webapp_data" / "clients"
-    write_json(clients_dir / "migrations.json", {MIGRATION_KEY: "2026-10-01T00:00:00+03:00"})
     write_json(clients_dir / "client_status.json", {"ישראל ישראלי": "closed"})
     events_dir = _write_events(tmp_path / "data", _events())
 

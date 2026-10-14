@@ -8,7 +8,7 @@ from urllib.parse import quote
 
 import pytest
 
-from tests.clients_helpers import MIGRATION_KEY, OLD, agreement, payment, read_json, write_json
+from tests.clients_helpers import OLD, agreement, payment, read_json, write_json
 # A real denidin-app Agreements API process: the close/reopen buttons now drive the client's agreements.
 from tests.integration.test_agreements_endpoints import TOKEN as AGREEMENTS_TOKEN, denidin_api  # noqa: F401
 
@@ -41,7 +41,6 @@ def api(tmp_path, password_hash_file, known_password, clients_dir, denidin_api):
         agreement("A3", PAST, 4000, when=OLD),
     ]:
         (events_dir / f"{e['event_id']}.json").write_text(json.dumps(e, ensure_ascii=False), encoding="utf-8")
-    write_json(clients_dir / "migrations.json", {MIGRATION_KEY: "2026-10-01T00:00:00+03:00"})
 
     config = AppConfig(
         environment="test",

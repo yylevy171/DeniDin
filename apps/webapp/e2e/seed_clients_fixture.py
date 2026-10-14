@@ -45,9 +45,9 @@ F092_ROLES = [
     "past_client",      # UAT 4: activity only before 2025-09-01 (gray)
     "target_a",         # UAT 3 buttons + UAT 6 mapping target
     "target_b",         # UAT 6 + UAT 7 mapping target
-    "mig_check",        # UAT 5: comment "לבדוק"  -> migrated to check
-    "mig_active",       # UAT 5: comment "לקוח פעיל" -> migrated to active
-    "mig_closed",       # UAT 5: comment "לסגור" -> migrated to closed, real amounts kept
+    "mig_check",        # UAT 5: comment "לבדוק" routes nothing
+    "mig_active",       # UAT 5: comment "לקוח פעיל" routes nothing
+    "mig_closed",       # UAT 5: comment "לסגור" routes nothing, real amounts shown
     "yellow_no_agreement",  # manual testing only: paid 1,500, no agreement (yellow)
     "yellow_overpaid",      # manual testing only: agreed 2,000 / paid 2,600 (yellow)
     "fuzzy_client",         # auto-match unlink: an event under a near-miss spelling is matched here by fuzzy matching
@@ -112,8 +112,7 @@ def main() -> None:
         d.mkdir(parents=True, exist_ok=True)
     for name in ("client_comments.json", "client_mapping.json", "mapping_notes.json"):
         (clients / name).write_text("{}", encoding="utf-8")
-    # Feature 092 UAT 5: legacy routing keywords in comments and NO migrations.json, so the
-    # backend's first report performs a real first-run migration.
+    # Feature 092 UAT 5: legacy routing keywords in comments - they must route nothing.
     (clients / "client_comments.json").write_text(json.dumps({
         f092["mig_check"]: "לבדוק",
         f092["mig_active"]: "לקוח פעיל",

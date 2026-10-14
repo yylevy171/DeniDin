@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { NAME_COL_W, RAW_NAMES_COL_W, AMOUNT_COL_W } from "./layout";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { Theme } from "./theme";
-import { AMOUNT_STATUS_TEXT_COLOR, CLIENT_STATUS_COLORS, CLIENT_STATUS_LABELS, LINE_BUTTONS } from "./clientsTheme";
+import { CLIENT_STATUS_COLORS, CLIENT_STATUS_LABELS, LINE_BUTTONS } from "./clientsTheme";
 import {
   AuthError,
   ClientRow,
@@ -35,8 +35,8 @@ function fmt(n: number): string {
   return `₪${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function AmountText({ value, status, theme }: { value: number; status: "WHITE" | "YELLOW" | "GRAY"; theme: Theme }) {
-  const color = AMOUNT_STATUS_TEXT_COLOR[status] ?? theme.text;
+function AmountText({ value, theme }: { value: number; theme: Theme }) {
+  const color = theme.text;
   return <Text style={{ color, fontWeight: "700", fontSize: 13 }}>{fmt(value)}</Text>;
 }
 
@@ -172,11 +172,11 @@ function ClientRowCard({
           </Text>
           <View style={{ width: AMOUNT_COL_W, alignItems: "flex-end" }}>
             <Text style={{ color: theme.textDim, fontSize: 11 }}>הסכם</Text>
-            <AmountText value={row.display_agreed} status={row.agreed_status} theme={theme} />
+            <AmountText value={row.display_agreed} theme={theme} />
           </View>
           <View style={{ width: AMOUNT_COL_W, alignItems: "flex-end" }}>
             <Text style={{ color: theme.textDim, fontSize: 11 }}>שולם</Text>
-            <AmountText value={row.display_paid} status={row.paid_status} theme={theme} />
+            <AmountText value={row.display_paid} theme={theme} />
           </View>
           <LineStatusButtons row={row} onAction={lineAction} />
           <View style={{ flex: 1 }} />
