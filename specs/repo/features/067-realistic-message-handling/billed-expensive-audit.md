@@ -54,3 +54,68 @@ Harness lesson for every other test: in a group, user messages reach the model a
 7. Ledger: assert the stored event, not a post-reply recognition step.
 8. Redundancy rule: when a unit/integration test (now green, 1712 passing) already proves the mechanism and the billed test only re-proves it with a live model and no model-judgment content, propose deleting it - human signs off per group.
 9. Never run a billed/expensive test to find out whether it still passes; audit statically, then ask which to run.
+
+---
+
+# Part 2 - static audit of ALL other billed / expensive tests (2026-10-14)
+
+Method: read every test's name/docstring (index of ~290 tests in 40 billed + 12 expensive files), grep
+for removed APIs and stale assumptions, and read the existing result files of the (aborted, unapproved)
+sweep for ~13 files. NOTHING was run for this part. "Evidence" below is from those old result files;
+they were produced BEFORE the autouse fresh-conversation fixture existed, so failures marked (S2) may
+already be fixed.
+
+## Systemic findings (apply to many files)
+
+| # | Finding | Evidence | Consequence / proposed handling |
+|---|---|---|---|
+| S1 | **There is no "final reply" any more.** The model sends the real answer in one message and may send a terse wrap-up afterwards. `get_response()` / `_send_turn()` return the LAST message sent, so data assertions read the wrap-up. | client_management: `'פרטי הלקוח נמצאו והוצגו.'`, `'הפרטים נמצאו ונשלחו; מסיים את הבדיקה.'`, `'הפרטים הוצגו; מנקה את כלי הקריאה.'` were the last messages; the phone / name asserted lived in an earlier one. 5 failures. | Assertions on CONTENT must read all messages of the scenario (`notification._test_sent_messages` joined, or a new `get_all_responses`), not the last. Proposal: add `get_all_responses(notification)` to `e2e_helpers.py` and a `reply_text()` that joins them, then switch content assertions only. Approval wording/structure checks (last approval block) stay on the last approval message. **Needs human sign-off per test group** (it changes assertions in ~15 files). |
+| S1b | **App/prompt issue, not a test issue:** the wrap-up messages narrate internals ("מסיים את הבדיקה", "מנקה את כלי הקריאה" = "cleaning up the read tool"). A real user would see that. | same | Report to the human; candidate fix is a rule in `backbone.md` ("never mention loading/unloading/tools; send the answer in one message; no wrap-up status message"). Not touched. |
+| S2 | Stale conversation carried between tests (model chain remembers an unanswered question) | bugfix_071 (5 failed at seeding: "first answer my earlier question"), allocation (2) | Fixed by the autouse `_fresh_conversation_for_every_test` (billed + expensive conftest). Re-check by running, with approval. |
+| S3 | **POSSIBLE RBAC GAP (needs a human decision):** the backbone attaches the full tool set to every role. `Backbone._resolve_role` maps CLIENT to `Role.CLIENT` but nothing in tool/capability building (`toolsets.py`, `backbone.py`) gates on it; the docstring says "clients are out of scope for the backbone (explicit decision 2026-10-01)". | client_management `test_client_role_gets_no_client_management_tools` FAILED: a CLIENT-role chat got a real `list_clients` Morning call (4456 clients, status `too_many`). | If client numbers can message the production bot, they get godfather tools. Either (a) gate in the app (hard RBAC, not prompt-level) and keep these tests, or (b) decide clients are unsupported and delete/replace them. Affected tests: client_management `test_client_role_*`, version_query `test_client_role_gets_accurate_version_answer`, reminder `test_client_role_denied_reminder_tools`. **I did not change app code.** |
+| S4 | Tests of the removed "implicit decline" (Feature 022): an unrelated message used to cancel the pending approval. New rule REQ-RMH-017: the approval survives unrelated chatter (A7). | invoice_creation tests below | Delete (contradict the new behaviour; A7 covers the new one). |
+| S5 | Ledger tests are named/documented around "post-turn recognition" but now exercise `cap_ledger_capture` inside the flows; the verdicts (`declined`, store-as-stated, detours) still exist in the capability. Assertions are on persisted events, so they are probably mechanism-independent. | `_ledger_069_post_turn_base.py`, test_e2e_ledger_069_*, test_ledger_event_capture*, expensive/test_ledger_event_capture_e2e.py | Keep; docstring/name cleanup later; needs a run to confirm (the `none` / `declined` cases can no longer assert "the recognition call returned X" - only "nothing persisted"). |
+| S6 | Dead config keys (`constitution_config`, `feature_flags`) copied into app config dicts in ~15 files; harmless (ignored). `green_api_bot = object()` in 4 files (`conftest.py`, `test_reaction_judgment_tuning.py`, `test_rolling_memory_billed.py`, `test_small_bugfixes_*`) means sends raise/are lost. | grep | Replace `object()` with `install_recording_bot(app)` where the test asserts on what was sent. Dead keys: leave (no behaviour). |
+| S7 | Silence is legal (group "no reply" cases etc.) | group_etiquette | "No reply" tests must assert `nothing sent` for the chat (their `get_response is None` form still works if RecordingBot attributes sends to the notification), not a sentinel. |
+| S8 | **Possible real behaviour regression** (not a test bug): spec REQ-099-07 says a 320 that already has a 330 is refused as already cancelled. After "decline the 400", asking to cancel again produced a NEW approval for the 400 ("completing the cancellation ... the credit note that already exists: 70438"). | cancel_combo `test_99_3` | Human: is offering to finish the cash side legitimate (then change the test/spec) or must it refuse (then fix the flow prompt)? |
+
+## Per-file classification
+
+Legend: KEEP = valid as is; RUN = cannot judge statically, needs a (human-approved) run; REWRITE = edit needed first; DELETE? = proposed for deletion (human signs off); PASSED = passed in this session.
+
+| File (tests) | Verdict | Notes |
+|---|---|---|
+| test_067_gate_zero (1), test_067_gate_zero_chain (4) | KEEP, PASSED | OpenAI facts the design relies on. |
+| test_realistic_message_handling_billed (8) | KEEP, PASSED | A0-A7. |
+| test_accounting_reconciliation_billed (9) | KEEP, PASSED | Independent of the message pipeline. |
+| test_ai_handler_real_api (3) | KEEP, PASSED | Rewritten error test. Rename file later (no AIHandler). |
+| test_cash_deposit_066_billed (1), test_denidin_approval_content_and_vat_e2e (4) | KEEP, PASSED | |
+| test_real_api_connectivity (6) | KEEP | Direct Green API / OpenAI calls; no app pipeline. (`greenapi_can_send_message` really sends a WhatsApp message - unchanged.) |
+| test_bugfix_071_vat_rules_billed (9) | RUN | 4 passed; 5 failed at seeding = S2. |
+| test_allocation_tax_id_billed (13) | RUN | Failures mixed with my corrupting parallel run; redo cleanly. `uat_1_1`: "no get_client_details call: []" - may be S2, may be real (the flow asks for the ID without checking the client). |
+| test_cancel_combo_099_billed (4) | RUN + S8 | `99_3` needs the human decision in S8. |
+| test_cancel_transaction_account_billed (1) | RUN | Its failure was the VAT-label helper treating a cancellation as a document; helper fixed, unverified. |
+| test_denidin_morning_client_management_e2e (10) | REWRITE (S1) + RUN; client_role tests -> S3; blocked-role test: check | 6 failed: 5 = S1, 1 = S3. Blocked role asserts `last_response is last_response_before` (still plausible). |
+| test_denidin_morning_document_creation_e2e (7) | RUN | 3 failed in the old sweep; reasons not extracted (combo, invalid-invoice, net-amount-flag); likely S1/S2. |
+| test_denidin_morning_document_flows_e2e (8), test_denidin_morning_invoice_lifecycle_e2e (7), test_denidin_morning_list_invoices_e2e (11), test_group_b_reference_approval_billed (4), test_standalone_receipt_billed (1) | RUN | Same helper family (`_send_turn`, ask -> "כן"); expect S1 on the content assertions (list_invoices especially: it asserts on the final WhatsApp reply text, e.g. totals/lists). Docstrings cite `ai_handler.py` (stale wording only). |
+| test_denidin_morning_invoice_creation_e2e (10) | `ignores_pending_approval_with_unrelated_message` DELETE? (S4); `approval_survives_intervening_small_talk` DELETE? (S4, premise = implicit decline; A7 + the happy path cover it); other 8 RUN | button-tap test (`creates_invoice_via_whatsapp_button_tap`) is the stale-tap path covered by A7 too - keep, it is the real E2E for the tap. |
+| test_denidin_vcf_contact_e2e (2) | RUN | Uses `last_response.mcp_calls` for the last call only; fine for a single message. |
+| test_denidin_version_query_e2e (2) | `client_role` -> S3; godfather one RUN | |
+| test_group_etiquette_billed (8) | REWRITE (S7) + RUN | `[[NO_REPLY]]` is gone; cases 2, 5a, 5b, (3) expect silence/no reply -> assert "nothing sent". Has dead config keys. case7 needs a real Green API client (unchanged). |
+| test_e2e_ledger_069_text_billed (9), _docx_billed (1), _morning_create_billed (1), test_ledger_event_capture_billed (2), test_ledger_event_capture_text_billed (10), expensive/test_ledger_event_capture_e2e (4), expensive/test_e2e_media_client_resolution (5), expensive/test_pdf_ledger_071_e2e (2) | RUN (S5) | Probably valid by outcome. `us3` "recognition call returns none" can only assert nothing persisted now. Possible overlap: test_ledger_event_capture_billed (2) duplicates scenarios of test_ledger_event_capture_text_billed (10) -> DELETE? the 2-test file after the 10-test one is confirmed. |
+| test_ledger_query_billed (23) | RUN (S1 likely: content in the reply) | Pure query flows; uses `get_response`. The largest file; consider running the 5 sanity-marked ones first. |
+| test_fee_agreement_generation_flow (5) | RUN | Mentions `pending_local_tool_approval_manager` only in a docstring. |
+| test_reminder_lifecycle_billed (14) | RUN; `client_role_denied` -> S3 | Reminder approvals are now the stateless buttons; text/button approval tests exist (2) - they overlap partially with A7 (keep: they prove the reminder is actually created). |
+| test_reaction_judgment_tuning (4) | REWRITE (S6: `green_api_bot=object()`) + RUN | |
+| test_rolling_memory_billed (5) | REWRITE (S6) + RUN | `test_legacy_pending_ledger_events_session_loads_and_rolls` is about a legacy session format - keep (session loading, not the AI). |
+| test_simple_text_e2e (1) | KEEP, PASSED (in the old sweep) | |
+| test_small_bugfixes_027_032_054_058_061 (4) | REWRITE (S6 `object()`) + RUN | 054 = startup drain through a fake Green API server (intake path changed in 067: re-check that the drain still routes); 058 = error reply persisted (the error is now sent at once - still must be stored). |
+| expensive/test_allocation_tax_id_slip_e2e (1), test_deposit_methods_066_e2e (3), test_deposit_offer_064_e2e (3), test_group_b_reference_approval_e2e (1), test_image_classification_e2e (9), test_media_e2e (5) | RUN with per-test approval | Vision; image classification (9) and media (5) tests are pre-pipeline extractors - independent of the redesign, so likely unaffected (verify only if you want). |
+| test_realistic_message_handling_expensive (1) | KEEP, PASSED | A8. |
+
+## Proposed order for the human (nothing is run without your go-ahead)
+
+1. Decide S3 (client RBAC) and S8 (99_3) - they may be real defects.
+2. Approve S1: add `get_all_responses` and switch content assertions in the Morning/ledger-query files.
+3. Approve deletions: invoice_creation x2 (S4); optionally the 2-test `test_ledger_event_capture_billed.py` once the 10-test file is green.
+4. Then run, file by file and only the files you name, starting with the small sanity-marked ones.
