@@ -34,13 +34,14 @@ Decisions audited against: `no-turn-redesign.md` (1-12) + `user-stories.md` A0-A
 | A3 stop | Stale: asserted a reply to the bare "כן" (`len(sent) > before`) and checked wording `הופקה`/`נוצרה`. Silence is legitimate; the story's real claim is "no document appears in Morning". | asserts no `create_*` in Morning before and after the "כן" |
 | A4 approved action + "רגע, תבטל" | Weak: `<= 1` passes for 0 documents, and used last-call-only `mcp_calls`. Story says created exactly once. | `== 1` via `rig.wire.created_documents()`; wording check on the text kept |
 | A5 confusing sequence | Valid (settle on Dana or ask). Loose by design. | none |
-| A6 group | Valid. Group RBAC falls back to sender-only (real `getGroupData` fails gracefully for a fake group id). | none |
+| A6 group | First run FAILED: asserted the reply contained 700, but the request lacked the (required) service description, so the model correctly asked for it. Also `WireCapture.user_texts` did not strip the group sender tag (`[Bina] text`), so a later group message never matched. | request now carries description + amount + VAT basis (the approval prompt is the expected answer); `user_texts` strips the `[Sender]` tag; wire-level "both reached the model" checks added |
 | A7 button after chatter | Stale: assumed a visible reply after a decline tap and compared reply counts; with silence legal that can fail for the wrong reason and the second-tap check could pass vacuously. | proves tap #1 by a new model call on the wire, tap #2 by NO new model call |
 | A8 image during text (expensive) | Wrong under chat-id sends: read `text._test_sent_messages` / `image._test_sent_messages`, but both messages' answers land on the LATEST notification of the chat. | scenario-wide `rig.sent_texts()` (>= 2), exactly 1 vision call (not analyzed twice), nothing deferred |
 | Harness | `wait_until_idle` used removed `_busy_chats`; context-name filter was stale. `WireCapture` only knew model requests. | fixed both; added `vision_calls`, `morning_calls`, `created_documents()` |
 
-Not run: none of the above has been executed against OpenAI. First run of A0-A7 (billed) and A8
-(expensive) needs the human's explicit go-ahead.
+Run results (2026-10-14, human-approved, one at a time): A0-A5 PASSED; A6 failed once (above), PASSED after the fix; A7 PASSED. A8 (expensive) PASSED (human-approved, 1 run).
+
+Harness lesson for every other test: in a group, user messages reach the model as `[USER MESSAGE · time · sent before/after your last output]\n[Sender] text`; the first message of a burst as `[time] text`. Compare texts after stripping those tags.
 
 ## Checklist to apply to every other billed / expensive test
 

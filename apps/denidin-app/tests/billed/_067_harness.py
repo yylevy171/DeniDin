@@ -69,12 +69,13 @@ class WireCapture(logging.Handler):
 
     @staticmethod
     def user_texts(call):
-        """The user-message texts in one call's input, with the [HH:MM:SS dd/mm] stamp and the
-        hand-back header removed."""
+        """The user-message texts in one call's input, with the [HH:MM:SS dd/mm] stamp, the
+        hand-back header and (in a group) the [Sender] tag removed."""
         out = []
         for item in call["input"]:
             if isinstance(item, dict) and item.get("role") == "user" and isinstance(item.get("content"), str):
-                text = re.sub(r"^\[[^\]]*\]\s*", "", item["content"])      # [11:55:07 13/10] or [USER MESSAGE · ...]
+                # [11:55:07 13/10] or [USER MESSAGE · ...], then in a group the sender tag [Bina]
+                text = re.sub(r"^(\[[^\]]*\]\s*){1,2}", "", item["content"])
                 out.append(text.strip())
         return out
 

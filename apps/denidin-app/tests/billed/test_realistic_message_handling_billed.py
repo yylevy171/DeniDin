@@ -132,14 +132,22 @@ def test_a5_confusing_sequence_settles_on_dana_or_asks(denidin_app):
 
 
 def test_a6_group_second_member_detail_is_accounted_for(denidin_app):
+    """Person A asks for an invoice (client + service description, both required); person B adds the
+    amount and the VAT basis a second later. The model must receive B's message after A's, both are
+    stored separately, and - nothing required being missing - the answer is the approval prompt
+    carrying B's amount."""
     group = "120363000000000067@g.us"
+    first = f"תפיק חשבונית ללקוח {existing_client_name()} עבור ייעוץ"
+    second = "על 700 שקל כולל מע״מ"
     with intake_rig(denidin_app, group, sender=GODFATHER_CHAT_ID, sender_name="Avi") as rig:
-        rig.send_text(f"תפיק חשבונית ללקוח {existing_client_name()}")
+        rig.send_text(first)
         rig.pause(1.0)
-        rig.send_text("על 700 שקל", sender=ADMIN_ISOLATED_CHAT_ID, sender_name="Bina")
+        rig.send_text(second, sender=ADMIN_ISOLATED_CHAT_ID, sender_name="Bina")
         rig.wait_until_idle()
-        assert "700" in _normalized(rig.last_reply())
-        assert len(rig.stored_user_messages()) >= 2
+        assert_first_call_carried_only(rig, first, [second])
+        assert_every_later_message_reached_the_model(rig, [second])
+        assert "700" in _normalized(rig.last_reply()), rig.last_reply()
+        assert rig.stored_user_messages() == [first, second]
 
 
 def test_a7_button_survives_unrelated_chatter_and_works_once(denidin_app):
