@@ -80,10 +80,11 @@ def test_cancelling_a_component_lowers_the_total_after_the_write(make_api):
     assert _agreed(api) == 6000
 
 
-def test_comment_override_still_wins(make_api):
+def test_comment_text_never_changes_the_agreed_total(make_api):
+    """2026-10-14: the old `הסכם <amount>` comment override is gone; only the Agreements DB counts."""
     api = make_api(lambda: {CLIENT: 8000.0}, [_hours_line("A4", 1000)])
-    api.post(f"/api/clients/{quote(CLIENT)}/comments", json={"comment": "הסכם 12000"})
-    assert _agreed(api) == 12000
+    api.post(f"/api/clients/{quote(CLIENT)}/comments", json={"comment": "הסכם 12000. סה״כ הסכמים 15000"})
+    assert _agreed(api) == 9000
 
 
 def test_client_with_no_components_keeps_only_hours_lines(make_api):

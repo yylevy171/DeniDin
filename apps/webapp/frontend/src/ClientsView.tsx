@@ -15,6 +15,7 @@ import {
   saveClientMapping,
   setClientLineStatus,
   unlinkClientMapping,
+  rejectAutoMatch,
 } from "./api";
 import { Field, IconButton, HintPressable } from "./ui";
 import AgreementsSection from "./AgreementsSection";
@@ -98,7 +99,7 @@ function ClientRowCard({
   theme: Theme;
   onSaveComment: (clientId: string, comment: string) => Promise<void>;
   onLineAction: (clientId: string, action: LineAction) => Promise<void>;
-  onUnlink: (rawName: string) => Promise<void>;
+  onUnlink: (rawName: string, auto?: boolean) => Promise<void>;
   onAgreementsChanged: () => void;
   onAuthErr: (e: unknown) => void;
 }) {
@@ -117,11 +118,11 @@ function ClientRowCard({
     }
   };
 
-  const unlink = async (rawName: string) => {
+  const unlink = async (rawName: string, auto = false) => {
     setActionError(null);
     setUnlinking(rawName);
     try {
-      await onUnlink(rawName);
+      await onUnlink(rawName, auto);
     } catch (e: any) {
       setActionError(e?.message || "ביטול השיוך נכשל. נסו שוב.");
     } finally {
@@ -185,38 +186,45 @@ function ClientRowCard({
 
       {expanded ? (
         <View style={{ borderTopWidth: 1, borderColor: theme.border, padding: 10, gap: 10 }}>
-          {row.mapped_aliases.length ? (
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-              <Text style={{ color: theme.textDim, fontSize: 12 }}>שמות ששויכו ידנית:</Text>
-              {row.mapped_aliases.map((alias) => (
-                <View
-                  key={alias}
-                  testID={`alias-${alias}`}
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 6,
-                    paddingVertical: 3,
-                    paddingHorizontal: 8,
-                    borderRadius: 999,
-                    borderWidth: 1,
-                    borderColor: theme.border,
-                  }}
-                >
-                  <Text style={{ color: theme.text, fontSize: 12 }}>{alias}</Text>
-                  <HintPressable
-                    testID={`unlink-${alias}`}
-                    onPress={unlinking ? undefined : () => unlink(alias)}
-                    {...({ title: "בטל שיוך" } as any)}
+          {(
+            [
+              { names: row.mapped_aliases, auto: false, title: "שמות ששויכו ידנית:", hint: "בטל שיוך" },
+              { names: row.auto_aliases || [], auto: true, title: "שמות ששויכו אוטומטית:", hint: "בטל שיוך אוטומטי" },
+            ] as const
+          ).map((group) =>
+            group.names.length ? (
+              <View key={group.title} style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+                <Text style={{ color: theme.textDim, fontSize: 12 }}>{group.title}</Text>
+                {group.names.map((alias) => (
+                  <View
+                    key={alias}
+                    testID={`alias-${alias}`}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 6,
+                      paddingVertical: 3,
+                      paddingHorizontal: 8,
+                      borderRadius: 999,
+                      borderWidth: 1,
+                      borderColor: theme.border,
+                    }}
                   >
-                    <Text style={{ color: theme.danger, fontSize: 13, fontWeight: "800" }}>
-                      {unlinking === alias ? "…" : "×"}
-                    </Text>
-                  </HintPressable>
-                </View>
-              ))}
-            </View>
-          ) : null}
+                    <Text style={{ color: theme.text, fontSize: 12 }}>{alias}</Text>
+                    <HintPressable
+                      testID={`unlink-${alias}`}
+                      onPress={unlinking ? undefined : () => unlink(alias, group.auto)}
+                      {...({ title: group.hint } as any)}
+                    >
+                      <Text style={{ color: theme.danger, fontSize: 13, fontWeight: "800" }}>
+                        {unlinking === alias ? "…" : "×"}
+                      </Text>
+                    </HintPressable>
+                  </View>
+                ))}
+              </View>
+            ) : null
+          )}
           <AgreementsSection clientId={row.official_name} theme={theme} onAuthErr={onAuthErr} onTotalsChanged={onAgreementsChanged} />
           <View testID="payments-section" style={{ gap: 6 }}>
             <Text style={{ color: theme.text, fontWeight: "800", fontSize: 15, textAlign: "right" }}>תשלומים</Text>
@@ -590,7 +598,7 @@ function Section({
   theme: Theme;
   onSaveComment: (clientId: string, comment: string) => Promise<void>;
   onLineAction: (clientId: string, action: LineAction) => Promise<void>;
-  onUnlink: (rawName: string) => Promise<void>;
+  onUnlink: (rawName: string, auto?: boolean) => Promise<void>;
   onAgreementsChanged: () => void;
   onAuthErr: (e: unknown) => void;
 }) {
@@ -817,8 +825,9 @@ export default function ClientsView({ theme, onAuthErr }: { theme: Theme; onAuth
     await load("refresh");
   };
 
-  const unlink = async (rawName: string) => {
-    await unlinkClientMapping(rawName);
+  const unlink = async (rawName: string, auto = false) => {
+    if (auto) await rejectAutoMatch(rawName);
+    else await unlinkClientMapping(rawName);
     await load("refresh");
   };
 

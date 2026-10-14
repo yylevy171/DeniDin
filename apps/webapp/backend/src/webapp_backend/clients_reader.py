@@ -243,51 +243,9 @@ def _apply_comment_rules(stats: Dict[str, Dict[str, Any]], client_comments: Dict
         unclear_flags = ["לבדוק", "לא ברור", "חסר"]
         is_unclear = any(flag in comment for flag in unclear_flags)
 
-        if "הסכם" in comment:
-            date_match = re.search(r"הסכם\s+(\d{1,2})[./](\d{1,2})[./](\d{2,4})", comment)
-            if date_match:
-                try:
-                    d, m, y = int(date_match.group(1)), int(date_match.group(2)), int(date_match.group(3))
-                    if y < 100:
-                        y += 2000
-                    comment_date_obj = datetime(y, m, d)
-                    current = data["latest_activity"]
-                    if current is None or comment_date_obj > current:
-                        data["latest_activity"] = comment_date_obj
-                except (ValueError, TypeError):
-                    pass
-
-            total_match = re.search(r"סה[״\"']כ הסכמים\s*(?:-\s*)?([1-9][\d,]*)", comment)
-            if total_match:
-                try:
-                    data["manual_agreement_amount"] = float(total_match.group(1).replace(",", ""))
-                    data["agreed_status"] = "YELLOW" if is_unclear else "GRAY"
-                except ValueError:
-                    data["agreed_status"] = "YELLOW"
-            else:
-                matches = re.findall(
-                    r"הסכם\s+(?:\d{1,2}[./]\d{1,2}(?:[./]\d{2,4})?\s+)?(?:-\s*)?([1-9][\d,+]{2,})", comment
-                )
-                if matches:
-                    try:
-                        total_amt = 0.0
-                        for m in matches:
-                            clean_m = m.rstrip(",").rstrip(".").strip()
-                            if "+" in clean_m:
-                                total_amt += sum(
-                                    float(part.replace(",", "").strip())
-                                    for part in clean_m.split("+") if part.replace(",", "").strip()
-                                )
-                            else:
-                                total_amt += float(clean_m.replace(",", ""))
-                        if total_amt > 0:
-                            data["manual_agreement_amount"] = total_amt
-                            data["agreed_status"] = "YELLOW" if is_unclear else "GRAY"
-                    except ValueError:
-                        data["agreed_status"] = "YELLOW"
-                elif is_unclear:
-                    data["agreed_status"] = "YELLOW"
-        elif is_unclear:
+        # Agreements are no longer read from comment text (2026-10-14): they live in the Agreements DB;
+        # scripts/migrate_comments_to_agreements.py moved the old comment-defined ones there once.
+        if is_unclear:
             data["agreed_status"] = "YELLOW"
 
         if "remove" in comment.lower() or "להוריד" in comment:
@@ -384,15 +342,13 @@ def _apply_merge_directives(
         tgt_data["agreements"] += src_data["agreements"]
         tgt_data["deposits"] += src_data["deposits"]
         tgt_data["invoices_net"] += src_data["invoices_net"]
-        if src_data.get("manual_agreement_amount") is not None:
-            if tgt_data.get("manual_agreement_amount") is not None:
-                tgt_data["manual_agreement_amount"] += src_data["manual_agreement_amount"]
-            else:
-                tgt_data["manual_agreement_amount"] = tgt_data["agreements"] + src_data["manual_agreement_amount"]
         tgt_data["events"].extend(src_data["events"])
+        merged = tgt_data.setdefault("merged_names", set())
         for r in src_data["raw_names"]:
+            merged.add(r)
             if r not in tgt_data["raw_names"]:
                 tgt_data["raw_names"].append(r)
+        merged.add(src)
         if src not in tgt_data["raw_names"]:
             tgt_data["raw_names"].append(src)
         src_data["is_merged_away"] = True
@@ -533,7 +489,6 @@ def _build_client_rows(
 
         agreed = data["agreements"]
         invoices_net = data.get("invoices_net", 0.0)
-        manual_agreed = data.get("manual_agreement_amount")
         latest_act = data.get("latest_activity")
 
         is_past = True
@@ -545,10 +500,8 @@ def _build_client_rows(
                 pass
         if data.get("is_delete_past"):
             is_past = True
-        if is_past and not data.get("is_manually_settled"):
-            manual_agreed = None
 
-        display_agreed = manual_agreed if manual_agreed is not None else agreed
+        display_agreed = agreed
         display_paid = invoices_net
         status = _row_status(data, display_agreed, display_paid, is_past)
 
@@ -564,7 +517,6 @@ def _build_client_rows(
             "agreements_total": agreed,
             "deposits_total": data["deposits"],
             "invoices_net": invoices_net,
-            "manual_agreement_amount": manual_agreed,
             "agreed_status": data.get("agreed_status", "WHITE"),
             "paid_status": data.get("paid_status", "WHITE"),
             "display_agreed": display_agreed,
@@ -579,6 +531,12 @@ def _build_client_rows(
             # unlinked (fuzzy matches / merge sources also appear in raw_names).
             "mapped_aliases": sorted(
                 r for r in data["raw_names"] if manual_mapping.get(r) == client
+            ),
+            # 2026-10-14: names attached to this client by fuzzy matching - also unlinkable
+            # (stored as a rejected match). Merge sources (comment "לאחד") are still not.
+            "auto_aliases": sorted(
+                r for r in data["raw_names"]
+                if r != client and manual_mapping.get(r) != client and r not in data.get("merged_names", ())
             ),
         })
     return rows
@@ -694,6 +652,7 @@ class ClientsReader:
             "status": d / "client_status.json",
             "hidden": d / "hidden_unmatched.json",
             "migrations": d / "migrations.json",
+            "rejected": d / "rejected_matches.json",
         }
 
     def get_report(self, refresh: bool = False) -> Dict[str, Any]:
@@ -739,6 +698,12 @@ class ClientsReader:
         official_clients = self._official_cache
         paths = self._paths()
         manual_mapping = _load_json(paths["mapping"])
+        # A rejected automatic match ("unlink" on an auto-matched name) is stored as the existing
+        # "Unknown" sentinel: the name stays under its own raw name, never fuzzy-matched again. An
+        # explicit mapping still wins.
+        for rejected_name in _load_json_list(paths["rejected"]):
+            if not manual_mapping.get(rejected_name):
+                manual_mapping[rejected_name] = "Unknown"
         notes = _load_json(paths["notes"])
         client_comments = _load_json(paths["comments"])
         hidden = set(_load_json_list(paths["hidden"]))
@@ -846,6 +811,22 @@ class ClientsReader:
             self._report_cache = None
         logger.info("client mapping unlinked: raw=%r from=%r", raw_name, official)
         return {"raw_name": raw_name, "unlinked_from": official}
+
+    def reject_auto_match(self, raw_name: str) -> Dict[str, Any]:
+        """The red x on an automatically matched name: never fuzzy-match this raw name again. It returns to
+        "Names to resolve" (notes kept), exactly like an explicit unlink; an explicit mapping still wins."""
+        with self._lock:
+            report = self._report_locked()
+            owner = next((r["official_name"] for r in report["clients"] if raw_name in r.get("auto_aliases", [])), None)
+            if owner is None:
+                raise MappingNotFoundError(raw_name)
+            path = self._paths()["rejected"]
+            rejected = set(_load_json_list(path))
+            rejected.add(raw_name)
+            _save_json(path, sorted(rejected))
+            self._report_cache = None
+        logger.info("automatic name match rejected: raw=%r from=%r", raw_name, owner)
+        return {"raw_name": raw_name, "unlinked_from": owner}
 
     def hide_unmatched(self, raw_name: str) -> Dict[str, Any]:
         """Feature 092 R1: "הסר מהרשימה" - permanently drop a name from the resolve list."""

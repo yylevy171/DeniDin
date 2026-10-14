@@ -254,6 +254,28 @@ test.describe("Feature 092 acceptance", () => {
     await expect(back.getByPlaceholder("הערה...")).toHaveValue(M.yisrael_note);
   });
 
+  test("UAT 10 — an automatically matched name has a red x too; unlinking it sends it to the list and it stays unmatched", async ({ page }) => {
+    await login(page);
+    await openClientsTab(page);
+    await focusClient(page, M.fuzzy_client);
+    const fuzzyRow = await expectInSection(page, M.fuzzy_client, "missing_agreement");
+    await fuzzyRow.getByText(M.fuzzy_client, { exact: true }).first().click();
+    await expect(page.getByTestId(`alias-${M.fuzzy_raw_name}`)).toBeVisible();
+    await expect(page.getByText("שמות ששויכו אוטומטית:")).toBeVisible();
+
+    await page.getByTestId(`unlink-${M.fuzzy_raw_name}`).click();
+    await expect(page.getByTestId(`alias-${M.fuzzy_raw_name}`)).toHaveCount(0);
+    expect(readJson(path.join(path.dirname(M.mapping_file), "rejected_matches.json"))).toContain(M.fuzzy_raw_name);
+
+    await focusClient(page, "");
+    await revealUnmatched(page);
+    await expect(unmatchedRow(page, M.fuzzy_raw_name)).toBeVisible();
+    await page.reload(); // still unmatched after a fresh load: it is not re-matched by itself
+    await openClientsTab(page);
+    await revealUnmatched(page);
+    await expect(unmatchedRow(page, M.fuzzy_raw_name)).toBeVisible();
+  });
+
   test("UAT 8 — הסר מהרשימה removes a name and it stays gone after a refresh", async ({ page }) => {
     await login(page);
     await openClientsTab(page);

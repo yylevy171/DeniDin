@@ -147,3 +147,45 @@ class TestHideUnmatched:
         events = [payment("C1", "בית", 10)]
         report = make_reader(tmp_path, OFFICIAL, events, notes={"בית": "למחוק"}).get_report()
         assert "בית" in _unmatched(report)
+
+
+class TestRejectAutoMatch:
+    """2026-10-14: the red x on an automatically (fuzzy) matched name."""
+
+    def _events(self):
+        return [agreement("A1", DANA, 10000), payment("C2", "דנה כהנ", 300), payment("C1", "Yisrael I", 2000)]
+
+    def test_auto_aliases_list_fuzzy_names_only(self, tmp_path):
+        reader = make_reader(tmp_path, OFFICIAL, self._events(), mapping={"Yisrael I": DANA})
+        r = row(reader.get_report(), DANA)
+        assert r["auto_aliases"] == ["דנה כהנ"] and r["mapped_aliases"] == ["Yisrael I"]
+
+    def test_merge_source_is_not_an_auto_alias(self, tmp_path):
+        events = self._events() + [agreement("A2", DAN, 100)]
+        r = row(make_reader(tmp_path, OFFICIAL, events, comments={DAN: f'לאחד עם "{DANA}"'}).get_report(), DANA)
+        assert DAN in r["raw_names"] and DAN not in r["auto_aliases"]
+
+    def test_reject_returns_the_name_to_the_list_and_it_stays_there(self, tmp_path):
+        reader = make_reader(tmp_path, OFFICIAL, self._events(), notes={"דנה כהנ": "הערה"})
+        assert row(reader.get_report(), DANA)["display_paid"] == 300
+        assert reader.reject_auto_match("דנה כהנ") == {"raw_name": "דנה כהנ", "unlinked_from": DANA}
+        report = reader.get_report()
+        assert row(report, DANA)["display_paid"] == 0 and "דנה כהנ" not in row(report, DANA)["raw_names"]
+        assert _unmatched(report)["דנה כהנ"]["note"] == "הערה"
+        assert read_json(tmp_path / "clients" / "rejected_matches.json") == ["דנה כהנ"]
+        # a brand-new reader (a restart) still does not re-match it
+        again = make_reader(tmp_path, OFFICIAL, self._events()).get_report()
+        assert "דנה כהנ" in _unmatched(again)
+
+    def test_an_explicit_mapping_overrides_a_rejection(self, tmp_path):
+        reader = make_reader(tmp_path, OFFICIAL, self._events())
+        reader.reject_auto_match("דנה כהנ")
+        reader.save_mapping("דנה כהנ", official_name=DANA)
+        r = row(reader.get_report(), DANA)
+        assert r["display_paid"] == 300 and r["mapped_aliases"] == ["דנה כהנ"]
+
+    def test_only_auto_matched_names_can_be_rejected(self, tmp_path):
+        reader = make_reader(tmp_path, OFFICIAL, self._events(), mapping={"Yisrael I": DANA})
+        for name in ("Yisrael I", "לא קיים"):
+            with pytest.raises(MappingNotFoundError):
+                reader.reject_auto_match(name)

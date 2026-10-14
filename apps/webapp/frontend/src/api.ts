@@ -144,7 +144,6 @@ export interface ClientRow {
   agreements_total: number;
   deposits_total: number;
   invoices_net: number;
-  manual_agreement_amount: number | null;
   agreed_status: "WHITE" | "YELLOW" | "GRAY";
   paid_status: "WHITE" | "YELLOW" | "GRAY";
   display_agreed: number;
@@ -158,6 +157,7 @@ export interface ClientRow {
   // raw_names that are explicit mappings of this client (the only ones that can be unlinked).
   line_status: "closed" | "check" | "active" | null;
   mapped_aliases: string[];
+  auto_aliases: string[];
 }
 export type LineAction = "close" | "reopen" | "check" | "active";
 export interface SuggestedMatch {
@@ -221,6 +221,10 @@ export async function setClientLineStatus(clientId: string, action: LineAction):
 // Feature 092: undo an explicit name mapping; the name returns to the resolve list.
 export async function unlinkClientMapping(rawName: string): Promise<void> {
   await postJson("/api/clients/mapping/unlink", { raw_name: rawName });
+}
+// 2026-10-14: the red x on an automatically matched name; it returns to the resolve list.
+export async function rejectAutoMatch(rawName: string): Promise<void> {
+  await postJson("/api/clients/mapping/reject", { raw_name: rawName });
 }
 // Feature 092: "הסר מהרשימה" - permanently drop a name from the resolve list.
 export async function hideUnmatched(rawName: string): Promise<void> {

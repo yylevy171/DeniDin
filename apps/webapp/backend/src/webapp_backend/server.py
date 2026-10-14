@@ -288,6 +288,17 @@ def build_app(
             return _error("not_found", "השיוך לא נמצא.", 404)
         return JSONResponse(result)
 
+    async def client_match_reject(request: Request) -> JSONResponse:
+        """Red x on an automatically matched name: stop matching it automatically."""
+        raw_name = (await _json_body(request)).get("raw_name")
+        if not isinstance(raw_name, str) or not raw_name:
+            return _error("bad_request", "raw_name is required.", 400)
+        try:
+            result = await run_in_threadpool(clients_reader.reject_auto_match, raw_name)
+        except MappingNotFoundError:
+            return _error("not_found", "השיוך האוטומטי לא נמצא.", 404)
+        return JSONResponse(result)
+
     async def unmatched_hide(request: Request) -> JSONResponse:
         """Feature 092: "הסר מהרשימה" on a name in the resolve list."""
         raw_name = (await _json_body(request)).get("raw_name")
@@ -402,6 +413,7 @@ def build_app(
             Route("/api/clients/{client_id}/comments", client_comment, methods=["POST"]),
             Route("/api/clients/mapping", client_mapping, methods=["POST"]),
             Route("/api/clients/mapping/unlink", client_mapping_unlink, methods=["POST"]),
+            Route("/api/clients/mapping/reject", client_match_reject, methods=["POST"]),
             Route("/api/clients/unmatched/hide", unmatched_hide, methods=["POST"]),
             Route("/api/clients/{client_id}/status", client_line_status, methods=["POST"]),
             Route("/api/clients/{client_id}/agreements", client_agreements, methods=["GET"]),

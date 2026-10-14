@@ -85,7 +85,6 @@ class TestBugfix068CloseKeepsRealAmounts:
         assert r["display_agreed"] == 10000
         assert r["display_paid"] == 2000
         assert r["invoices_net"] == 2000
-        assert r["manual_agreement_amount"] is None
         assert r["agreed_status"] == "WHITE"
         assert r["paid_status"] == "WHITE"
 
@@ -134,12 +133,13 @@ class TestOtherCommentBehaviourUnchanged:
         assert row(report, DEBT)["display_paid"] == 2500
         assert NO_AGREEMENT in row(report, DEBT)["raw_names"]
 
-    def test_agreement_amount_keyword_still_sets_manual_amount(self, tmp_path):
-        report = make_reader(tmp_path, OFFICIAL, _events(), comments={NO_AGREEMENT: "הסכם 5,000"}).get_report()
+    def test_agreement_text_in_a_comment_no_longer_sets_the_agreed_amount(self, tmp_path):
+        """2026-10-14: agreements come from the Agreements DB only; comment text is never parsed for them."""
+        report = make_reader(
+            tmp_path, OFFICIAL, _events(), comments={NO_AGREEMENT: "הסכם 5,000. סה״כ הסכמים 9000"}).get_report()
         r = row(report, NO_AGREEMENT)
-        assert r["manual_agreement_amount"] == 5000
-        assert r["display_agreed"] == 5000
-        assert r["agreed_status"] == "GRAY"
+        assert "manual_agreement_amount" not in r
+        assert r["display_agreed"] == r["agreements_total"] != 5000
 
     def test_remove_duplicate_deposit_keyword_still_marks_paid_gray(self, tmp_path):
         events = _events() + [

@@ -239,3 +239,19 @@ Phase 10 needs every story done; Phase 11 after Phase 10.
   line status; a failure (e.g. `ledger_busy`) is returned and the line stays as it was.
 - Colours: line "סגור - שולם" and the Completed chip share one light blue; "לקוח פעיל" and the Active chip share one green.
   "לבדוק" is renamed **לטיפול מיידי** (label, section header and button), pink. The legacy comment keyword `לבדוק` is unchanged.
+
+### Decisions 2026-10-14 (comments -> Agreements DB, red x on auto-matched names)
+- Agreements defined in Clients-tab comments are moved to the Agreements DB ONCE, by hand, with
+  `apps/webapp/backend/scripts/migrate_comments_to_agreements.py` (one client at a time: accept / edit / skip / quit-and-resume; state file;
+  `--dry-run`). One agreement per `הסכם …` clause, one component, Active; every write goes through the Agreements API (DB first, then
+  ledger events - no skipping). A clause whose amount already exists on any of the client's agreements (any status) is flagged DUPLICATE and
+  defaults to skip. Run it against dev first; **never run it against prod without an explicit go-ahead.**
+- The comment parsing for agreements is REMOVED from `clients_reader.py` (`הסכם <date> <amount>`, `סה״כ הסכמים`, the date-based activity
+  bump, `manual_agreement_amount`, and the agreed-amount colouring that came from them). The agreed total is the Agreements DB sum plus
+  hours-worked lines. Other comment keywords (`להוריד`, `לאחד`, unclear-amount yellow) are untouched.
+  **Ordering: deploy this removal only after the migration has run on prod, or clients that only have a comment-defined agreement drop to 0.**
+  Known side effect: the comment date no longer counts as "latest activity", so a client whose only recent trace was a comment date may
+  now route to the gray (past) section; agreements do not count as activity.
+- The red x also appears on automatically (fuzzy) matched names ("שמות ששויכו אוטומטית"). Rejecting one stores the raw name in
+  `rejected_matches.json` (a list) so it is never auto-matched again, returns it to "Names to resolve" with its note; an explicit mapping
+  still overrides. Merge sources (comment `לאחד`) remain non-unlinkable. API: `POST /api/clients/mapping/reject {raw_name}`.

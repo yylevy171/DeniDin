@@ -79,9 +79,7 @@ def preview(clients_dir: Path, events_dir: Path, official_clients: List[str]) ->
 
         now = {"agreed": row["display_agreed"], "paid": row["display_paid"]}
         if flags["close"]:
-            cur_agreed = row["manual_agreement_amount"]
-            if cur_agreed is None:
-                cur_agreed = row["agreements_total"]
+            cur_agreed = row["agreements_total"]
             matched = max(cur_agreed, row["invoices_net"])
             before = {"agreed": matched, "paid": matched} if matched > 0 else now
             if before != now:

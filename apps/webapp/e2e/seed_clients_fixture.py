@@ -50,6 +50,7 @@ F092_ROLES = [
     "mig_closed",       # UAT 5: comment "לסגור" -> migrated to closed, real amounts kept
     "yellow_no_agreement",  # manual testing only: paid 1,500, no agreement (yellow)
     "yellow_overpaid",      # manual testing only: agreed 2,000 / paid 2,600 (yellow)
+    "fuzzy_client",         # auto-match unlink: an event under a near-miss spelling is matched here by fuzzy matching
 ]
 YISRAEL_RAW_NAME = "Yisrael I"
 YISRAEL_NOTE = "שילם במזומן"
@@ -161,6 +162,9 @@ def main() -> None:
     _event(events, "C01e2e09112", now - timedelta(days=4), source_type="חשבונית",
            event_subtype="חשבונית מס קבלה", client_name=YISRAEL_RAW_NAME, amount=700,
            description="e2e-092-yisrael")
+    _event(events, "C01e2e09117", now - timedelta(days=4), source_type="חשבונית",
+           event_subtype="חשבונית מס קבלה", client_name=f092["fuzzy_client"][:-1], amount=333,
+           description="e2e-fuzzy")
     _event(events, "B01e2e09113", now - timedelta(days=4), source_type="הפקדה", event_subtype="בנק",
            client_name=HIDE_RAW_NAME, amount=50, description="e2e-092-hide")
 
@@ -202,6 +206,7 @@ def main() -> None:
         "hidden_file": str(clients / "hidden_unmatched.json"),
         "migrations_file": str(clients / "migrations.json"),
         "notes_file": str(clients / "mapping_notes.json"),
+        "fuzzy_raw_name": f092["fuzzy_client"][:-1],
         "yisrael_raw_name": YISRAEL_RAW_NAME,
         "yisrael_note": YISRAEL_NOTE,
         "hide_raw_name": HIDE_RAW_NAME,
