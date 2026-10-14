@@ -27,14 +27,14 @@ None authored. 089 has no image/PDF/DOCX behaviour.
 ## C. Regression - existing tests whose behaviour 089 touched (recommend, your call)
 
 089 changed: `הסכם` ledger events are now written via the Agreements DB (`create_from_capture`),
-ledger schema v4, new capabilities/flow in the backbone catalog, constitution + `cap_ledger_query.md`
+new ledger fields, new capabilities/flow in the backbone catalog, constitution + `cap_ledger_query.md`
 edits. Existing tests that exercise those paths:
 
 | File | Tier | Tests | Why |
 |---|---|---|---|
 | `tests/billed/test_ledger_event_capture_billed.py` | billed | 2 | `הסכם` capture now routes through the DB |
 | `tests/billed/test_ledger_event_capture_text_billed.py` | billed | 10 | same, text variants incl. multi-component |
-| `tests/billed/test_ledger_query_billed.py` | billed | 23 | queries over `הסכם` events (schema v4 fields) |
+| `tests/billed/test_ledger_query_billed.py` | billed | 23 | queries over `הסכם` events (new agreement fields) |
 | `tests/billed/test_fee_agreement_generation_flow.py` | billed | 5 | fee-agreement flow vs. the new agreement flow in the catalog |
 | `tests/expensive/test_ledger_event_capture_e2e.py` | expensive | 4 | image-sourced `הסכם` capture; each needs its own approval |
 

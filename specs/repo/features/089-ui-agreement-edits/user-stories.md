@@ -258,7 +258,7 @@ As the operator, I want the existing ledger agreements moved into the Agreements
    * **Action:** Run the migration on a ledger holding fee-agreement `הסכם` events and hours-worked `הסכם` events.
    * **Expected Result:** Every agreement-component event becomes a component of an agreement in the DB. No hours-worked line enters the DB, and hours-worked, bank and invoice events are not rewritten.
 
-2. **UAT 7.2 - Ledger Events Rewritten to v4 With Clean Names**:
+2. **UAT 7.2 - Ledger Events Rewritten With Clean Names**:
    * **Action:** Same run.
    * **Expected Result:** Each migrated component event now carries the clean Morning client name in `client_name` and the old dirty name in `original_client_name`. A name the Clients tab cannot resolve keeps its raw value in `client_name`, with `original_client_name` still filled. Nothing else in the event is altered.
 

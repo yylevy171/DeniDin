@@ -27,10 +27,10 @@
 
 ## Phase 2: Foundational (blocks every story)
 
-### Ledger schema v4 (human-approved 2026-10-09: bump to 4, full field list)
+### Ledger schema fields (field list approved 2026-10-09; the v4 bump was dropped 2026-10-14, stays at 3)
 
 - [x] T005 **A** Unit tests in `apps/denidin-app/tests/unit/test_ledger_event_manager.py` (new test class, existing tests untouched): a persisted `הסכם` event carries `original_client_name`, `component_status`, `agreement_status`, populated `split_partner` / `split_percent`; the new keys are null for bank and invoice events; `LEDGER_EVENT_FIELDS` matches the persisted record; no assertion on the `schema_version` value
-- [x] T006 **B** (blocked on T005 approval) In `apps/denidin-app/src/managers/ledger_event_manager.py`: add the three fields to `LEDGER_EVENT_FIELDS` and the record, accept them as optional kwargs on `add_ledger_event`, populate `split_*`, set `CURRENT_SCHEMA_VERSION = 4` and add the matching `SCHEMA_VERSION_HISTORY` entry (version 4, 2026-10-09, feature 089, decision text) **in the same commit**; update the stale comment block above the constant
+- [x] T006 **B** (blocked on T005 approval) In `apps/denidin-app/src/managers/ledger_event_manager.py`: add the three fields to `LEDGER_EVENT_FIELDS` and the record, accept them as optional kwargs on `add_ledger_event`, populate `split_*`, (the originally planned bump to 4 was dropped 2026-10-14: `CURRENT_SCHEMA_VERSION` stays 3, no 089 history entry)
 
 ### AgreementsManager core
 
@@ -115,7 +115,7 @@
 
 - [x] T035 **A** [US7] Tests `apps/webapp/backend/tests/integration/test_export_name_resolution.py`: the export writes `name_resolution.json` (data-model.md shape) read-only, includes line-closed, agreed, paid; unresolvable names -> `official_name: null`
 - [x] T036 **B** [US7] (blocked on T035 approval) `apps/webapp/backend/scripts/export_name_resolution.py`
-- [x] T037 **A** [US7] Integration tests `apps/denidin-app/tests/integration/test_migrate_agreements_089.py` on a fixture ledger with fee components, hours lines, bank and invoice events, legacy `מבוטל`/`ביטול` events: components created and hours lines skipped (7.1); events rewritten to v4 with clean `client_name` / dirty `original_client_name`, other events untouched (7.2); status inference for closed-paid, closed-unpaid, open clients (7.3); legacy cancellations mark components Cancelled (7.4); second run is a no-op, backup exists before any rewrite, `--dry-run` writes nothing (7.5)
+- [x] T037 **A** [US7] Integration tests `apps/denidin-app/tests/integration/test_migrate_agreements_089.py` on a fixture ledger with fee components, hours lines, bank and invoice events, legacy `מבוטל`/`ביטול` events: components created and hours lines skipped (7.1); events rewritten with the current schema version and clean `client_name` / dirty `original_client_name`, other events untouched (7.2); status inference for closed-paid, closed-unpaid, open clients (7.3); legacy cancellations mark components Cancelled (7.4); second run is a no-op, backup exists before any rewrite, `--dry-run` writes nothing (7.5)
 - [x] T038 **B** [US7] (blocked on T037 approval) `apps/denidin-app/scripts/migrate_agreements_089.py` (`--data-root`, `--resolution`, `--dry-run`, marker `agreements/migration_089.json`, backup folder, counts report)
 - [ ] T039 [US7] Rehearsal on a COPY of the prod data (via the existing read-only mount, into the scratchpad), `--dry-run` first; report counts and a sample diff to the human. **No prod run without its own explicit go-ahead**
 
@@ -137,7 +137,7 @@ Per METHODOLOGY section VI.a: code is written now, from the approved scenarios i
 ## Phase 11: Polish and close-out
 
 - [x] T046 [P] `npm run typecheck` (frontend) and `backend/scripts/lint.sh` (webapp) and `make lint` (denidin-app) clean
-- [x] T047 [P] Update `.github/ARCHITECTURE.md` and CLAUDE.md sections that now change (Agreements DB, API, new capabilities, schema v4, the apps-reach-each-other exception for the Agreements API); `apps/denidin-app/RELEASES` entries are written only by the release script, never by hand
+- [x] T047 [P] Update `.github/ARCHITECTURE.md` and CLAUDE.md sections that now change (Agreements DB, API, new capabilities, ledger fields, the apps-reach-each-other exception for the Agreements API); `apps/denidin-app/RELEASES` entries are written only by the release script, never by hand
 - [ ] T048 `speckit.analyze` cross-artifact consistency check
 - [ ] T049 (human, separate decisions, never inferred) `/haleluya`; then release (exact version supplied by the human); then deploy; then the prod migration run
 
@@ -173,7 +173,7 @@ Phase 10 needs every story done; Phase 11 after Phase 10.
 
 ## Addendum (analysis 2026-10-09)
 
-- [x] T050 Regression sweep for the other apps in scope: run the Feature 025 reconciliation unit/integration tests, the player's tests, and `apps/prod-ledger-backfill` and `apps/rolling-memory-backfill` tests through their wrapper scripts, to prove the v4 ledger fields and the recognizer rewiring broke nothing. `apps/morning-mcp-app` is out of scope (no change).
+- [x] T050 Regression sweep for the other apps in scope: run the Feature 025 reconciliation unit/integration tests, the player's tests, and `apps/prod-ledger-backfill` and `apps/rolling-memory-backfill` tests through their wrapper scripts, to prove the new ledger fields and the recognizer rewiring broke nothing. `apps/morning-mcp-app` is out of scope (no change).
 
 ---
 

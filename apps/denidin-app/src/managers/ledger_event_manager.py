@@ -1257,11 +1257,11 @@ class LedgerEventManager:
             "hourly_rate": None if is_accounting_document else event.get("hourly_rate"),
             "txn_date": txn_date,  # REQ-DATA-005/007 - hours-worked date (הסכם) or transaction date (בנק)
             "vat_status": vat_status,
-            # Feature 089 (schema v4): populated for agreement-component events written by
+            # Feature 089: populated for agreement-component events written by
             # AgreementsManager (partner name / partner %); null for every other event.
             "split_partner": event.get("split_partner") if source_type == "הסכם" else None,
             "split_percent": event.get("split_percent") if source_type == "הסכם" else None,
-            # Feature 089 (schema v4): raw client name preserved by the one-time migration
+            # Feature 089: raw client name preserved by the one-time migration
             # (empty on new events); lifecycle state of the component / its agreement at the
             # moment this event was written. הסכם only.
             "original_client_name": event.get("original_client_name") if source_type == "הסכם" else None,

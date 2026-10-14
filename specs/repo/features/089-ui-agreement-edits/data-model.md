@@ -93,17 +93,17 @@ locked component other than Reopen-of-the-component (when allowed) fails with `l
 Event field mapping: `client_name`, `payer_name`, `split_partner` <- `partner_name`,
 `split_percent` <- `partner_percent`, `agreement_id`, `component_id`, `component_label` <- `label`,
 `description`, `amount`, `percent`, `percent_base`, `trigger_condition`, `vat_status`,
-and the new `component_status`, `agreement_status` (schema v4). `source_type` = `הסכם`,
+and the new `component_status`, `agreement_status` (current schema, v3). `source_type` = `הסכם`,
 `hours` = null, `session_id`/`message_id` = null for UI and migration writes (the bot supplies its
 own). **Field list approved by the human, 2026-10-09 (research.md R5).**
 
-## Ledger schema v4 (REQ-089-10), for reference
+## Ledger schema (REQ-089-10), for reference
 
 Adds `original_client_name`, `component_status`, `agreement_status` to `LEDGER_EVENT_FIELDS`;
 `split_partner` / `split_percent` become populated for agreement-component events.
-`CURRENT_SCHEMA_VERSION` 2 -> 4 and the matching `SCHEMA_VERSION_HISTORY` entry in the same commit.
+No schema bump of its own (human decision 2026-10-14): the fields ride on `CURRENT_SCHEMA_VERSION` 3 (Feature 066's bump); 089 adds no `SCHEMA_VERSION_HISTORY` entry.
 Only agreement-component `הסכם` events are rewritten by the migration; hours-worked, bank and
-invoice events keep their schema version. New v4 events from non-agreement sources are written
+invoice events keep their schema version. New events from non-agreement sources are written
 with the new keys null.
 
 ## Name-resolution handoff file (`name_resolution.json`)

@@ -99,11 +99,11 @@ the agreement-level values and the agreement status. The current schema cannot c
 | payer | `payer_name` | as is |
 | original (dirty) client name | No | `original_client_name` (already in REQ-089-10) |
 
-- **Decision**: ship all of this inside the **single v4 bump** that REQ-089-10 already has
-  approved: `CURRENT_SCHEMA_VERSION` 2 -> 4, plus its `SCHEMA_VERSION_HISTORY` entry in the same
+- **Decision**: ship all of this inside the **single schema bump (superseded 2026-10-14: no bump of its own; rides on 066's v3)** that REQ-089-10 already has
+  approved: `CURRENT_SCHEMA_VERSION` 2 -> 4 (superseded: stays 3), plus its `SCHEMA_VERSION_HISTORY` entry in the same
   commit, adding `original_client_name`, `component_status`, `agreement_status` to
   `LEDGER_EVENT_FIELDS` and activating `split_partner`/`split_percent`.
-- **APPROVED 2026-10-09 (human)**: "bump to v4", covering this whole field list. The version
+- **APPROVED 2026-10-09 (human)**: "bump to v4" (superseded 2026-10-14: stays 3), covering this whole field list. The version
   skips 3 on purpose: a 3 was stamped once by a since-reverted change (2026-08-23 incident), so 4
   can never be confused with those. The human's decision is the only authority for the number; no
   test may assert on the `schema_version` value.
@@ -179,8 +179,8 @@ the agreement-level values and the agreement status. The current schema cannot c
      name_resolution.json [--dry-run]` reads the ledger + that file and (a) copies a timestamped
      backup of every `events/*.json` it will rewrite, (b) builds the Agreements DB from
      agreement-component `הסכם` events (`hours` unset), applying REQ-089-11 status inference and
-     REQ-089-11a legacy-cancellation handling, (c) rewrites those events to v4 with
-     `client_name` = official, `original_client_name` = dirty, `schema_version` v4, (d) writes a
+     REQ-089-11a legacy-cancellation handling, (c) rewrites those events (current schema) with
+     `client_name` = official, `original_client_name` = dirty, current `schema_version`, (d) writes a
      marker (`agreements/migration_089.json`) so a second run is a no-op.
 - **`--dry-run`** prints counts and a sample diff and writes nothing. Mirrors Feature 062's
   precedent of a preview step (see also `backend/scripts/preview_092_migration.py`).

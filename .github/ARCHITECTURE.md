@@ -526,8 +526,8 @@ Component statuses Pending/Active/Completed/Cancelled; a component is locked whe
 agreement is not Active; closing an agreement cascades (Completed: Active->Completed, Pending->Cancelled;
 Cancelled: every non-Completed->Cancelled); reopening an agreement reopens only the agreement. Labels are unique
 within an agreement. Ledger event ids allow 10 `הסכם` events per minute, so a write needing more free slots than
-remain fails whole with `ledger_busy` (HTTP 503). Ledger schema v4 adds `original_client_name`,
-`component_status`, `agreement_status` and populates `split_partner`/`split_percent`.
+remain fails whole with `ledger_busy` (HTTP 503). Ledger events gain `original_client_name`,
+`component_status`, `agreement_status`, and `split_partner`/`split_percent` are populated.
 
 Entry points: the post-turn capture (`LedgerEventManager.persist_recognized_event` -> `create_from_capture`),
 the backbone capabilities `cap_agreements_read` / `cap_agreements_write` (`src/capabilities/agreements/`,

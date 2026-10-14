@@ -17,7 +17,7 @@ HTTP API; the webapp backend proxies it behind its existing session gate; the Cl
 the DB. The WhatsApp bot reads from the DB through two new capabilities and writes through the
 same manager; agreement capture from documents is rewired to write the DB instead of the ledger.
 A one-time, two-step migration moves existing ledger agreements into the DB and rewrites those
-events to ledger schema v4.
+events (ledger fields added; no schema bump of its own, rides on 066's v3).
 
 ## Technical Context
 
@@ -43,16 +43,16 @@ events to ledger schema v4.
 | Zero mocking; integration tests via a real entry point | OK: API tests use Starlette `TestClient` against a real manager + real `LedgerEventManager` on a tmp data root; no `unittest.mock` in `tests/integration/` |
 | Config is baked or mounted correctly (bugfix-066) | OK: prompts and `runtime_constitution.md` baked, only `config.<env>.json` mounted |
 | Tool-bearing feature needs constitution boundaries | PLANNED (Phase E, T030-T032): new section + two-way cross-references |
-| Ledger schema bump is human-only | APPROVED 2026-10-09: bump to v4 with the full field list (R5) |
+| Ledger schema bump is human-only | Fields approved 2026-10-09 (R5); version decision superseded 2026-10-14: no 089 bump, stays at 066's v3 |
 | Startup handshakes must retry (section XVIII) | N/A for denidin-app (API is a server, not a client). Webapp -> API is request-time, fails closed with an explicit error |
 | No bare `pytest` | OK: wrappers only |
 | Test sound-off per test | OK: `conftest.py` default |
-| Other apps in scope (checked 2026-10-09) | `morning-mcp-app`: no change. Feature 025 reconciliation: writes `חשבונית` events only, unaffected (verified by the T050 regression run). WhatsApp-export player: goes through `initialize_app` and the shared recognizer, so it inherits the capture rewiring. `apps/prod-ledger-backfill` and `apps/rolling-memory-backfill`: write no `הסכם` events; only a smoke check that v4 stays compatible |
+| Other apps in scope (checked 2026-10-09) | `morning-mcp-app`: no change. Feature 025 reconciliation: writes `חשבונית` events only, unaffected (verified by the T050 regression run). WhatsApp-export player: goes through `initialize_app` and the shared recognizer, so it inherits the capture rewiring. `apps/prod-ledger-backfill` and `apps/rolling-memory-backfill`: write no `הסכם` events; only a smoke check that the new fields stay compatible |
 | Migration against prod | Gated: its own explicit human go-ahead, never during development |
 
 **Human decisions taken (2026-10-09)**, all three resolved:
 
-1. **Ledger schema bumps to v4** (skipping 3, which a reverted change once stamped), with the full field list: `original_client_name`, `component_status`, `agreement_status`, and `split_partner`/`split_percent` populated (R5).
+1. **Ledger gets new fields** (no bump of its own since 2026-10-14; rides on 066's v3), the full field list: `original_client_name`, `component_status`, `agreement_status`, and `split_partner`/`split_percent` populated (R5).
 2. **A web server is added to denidin-app**: `starlette` + `uvicorn` (R3).
 3. **The Agreements API must be reachable by the webapp backend only**, never by the frontend. In Docker the backend uses the compose service name, so nothing is published; `dev` additionally publishes on `127.0.0.1` for the non-Docker `run_webapp.sh host` mode (R3).
 
@@ -77,8 +77,8 @@ session token; treat `locked: true` as authoritative for disabled controls; show
 **AgreementsManager EXPECTS**: a resolved official `client_name`; a `DeniDin` object exposing `ledger_event_manager` and `config`.
 
 ### AgreementsManager <-> LedgerEventManager
-**AgreementsManager MUST**: call only the existing public persist API extended for v4 (new optional kwargs); hold the manager write lock across all events of one write; pass `reference_override=<origin_event_id>` for deletes.
-**LedgerEventManager PROVIDES**: one persisted v4 `הסכם` event per call, returning its `event_id`; unchanged behaviour for every other `source_type` and for hours-worked lines.
+**AgreementsManager MUST**: call only the existing public persist API extended for the new fields (new optional kwargs); hold the manager write lock across all events of one write; pass `reference_override=<origin_event_id>` for deletes.
+**LedgerEventManager PROVIDES**: one persisted `הסכם` event per call, returning its `event_id`; unchanged behaviour for every other `source_type` and for hours-worked lines.
 **LedgerEventManager EXPECTS**: `source_type=הסכם` events from this path carry `hours=None`; the three new fields plus `split_*` are optional and null elsewhere.
 
 ### LedgerEventRecognizer <-> AgreementsManager
@@ -113,7 +113,7 @@ specs/repo/features/089-ui-agreement-edits/
 ```text
 apps/denidin-app/
 ├── src/managers/agreements_manager.py          # NEW: DB, state rules, cascade, ledger mapping
-├── src/managers/ledger_event_manager.py        # v4 fields, SCHEMA_VERSION_HISTORY entry
+├── src/managers/ledger_event_manager.py        # new fields (no schema bump)
 ├── src/managers/ledger_event_recognizer.py     # route agreement verdicts to AgreementsManager
 ├── src/services/agreements_api.py              # NEW: Starlette app + standalone entry point
 ├── src/capabilities/agreements/{tools,handler}.py   # NEW: cap_agreements_read/write
@@ -141,7 +141,7 @@ callers of it.
 
 ## Phases
 
-- **Phase A, foundations (denidin-app)**: ledger v4 fields + history entry; `AgreementsManager` with state machine, cascade, revisions, ledger mapping, locking. Unit tests first (RED, human-approved, then GREEN) per section VI.b.
+- **Phase A, foundations (denidin-app)**: ledger new fields; `AgreementsManager` with state machine, cascade, revisions, ledger mapping, locking. Unit tests first (RED, human-approved, then GREEN) per section VI.b.
 - **Phase B, Agreements API**: Starlette routes, auth, error mapping, standalone entry point, config; integration tests through `TestClient`.
 - **Phase C, webapp**: `agreements_client`, proxy routes, `clients_reader` agreed-total switch (R8), config fields; backend integration tests.
 - **Phase D, UI**: `AgreementsSection` and dialogs; `npm run typecheck`.

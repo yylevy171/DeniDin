@@ -44,7 +44,7 @@ The Webapp UI will integrate this into the existing "Clients" tab, allowing user
 ### Session 2026-10-05
 
 - Note (2026-10-09): the original input said the ledger "becomes documentation of initial creation". The later human decisions supersede that: every component write, agreement-level edit, close and reopen also writes ledger events (REQ-089-07), so the ledger mirrors the DB's history while the DB stays the source of truth for current state.
-- Q: Ledger schema version bump (REQ-089-10)? → A: **Approved by the human, 2026-10-04; the target version was set to 4 (not 3) on 2026-10-09**, covering the new fields `original_client_name`, `component_status`, `agreement_status` and populating `split_partner`/`split_percent`. The same commit that changes `CURRENT_SCHEMA_VERSION` must add the matching `SCHEMA_VERSION_HISTORY` entry.
+- Q: Ledger schema version bump (REQ-089-10)? → A: **Approved by the human, 2026-10-04; the target was set to 4 on 2026-10-09, then dropped on 2026-10-14 when merging master (Feature 066 holds v3; `CURRENT_SCHEMA_VERSION` stays 3, 089 adds no history entry)**, covering the new fields `original_client_name`, `component_status`, `agreement_status` and populating `split_partner`/`split_percent`. Any commit that changes `CURRENT_SCHEMA_VERSION` must add the matching `SCHEMA_VERSION_HISTORY` entry.
 - Q: Rewriting historical prod ledger events (REQ-089-10)? → A: **Approved by the human, 2026-10-04**, as a one-time exception to ledger immutability, limited to the scope in REQ-089-10.
 - Q: Who owns the Agreements DB? → A: denidin-app owns it. The webapp writes to it through an HTTP API on denidin-app, and its read-only mount of denidin-app's data stays read-only.
 - Q: What ledger event does an edit or status change push? → A: A `source_type=הסכם` event with `event_subtype=יצירה` carrying the component's full new state. No new subtypes for edits.
@@ -64,7 +64,7 @@ The Webapp UI will integrate this into the existing "Clients" tab, allowing user
 - Q (2026-10-09): Does closing an agreement cascade? → A: Yes. Completed: Active components become Completed, Pending become Cancelled. Cancelled: every non-Completed component becomes Cancelled. Already Completed/Cancelled ones remain. Reopen does not restore them.
 - Q (2026-10-09): Default status of a component added by the bot with a trigger condition? → A: Pending, same as the UI.
 - Q (2026-10-09): How do [UI] acceptance tests run? → A: Playwright against a real denidin-app Agreements API on a seeded throwaway data root, no stand-in.
-- Q: Which ledger events does the v4 rewrite cover? → A: Only agreement-component `הסכם` events. Hours-worked lines, bank events and invoice events are not rewritten and keep their current schema version.
+- Q: Which ledger events does the migration rewrite cover? → A: Only agreement-component `הסכם` events. Hours-worked lines, bank events and invoice events are not rewritten and keep their current schema version.
 
 ---
 

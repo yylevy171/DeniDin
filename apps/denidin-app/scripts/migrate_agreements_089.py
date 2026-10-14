@@ -1,5 +1,5 @@
 """Feature 089 (REQ-089-09..12) - ONE-TIME migration of the ledger's fee agreements into the
-Agreements DB, with a one-time rewrite of those events to ledger schema v4.
+Agreements DB, with a one-time rewrite of those events (current ledger schema).
 
 Inputs: the app's data root (`{data_root}/events/*.json`) and the Clients-tab hand-off file written
 by `apps/webapp/backend/scripts/export_name_resolution.py` (`--resolution`).
