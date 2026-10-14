@@ -23,7 +23,7 @@
 # created once by hand on each host and left untouched by every future bundle unpack (an overlay
 # extract, never a wipe - see unpack_scripts_bundle.sh).
 # bugfix-066 (2026-09-25): config files are deliberately NOT bundled. Everything under an app's
-# config/ dir except config.<env>.json (runtime_constitution.md, ledger_recognition_prompt.md,
+# config/ dir except config.<env>.json (prompts/,
 # fee_agreement_templates/, ...) is BAKED INTO THE RELEASE IMAGE and used as shipped - the
 # compose files mount only config.<env>.json (per-env secrets) over /app/config/config.json.
 # config.<env>.json and docker/docker-compose.<env>.yml are per-environment, created once on

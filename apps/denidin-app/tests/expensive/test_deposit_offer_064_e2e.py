@@ -20,7 +20,7 @@ from urllib.parse import unquote
 
 import pytest
 
-from src.managers.pending_approval_manager import BUTTON_ID_APPROVE, BUTTON_ID_DECLINE
+from src.handlers.whatsapp_handler import BUTTON_ID_APPROVE, BUTTON_ID_DECLINE
 from tests.billed._ledger_069_acceptance import load_manifest
 from tests.billed._ledger_069_post_turn_base import seed_scenario
 from tests.billed.denidin_mcp_e2e_helpers import (

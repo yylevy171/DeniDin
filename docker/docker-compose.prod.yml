@@ -29,7 +29,7 @@ services:
       - "8201:8100"
     volumes:
       - ./apps/denidin-app/config/config.prod.json:/app/config/config.json:ro
-      # Everything else under /app/config (runtime_constitution.md, ledger_recognition_prompt.md,
+      # Everything else under /app/config (prompts/,
       # fee_agreement_templates/) is BAKED INTO THE IMAGE and must be used as shipped - never
       # bind-mounted from this box's folder over it (bugfix-066: a mounted, never-refreshed copy
       # silently overrode the image's constitution for weeks). Only per-env secrets are mounted.

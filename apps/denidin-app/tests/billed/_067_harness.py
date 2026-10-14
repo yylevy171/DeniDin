@@ -22,27 +22,50 @@ __all__ = ["IntakeRig", "WireCapture", "intake_rig"]
 
 
 class WireCapture(logging.Handler):
-    """Records every request the app sends to the model (the INFO wire-audit line), so a test can
-    assert on exactly what each call carried. Nothing is mocked: it only listens to the app's own log."""
+    """Records what crossed the app's wire boundaries (the INFO wire-audit lines), so a test can
+    assert on exactly what each call carried and did. Nothing is mocked: it only listens to the app's own log.
+
+    - `calls`: every request sent to the model, `{"context", "input"}`.
+    - `vision_calls`: every vision request (media analysis).
+    - `morning_calls`: every Morning MCP call the model's responses reported, `{"name", "error"}`.
+      Unlike `denidin_app.last_response.mcp_calls` (only the LAST handle_message call's), this spans
+      the whole scenario - use it for "exactly one document was created"."""
 
     def __init__(self):
         super().__init__(level=logging.INFO)
-        self.calls = []  # [{"context": str, "input": [...]}]
+        self.calls = []
+        self.vision_calls = []
+        self.morning_calls = []
 
     def emit(self, record):
         text = record.getMessage()
-        if not text.startswith("[WIRE-AUDIT]") or "boundary='openai'" not in text or "direction='out'" not in text:
+        if not text.startswith("[WIRE-AUDIT]"):
+            return
+        boundary = re.search(r"boundary='([^']*)'", text)
+        direction = re.search(r"direction='([^']*)'", text)
+        if not boundary or not direction or "{" not in text:
             return
         context = re.search(r"context='([^']*)'", text)
-        body = text[text.index("{", text.index("context=")):]
         try:
-            payload = json.loads(body)
+            payload = json.loads(text[text.index("{", text.index("context=")):])
         except ValueError:
             return
-        self.calls.append({"context": context.group(1) if context else "", "input": payload.get("input", [])})
+        boundary, direction = boundary.group(1), direction.group(1)
+        if boundary == "openai" and direction == "out":
+            self.calls.append({"context": context.group(1) if context else "", "input": payload.get("input", [])})
+        elif boundary == "vision" and direction == "out":
+            self.vision_calls.append(payload)
+        elif boundary == "openai" and direction == "in":
+            for item in payload.get("output") or []:
+                if isinstance(item, dict) and item.get("type") == "mcp_call":
+                    self.morning_calls.append({"name": item.get("name", ""), "error": item.get("error")})
+
+    def created_documents(self):
+        """Morning `create_*` calls that succeeded, over the whole scenario."""
+        return [c for c in self.morning_calls if c["name"].startswith("create_") and not c["error"]]
 
     def conversation_calls(self):
-        return [c for c in self.calls if c["context"].startswith("_run_resolution_loop")]
+        return [c for c in self.calls if c["context"].startswith("conversation")]
 
     @staticmethod
     def user_texts(call):
@@ -106,7 +129,7 @@ class IntakeRig:
         deadline, quiet = time.time() + timeout, 0
         while time.time() < deadline:
             busy = (any(q.size() for q in self.intake.queues()) or self.intake.deferred
-                    or self.app._busy_chats or getattr(self.intake, "_current", None) is not None)
+                    or getattr(self.intake, "_current", None) is not None)
             quiet = 0 if busy else quiet + 1
             if quiet >= 3:
                 return

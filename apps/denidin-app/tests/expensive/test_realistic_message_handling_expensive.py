@@ -41,12 +41,13 @@ def http_server():
 
 def test_a8_image_sent_while_a_text_request_is_handled_is_analyzed_on_its_own(denidin_app, http_server):
     with intake_rig(denidin_app, GODFATHER_CHAT_ID) as rig:
-        text = rig.send_text("מה השעה עכשיו?")
+        rig.send_text("מה השעה עכשיו?")
         rig.pause(1.0)
-        image = rig.send_image(_IMAGE, "", f"{http_server}/{_IMAGE}")
+        rig.send_image(_IMAGE, "", f"{http_server}/{_IMAGE}")
         rig.wait_until_idle(timeout=420)
-        assert text._test_sent_messages, "the text request was not answered"
-        assert image._test_sent_messages, "the image was never analyzed"
-        # nothing waits around, nothing is handled twice: one reply set per message
-        assert not rig.intake.deferred
+        # Sends are addressed by chat id (Feature 067), so they are not attributable to one
+        # notification: assert on the whole scenario instead.
+        assert len(rig.sent_texts()) >= 2, rig.sent_texts()  # the text answer and the image analysis
+        assert len(rig.wire.vision_calls) == 1, len(rig.wire.vision_calls)  # analyzed once, not twice
+        assert not rig.intake.deferred  # nothing left waiting
         assert len(rig.stored_user_messages()) >= 2

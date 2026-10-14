@@ -83,8 +83,7 @@ def test_a1_additive_messages_end_with_a_question_about_the_unknown_client(denid
         assert_every_later_message_reached_the_model(rig, texts[1:])
         reply = rig.last_reply()
         assert "דנה" in reply, reply  # the model asks about client דנה (to add her): it names her
-        created = [c for c in (denidin_app.last_response.mcp_calls or []) if c["name"].startswith("create_")]
-        assert not created, created  # nothing invented for an unknown client
+        assert not rig.wire.created_documents(), rig.wire.created_documents()  # nothing invented for an unknown client
         assert rig.stored_user_messages() == texts
 
 
@@ -106,12 +105,11 @@ def test_a3_stop_after_a_request_creates_nothing(denidin_app):
     with intake_rig(denidin_app, GODFATHER_CHAT_ID) as rig:
         send_spaced(rig, [f"תפיק קבלה ללקוח {existing_client_name()} על 300 שקל", "עצור, אל תעשה את זה"])
         rig.wait_until_idle()
-        before = len(rig.sent_texts())
+        assert not rig.wire.created_documents(), rig.wire.created_documents()
         send_spaced(rig, ["כן"])
         rig.wait_until_idle()
-        reply = rig.last_reply()
-        assert "הופקה" not in reply and "נוצרה" not in reply, reply
-        assert len(rig.sent_texts()) > before
+        # What matters is Morning, not wording (and silence after a bare "כן" is a legitimate answer).
+        assert not rig.wire.created_documents(), rig.wire.created_documents()
 
 
 def test_a4_message_during_an_approved_action_creates_exactly_one_document(denidin_app):
@@ -120,9 +118,8 @@ def test_a4_message_during_an_approved_action_creates_exactly_one_document(denid
         rig.wait_until_idle()
         send_spaced(rig, ["כן", "רגע, תבטל"])
         rig.wait_until_idle()
-        created = [c for c in (denidin_app.last_response.mcp_calls or []) if c["name"].startswith("create_")]
         text = "\n".join(rig.sent_texts())
-        assert len(created) <= 1, text
+        assert len(rig.wire.created_documents()) == 1, (rig.wire.morning_calls, text)
         assert "תבטל" in text or "ביטול" in text or "לבטל" in text
 
 
@@ -146,7 +143,7 @@ def test_a6_group_second_member_detail_is_accounted_for(denidin_app):
 
 
 def test_a7_button_survives_unrelated_chatter_and_works_once(denidin_app):
-    from src.managers.pending_approval_manager import BUTTON_ID_DECLINE
+    from src.handlers.whatsapp_handler import BUTTON_ID_DECLINE
     with intake_rig(denidin_app, GODFATHER_CHAT_ID) as rig:
         send_spaced(rig, ["תוסיף תזכורת מחר בתשע להתקשר לדנה"])
         rig.wait_until_idle()
@@ -154,10 +151,13 @@ def test_a7_button_survives_unrelated_chatter_and_works_once(denidin_app):
         assert button_id, "an approval prompt with buttons was expected"
         send_spaced(rig, ["מה השעה עכשיו?", "תודה"])
         rig.wait_until_idle()
+        calls_before_tap = len(rig.wire.conversation_calls())
         rig.send_tap(BUTTON_ID_DECLINE, button_id)
         rig.wait_until_idle()
-        replies_after_first_tap = len(rig.sent_texts())
-        assert replies_after_first_tap > 0
+        calls_after_first_tap = len(rig.wire.conversation_calls())
+        assert calls_after_first_tap > calls_before_tap  # the tap was honored: the model was told
         rig.send_tap(BUTTON_ID_DECLINE, button_id)
         rig.wait_until_idle()
-        assert len(rig.sent_texts()) == replies_after_first_tap  # the second tap does nothing
+        # The second tap does nothing: no model call, no message (silence after the first tap is
+        # legitimate, so the proof is the wire, not a reply count).
+        assert len(rig.wire.conversation_calls()) == calls_after_first_tap

@@ -87,15 +87,11 @@ def _load_config(path: Path) -> Dict[str, Any]:
 
 
 def _load_constitution(cfg: Dict[str, Any]) -> str:
-    cc = cfg.get("constitution_config", {}) or {}
-    filename = cc.get("file") or (cc.get("files") or [None])[0]
-    if not filename:
-        raise SystemExit("⚠️  config has no constitution_config.file — cannot measure the real prefix")
-    base = Path(cc.get("base_dir", "config"))
-    fp = base if base.is_absolute() else APP_ROOT / base
-    fp = fp / filename
+    """The stable prefix of every call: the backbone prompt (config/prompts/backbone.md), which
+    replaced runtime_constitution.md in Feature 067. `cfg` is unused; kept for the call sites."""
+    fp = APP_ROOT / "config" / "prompts" / "backbone.md"
     if not fp.is_file():
-        raise SystemExit(f"⚠️  constitution file not found: {fp}")
+        raise SystemExit(f"⚠️  backbone prompt not found: {fp}")
     return str(fp.read_text(encoding="utf-8").strip())
 
 
@@ -158,9 +154,9 @@ def _tools(cfg: Dict[str, Any], with_mcp: bool) -> List[Dict[str, Any]]:
 
 def _instructions(constitution: str, *, memories_in_instructions: bool) -> str:
     base = constitution + (RECALLED_MEMORIES_BLOCK if memories_in_instructions else "")
-    # Replicates AIHandler._build_instructions' suffix (constitution + date/time +
+    # Replicates the backbone's instructions suffix (backbone prompt + date/time +
     # version line) — same stable-prefix / trailing-dynamic-content shape that
-    # makes the constitution eligible for OpenAI prompt caching.
+    # makes the backbone prompt eligible for OpenAI prompt caching.
     now = now_local()
     version = read_version(Path(DEFAULT_VERSION_FILE))
     return (

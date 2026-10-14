@@ -52,7 +52,7 @@ services:
     volumes:
       - ./apps/denidin-app/config/config.dev.json:/app/config/config.json:ro
       # Only config.dev.json is mounted from the host. Everything else under /app/config
-      # (runtime_constitution.md, ledger_recognition_prompt.md, fee_agreement_templates/) is BAKED
+      # (prompts/, fee_agreement_templates/) is BAKED
       # INTO THE IMAGE and used exactly as shipped - never mounted over it (bugfix-066).
       - ./apps/denidin-app/dev_data:/app/dev_data
       - ./apps/denidin-app/logs/dev:/app/logs

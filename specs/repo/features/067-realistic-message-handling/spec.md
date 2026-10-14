@@ -247,8 +247,8 @@ Authoritative stories with Given-When-Then criteria are in **`user-stories.md`**
   a reply is never held back because newer user messages are waiting), and in the **next message
   sent to the model** MUST add **all** user messages that arrived since the previous one.
 - **REQ-RMH-014**: The "כן"/"לא" approval-**execution** step MUST be non-interruptible: it always
-  runs to completion and its reply is sent; messages arriving during it are persisted and handed
-  to the model afterwards.
+  runs to completion and anything it sends goes out at once (no-turn redesign: sends are immediate,
+  there is no held "reply"); messages arriving during it are persisted and handed to the model afterwards.
 
 **No turn / no end**
 

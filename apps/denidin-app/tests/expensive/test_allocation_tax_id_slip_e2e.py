@@ -30,7 +30,7 @@ from urllib.parse import unquote
 
 import pytest
 
-from src.managers.pending_approval_manager import BUTTON_ID_APPROVE
+from src.handlers.whatsapp_handler import BUTTON_ID_APPROVE
 from tests.billed.conftest import denidin_app, denidin_config, live_morning_tunnel  # noqa: F401 - fixtures
 from tests.billed.denidin_mcp_e2e_helpers import (
     GODFATHER_CHAT_ID,

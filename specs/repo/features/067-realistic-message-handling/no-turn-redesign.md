@@ -1,6 +1,7 @@
 # Feature 067 - "No turn" redesign (decisions)
 
-Status: decisions recorded 2026-10-13 (human), implementation not started.
+Status: decisions recorded 2026-10-13 (human); implemented 2026-10-14 (unit/integration green; billed/expensive audit in `billed-expensive-audit.md`).
+Implementation notes: the chain uses `truncation="auto"` (no length cap); `/health` carries `intake_pipeline`.
 
 Principle: there is no turn. The app reacts: the model acts through tools, the app does what the
 model says, immediately. The model works whenever it has something to do and pauses when it has

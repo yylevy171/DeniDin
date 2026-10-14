@@ -256,7 +256,7 @@ def test_godfather_creates_invoice_via_whatsapp_button_tap(denidin_app):
         "(check for 'Failed to send approval buttons' in the log)."
     )
 
-    from src.managers.pending_approval_manager import BUTTON_ID_APPROVE
+    from src.handlers.whatsapp_handler import BUTTON_ID_APPROVE
     response, ai_response = _send_button_tap(
         GODFATHER_CHAT_ID, BUTTON_ID_APPROVE, id_prefix="E2E_CREATE_TAP_APPROVE",
         stanza_id=button_send["idMessage"],

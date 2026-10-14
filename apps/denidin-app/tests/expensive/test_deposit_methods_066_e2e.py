@@ -17,7 +17,7 @@ from typing import Optional
 
 import pytest
 
-from src.managers.pending_approval_manager import BUTTON_ID_APPROVE
+from src.handlers.whatsapp_handler import BUTTON_ID_APPROVE
 from tests.billed.denidin_mcp_e2e_helpers import (
     GODFATHER_CHAT_ID,
     _calls_for,

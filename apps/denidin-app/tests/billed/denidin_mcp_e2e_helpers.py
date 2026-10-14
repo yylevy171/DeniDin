@@ -985,7 +985,7 @@ def _send_turn_and_approve_via_button_tap(
     same as _send_turn_and_approve does for the text path. Returns the same
     ((ask_response, ask_ai_response), (approve_response, approve_ai_response))
     shape, so existing assertions on either half work unchanged."""
-    from src.managers.pending_approval_manager import BUTTON_ID_APPROVE
+    from src.handlers.whatsapp_handler import BUTTON_ID_APPROVE
 
     ask_result = _send_turn(chat_id, text, id_prefix=f"{id_prefix}_ASK")
     approve_result = _send_button_tap(chat_id, BUTTON_ID_APPROVE, id_prefix=f"{id_prefix}_TAP_APPROVE")

@@ -1,7 +1,7 @@
 """
 Billed tests for the AI implementation's behavior with REAL API calls (Phase 5: US3) -
-whichever one the backbone flag selects (REQ-063-08: AIHandler or Backbone).
-Tests exception handling and message-length validation - NO MOCKING.
+(the Backbone).
+Tests error handling (the user is sent a friendly error) and message-length validation - NO MOCKING.
 
 Moved out of tests/integration/test_bot_exception_handling.py: these all
 make real OpenAI API calls (chat completion or embeddings via memory
@@ -40,7 +40,7 @@ def real_config():
 @pytest.fixture
 def real_ai_manager(real_config):
     """The real AI implementation, exactly as the app builds it (initialize_app) -
-    the Backbone or the legacy AIHandler, per config.test.json's backbone flag."""
+    the Backbone."""
     import denidin
     return denidin.initialize_app(dataclasses.asdict(real_config)).ai_manager
 
@@ -74,13 +74,19 @@ class TestBotExceptionHandlingWithRealAPI:
             # Create request
             request = real_ai_manager.create_request(message)
 
-            # This makes 1 REAL API call that will fail
-            response = real_ai_manager.handle_message(request)
+            # The failed call is answered with a friendly error sent to the user at once
+            # (Feature 067): the real DeniDin sends through the recording bot.
+            from tests.e2e_helpers import RECORDING_BOT, install_recording_bot
+            install_recording_bot(real_ai_manager.denidin)
+            before = list(RECORDING_BOT.unclaimed)
 
-            # Should return the error fallback (retry logic will have run) - recognized
-            # by its own marker, not by wording (the backbone's is Hebrew, legacy's English).
-            assert response.model == "error-fallback", response
-            assert response.response_text
+            # This makes 1 REAL API call that will fail (retry logic runs first)
+            real_ai_manager.handle_message(request, chat_id=message.chat_id)
+
+            from src.constants import error_messages
+            sent = RECORDING_BOT.unclaimed[len(before):]
+            app_errors = {v for k, v in vars(error_messages).items() if k.isupper() and isinstance(v, str)}
+            assert len(sent) == 1 and sent[0] in app_errors, sent
         finally:
             # Restore original model
             real_ai_manager.config.ai_model = original_model

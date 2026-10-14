@@ -25,7 +25,7 @@ from typing import List, Optional
 
 import pytest
 
-from src.managers.pending_approval_manager import BUTTON_ID_APPROVE
+from src.handlers.whatsapp_handler import BUTTON_ID_APPROVE
 from tests.e2e_helpers import assert_no_errors_sent_to_user
 
 from .denidin_mcp_e2e_helpers import (
@@ -376,7 +376,7 @@ def test_edge_id_given_in_the_original_request(denidin_app):
 @pytest.mark.billed
 def test_edge_id_saved_but_document_declined(denidin_app):
     """Approve saving the ID, decline the document -> ID saved, no document."""
-    from src.managers.pending_approval_manager import BUTTON_ID_DECLINE
+    from src.handlers.whatsapp_handler import BUTTON_ID_DECLINE
 
     client_name = _ask_combo_for_id_less_client("E2E_098_EDGE_DECLINE")
     _send_turn(CHAT, VALID_TAX_ID, id_prefix="E2E_098_EDGE_DECLINE_ID")
