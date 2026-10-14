@@ -44,7 +44,7 @@ from pathlib import Path
 import pytest
 
 from src.models.config import AppConfiguration
-from tests.e2e_helpers import sanity_worker_data_root
+from tests.e2e_helpers import get_full_reply, sanity_worker_data_root
 from src.utils.time_utils import now_local
 
 logger = logging.getLogger(__name__)
@@ -251,8 +251,9 @@ class TestLedgerQueryBilled:
         the real answer (see _get_progress_updates below) - the first message is no
         longer reliably the answer. On a fast turn with no interim message, there's
         exactly one message and last == first, so this stays correct for every
-        pre-existing caller unchanged."""
-        return notification._test_sent_messages[-1] if notification._test_sent_messages else None
+        pre-existing caller unchanged. Feature 067: the answer may be spread over several
+        messages, so this returns ALL messages of the turn, joined."""
+        return get_full_reply(notification)
 
     @staticmethod
     def _get_progress_updates(notification):

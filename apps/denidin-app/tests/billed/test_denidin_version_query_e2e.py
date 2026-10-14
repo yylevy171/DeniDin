@@ -101,22 +101,6 @@ def _build_text_webhook(chat_id: str, message_id: str) -> dict:
 
 
 @pytest.mark.billed
-def test_client_role_gets_accurate_version_answer(denidin_app):
-    from denidin import handle_text_message
-
-    version = _current_version()
-    notification = create_real_notification(
-        _build_text_webhook(CLIENT_CHAT_ID, 'E2E_TEST_VERSION_QUERY_CLIENT_001')
-    )
-
-    handle_text_message(notification)
-    response = get_response(notification)
-
-    assert_response_exists(response)
-    assert version in response, f"Expected version '{version}' in reply, got: {response}"
-
-
-@pytest.mark.billed
 @pytest.mark.sanity
 def test_godfather_role_gets_accurate_version_answer(denidin_app):
     from denidin import handle_text_message

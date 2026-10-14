@@ -354,6 +354,21 @@ def get_response(notification):
     return notification._test_sent_messages[-1] if notification._test_sent_messages else None
 
 
+def get_all_responses(notification):
+    """Every message the user saw while this notification was being handled, in order
+    (Feature 067: there is no single "final reply" - the model may send the data in one
+    message and a short wrap-up in another)."""
+    return list(notification._test_sent_messages)
+
+
+def get_full_reply(notification):
+    """All of the above joined, or None when nothing was sent. Use this for CONTENT
+    assertions (a name, an amount, a phone in the answer); `get_response` (the last message)
+    stays for questions about the last thing the user was left looking at."""
+    messages = get_all_responses(notification)
+    return "\n\n".join(messages) if messages else None
+
+
 def get_progress_updates(notification):
     """Every message sent BEFORE the final answer this turn - i.e. any interim
     send_progress_update sends (Feature 080). Empty list on a fast turn where the model

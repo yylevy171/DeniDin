@@ -67,6 +67,7 @@ from tests.e2e_helpers import (  # noqa: E402,F401
     assert_document_approval_states_vat,
     sanity_worker_data_root,
     create_real_notification,
+    get_full_reply,
     get_response,
 )
 
@@ -499,7 +500,7 @@ def _send_turn_with_notification(
         timestamp=timestamp,
     ))
     handle_text_message(notification)
-    response = get_response(notification)
+    response = get_full_reply(notification)  # Feature 067: every message of the turn, not just the last
     _track_approval_buttons(chat_id, notification)
 
     import denidin

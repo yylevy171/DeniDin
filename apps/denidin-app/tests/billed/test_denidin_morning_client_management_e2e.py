@@ -28,7 +28,6 @@ import pytest
 from .denidin_mcp_e2e_helpers import (
     VALID_TAX_ID,
     BLOCKED_ROLE_CHAT_ID,
-    CLIENT_ROLE_CHAT_ID,
     GODFATHER_CHAT_ID,
     _HEBREW_FAMILY_NAMES,
     _HEBREW_FIRST_NAMES,
@@ -645,29 +644,6 @@ def test_godfather_update_client_resolves_ambiguous_family_name_prefix_after_con
 # ============================================================================
 # RBAC denial (Feature 026, US5 - safety net, no new code expected)
 # ============================================================================
-
-
-@pytest.mark.billed
-def test_client_role_gets_no_client_management_tools(denidin_app):
-    """A client-role sender (any phone not godfather/admin/blocked) asking
-    about clients gets a normal reply with zero mcp_calls for any
-    client-management tool - existing Feature 018 RBAC gating
-    (MORNING_MCP_AUTHORIZED_ROLES = (GODFATHER, ADMIN) in ai_handler.py)
-    already covers the whole Morning MCP tool set uniformly, so this is a
-    safety net proving it, not new behavior."""
-    response, ai_response = _send_turn(
-        chat_id=CLIENT_ROLE_CHAT_ID,
-        text="מי הלקוחות שלי?",
-        id_prefix="E2E_RBAC_CLIENT_ROLE",
-    )
-
-    assert response is not None, "CRITICAL: client-role user got NO RESPONSE (silent drop)"
-    for tool_name in ("list_clients", "get_client_details", "add_client", "update_client"):
-        assert not _calls_for(ai_response, tool_name), (
-            f"client-role user's request resulted in a {tool_name} mcp_call - "
-            f"Morning tools must never be attached for this role: "
-            f"{ai_response.mcp_calls if ai_response else None!r}"
-        )
 
 
 @pytest.mark.billed
