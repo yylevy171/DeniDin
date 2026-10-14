@@ -38,7 +38,7 @@ from tests.e2e_helpers import (
     sanity_worker_data_root,
     create_real_notification,
     event_datetime_for_message_ts,
-    get_response,
+    get_full_reply,
     assert_response_exists,
     ClarificationAnswerBank,
     converse_until_ledger_events_captured,
@@ -701,7 +701,7 @@ class TestLedgerEventCaptureTextBilled:
         })
         logger.info("GIVEN a first message establishing a paid fee (ליאור טדלה, 9,000₪)")
         handle_text_message(first)
-        assert_response_exists(get_response(first))
+        assert_response_exists(get_full_reply(first))
 
         second = create_real_notification({
             'typeWebhook': 'incomingMessageReceived',
@@ -717,7 +717,7 @@ class TestLedgerEventCaptureTextBilled:
         logger.info("GIVEN a follow-up 'תוספת' (addition) message in the SAME conversation")
         handle_text_message(second)
         logger.info("WHEN DeniDin processes it")
-        assert_response_exists(get_response(second))
+        assert_response_exists(get_full_reply(second))
 
         # NOTE: doesn't use _assert_ledger_events_persisted - this test spans two
         # separate turns that each capture their own event; read events directly.
@@ -767,7 +767,7 @@ class TestLedgerEventCaptureTextBilled:
         handle_text_message(notification)
         logger.info("WHEN DeniDin processes it")
 
-        response = get_response(notification)
+        response = get_full_reply(notification)
         assert_response_exists(response)
 
         assert "?" in response, (

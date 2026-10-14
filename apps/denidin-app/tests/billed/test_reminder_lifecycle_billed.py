@@ -47,7 +47,7 @@ import pytest
 import src.services.reminder_delivery_service as delivery_service
 from src.models.config import AppConfiguration
 from tests.e2e_helpers import (
-    create_real_notification, get_full_reply, get_response, sanity_worker_data_root, wipe_chat_messages_on_disk,
+    create_real_notification, get_full_reply, sanity_worker_data_root, wipe_chat_messages_on_disk,
 )
 from tests.billed.denidin_mcp_e2e_helpers import get_button_send
 from src.utils.time_utils import now_local, to_local
@@ -161,7 +161,7 @@ class TestReminderLifecycleBilled:
     # Notification construction + reply/button-send capture (`create_real_notification`/
     # `get_response`/`get_button_send`) all delegate to the shared implementations in
     # tests/e2e_helpers.py / tests/billed/denidin_mcp_e2e_helpers.py - Feature 080:
-    # get_response() reads the LAST sent message (not the first), so a slow/multi-step
+    # get_full_reply() reads the LAST sent message (not the first), so a slow/multi-step
     # reminder turn's interim send_progress_update message(s), if any, are correctly not
     # mistaken for the real answer. No local reimplementation here anymore (there used to
     # be one, byte-for-byte identical to the shared helpers minus this fix - reinventing it

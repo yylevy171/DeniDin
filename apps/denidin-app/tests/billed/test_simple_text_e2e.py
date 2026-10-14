@@ -19,7 +19,7 @@ from src.models.config import AppConfiguration
 from tests.e2e_helpers import (
     sanity_worker_data_root,
     create_real_notification,
-    get_response,
+    get_full_reply,
     assert_response_exists,
     assert_hebrew_only,
 )
@@ -129,7 +129,7 @@ class TestSimpleTextE2E:
         logger.info("="*80)
         
         handle_text_message(notification)
-        response = get_response(notification)
+        response = get_full_reply(notification)
         
         logger.info(f"Response length: {len(response)} chars")
         logger.info(f"FULL RESPONSE:\n{response}")

@@ -21,7 +21,7 @@ import pytest
 
 from tests.billed._ledger_069_post_turn_base import drive_capture, seed_scenario
 from tests.billed.denidin_mcp_e2e_helpers import GODFATHER_CHAT_ID
-from tests.e2e_helpers import assert_response_exists, create_real_notification, get_response
+from tests.e2e_helpers import assert_response_exists, create_real_notification, get_full_reply
 from tests.expensive.test_deposit_offer_064_e2e import DepositImageE2EBase, _SENDER_DATA
 
 _PDF_DIR = Path(__file__).parent.parent / "fixtures" / "media"
@@ -69,7 +69,7 @@ class TestPdfLedger071E2E(DepositImageE2EBase):
                 "mimeType": "application/pdf", "caption": caption, "jpegThumbnail": ""}},
         })
         handle_document_message(notification)
-        reply = get_response(notification)
+        reply = get_full_reply(notification)
         assert_response_exists(reply)
         return reply, trigger_epoch
 

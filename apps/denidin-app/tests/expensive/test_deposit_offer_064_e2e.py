@@ -38,7 +38,7 @@ from src.models.config import AppConfiguration
 from tests.e2e_helpers import (
     assert_response_exists,
     create_real_notification,
-    get_response,
+    get_full_reply,
     wipe_chat_messages_on_disk,
 )
 
@@ -130,7 +130,7 @@ class DepositImageE2EBase:
                 "caption": "", "jpegThumbnail": "", "isForwarded": False, "forwardingScore": 0}},
         })
         handle_image_message(notification)
-        reply = get_response(notification)
+        reply = get_full_reply(notification)
         assert_response_exists(reply)
         _track_approval_buttons(GODFATHER_CHAT_ID, notification)
         return reply, notification

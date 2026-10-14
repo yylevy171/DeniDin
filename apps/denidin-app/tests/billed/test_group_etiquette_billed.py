@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 from src.models.config import AppConfiguration
-from tests.e2e_helpers import sanity_worker_data_root, create_real_notification, get_response, assert_hebrew_only
+from tests.e2e_helpers import sanity_worker_data_root, create_real_notification, get_full_reply, assert_hebrew_only
 
 logger = logging.getLogger(__name__)
 
@@ -131,7 +131,7 @@ class TestGroupEtiquetteBilled:
             _group_event('מה המצב עם התיק של דוד כהן?', case_id='case1')
         )
         handle_text_message(notification)
-        response = get_response(notification)
+        response = get_full_reply(notification)
 
         logger.info(f"Case 1 (default address) response: {response!r}")
         assert response is not None, "Expected a substantive reply, got no reply at all"
@@ -150,7 +150,7 @@ class TestGroupEtiquetteBilled:
             _group_event('רותי, את יודעת איזה יום היום?', case_id='case2')
         )
         handle_text_message(notification)
-        response = get_response(notification)
+        response = get_full_reply(notification)
 
         logger.info(f"Case 2 (clearly for someone else) response: {response!r}")
         assert response is None, f"Expected no reply at all, got: {response!r}"
@@ -165,7 +165,7 @@ class TestGroupEtiquetteBilled:
             _group_event('אתה יכול לבדוק את זה ולחזור אליי?', case_id='case3')
         )
         handle_text_message(notification)
-        response = get_response(notification)
+        response = get_full_reply(notification)
 
         logger.info(f"Case 3 (genuinely unclear) response: {response!r}")
         assert response is not None, "Expected a clarifying question, got no reply at all"
@@ -182,7 +182,7 @@ class TestGroupEtiquetteBilled:
             _group_event('תודה רבה על העזרה!', case_id='case4')
         )
         handle_text_message(notification)
-        response = get_response(notification)
+        response = get_full_reply(notification)
 
         logger.info(f"Case 4 (ordinary message) response: {response!r}")
         assert response is not None, "Expected a substantive reply, got no reply at all"
@@ -197,7 +197,7 @@ class TestGroupEtiquetteBilled:
             _group_event('@רותי תבדקי את זה בבקשה', case_id='case5a')
         )
         handle_text_message(notification)
-        response = get_response(notification)
+        response = get_full_reply(notification)
 
         logger.info(f"Case 5a (@ real name, not DeniDin) response: {response!r}")
         assert response is None, f"Expected no reply at all, got: {response!r}"
@@ -212,7 +212,7 @@ class TestGroupEtiquetteBilled:
             _group_event('@lalalal תבדקי את זה בבקשה', case_id='case5b')
         )
         handle_text_message(notification)
-        response = get_response(notification)
+        response = get_full_reply(notification)
 
         logger.info(f"Case 5b (@ arbitrary text) response: {response!r}")
         assert response is None, f"Expected no reply at all, got: {response!r}"
@@ -226,7 +226,7 @@ class TestGroupEtiquetteBilled:
             _group_event('אתה יכול לבדוק את זה? @DeniDin', case_id='case6')
         )
         handle_text_message(notification)
-        response = get_response(notification)
+        response = get_full_reply(notification)
 
         logger.info(f"Case 6 (@DeniDin overrides ambiguity) response: {response!r}")
         assert response is not None, "Expected a substantive reply, got no reply at all"
@@ -260,7 +260,7 @@ class TestGroupEtiquetteBilled:
             _group_event(f'@{own_number} מי אתה?', case_id='case7')
         )
         handle_text_message(notification)
-        response = get_response(notification)
+        response = get_full_reply(notification)
 
         logger.info(f"Case 7 (native @-mention by own phone number) response: {response!r}")
         assert response is not None, (

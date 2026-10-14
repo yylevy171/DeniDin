@@ -37,7 +37,7 @@ from src.models.config import AppConfiguration
 from tests._reaction_capture import ReactionCaptureStub
 from tests.billed.denidin_mcp_e2e_helpers import GODFATHER_CHAT_ID
 from tests.billed.reaction_judgment_pool import BILLED_REACTION_SCENARIOS
-from tests.e2e_helpers import create_real_notification, get_response, sanity_worker_data_root
+from tests.e2e_helpers import create_real_notification, get_full_reply, sanity_worker_data_root
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +122,7 @@ class TestReactionJudgmentTuningHardAssertions:
                 if role == "user":
                     _send_turn(scenario["chat_id"], f"TUNING_LUNCH_PRIOR_{i}", content)
             notification = _send_turn(scenario["chat_id"], "TUNING_LUNCH_FINAL", scenario["message"])
-            get_response(notification)  # exercised for parity with other E2E tests; not asserted on
+            get_full_reply(notification)  # exercised for parity with other E2E tests; not asserted on
         assert stub.calls == [], (
             f"expected zero send_reaction calls for ambient group chatter, got {stub.calls}"
         )
@@ -135,7 +135,7 @@ class TestReactionJudgmentTuningHardAssertions:
                 if role == "user":
                     _send_turn(scenario["chat_id"], f"TUNING_DEBATE_PRIOR_{i}", content)
             notification = _send_turn(scenario["chat_id"], "TUNING_DEBATE_FINAL", scenario["message"])
-            get_response(notification)
+            get_full_reply(notification)
         assert stub.calls == [], (
             f"expected zero send_reaction calls for ambient group chatter, got {stub.calls}"
         )
@@ -148,7 +148,7 @@ class TestReactionJudgmentTuningHardAssertions:
                 if role == "user":
                     _send_turn(scenario["chat_id"], f"TUNING_FLIP_PRIOR_{i}", content)
             notification = _send_turn(scenario["chat_id"], "TUNING_FLIP_FINAL", scenario["message"])
-            get_response(notification)
+            get_full_reply(notification)
 
         # This is judgment-dependent (the model may or may not choose to react at all,
         # to either turn) - the harness only asserts targeting correctness WHEN a flip
@@ -207,7 +207,7 @@ class TestAgreementCreationReactionsBilled:
                 "AGREEMENT_REACT_BILLED_1",
                 "תעד הסכם שכר טרחה עם זהבית צור על 750 שח",
             )
-            response = get_response(notification)
+            response = get_full_reply(notification)
 
         logger.info(
             "test_agreement_creation_via_text_reacts_on_ask_and_resolution: "

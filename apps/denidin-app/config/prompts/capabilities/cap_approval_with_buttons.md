@@ -9,17 +9,12 @@ their reply (a typed "כן"/"לא" or a button tap; both arrive as an ordinary m
 the conversation, and act accordingly. Your own `cap_record_planning_status` note is
 what carries "I am waiting for approval of X" across the gap.
 
-The flow that needs the answer decides that a yes/no is required. The capability you
-are about to use (for a write, its write capability) defines which details the text must state. The rules below apply when the question is the approval of an action; when a
-flow uses the tool for another question, it words that question as the flow says.
+The flow (or the write capability) that needs the answer decides what the question is and writes
+its text, including which details it states. This capability knows nothing about what is being
+asked: it sends the text it is given and waits for the answer.
 
-- Start the text with `📋 לאישור:` (or, for a document-creation approval,
-  `📋 לאישור — <what it is>:`, e.g. `📋 לאישור — לקוח חדש:`) on its own line,
-  then the details as REAL data: given by the user, or fetched in this conversation.
-  Never from memory or a guess. A missing detail is a question to ask BEFORE
-  requesting approval, never "not stated".
-- A Morning document approval also carries the `סוג מסמך:` and `מע״מ:` lines,
-  in exactly the form `cap_invoicing_write` defines.
+- Start the text with `📋 לאישור:` on its own line, then the text the flow gave you, word for word
+  in substance - add nothing, drop nothing, and never invent or fill in details from memory.
 - End the text with EXACTLY this closed question, verbatim, every single time:
   `לאישור — כן/לא?`. Never paraphrase it (not `אישור — כן/לא?`, not `האם לאשר...`,
   not any other wording) and never let a competing question follow it — this exact

@@ -290,8 +290,6 @@ def approval_document_type(text: Optional[str]) -> Optional[str]:
         if line.startswith("סוג מסמך:"):
             return line[len("סוג מסמך:"):].strip()
     header = lines[0][len(APPROVAL_BLOCK_HEADER):].strip(" —-:")
-    if header.startswith("ביטול"):  # cancelling an open transaction account creates no document
-        return None
     return header if any(w in header for w in _DOCUMENT_TYPE_WORDS) else None
 
 

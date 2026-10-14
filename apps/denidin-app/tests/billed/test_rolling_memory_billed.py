@@ -160,7 +160,7 @@ def _ask_via_denidin(app, chat, text, message_id):
     out of ai_manager.handle_message and onto DeniDin. Returns the reply the user would see."""
     import denidin
     from tests.billed.denidin_mcp_e2e_helpers import build_text_webhook
-    from tests.e2e_helpers import create_real_notification, get_response
+    from tests.e2e_helpers import create_real_notification, get_full_reply
 
     original_app = getattr(denidin, "denidin_app", None)
     try:
@@ -170,7 +170,7 @@ def _ask_via_denidin(app, chat, text, message_id):
         notification = create_real_notification(build_text_webhook(
             chat_id=chat, sender_name="Avi", text=text, message_id=message_id))
         denidin.handle_text_message(notification)
-        return get_response(notification)
+        return get_full_reply(notification)
     finally:
         denidin.denidin_app = original_app
 

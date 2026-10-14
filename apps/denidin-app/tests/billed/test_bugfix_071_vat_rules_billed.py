@@ -15,7 +15,7 @@ Each scenario checks three things a user would: what the bot asks (or does not
 ask), what the approval says about VAT, and what Morning actually stored -
 read from the create tool's own output, which re-reads the new document from
 Morning. Every reply also passes the shared approval-VAT check
-(tests/e2e_helpers.assert_document_approval_states_vat, wired into _send_turn).
+(tests/e2e_helpers.assert_document_approval_states_vat, called explicitly by the tests that check VAT).
 
 Amounts relative to the original document are out of scope (spec, 2026-10-05).
 Amounts stay under 100, per this suite's sandbox convention.

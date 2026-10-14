@@ -24,7 +24,7 @@ from pathlib import Path
 import pytest
 
 from src.models.config import AppConfiguration
-from tests.e2e_helpers import sanity_worker_data_root, assert_response_exists, create_real_notification, get_response
+from tests.e2e_helpers import sanity_worker_data_root, assert_response_exists, create_real_notification, get_full_reply
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +111,7 @@ def test_godfather_role_gets_accurate_version_answer(denidin_app):
     )
 
     handle_text_message(notification)
-    response = get_response(notification)
+    response = get_full_reply(notification)
 
     assert_response_exists(response)
     assert version in response, f"Expected version '{version}' in reply, got: {response}"

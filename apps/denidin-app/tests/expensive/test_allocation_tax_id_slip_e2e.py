@@ -53,7 +53,7 @@ from tests.billed.test_allocation_tax_id_billed import (
     _morning_tax_id,
     _of_type,
 )
-from tests.e2e_helpers import create_real_notification, get_response
+from tests.e2e_helpers import create_real_notification, get_full_reply
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +110,7 @@ class TestAllocationTaxIdSlipE2E:
             },
         })
         handle_image_message(notification)
-        return get_response(notification), denidin.denidin_app.last_response
+        return get_full_reply(notification), denidin.denidin_app.last_response
 
     @staticmethod
     def _retire_client(client_name: str) -> None:

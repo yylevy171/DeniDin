@@ -94,7 +94,7 @@ from tests.e2e_helpers import (
     ClarificationAnswerBank,
     create_real_notification,
     event_datetime_for_message_ts,
-    get_response,
+    get_full_reply,
     assert_response_exists,
     assert_image_path_persisted,
     same_txn_date,
@@ -409,7 +409,7 @@ class TestLedgerEventCaptureE2E:
             }
         })
         handle_image_message(notification)
-        reply = get_response(notification)
+        reply = get_full_reply(notification)
         assert_response_exists(reply)
         return reply
 
@@ -440,7 +440,7 @@ class TestLedgerEventCaptureE2E:
                 'messageData': {'typeMessage': 'textMessage', 'textMessageData': {'textMessage': nxt}},
             })
             handle_text_message(notification)
-            text = get_response(notification)
+            text = get_full_reply(notification)
             transcript.append({"turn": turn, "sent": nxt, "reply": text, "matched": matched})
             events = self._events_for_chat(denidin_app, chat_id)
         for e in transcript:
@@ -1031,7 +1031,7 @@ class TestLedgerEventCaptureE2E:
         handle_image_message(notification)
         logger.info("WHEN DeniDin processes it via the image pipeline")
 
-        response = get_response(notification)
+        response = get_full_reply(notification)
         assert_response_exists(response)
 
         after = len(self._events_for_chat(denidin_app, chat_id))

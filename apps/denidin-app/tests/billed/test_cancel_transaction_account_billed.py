@@ -19,18 +19,17 @@ CLAUDE.md/CONSTITUTION §VII).
 from __future__ import annotations
 
 import logging
+import time
 
 import pytest
 
 from .denidin_mcp_e2e_helpers import (
     GODFATHER_CHAT_ID,
     _calls_for,
-    _random_amount,
-    _random_description,
     _send_turn,
     _send_turn_and_approve,
 )
-from .test_denidin_morning_invoice_lifecycle_e2e import _seed_transaction_account_invoice
+from .test_bugfix_071_vat_rules_billed import _seed_document
 
 logger = logging.getLogger(__name__)
 
@@ -47,12 +46,15 @@ def test_godfather_cancels_a_transaction_account_via_whatsapp(denidin_app):
     REQ-INV-026 (never "שולם"/paid wording) - all from the real user's
     perspective, not just T005a's unit-level formatter check.
 
-    Reuses `_seed_transaction_account_invoice` (test_denidin_morning_
+    Seeds the 300 via `_seed_document` (test_bugfix_071_vat_rules_billed.py); formerly reused `_seed_transaction_account_invoice` (test_denidin_morning_
     invoice_lifecycle_e2e.py) - the same real, two-turn-approved seeding
     helper that file's own "mark as paid" tests already use, so a fresh
     open חשבון עסקה genuinely exists before this test's own turns begin.
     """
-    client_name = _seed_transaction_account_invoice(_random_amount(), _random_description())
+    # The 300 is seeded with its VAT stated up front ("not included"), so the cancellation
+    # approval can carry the VAT of the document being cancelled.
+    client_name, _ = _seed_document("חשבון עסקה", 'לא כולל מע"מ', "E2E_056_SEED_300")
+    time.sleep(5)  # Morning's search index lags a few seconds behind a just-created document
 
     (ask_response, ask_ai_response), (cancel_response, cancel_ai_response) = _send_turn_and_approve(
         chat_id=GODFATHER_CHAT_ID,
