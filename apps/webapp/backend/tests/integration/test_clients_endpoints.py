@@ -9,6 +9,8 @@ from urllib.parse import quote
 import pytest
 
 from tests.clients_helpers import MIGRATION_KEY, OLD, agreement, payment, read_json, write_json
+# A real denidin-app Agreements API process: the close/reopen buttons now drive the client's agreements.
+from tests.integration.test_agreements_endpoints import TOKEN as AGREEMENTS_TOKEN, denidin_api  # noqa: F401
 
 pytestmark = pytest.mark.integration
 
@@ -24,7 +26,7 @@ def clients_dir(tmp_path) -> Path:
 
 
 @pytest.fixture
-def api(tmp_path, password_hash_file, known_password, clients_dir):
+def api(tmp_path, password_hash_file, known_password, clients_dir, denidin_api):  # noqa: F811
     from starlette.testclient import TestClient
 
     from webapp_backend.config import AppConfig
@@ -46,6 +48,7 @@ def api(tmp_path, password_hash_file, known_password, clients_dir):
         password_hash_file=str(password_hash_file),
         denidin_data_root=str(data_root),
         webapp_data_root=str(tmp_path / "webapp_data"),
+        denidin_agreements_url=denidin_api, denidin_agreements_token=AGREEMENTS_TOKEN,
     )
     # Feature 089: the agreed total now comes from the Agreements DB; the totals are injected
     # here (dependency injection, like the official client list) - the fixture's ledger
@@ -108,6 +111,37 @@ class TestSetLineStatus:
         assert _status(api, DEBT, "check").status_code == 200
         assert _status(api, DEBT, "check").status_code == 200
         assert _row(api, DEBT)["status"] == "check"
+
+
+class TestLineButtonsDriveAgreements:
+    """2026-10-14: לסגור closes the client's Active agreements (components cascade); לפתוח reopens the
+    Completed ones and turns their Completed components back to Active. Cancelled agreements stay."""
+
+    def _make(self, api, title, components):
+        r = api.post("/api/agreements", json={"client_name": DEBT, "title": title, "components": components})
+        assert r.status_code == 200, r.text
+        return r.json()["agreement"]["agreement_id"]
+
+    def _agreements(self, api):
+        return {a["title"]: a for a in api.get(f"/api/clients/{quote(DEBT)}/agreements").json()["agreements"]}
+
+    def test_close_then_reopen_round_trip(self, api):
+        live = self._make(api, "חי", [{"label": "א", "amount": 100}, {"label": "ב", "amount": 200, "trigger_condition": "x"}])
+        dead = self._make(api, "בוטל", [{"label": "ג", "amount": 300}])
+        assert api.post(f"/api/agreements/{dead}/status", json={"status": "Cancelled"}).status_code == 200
+
+        assert _status(api, DEBT, "close").status_code == 200
+        got = self._agreements(api)
+        assert got["חי"]["status"] == "Completed"
+        assert sorted(c["status"] for c in got["חי"]["components"]) == ["Cancelled", "Completed"]  # Pending -> Cancelled
+        assert got["בוטל"]["status"] == "Cancelled"
+
+        assert _status(api, DEBT, "reopen").status_code == 200
+        got = self._agreements(api)
+        assert got["חי"]["status"] == "Active"
+        assert sorted(c["status"] for c in got["חי"]["components"]) == ["Active", "Cancelled"]
+        assert got["בוטל"]["status"] == "Cancelled"
+        assert live == got["חי"]["agreement_id"]
 
 
 class TestSetLineStatusErrors:

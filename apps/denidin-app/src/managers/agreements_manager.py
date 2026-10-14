@@ -352,17 +352,18 @@ class AgreementsManager:
             return [self._agreement_dict(conn, i) for i in ids]
 
     def totals(self) -> Dict[str, int]:
-        """client_name -> sum of non-Cancelled component amounts (REQ-089-14). Percent-only
-        components have no amount and contribute nothing."""
+        """client_name -> sum of Active and Completed component amounts (REQ-089-14; Pending and Cancelled
+        are not counted - human decision 2026-10-14). Percent-only components have no amount and
+        contribute nothing."""
         with self._connect() as conn:
             rows = conn.execute(
                 """
                 SELECT TRIM(a.client_name) AS client_name, SUM(c.amount) AS total
                 FROM components c JOIN agreements a ON a.agreement_id = c.agreement_id
-                WHERE c.status != ? AND c.amount IS NOT NULL AND c.is_active = 1 AND a.is_active = 1
+                WHERE c.status IN (?, ?) AND c.amount IS NOT NULL AND c.is_active = 1 AND a.is_active = 1
                 GROUP BY TRIM(a.client_name)
                 """,
-                (CANCELLED,),
+                (ACTIVE, COMPLETED),
             ).fetchall()
         return {r["client_name"]: int(r["total"] or 0) for r in rows}
 
@@ -753,10 +754,11 @@ class AgreementsManager:
             conn.execute("UPDATE components SET status = ? WHERE component_key = ?", (target, component_key))
             return self._finish_write(conn, agreement_id, components_to_log=[component_key], **ledger_kwargs)
 
-    def set_agreement_status_to(self, agreement_id: str, target: str, actor: str,
-                                **ledger_kwargs: Any) -> Tuple[Dict[str, Any], List[str]]:
+    def set_agreement_status_to(self, agreement_id: str, target: str, actor: str, *,
+                                reopen_components: bool = False, **ledger_kwargs: Any) -> Tuple[Dict[str, Any], List[str]]:
         """Status-dropdown path (2026-10-13): Active / Completed / Cancelled -> any other. Closing applies the
-        same component cascade as complete/cancel; moving to Active changes only the agreement."""
+        same component cascade as complete/cancel; moving to Active changes only the agreement, unless
+        `reopen_components` (the client-line "לפתוח" button): then Completed components become Active again."""
         self._check_actor(actor)
         if target not in AGREEMENT_STATUSES:
             raise ValidationError(f"status must be one of {list(AGREEMENT_STATUSES)}", {"status": "invalid"})
@@ -771,6 +773,11 @@ class AgreementsManager:
                     if new_status != comp["status"]:
                         conn.execute("UPDATE components SET status = ? WHERE component_key = ?",
                                      (new_status, comp["component_key"]))
+            elif reopen_components:
+                for comp in agreement["components"]:
+                    if comp["status"] == COMPLETED:
+                        conn.execute("UPDATE components SET status = ? WHERE component_key = ?",
+                                     (ACTIVE, comp["component_key"]))
             conn.execute("UPDATE agreements SET status = ? WHERE agreement_id = ? AND is_active = 1",
                          (target, agreement_id))
             return self._finish_write(

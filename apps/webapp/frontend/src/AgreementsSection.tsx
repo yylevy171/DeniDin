@@ -20,6 +20,7 @@ import {
 } from "./api";
 import { Button, Field, IconButton, HintPressable } from "./ui";
 import { LINE_BUTTONS_OFFSET } from "./layout";
+import { ACTIVE_GREEN, COMPLETED_LIGHT_BLUE } from "./clientsTheme";
 
 // One status vocabulary for agreements and components (human decision 2026-10-13):
 // Pending = gray "לא פעיל", Active = green "פעיל", Completed = light blue "סגור", Cancelled = light red "מבוטל".
@@ -29,8 +30,8 @@ const STATUS_LABEL: Record<string, string> = { Pending: "לא פעיל", Active:
 function statusColors(theme: Theme, status: string): { color: string; background: string } {
   const dark = theme.name === "dark";
   switch (status) {
-    case "Active": return { color: "#ffffff", background: dark ? "#2f8f68" : "#1c7c54" };
-    case "Completed": return dark ? { color: "#8ab8ff", background: "#1f3556" } : { color: "#2563b8", background: "#dbeafe" };
+    case "Active": return { color: "#ffffff", background: ACTIVE_GREEN };
+    case "Completed": return { color: "#0b2a4a", background: COMPLETED_LIGHT_BLUE };
     case "Cancelled": return dark ? { color: "#ff9b9b", background: "#4a2626" } : { color: "#b23b3b", background: "#fde2e2" };
     default: return dark ? { color: "#d0d8d4", background: "#3a4440" } : { color: "#4a5651", background: "#e3e6e5" };
   }

@@ -229,3 +229,13 @@ Phase 10 needs every story done; Phase 11 after Phase 10.
 ### Decision 2026-10-14 (merge of master / Feature 066)
 - Human decision on merging master: `CURRENT_SCHEMA_VERSION` stays **3** (Feature 066's value). The 089 bump to 4 and its
   `SCHEMA_VERSION_HISTORY` entry are dropped; 089's new fields ride on schema 3. Earlier mentions of "v4" in this folder are superseded.
+
+### Decisions 2026-10-14 (UI round 6)
+- Agreed total counts **Active and Completed** components only (Pending and Cancelled excluded). Completed stays in because closing an
+  agreement turns its Active components Completed and the line's agreed amount must not drop.
+- The client line's **לסגור** sets every Active agreement of the client to Completed (normal close cascade); **לפתוח** sets every Completed
+  agreement back to Active and its Completed components back to Active (`reopen_components`, line button only; the status dropdown
+  still reopens just the agreement). Cancelled agreements and components are never touched. The agreements are written first, then the
+  line status; a failure (e.g. `ledger_busy`) is returned and the line stays as it was.
+- Colours: line "סגור - שולם" and the Completed chip share one light blue; "לקוח פעיל" and the Active chip share one green.
+  "לבדוק" is renamed **לטיפול מיידי** (label, section header and button), pink. The legacy comment keyword `לבדוק` is unchanged.

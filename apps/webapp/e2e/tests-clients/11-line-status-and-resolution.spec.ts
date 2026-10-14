@@ -137,7 +137,7 @@ test.describe("Feature 092 acceptance", () => {
     await expectInSection(page, M.paid_client, "active");
   });
 
-  test("UAT 3 — לבדוק / לקוח פעיל buttons move the line; comment keywords no longer do", async ({ page }) => {
+  test("UAT 3 — לטיפול מיידי / לקוח פעיל buttons move the line; comment keywords no longer do", async ({ page }) => {
     await login(page);
     await openClientsTab(page);
     await focusClient(page, M.target_a);

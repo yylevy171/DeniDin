@@ -8,7 +8,7 @@ a live ``SessionStore`` rather than one fixed config value. ``/health`` and
 import logging
 import mimetypes
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from starlette.applications import Starlette
 from starlette.concurrency import run_in_threadpool
@@ -259,6 +259,11 @@ def build_app(
         if action not in LINE_ACTIONS:
             return _error("bad_request", "action must be one of: " + ", ".join(LINE_ACTIONS) + ".", 400)
         client_id = request.path_params["client_id"]
+        if action in ("close", "reopen"):
+            # The line's close/reopen drives the client's agreements (and their components) too.
+            failure = await _sync_client_agreements(client_id, action)
+            if failure is not None:
+                return failure
         try:
             result = await run_in_threadpool(clients_reader.set_line_status, client_id, action)
         except ClientNotFoundError:
@@ -310,6 +315,34 @@ def build_app(
         if method != "GET" and status == 200:
             clients_reader.invalidate_report()  # agreed totals changed
         return JSONResponse(data, status_code=status)
+
+    async def _sync_client_agreements(client_id: str, action: str) -> Optional[JSONResponse]:
+        """לסגור -> every Active agreement of the client becomes Completed (cascade to its components);
+        לפתוח -> every Completed agreement becomes Active again and its Completed components Active.
+        Returns an error response, or None on success. Cancelled agreements are never touched."""
+        def work() -> Optional[Tuple[int, Any]]:
+            status, data = agreements_client.request("GET", "/agreements", params={"client_name": client_id})
+            if status != 200:
+                return status, data
+            source, target = ("Active", "Completed") if action == "close" else ("Completed", "Active")
+            for agreement in data.get("agreements", []):
+                if agreement.get("status") != source:
+                    continue
+                body = {"status": target}
+                if action == "reopen":
+                    body["reopen_components"] = True
+                status, data = agreements_client.request(
+                    "POST", f"/agreements/{agreement['agreement_id']}/status", body=body)
+                if status != 200:
+                    return status, data
+            return None
+        try:
+            failure = await run_in_threadpool(work)
+        except AgreementsUnavailable:
+            return _agreements_unavailable_response()
+        finally:
+            clients_reader.invalidate_report()
+        return None if failure is None else JSONResponse(failure[1], status_code=failure[0])
 
     async def client_agreements(request: Request) -> JSONResponse:
         return await _agreements_call(

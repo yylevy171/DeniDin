@@ -128,7 +128,9 @@ def build_app(manager: AgreementsManager, auth_token: str) -> Starlette:
         body = await _json_body(request)
         actor = actor_of(body)
         if "status" in body:  # status dropdown: a target status instead of an action
-            return _written(manager.set_agreement_status_to(request.path_params["agreement_id"], body["status"], actor))
+            return _written(manager.set_agreement_status_to(
+                request.path_params["agreement_id"], body["status"], actor,
+                reopen_components=bool(body.get("reopen_components"))))
         return _written(manager.set_agreement_status(request.path_params["agreement_id"], body.get("action", ""), actor))
 
     async def add_component(request: Request) -> Response:

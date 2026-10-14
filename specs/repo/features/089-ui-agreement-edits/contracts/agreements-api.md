@@ -55,7 +55,7 @@ Served by `apps/denidin-app/src/services/agreements_api.py` (Starlette). Consume
 | `GET /agreements/totals` | `{client_name: sum of non-Cancelled component amounts}` for all clients | 6.1 |
 | `POST /agreements` | create agreement + >=1 component | 2.4 |
 | `PATCH /agreements/{agreement_id}` | edit `payer_name`, `partner_name`, `partner_percent` only | 2.1 |
-| `POST /agreements/{agreement_id}/status` | body `{"status": "Active"\|"Completed"\|"Cancelled"}` (UI dropdown; any status to any; closing cascades per data-model.md) or the older `{"action": "complete"\|"cancel"\|"reopen"}` (WhatsApp bot) | 3.5, 3.6 |
+| `POST /agreements/{agreement_id}/status` | body `{"status": "Active"\|"Completed"\|"Cancelled"}` (UI dropdown; any status to any; closing cascades per data-model.md; optional `"reopen_components": true` with `Active` also turns Completed components back to Active - used by the client line's לפתוח button) or the older `{"action": "complete"\|"cancel"\|"reopen"}` (WhatsApp bot) | 3.5, 3.6 |
 | `POST /agreements/{agreement_id}/components` | add a component (default status per UAT 3.1) | 2.3 |
 | `PATCH /agreements/{agreement_id}/components/{component_key}` | edit component fields (`label`, `description`, `amount`, `percent`, `percent_base`, `trigger_condition`, `vat_status`) | 2.2, 2.2b |
 | `POST /agreements/{agreement_id}/components/{component_key}/status` | body `{"status": "Pending"\|"Active"\|"Completed"\|"Cancelled"}` (UI dropdown; any to any while the agreement is Active, else `locked`; same status is a no-op) or the older `{"action": "activate"\|"complete"\|"cancel"\|"reopen"}` (bot) | 3.2-3.4, 3.6 |

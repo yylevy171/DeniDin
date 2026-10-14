@@ -50,6 +50,8 @@ database created before this decision may still carry an unused `revisions` tabl
 
 ## State rules (REQ-089-05/06)
 
+Agreed total (`totals()`, REQ-089-14): sum of **Active and Completed** component amounts per client (Pending and Cancelled excluded, 2026-10-14).
+
 UI (2026-10-13, round 5): status is a dropdown. A component can move between ANY of Pending/Active/Completed/Cancelled while its agreement is Active (all disabled otherwise); an agreement can move between Active/Completed/Cancelled, closing applying the cascade below. The arrows below are what the bot's action tools allow. Dropdown colours: Active green, Cancelled red, Completed blue, Pending gray.
 
 Component status:

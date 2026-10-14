@@ -584,3 +584,34 @@ class TestStatusDropdownPath:
         assert done["status"] == "Completed"
         with pytest.raises(ValidationError):
             mgr.set_agreement_status_to(aid, "Pending", "webapp")
+
+
+class TestAgreedTotalAndLineReopen:
+    """2026-10-14: the agreed total counts Active and Completed components only; the client line's
+    reopen turns the agreement's Completed components back to Active."""
+
+    def test_totals_count_only_active_and_completed(self, mgr):
+        agreement, _ = _create(mgr, components=[
+            {"label": "פעיל", "amount": 1000},
+            {"label": "ממתין", "amount": 2000, "trigger_condition": "בהצלחה"},
+            {"label": "סגור", "amount": 4000},
+            {"label": "מבוטל", "amount": 8000}])
+        aid = agreement["agreement_id"]
+        assert _by_label(agreement, "ממתין")["status"] == "Pending"
+        mgr.set_component_status_to(aid, _by_label(agreement, "סגור")["component_key"], "Completed", "webapp")
+        mgr.set_component_status_to(aid, _by_label(agreement, "מבוטל")["component_key"], "Cancelled", "webapp")
+        assert mgr.totals() == {"ישראל ישראלי": 5000}
+        mgr.set_component_status_to(aid, _by_label(agreement, "ממתין")["component_key"], "Active", "webapp")
+        assert mgr.totals() == {"ישראל ישראלי": 7000}
+
+    def test_reopen_components_turns_completed_back_to_active_only_when_asked(self, mgr):
+        agreement, _ = _create(mgr)  # retainer Active, success Pending
+        aid = agreement["agreement_id"]
+        mgr.set_agreement_status_to(aid, "Completed", "webapp")  # Active->Completed, Pending->Cancelled
+        plain, _ = mgr.set_agreement_status_to(aid, "Active", "webapp")
+        assert sorted(c["status"] for c in plain["components"]) == ["Cancelled", "Completed"]
+        mgr.set_agreement_status_to(aid, "Completed", "webapp")
+        reopened, ids = mgr.set_agreement_status_to(aid, "Active", "webapp", reopen_components=True)
+        assert reopened["status"] == "Active"
+        assert sorted(c["status"] for c in reopened["components"]) == ["Active", "Cancelled"]
+        assert len(ids) == len(reopened["components"])
