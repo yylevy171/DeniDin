@@ -196,7 +196,7 @@ class TestVerdicts:
 
     def test_declined_verdict_shape(self, recognizer, session):
         payload = {"verdict": "declined", "event": None, "trigger_message_id": None,
-                   "source_type": "בנק", "client_name_stated": "יוסי מהחנייה",
+                   "source_type": "הפקדה", "client_name_stated": "יוסי מהחנייה",
                    "reason": "declined_by_operator"}
         recognizer.client.responses.create.return_value = _verdict_response(payload)
 
@@ -205,7 +205,7 @@ class TestVerdicts:
             turn_mcp_calls=[], constitution_text="C")
 
         assert result["verdict"] == "declined"
-        assert result["source_type"] == "בנק"
+        assert result["source_type"] == "הפקדה"
         assert result["client_name_stated"] == "יוסי מהחנייה"
         assert result["reason"] == "declined_by_operator"
 

@@ -295,7 +295,7 @@ class TestLedgerQueryBilled:
                 # that needs to read it back as a real number (T018).
                 "percent": percent, "percent_base": None, "hours": hours,
                 "hourly_rate": None, "txn_date": txn_date,
-                "vat_status": "כולל" if source_type == "בנק" else "לא צוין",
+                "vat_status": "כולל" if source_type == "הפקדה" else "לא צוין",
                 "reference_hint": reference_hint,
                 "trigger_condition": trigger_condition,
                 "agreement_label": "תיק" if source_type == "הסכם" else None,
@@ -549,11 +549,11 @@ class TestLedgerQueryBilled:
         chat_id = self._fresh_chat_id(config, 't010_income')
         self._seed_noise(denidin_app, count=6, label="t010_income_noise")
         self._seed(
-            denidin_app, "דנה פלד", source_type="בנק", event_subtype="הפקדה",
+            denidin_app, "דנה פלד", source_type="הפקדה", event_subtype="בנק",
             amount="40₪", message_id="t010_income_1", timestamp=_this_month_so_far_timestamp(day=4),
         )
         self._seed(
-            denidin_app, "אלון שני", source_type="בנק", event_subtype="הפקדה",
+            denidin_app, "אלון שני", source_type="הפקדה", event_subtype="בנק",
             amount="22₪", message_id="t010_income_2", timestamp=_this_month_so_far_timestamp(day=14),
         )
         # Negative control - agreed but NOT paid, same month - must be excluded from "income".
@@ -656,11 +656,11 @@ class TestLedgerQueryBilled:
         chat_id = self._fresh_chat_id(config, 't017_or')
         self._seed_noise(denidin_app, count=6, label="t017_noise")
         self._seed(
-            denidin_app, "אלי אבירם", source_type="בנק", event_subtype="הפקדה",
+            denidin_app, "אלי אבירם", source_type="הפקדה", event_subtype="בנק",
             amount="100₪", message_id="t017_a", timestamp=_days_ago_timestamp(16),
         )
         self._seed(
-            denidin_app, "דוד כרמון", source_type="בנק", event_subtype="הפקדה",
+            denidin_app, "דוד כרמון", source_type="הפקדה", event_subtype="בנק",
             amount="100₪", message_id="t017_b", timestamp=_days_ago_timestamp(10),
         )
 
@@ -740,7 +740,7 @@ class TestLedgerQueryBilled:
             message_id="t019_shani_agreement", timestamp=_days_ago_timestamp(16),
         )
         self._seed(
-            denidin_app, "שני אור", source_type="בנק", event_subtype="הפקדה",
+            denidin_app, "שני אור", source_type="הפקדה", event_subtype="בנק",
             amount="180₪", message_id="t019_shani_payment",
             timestamp=_days_ago_timestamp(10),
         )
@@ -791,7 +791,7 @@ class TestLedgerQueryBilled:
             message_id="t020_agreed", timestamp=_days_ago_timestamp(18),
         )
         self._seed(
-            denidin_app, "משה כהן", source_type="בנק", event_subtype="הפקדה",
+            denidin_app, "משה כהן", source_type="הפקדה", event_subtype="בנק",
             amount="20₪", message_id="t020_paid", timestamp=_days_ago_timestamp(10),
         )
 
@@ -965,7 +965,7 @@ class TestLedgerQueryBilled:
             message_id="t025_agreement", timestamp=_days_ago_timestamp(20),
         )
         self._seed(
-            denidin_app, "דנה עמית", source_type="בנק", event_subtype="הפקדה",
+            denidin_app, "דנה עמית", source_type="הפקדה", event_subtype="בנק",
             amount="200₪", message_id="t025_deposit",
             timestamp=_days_ago_timestamp(13),
         )
@@ -975,7 +975,7 @@ class TestLedgerQueryBilled:
             timestamp=_days_ago_timestamp(13),
         )
         self._seed(
-            denidin_app, "דנה עמית", source_type="בנק", event_subtype="הפקדה",
+            denidin_app, "דנה עמית", source_type="הפקדה", event_subtype="בנק",
             amount="100₪", message_id="t025_second_deposit",
             timestamp=_days_ago_timestamp(1),
         )
@@ -1053,7 +1053,7 @@ class TestLedgerQueryBilled:
             timestamp=_days_ago_timestamp(20),
         )
         self._seed(
-            denidin_app, "חווה יערי", source_type="בנק", event_subtype="הפקדה",
+            denidin_app, "חווה יערי", source_type="הפקדה", event_subtype="בנק",
             amount="80₪", message_id="t027_deposit",
             timestamp=_days_ago_timestamp(13),
         )
@@ -1105,7 +1105,7 @@ class TestLedgerQueryBilled:
             message_id="t028_agreement", timestamp=_days_ago_timestamp(19),
         )
         self._seed(
-            denidin_app, "בני לנדאו", source_type="בנק", event_subtype="הפקדה",
+            denidin_app, "בני לנדאו", source_type="הפקדה", event_subtype="בנק",
             amount="100₪", description="מקושר ללקוח עוזי לנדאו",
             message_id="t028_deposit", timestamp=_days_ago_timestamp(12),
         )
@@ -1149,12 +1149,12 @@ class TestLedgerQueryBilled:
         chat_id = self._fresh_chat_id(config, 't029_typo')
         self._seed_noise(denidin_app, count=6, label="t029_noise")
         self._seed(
-            denidin_app, "יוסי אביאל", source_type="בנק", event_subtype="הפקדה",
+            denidin_app, "יוסי אביאל", source_type="הפקדה", event_subtype="בנק",
             amount="100₪", message_id="t029_correct",
             timestamp=_days_ago_timestamp(18),
         )
         self._seed(
-            denidin_app, "יןסי אביאל", source_type="בנק", event_subtype="הפקדה",
+            denidin_app, "יןסי אביאל", source_type="הפקדה", event_subtype="בנק",
             amount="50₪", message_id="t029_typo",
             timestamp=_days_ago_timestamp(11),
         )

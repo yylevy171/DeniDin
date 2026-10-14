@@ -201,7 +201,7 @@ def agreement_event(**overrides) -> dict:
 
 def bank_event(**overrides) -> dict:
     base = dict(
-        source_type="בנק", event_subtype="הפקדה", client_name="דנה כהן",
+        source_type="הפקדה", event_subtype="בנק", client_name="דנה כהן",
         description="הפקדה בנקאית מהלקוחה", amount="5000", txn_date="2026-07-15",
         bank_number="12", bank_branch="345", bank_account="678901",
     )

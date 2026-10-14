@@ -56,7 +56,7 @@ def test_ledger_stash_result_is_routed_as_synthetic_text_turn(app, monkeypatch):
                         lambda notification, message: {
         "success": True,
         "ledger_stash": "📸 התקבלה תמונה של אסמכתת העברה/הפקדה בנקאית.\nסכום: 9,440₪",
-        "ledger_stash_source_type": "בנק",
+        "ledger_stash_source_type": "הפקדה",
     })
     seen = {}
 

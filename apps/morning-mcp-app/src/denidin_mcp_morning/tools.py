@@ -30,6 +30,7 @@ from .formatters import (
     format_invoice_json,
     format_invoice_list_json,
     format_name_not_resolved,
+    format_original_already_cancelled,
     format_original_not_linked_to_client,
     format_too_many_clients_message,
     format_too_many_invoices_message,
@@ -348,12 +349,13 @@ def _build_payment_line(
     bank_account: Optional[str] = None,
     transaction_reference: Optional[str] = None,
     currency: str = "ILS",
+    cheque_number: Optional[str] = None,
 ) -> dict:
     """Build one Morning payment line carrying how, and when, the money arrived.
 
     Field support is per-type and live-verified (2026-08-09): `bankName`/
     `bankBranch`/`bankAccount` persist only on type 4, and `transactionId` only
-    on types 5 and 10. Anything sent on a type that doesn't support it is
+    on types 5 and 10; `chequeNum` and the bank fields on a cheque (type 2). Anything sent on a type that doesn't support it is
     dropped by Morning without an error, so this maps deliberately rather than
     sending everything and hoping.
     """
@@ -379,14 +381,18 @@ def _build_payment_line(
         )
 
     line["type"] = _PAYMENT_METHOD_TYPES[method]
-    if line["type"] == _PAYMENT_TYPE_BANK_TRANSFER:
+    if line["type"] in (_PAYMENT_TYPE_BANK_TRANSFER, _PAYMENT_TYPE_CHEQUE):
         # Morning renders these back as "בנק X / סניף Y / מס' חשבון Z" itself.
+        # Feature 066: a cheque stores the same three numbers (live-verified
+        # 2026-10-09) plus its own number as `chequeNum`.
         if bank_number:
             line["bankName"] = bank_number
         if bank_branch:
             line["bankBranch"] = bank_branch
         if bank_account:
             line["bankAccount"] = bank_account
+        if line["type"] == _PAYMENT_TYPE_CHEQUE and cheque_number:
+            line["chequeNum"] = cheque_number
     elif line["type"] == _PAYMENT_TYPE_PAYPAL and transaction_reference:
         line["transactionId"] = transaction_reference
     return line
@@ -620,6 +626,7 @@ def _build_combo_document_core_payload(
     currency: str = "ILS",
     lang: str = "he",
     linked_document_ids: Optional[List[str]] = None,
+    cheque_number: Optional[str] = None,
 ) -> dict:
     """bugfix-038: the SINGLE shared type-320 ("חשבונית מס/קבלה") payload
     shape, used by both `create_combo_document` (a fresh standalone
@@ -692,6 +699,7 @@ def _build_combo_document_core_payload(
                 bank_number=bank_number,
                 bank_branch=bank_branch,
                 bank_account=bank_account,
+                cheque_number=cheque_number,
                 transaction_reference=transaction_reference,
                 currency=currency,
             )
@@ -713,6 +721,7 @@ def _build_combo_document_payload(
     bank_account: Optional[str] = None,
     transaction_reference: Optional[str] = None,
     currency: str = "ILS",
+    cheque_number: Optional[str] = None,
 ) -> dict:
     """Map create_combo_document inputs onto a real Morning /documents
     payload for a type 320 ("חשבונית מס/קבלה") combo invoice+receipt.
@@ -736,6 +745,7 @@ def _build_combo_document_payload(
         bank_number=bank_number,
         bank_branch=bank_branch,
         bank_account=bank_account,
+        cheque_number=cheque_number,
         transaction_reference=transaction_reference,
         currency=currency,
     )
@@ -754,6 +764,7 @@ def create_combo_document(
     bank_account: Optional[str] = None,
     transaction_reference: Optional[str] = None,
     name_resolved: bool = False,
+    cheque_number: Optional[str] = None,
     rules: InvoicingRules = DEFAULT_INVOICING_RULES,
 ) -> str:
     """Create an already-paid combo invoice+receipt ("חשבונית מס/קבלה",
@@ -825,6 +836,7 @@ def create_combo_document(
         bank_number=bank_number,
         bank_branch=bank_branch,
         bank_account=bank_account,
+        cheque_number=cheque_number,
         transaction_reference=transaction_reference,
     )
     _enforce_allocation_tax_id(
@@ -1335,6 +1347,7 @@ def _build_payment_receipt_payload(
     bank_number: Optional[str] = None,
     bank_branch: Optional[str] = None,
     bank_account: Optional[str] = None,
+    cheque_number: Optional[str] = None,
 ) -> dict:
     """Build a Morning receipt (type 400) payload that marks `original` paid
     (fully by default, or partially via `amount`).
@@ -1389,9 +1402,86 @@ def _build_payment_receipt_payload(
         "payment": [
             _build_payment_line(
                 receipt_amount, payment_date, payment_method, bank_number, bank_branch, bank_account,
+                cheque_number=cheque_number,
                 currency=original.get("currency", "ILS"),
             )
         ],
+    }
+
+
+# Feature 099 - cancelling a 320 takes two documents: a 330 (revenue) and a
+# negative 400 (cash). Live-verified against the Morning sandbox 2026-10-09: a
+# type-400 with linkedDocumentIds=[<320 id>] and a payment line with a negative
+# `price` is accepted; Morning then lists it (and the 330) in the 320's
+# `linkedDocuments`.
+_CANCELLING_RECEIPT_PAYMENT_KEYS = (
+    "type", "appType", "bankName", "bankBranch", "bankAccount", "chequeNum", "transactionId",
+)
+
+
+def _is_cancelling_document(linked: dict) -> bool:
+    """A document already linked to a 320 that reverses it: a credit note
+    (330) or a receipt (400) with a negative amount."""
+    linked_type = linked.get("type")
+    if linked_type == _CREDIT_INVOICE_DOCUMENT_TYPE:
+        return True
+    return linked_type == 400 and (linked.get("amount") or 0) < 0
+
+
+def _combo_already_cancelled(original: dict) -> bool:
+    return any(_is_cancelling_document(ld) for ld in (original.get("linkedDocuments") or []))
+
+
+def _combo_cash_already_reversed(original: dict) -> bool:
+    """A negative receipt (400) is already linked to the 320. A linked 330 alone does NOT
+    count: the 330 is created first, and the 400 that follows it is exactly what this
+    guard must let through (REQ-099-02/03)."""
+    return any(
+        ld.get("type") == 400 and (ld.get("amount") or 0) < 0
+        for ld in (original.get("linkedDocuments") or [])
+    )
+
+
+def _build_cancelling_receipt_payload(original: dict) -> dict:
+    """Build the negative receipt (type 400) that reverses the cash side of the
+    320 `original` (Feature 099): one payment line for the 320's whole total,
+    negative, with the type and details (bank / cheque / app) of the 320's
+    FIRST payment line (human decision: a single line, the first method). The
+    payment date is today - the date of the cancellation. Callers must have
+    checked the client link and the already-cancelled state."""
+    original_id = str(original.get("id") or original.get("documentId") or "")
+    original_number = original.get("number")
+    total_amount = original.get("total")
+    if total_amount is None:
+        total_amount = original.get("amount")
+    payments = original.get("payment") or []
+    if total_amount is None or not payments:
+        raise ValueError(
+            f"Cannot cancel document {original_number or original_id}: it has no total or no payment line to reverse"
+        )
+    today = now_local().date().isoformat()
+    currency = original.get("currency", "ILS")
+    line: Dict[str, Any] = {
+        "price": -abs(total_amount),
+        "date": today,
+        "currency": currency,
+        "currencyRate": 1,
+    }
+    for key in _CANCELLING_RECEIPT_PAYMENT_KEYS:
+        value = payments[0].get(key)
+        if value not in (None, ""):
+            line[key] = value
+    return {
+        "type": 400,
+        "date": today,
+        "lang": original.get("lang", "he"),
+        "currency": currency,
+        "rounding": False,
+        "signed": True,
+        "description": f"ביטול חשבונית מס קבלה {original_number or original_id}",
+        "linkedDocumentIds": [original_id] if original_id else [],
+        "client": {"self": False, "id": _extract_linked_client_id(original)},
+        "payment": [line],
     }
 
 
@@ -1404,6 +1494,7 @@ def _build_standalone_receipt_payload(
     bank_number: Optional[str] = None,
     bank_branch: Optional[str] = None,
     bank_account: Optional[str] = None,
+    cheque_number: Optional[str] = None,
 ) -> dict:
     """Build a Morning receipt (type 400) payload for a standalone receipt -
     one with no prior document to reference at all (feature 056).
@@ -1447,7 +1538,10 @@ def _build_standalone_receipt_payload(
         "description": description,
         "client": {"self": False, "id": client_id},
         "payment": [
-            _build_payment_line(amount, payment_date, payment_method, bank_number, bank_branch, bank_account)
+            _build_payment_line(
+                amount, payment_date, payment_method, bank_number, bank_branch, bank_account,
+                cheque_number=cheque_number,
+            )
         ],
     }
 
@@ -1462,6 +1556,7 @@ def _build_combo_closing_payload(
     transaction_reference: Optional[str] = None,
     amount: Optional[float] = None,
     description: Optional[str] = None,
+    cheque_number: Optional[str] = None,
 ) -> dict:
     """Build a Morning invoice/receipt combo (type 320) payload that closes a
     type-300 ("חשבון עסקה") `original` as paid, either in full (defaults) or
@@ -1532,6 +1627,7 @@ def _build_combo_closing_payload(
         bank_number=bank_number,
         bank_branch=bank_branch,
         bank_account=bank_account,
+        cheque_number=cheque_number,
         transaction_reference=transaction_reference,
         currency=original.get("currency", "ILS"),
         lang=original.get("lang", "he"),
@@ -1551,6 +1647,7 @@ def create_combo_document_as_reference(
     bank_branch: Optional[str] = None,
     bank_account: Optional[str] = None,
     transaction_reference: Optional[str] = None,
+    cheque_number: Optional[str] = None,
     rules: InvoicingRules = DEFAULT_INVOICING_RULES,
 ) -> str:
     """Create a standalone combo document ("חשבונית מס/קבלה", type 320) that
@@ -1657,6 +1754,7 @@ def create_combo_document_as_reference(
         bank_number=bank_number,
         bank_branch=bank_branch,
         bank_account=bank_account,
+        cheque_number=cheque_number,
         transaction_reference=transaction_reference,
         amount=amount,
         description=description,
@@ -1783,6 +1881,7 @@ def create_receipt(
     bank_branch: Optional[str] = None,
     bank_account: Optional[str] = None,
     vat_included: Optional[bool] = None,
+    cheque_number: Optional[str] = None,
 ) -> str:
     """Create a receipt ("קבלה", type 400) and return a Hebrew confirmation -
     either linked to an existing document being paid, or standalone (feature
@@ -1806,7 +1905,15 @@ def create_receipt(
     `original_internal_morning_id` IS given, every existing behavior below
     is unchanged byte-for-byte (REQ-INV-016).
 
-    Only accepts a type-305 original (feature 023) - any other type (300,
+    Feature 099: a type-320 original is CANCELLED instead of paid - the result is
+    a receipt with a negative amount that reverses the 320's cash side (the 330
+    credit note reversing its revenue is created separately with
+    create_credit_note). Full cancellation only (`amount` must be omitted); the
+    payment type and details are copied from the 320's first payment line.
+    Refuses, creating nothing, if the 320 already has a 330 or a negative
+    receipt against it, or isn't linked to a real client.
+
+    Otherwise only accepts a type-305 original (feature 023) - any other type (300,
     a transaction account closed by create_combo_document_as_reference instead; 320,
     already self-closed; 330/400, not themselves payable) is rejected. This
     is a deterministic backstop for when the caller picked the wrong tool,
@@ -1887,6 +1994,7 @@ def create_receipt(
         payload = _build_standalone_receipt_payload(
             resolved_client.id, amount, description, payment_date,
             payment_method, bank_number, bank_branch, bank_account,
+            cheque_number=cheque_number,
         )
         response = client.create_invoice(payload)
         log_mutation(
@@ -1904,11 +2012,42 @@ def create_receipt(
 
     original = client.get_invoice(original_internal_morning_id)
     original_type = original.get("type")
+    if original_type == _INVOICE_RECEIPT_COMBO_DOCUMENT_TYPE:
+        # Feature 099: cancelling a 320 - the negative receipt reversing its cash side.
+        if amount is not None:
+            raise ValueError(
+                "A 320 is cancelled in full: do not pass an amount when creating the cancelling receipt"
+            )
+        if _extract_linked_client_id(original) is None:
+            log_refusal(
+                "create_receipt",
+                "original_not_linked_to_client",
+                original_internal_morning_id=original_internal_morning_id,
+            )
+            return format_original_not_linked_to_client()
+        if _combo_cash_already_reversed(original):
+            log_refusal(
+                "create_receipt",
+                "original_already_cancelled",
+                original_internal_morning_id=original_internal_morning_id,
+            )
+            return format_original_already_cancelled()
+        payload = _build_cancelling_receipt_payload(original)
+        receipt_response = client.create_invoice(payload)
+        log_mutation(
+            "create_receipt",
+            payload=payload,
+            response=receipt_response,
+            client_id=_extract_linked_client_id(original),
+            client_name=(original.get("client") or {}).get("name"),
+        )
+        new_id = str(receipt_response.get("id") or receipt_response.get("documentId") or "")
+        return format_invoice_json(Invoice.model_validate(client.get_invoice(new_id)))
     if original_type != _TAX_INVOICE_DOCUMENT_TYPE:
         raise ValueError(
             f"Cannot create a receipt for document type {original_type} "
-            f"(only {_TAX_INVOICE_DOCUMENT_TYPE} is supported - use create_combo_document_as_reference "
-            f"for a {_TRANSACTION_ACCOUNT_DOCUMENT_TYPE} original)"
+            f"(only {_TAX_INVOICE_DOCUMENT_TYPE} - or {_INVOICE_RECEIPT_COMBO_DOCUMENT_TYPE}, to cancel it - is supported; "
+            f"use create_combo_document_as_reference for a {_TRANSACTION_ACCOUNT_DOCUMENT_TYPE} original)"
         )
 
     if amount is None and original.get("status") in _CLOSED_STATUS_CODES:
@@ -1930,6 +2069,7 @@ def create_receipt(
     payload = _build_payment_receipt_payload(
         original, payment_date=payment_date, amount=amount, payment_method=payment_method,
         bank_number=bank_number, bank_branch=bank_branch, bank_account=bank_account,
+        cheque_number=cheque_number,
     )
     receipt_response = client.create_invoice(payload)
     log_mutation(

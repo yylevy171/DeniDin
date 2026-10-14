@@ -225,3 +225,7 @@ Phase 10 needs every story done; Phase 11 after Phase 10.
   Completed, gray Pending). Any status to any (API `{status}` body); a component's dropdown is disabled while its agreement is not
   Active or a write is in flight. The value always shows server state (re-read after each write), so cascaded changes (cancelling an
   agreement cancels its pending components) appear without user action. The bot keeps its action-based tools.
+
+### Decision 2026-10-14 (merge of master / Feature 066)
+- Human decision on merging master: `CURRENT_SCHEMA_VERSION` stays **3** (Feature 066's value). The 089 bump to 4 and its
+  `SCHEMA_VERSION_HISTORY` entry are dropped; 089's new fields ride on schema 3. Earlier mentions of "v4" in this folder are superseded.

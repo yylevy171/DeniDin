@@ -142,7 +142,7 @@ class TestLedgerQueryRouting:
                 "description": "תיאור", "amount": amount,
                 "percent": None, "percent_base": None, "hours": None,
                 "hourly_rate": None, "txn_date": None,
-                "vat_status": "כולל" if source_type == "בנק" else "לא צוין",
+                "vat_status": "כולל" if source_type == "הפקדה" else "לא צוין",
                 "trigger_condition": None, "reference_hint": None,
                 "agreement_label": "תיק" if source_type == "הסכם" else None,
                 "component_label": "בסיס" if source_type == "הסכם" else None,
@@ -431,7 +431,7 @@ class TestLedgerQueryRouting:
         itself reasoning over each returned event's own date field to keep
         only the right month (a model-reasoning concern, not exercised
         here - see tests/billed/ for the real conversational scenario)."""
-        self._seed(denidin_app, "דנה פלד", source_type="בנק", event_subtype="הפקדה",
+        self._seed(denidin_app, "דנה פלד", source_type="הפקדה", event_subtype="בנק",
                     amount="4,000₪", message_id="seed_income_m1", timestamp=1785920400)
         self._seed(denidin_app, "אלון שני", amount="9,000₪",
                     message_id="seed_income_m2", timestamp=1785920400)
@@ -472,7 +472,7 @@ class TestLedgerQueryRouting:
 
         payload = json.loads(captured["input"][0]["output"])
         assert payload["count"] == 1
-        assert payload["matches"][0]["source_type"] == "בנק"
+        assert payload["matches"][0]["source_type"] == "הפקדה"
         assert payload["matches"][0]["amount"] == 4000
 
     def test_four_way_multi_criterion_with_date_range_issues_four_calls_over_the_real_route(

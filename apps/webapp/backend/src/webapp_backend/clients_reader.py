@@ -211,10 +211,10 @@ def _aggregate_events(
             if not matched_client:
                 text = data.get("description") or data.get("trigger_condition") or "הסכם ללא פירוט"
                 unmatched[original_name]["raw_text"].add(f"{prefix}הסכם (₪{amount:,.2f}): {text}")
-        elif src_type == "בנק":
+        elif src_type in ("הפקדה", "בנק"):  # "בנק" = pre-066 events
             if not matched_client:
                 text = data.get("description") or data.get("trigger_condition") or "הפקדת בנק / שיק"
-                unmatched[original_name]["raw_text"].add(f"{prefix}הפקדת בנק (₪{amount:,.2f}): {text}")
+                unmatched[original_name]["raw_text"].add(f"{prefix}הפקדה (₪{amount:,.2f}): {text}")
         elif src_type == "חשבונית":
             if matched_client:
                 if subtype in _PLUS_INVOICE_SUBTYPES:
@@ -291,7 +291,7 @@ def _apply_comment_rules(stats: Dict[str, Dict[str, Any]], client_comments: Dict
             data["agreed_status"] = "YELLOW"
 
         if "remove" in comment.lower() or "להוריד" in comment:
-            dep_events = [ev for ev in data["events"] if ev["type"] == "בנק"]
+            dep_events = [ev for ev in data["events"] if ev["type"] in ("הפקדה", "בנק")]
             if dep_events:
                 amounts = [ev["amount"] for ev in dep_events]
                 counts = collections.Counter(amounts)

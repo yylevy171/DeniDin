@@ -29,9 +29,22 @@ logger = logging.getLogger(__name__)
 # never one being confidently mistaken for the other. UNKNOWN is a safe outcome
 # precisely because it routes to asking the user, not to guessing.
 DOC_TYPE_BANK = "bank"
+# Feature 066: the other ways money arrives that arrive as an image.
+DOC_TYPE_BIT = "bit"
+DOC_TYPE_PAYBOX = "paybox"
+DOC_TYPE_CHECK = "check"
 DOC_TYPE_AGREEMENT = "agreement"
 DOC_TYPE_UNKNOWN = "unknown"
-_VALID_DOC_TYPES = {DOC_TYPE_BANK, DOC_TYPE_AGREEMENT, DOC_TYPE_UNKNOWN}
+# Every doc_type that is a deposit (money received) -> the ledger `event_subtype`
+# (method) it becomes under source_type הפקדה. A PDF is never any of them (Feature 071).
+DEPOSIT_SUBTYPE_BY_DOC_TYPE = {
+    DOC_TYPE_BANK: "בנק",
+    DOC_TYPE_BIT: "ביט",
+    DOC_TYPE_PAYBOX: "פייבוקס",
+    DOC_TYPE_CHECK: "צ׳ק",
+}
+DEPOSIT_DOC_TYPES = frozenset(DEPOSIT_SUBTYPE_BY_DOC_TYPE)
+_VALID_DOC_TYPES = {*DEPOSIT_DOC_TYPES, DOC_TYPE_AGREEMENT, DOC_TYPE_UNKNOWN}
 
 # Required per type - a document classified as this type but missing any of these
 # is incomplete, and the caller must ASK rather than proceed on a guess.
@@ -40,6 +53,11 @@ REQUIRED_FIELDS = {
     # account. Screenshots usually show the bank NAME as well - that is optional
     # extra, never a substitute for its number.
     DOC_TYPE_BANK: ("payer_name", "amount", "txn_date", "bank_number", "bank_branch", "bank_account"),
+    # Feature 066: Bit / PayBox confirmations carry no bank account; a cheque carries
+    # the account it is drawn on plus its own number, and its date is optional.
+    DOC_TYPE_BIT: ("payer_name", "amount", "txn_date"),
+    DOC_TYPE_PAYBOX: ("payer_name", "amount", "txn_date"),
+    DOC_TYPE_CHECK: ("payer_name", "amount", "check_number", "bank_number", "bank_branch", "bank_account"),
     DOC_TYPE_AGREEMENT: ("client_name", "components"),
     DOC_TYPE_UNKNOWN: (),
 }
@@ -169,6 +187,22 @@ class ImageExtractor(MediaExtractor):
             logger.info(f"[ImageExtractor.analyze_media] Exact prompt being sent ({len(prompt)} chars):")
             logger.info(f"[ImageExtractor.analyze_media] {prompt}")
 
+            refusal = self._refuse_media(media)
+            if refusal:
+                # A refusal made BEFORE any model call (e.g. a PDF over the size limit):
+                # nothing is sent, nothing is extracted, the user gets the friendly message.
+                return {
+                    "raw_response": "",
+                    "extraction_quality": "failed",
+                    "warnings": [refusal],
+                    "model_used": self.vision_model,
+                    "ledger_events": [],
+                    "doc_type": DOC_TYPE_UNKNOWN,
+                    "fields": {},
+                    "missing_required_fields": [],
+                    "extracted_text": "",
+                }
+
             # Call Vision API with in-memory media (constitution prepended in _vision_extract).
             # Pure extraction only - no tool attached (Feature 024's ledger classification
             # happens as a separate call below, see _classify_ledger_event).
@@ -236,6 +270,18 @@ class ImageExtractor(MediaExtractor):
                 "extracted_text": "",
             }
 
+    def _refuse_media(self, media: Media) -> Optional[str]:
+        """A friendly refusal message when this media must not be sent to the model at
+        all, else None. Images are never refused here; PDFExtractor overrides it."""
+        del media
+        return None
+
+    def _media_content_part(self, media: Media) -> Dict:
+        """The Responses API content part that carries the media itself. Images go as
+        `input_image` at detail=high (see the note in _vision_extract); PDFExtractor
+        overrides this to send the whole file as an `input_file`."""
+        return {"type": "input_image", "image_url": media.get_data_url(), "detail": "high"}
+
     def _vision_extract(self, media: Media, prompt: str) -> str:
         """
         Extract text from image using GPT-4o Vision with constitution context.
@@ -261,10 +307,7 @@ class ImageExtractor(MediaExtractor):
         constitution_preview = constitution[:200] if constitution else 'NONE'
         logger.debug(f"[ImageExtractor._vision_extract] Constitution preview: {constitution_preview}")
 
-        # Get the data URL
-        data_url = media.get_data_url()
-        logger.info(f"[ImageExtractor._vision_extract] Media data URL length: {len(data_url)} chars")
-        logger.info(f"[ImageExtractor._vision_extract] Media data URL preview: {data_url[:100]}...")
+        media_part = self._media_content_part(media)
         logger.info(f"[ImageExtractor._vision_extract] Media file size: {media.size} bytes, "
                     f"MIME type: {media.mime_type}")
 
@@ -282,7 +325,7 @@ class ImageExtractor(MediaExtractor):
                     "role": "user",
                     "content": [
                         {"type": "input_text", "text": full_prompt},
-                        {"type": "input_image", "image_url": data_url, "detail": "high"}
+                        media_part,
                     ]
                 }
             ],
