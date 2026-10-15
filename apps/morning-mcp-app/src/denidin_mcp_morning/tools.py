@@ -2193,7 +2193,27 @@ def _search_word_prefix(client: MorningClient, prefix: str) -> Dict[str, Client]
 _COMMON_WORD_DISCOVERY_CAP = 10  # user decision, 2026-08-11 - see resolve_client_by_name's loop
 
 
-def _grow_word(client: MorningClient, word: str, pool_ids: Optional[Set[str]]) -> Dict[str, Client]:
+def _rescue_distance_limit(query: str) -> int:
+    """Strict Levenshtein limit for the rescue hatch (bugfix-073, user
+    decision 2026-10-15): 1 for a query of up to 5 characters, 2 above."""
+    return 1 if len(query.strip()) <= 5 else 2
+
+
+def _rescued_by_distance(query: str, seen: Dict[str, Client]) -> Dict[str, Client]:
+    """Every client any search returned whose full name is within the strict
+    distance of the full query - kept no matter which deterministic filter
+    (common-word cap, intersection chain) would otherwise have dropped it."""
+    q = query.strip().casefold()
+    limit = _rescue_distance_limit(query)
+    return {cid: c for cid, c in seen.items() if _levenshtein(q, c.name.strip().casefold()) <= limit}
+
+
+def _grow_word(
+    client: MorningClient,
+    word: str,
+    pool_ids: Optional[Set[str]],
+    seen: Optional[Dict[str, Client]] = None,
+) -> Dict[str, Client]:
     """Grow `word`'s own prefix one letter at a time (intersected with
     `pool_ids` if given - None means unconstrained), stopping the moment
     the result narrows to exactly 1, or once the word's letters run out,
@@ -2234,6 +2254,8 @@ def _grow_word(client: MorningClient, word: str, pool_ids: Optional[Set[str]]) -
         return {}
     prefix = word[:2]
     results = _search_word_prefix(client, prefix)
+    if seen is not None:
+        seen.update(results)
     if pool_ids is not None:
         results = {cid: c for cid, c in results.items() if cid in pool_ids}
     if len(results) <= 1:
@@ -2241,6 +2263,8 @@ def _grow_word(client: MorningClient, word: str, pool_ids: Optional[Set[str]]) -
     for ch in word[2:]:
         prefix += ch
         results = _search_word_prefix(client, prefix)
+        if seen is not None:
+            seen.update(results)
         if pool_ids is not None:
             results = {cid: c for cid, c in results.items() if cid in pool_ids}
         if len(results) <= 1:
@@ -2320,6 +2344,7 @@ def resolve_client_by_name(client: MorningClient, query: str) -> Tuple[Optional[
     pool_ids: Optional[Set[str]] = None
     chain_dead = False
     candidates: Dict[str, Client] = {}
+    seen: Dict[str, Client] = {}  # every client any search returned (bugfix-073 rescue hatch)
 
     for word in words:
         if len(word) < 2:
@@ -2329,7 +2354,7 @@ def resolve_client_by_name(client: MorningClient, query: str) -> Tuple[Optional[
             # decision, 2026-08-11).
             continue
 
-        discovered = _grow_word(client, word, None)
+        discovered = _grow_word(client, word, None, seen)
         if len(discovered) <= _COMMON_WORD_DISCOVERY_CAP:
             candidates.update(discovered)
         # else: this word alone matched more than _COMMON_WORD_DISCOVERY_CAP
@@ -2347,7 +2372,7 @@ def resolve_client_by_name(client: MorningClient, query: str) -> Tuple[Optional[
         if chain_dead:
             continue
 
-        intersected = _grow_word(client, word, pool_ids)
+        intersected = _grow_word(client, word, pool_ids, seen)
         if len(intersected) == 0:
             chain_dead = True  # this word ordering can't reach an exact match
             continue
@@ -2359,6 +2384,9 @@ def resolve_client_by_name(client: MorningClient, query: str) -> Tuple[Optional[
             continue
         pool_ids = set(intersected.keys())  # carry the ambiguous pool to the next word
 
+    # RESCUE HATCH (bugfix-073): a client within the strict distance of the
+    # whole query survives the common-word cap and a typo killing the chain.
+    candidates.update(_rescued_by_distance(query, seen))
     return None, _sorted_by_distance(query, list(candidates.values()))
 
 
