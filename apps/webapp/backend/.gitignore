@@ -1,8 +1,9 @@
 # config.dev.json/config.prod.json hold real Morning API secrets (see config.example.json
-# for the placeholder template) and are the SAME single file used by both host mode and
-# Docker container mode (2026-09-24 fix — there is no separate ".container.json" variant
-# anymore; that split was unnecessary duplication and, worse, wasn't gitignored at all).
+# for the placeholder template) and are the file the Docker containers mount. config.local.json
+# is the per-clone file for `run_webapp.sh local` (local code, dependencies pointed at dev; see
+# config.local.example.json).
 config/config.dev.json
+config/config.local.json
 config/config.prod.json
 # Ad hoc, per-clone: local host-mode preview of the webapp against real prod ledger data +
 # real prod Morning credentials (points at the read-only sshfs mount, uses an isolated

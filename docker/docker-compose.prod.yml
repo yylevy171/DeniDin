@@ -27,6 +27,9 @@ services:
       # via docker ps against denidin-winprod). Moved to 8201, verified
       # genuinely free on the box before choosing it.
       - "8201:8100"
+    # Feature 089: the Agreements API (config.agreements_api.port = 8300) is deliberately NOT
+    # published; the webapp backend reaches it by compose service name
+    # (http://denidin-app-prod:8300), so only the backend - never a browser - can call it.
     volumes:
       - ./apps/denidin-app/config/config.prod.json:/app/config/config.json:ro
       # Everything else under /app/config (runtime_constitution.md, ledger_recognition_prompt.md,

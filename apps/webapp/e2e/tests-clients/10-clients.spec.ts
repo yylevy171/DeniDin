@@ -50,7 +50,7 @@ const unmatchedRow = (page: Page) => page.getByTestId(`unmatched-row-${M.unmatch
 
 // Sections and the unmatched block are collapsed accordions. Open only the ones that can hold
 // the seeded client - never "לקוח עבר" (past), which renders thousands of Morning clients.
-const CLIENT_SECTIONS = ["חוב פתוח", "לקוח פעיל", "לבדוק", "חסר הסכם", "סגור - שולם"];
+const CLIENT_SECTIONS = ["חוב פתוח", "לקוח פעיל", "לטיפול מיידי", "חסר הסכם", "סגור - שולם"];
 const UNMATCHED_SECTION = "שמות לקוחות לתייג";
 
 async function revealClient(page: Page) {

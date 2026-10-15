@@ -87,27 +87,26 @@ async function mapUnmatched(page: Page, raw: string, official: string) {
 }
 
 test.describe("Feature 092 acceptance", () => {
-  test("UAT 5 — after deploy, comment-driven lines stay in their section, comments untouched", async ({ page }) => {
+  test("UAT 5 — comments are free text: routing keywords in them route nothing, and nothing is migrated", async ({ page }) => {
     await login(page);
     await openClientsTab(page);
 
-    for (const [name, section, comment] of [
-      [M.mig_check, "check", "לבדוק"],
-      [M.mig_active, "active", "לקוח פעיל"],
-      [M.mig_closed, "settled", "לסגור"],
-    ] as [string, Section, string][]) {
+    for (const [name, comment] of [
+      [M.mig_check, "לבדוק"],
+      [M.mig_active, "לקוח פעיל"],
+      [M.mig_closed, "לסגור"],
+    ] as [string, string][]) {
       await focusClient(page, name);
-      const row = await expectInSection(page, name, section);
+      const row = await expectInSection(page, name, "debt"); // by the numbers, not the keyword
       await row.getByText(name, { exact: true }).first().click(); // expand
       await expect(row.getByPlaceholder("הנחיות תפעול / הערות ללקוח...")).toHaveValue(comment);
     }
-    // the closed line shows its REAL numbers (bugfix-068), not agreed == paid
     const closed = rowOf(page, M.mig_closed);
     await expect(closed).toContainText("₪5,000.00");
     await expect(closed).toContainText("₪1,000.00");
 
     expect(readJson(M.comments_file)[M.mig_closed]).toBe("לסגור");
-    expect(readJson(M.migrations_file)).toHaveProperty("092_comment_line_status");
+    expect(readJson(M.status_file)[M.mig_closed]).toBeUndefined(); // no comment->status conversion any more
   });
 
   test("UAT 1 — לסגור moves a debt line to green without faking its numbers; לפתוח sends it back", async ({ page }) => {
@@ -137,7 +136,7 @@ test.describe("Feature 092 acceptance", () => {
     await expectInSection(page, M.paid_client, "active");
   });
 
-  test("UAT 3 — לבדוק / לקוח פעיל buttons move the line; comment keywords no longer do", async ({ page }) => {
+  test("UAT 3 — לטיפול מיידי / לקוח פעיל buttons move the line; comment keywords no longer do", async ({ page }) => {
     await login(page);
     await openClientsTab(page);
     await focusClient(page, M.target_a);
@@ -252,6 +251,28 @@ test.describe("Feature 092 acceptance", () => {
     const back = unmatchedRow(page, M.yisrael_raw_name);
     await expect(back).toBeVisible();
     await expect(back.getByPlaceholder("הערה...")).toHaveValue(M.yisrael_note);
+  });
+
+  test("UAT 10 — an automatically matched name has a red x too; unlinking it sends it to the list and it stays unmatched", async ({ page }) => {
+    await login(page);
+    await openClientsTab(page);
+    await focusClient(page, M.fuzzy_client);
+    const fuzzyRow = await expectInSection(page, M.fuzzy_client, "missing_agreement");
+    await fuzzyRow.getByText(M.fuzzy_client, { exact: true }).first().click();
+    await expect(page.getByTestId(`alias-${M.fuzzy_raw_name}`)).toBeVisible();
+    await expect(page.getByText("שמות ששויכו אוטומטית:")).toBeVisible();
+
+    await page.getByTestId(`unlink-${M.fuzzy_raw_name}`).click();
+    await expect(page.getByTestId(`alias-${M.fuzzy_raw_name}`)).toHaveCount(0);
+    expect(readJson(path.join(path.dirname(M.mapping_file), "rejected_matches.json"))).toContain(M.fuzzy_raw_name);
+
+    await focusClient(page, "");
+    await revealUnmatched(page);
+    await expect(unmatchedRow(page, M.fuzzy_raw_name)).toBeVisible();
+    await page.reload(); // still unmatched after a fresh load: it is not re-matched by itself
+    await openClientsTab(page);
+    await revealUnmatched(page);
+    await expect(unmatchedRow(page, M.fuzzy_raw_name)).toBeVisible();
   });
 
   test("UAT 8 — הסר מהרשימה removes a name and it stays gone after a refresh", async ({ page }) => {

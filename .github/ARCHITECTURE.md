@@ -514,6 +514,31 @@ only. Same shape as `reminder_delivery_service.py` / `accounting_reconciliation_
 `roll_markers.db` row: `chat, date, status(claimed|committed), claimed_at, message_count,
 summary_memory_id, source(daily-roll|catch-up|migration)`.
 
+### 8. Agreements DB & API (Feature 089, `src/managers/agreements_manager.py`, `src/services/agreements_api.py`)
+
+The living source of truth for fee agreements: an agreement (client, title, payer, partner, partner %,
+status) holding components (label, amount or percent, trigger, VAT, date, status), with an append-only
+revision log, in SQLite at `{data_root}/agreements/agreements.db`. `AgreementsManager(denidin)` follows
+REQ-063-08 and is the ONLY writer. Every write (webapp, WhatsApp bot, one-time migration) follows one order,
+under one lock: validate -> commit DB + revision -> write the matching `הסכם` ledger events (one per affected
+component; a component delete writes a `ביטול` event referencing the component's origin event). Last write wins.
+Component statuses Pending/Active/Completed/Cancelled; a component is locked when Completed/Cancelled or its
+agreement is not Active; closing an agreement cascades (Completed: Active->Completed, Pending->Cancelled;
+Cancelled: every non-Completed->Cancelled); reopening an agreement reopens only the agreement. Labels are unique
+within an agreement. Ledger event ids allow 10 `הסכם` events per minute, so a write needing more free slots than
+remain fails whole with `ledger_busy` (HTTP 503). Ledger events gain `original_client_name`,
+`component_status`, `agreement_status`, and `split_partner`/`split_percent` are populated.
+
+Entry points: the post-turn capture (`LedgerEventManager.persist_recognized_event` -> `create_from_capture`),
+the backbone capabilities `cap_agreements_read` / `cap_agreements_write` (`src/capabilities/agreements/`,
+flow `flow_agreement_management`, WhatsApp, actor `whatsapp`), and a Starlette bearer-token HTTP API
+(`config.agreements_api.port`, 0 = off; daemon thread) reached ONLY by the webapp backend
+(`agreements_client.py`, actor `webapp`) - the browser never sees the token. This is a deliberate second channel
+alongside the webapp's read-only import of `denidin-app/src`: the webapp still never writes the data itself.
+The Clients tab's agreed total is the DB's non-Cancelled component sum (one bulk `/agreements/totals` call) plus
+hours-worked ledger lines (never components); API down gives an explicit error, not zeros. Contract:
+`specs/repo/features/089-ui-agreement-edits/contracts/agreements-api.md`.
+
 ## Data Flow
 
 ### Message Processing Flow

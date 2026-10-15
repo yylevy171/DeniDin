@@ -47,12 +47,14 @@ _MORNING_INVOICE_WRITE_TOOLS = (
 _MORNING_CLIENT_READ_TOOLS = ("list_clients", "resolve_client_name", "get_client_details")
 _MORNING_CLIENT_WRITE_TOOLS = ("add_client", "update_client")
 _REMINDER_WRITE_TOOLS = ("create_reminder", "modify_reminder", "delete_reminder")
+_AGREEMENTS_WRITE_TOOLS = ("update_agreement", "update_component", "add_component",
+                           "set_component_status", "set_agreement_status")
 
 # Every tool that changes something (a Morning document/client, a reminder) - the
 # writes an approval answers. The backbone's approved-turn guard (Item4) counts
 # their executions.
 WRITE_TOOL_NAMES = frozenset(_MORNING_INVOICE_WRITE_TOOLS + _MORNING_CLIENT_WRITE_TOOLS
-                             + _REMINDER_WRITE_TOOLS)
+                             + _REMINDER_WRITE_TOOLS + _AGREEMENTS_WRITE_TOOLS)
 
 # tag -> the write tools that capability carries (what an approval answered while it
 # was loaded could have been about).
@@ -60,6 +62,7 @@ WRITE_TOOLS_BY_TAG: Dict[CapabilityTag, tuple] = {
     CapabilityTag.INVOICING_WRITE: _MORNING_INVOICE_WRITE_TOOLS,
     CapabilityTag.CLIENT_WRITE: _MORNING_CLIENT_WRITE_TOOLS,
     CapabilityTag.REMINDERS_WRITE: _REMINDER_WRITE_TOOLS,
+    CapabilityTag.AGREEMENTS_WRITE: _AGREEMENTS_WRITE_TOOLS,
 }
 
 # tag -> Morning MCP tool names this capability makes available. Write
@@ -120,6 +123,7 @@ def _local_tools_by_tag() -> Dict[CapabilityTag, Any]:
     capability's own package, so src/backbone never hard-depends on them)."""
     # pylint: disable=import-outside-toplevel
     from src.backbone.resolution_tools import APPROVAL_WITH_YES_NO_BUTTONS_TOOL
+    from src.capabilities.agreements.tools import AGREEMENTS_READ_TOOLS, AGREEMENTS_WRITE_TOOLS
     from src.capabilities.media_analysis.tools import ANALYZE_MEDIA_TOOL
     from src.tool_actions.tool_schemas import (
         CREATE_REMINDER_TOOL, DELETE_REMINDER_TOOL, LIST_REMINDERS_TOOL, MODIFY_REMINDER_TOOL,
@@ -128,6 +132,8 @@ def _local_tools_by_tag() -> Dict[CapabilityTag, Any]:
     return {
         CapabilityTag.REMINDERS_READ: [LIST_REMINDERS_TOOL],
         CapabilityTag.REMINDERS_WRITE: [CREATE_REMINDER_TOOL, MODIFY_REMINDER_TOOL, DELETE_REMINDER_TOOL],
+        CapabilityTag.AGREEMENTS_READ: list(AGREEMENTS_READ_TOOLS),
+        CapabilityTag.AGREEMENTS_WRITE: list(AGREEMENTS_WRITE_TOOLS),
         CapabilityTag.LEDGER_QUERY: [QUERY_LEDGER_EVENTS_TOOL],
         CapabilityTag.MEDIA_ANALYSIS: [ANALYZE_MEDIA_TOOL],
         CapabilityTag.APPROVAL_WITH_BUTTONS: [APPROVAL_WITH_YES_NO_BUTTONS_TOOL],
@@ -178,6 +184,8 @@ def dispatch_local_tool(backbone, tag: CapabilityTag, tool_name: str,
     # pylint: disable=import-outside-toplevel
     if tag in (CapabilityTag.REMINDERS_READ, CapabilityTag.REMINDERS_WRITE):
         from src.capabilities.reminders.handler import dispatch_direct_tool_call
+    elif tag in (CapabilityTag.AGREEMENTS_READ, CapabilityTag.AGREEMENTS_WRITE):
+        from src.capabilities.agreements.handler import dispatch_direct_tool_call
     elif tag == CapabilityTag.LEDGER_QUERY:
         from src.capabilities.ledger_events.handler import dispatch_direct_tool_call
     elif tag == CapabilityTag.MEDIA_ANALYSIS:

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Image, Pressable, Text, TextInput, View } from "react-native";
 import { THEMES, ThemeName } from "./theme";
 import { AuthError, getToken, login, logout } from "./api";
-import { Button, IconButton } from "./ui";
+import { Button, IconButton, HintPressable } from "./ui";
 import EventsView from "./EventsView";
 import ClientsView from "./ClientsView";
 
@@ -134,9 +134,10 @@ function TabButton({
   testID?: string;
 }) {
   return (
-    <Pressable
+    <HintPressable
       onPress={onPress}
       testID={testID}
+      {...({ title: label } as any)}
       style={{
         paddingVertical: 6,
         paddingHorizontal: 14,
@@ -153,7 +154,7 @@ function TabButton({
       >
         {label}
       </Text>
-    </Pressable>
+    </HintPressable>
   );
 }
 
@@ -297,8 +298,9 @@ function SettingsPanel({
 
   return (
     <View testID="settings-panel" style={{ position: "absolute", top: 0, bottom: 0, left: 0, right: 0, zIndex: 200 }}>
-      <Pressable
+      <HintPressable
         testID="settings-backdrop"
+        {...({ title: "סגירת ההגדרות" } as any)}
         onPress={onClose}
         style={{ position: "absolute", top: 0, bottom: 0, left: 0, right: 0, backgroundColor: "rgba(0,0,0,0.35)" }}
       />
