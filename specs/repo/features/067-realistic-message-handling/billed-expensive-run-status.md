@@ -76,3 +76,10 @@ Dropped by decision: us7d, us9, allocation slip, A8 (already done).
 
 ## Unit/integration
 - 1711 passed, 1 failed (live Green API connectivity test, network SSL error; flaky) - 2026-10-14
+
+## 2026-10-15 update: G12, G10, G9 (billed)
+
+- G12 (8 ledger tests incl. us2, us4, us10): all PASSED. us10 needed the 069 fixture to empty the Agreements DB between scenarios.
+- G10 (9 Morning document/client tests): all PASSED after (a) the deposit flow's slip-date rule scoped to deposits that came with a slip, (b) payment-reporting prompts stating the method ("במזומן") up front, since the deposit flow asks for it before any document, (c) `_send_turn_and_approve_receipt` detecting a pending approval by buttons on screen rather than the word "לאישור".
+- G9 (2 allocation tax-id tests): both PASSED.
+- Not run: G8 (4 etiquette tests), G11 six-component ledger image test (expensive, needs per-test approval).
