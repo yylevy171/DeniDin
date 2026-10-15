@@ -104,6 +104,9 @@ test.describe("UAT-1: viewing the client status dashboard", () => {
 test.describe("served from memory - reload only on refresh", () => {
   test("switching tabs never refetches the clients (or events) data", async ({ page }) => {
     await login(page);
+    // bugfix-074: login now ends with one backend-wide refresh and then the events view's first load -
+    // let that settle, so only refetches caused by switching tabs are counted below
+    await page.waitForLoadState("networkidle");
     const clientsCalls: string[] = [];
     const eventsCalls: string[] = [];
     page.on("request", (r) => {
@@ -125,12 +128,14 @@ test.describe("served from memory - reload only on refresh", () => {
     expect(eventsCalls.length).toBe(0); // events view was mounted at login, never refetched
   });
 
-  test("the refresh button is a hard reload (refresh=1) and keeps the list", async ({ page }) => {
+  test("the refresh button reloads everything (POST /api/refresh, bugfix-074) and keeps the list", async ({ page }) => {
     await login(page);
     await openClientsTab(page);
-    const reqPromise = page.waitForRequest((r) => r.url().includes("/api/clients?refresh=1"));
+    const refreshReq = page.waitForRequest((r) => r.method() === "POST" && r.url().endsWith("/api/refresh"));
+    const clientsReq = page.waitForRequest((r) => r.method() === "GET" && r.url().endsWith("/api/clients"));
     await page.getByTestId("clients-refresh").click();
-    await reqPromise;
+    await refreshReq;
+    await clientsReq;
     await expect(page.getByTestId("clients-loading")).toHaveCount(0);
     await expect(page.getByText("חוב פתוח", { exact: true })).toBeVisible(); // list still there
   });

@@ -88,15 +88,18 @@ export interface EventRow {
   search_blob?: string; // full-record lowercased text, for the free-text filter
 }
 
-// refresh=true is a hard reload: the backend re-reads event files and drops its cached
-// conversations. Without it the backend answers from memory.
+// bugfix-074: ONE hard reload for everything - the backend re-reads the event files, drops its cached
+// conversations and forgets the Morning client list + clients report. Called on every page load and by
+// every refresh button; the views then just re-read (plain fetches) from the freshly loaded backend.
+export async function refreshAll(): Promise<void> {
+  const resp = await request("/api/refresh", { method: "POST" });
+  if (!resp.ok) throw new Error("refresh_failed");
+}
+
 export async function fetchEvents(
-  daysBack: number,
-  refresh = false
+  daysBack: number
 ): Promise<{ events: EventRow[]; days_back: number; count: number }> {
-  const resp = await request(
-    `/api/events?days_back=${encodeURIComponent(daysBack)}${refresh ? "&refresh=1" : ""}`
-  );
+  const resp = await request(`/api/events?days_back=${encodeURIComponent(daysBack)}`);
   return resp.json();
 }
 
@@ -169,11 +172,8 @@ export interface UnmatchedEntry {
   raw_text: string[];
   note: string;
 }
-// refresh=true re-fetches Morning's client list and recomputes; otherwise served from memory.
-export async function fetchClients(
-  refresh = false
-): Promise<{ clients: ClientRow[]; unmatched: UnmatchedEntry[] }> {
-  const resp = await request(refresh ? "/api/clients?refresh=1" : "/api/clients");
+export async function fetchClients(): Promise<{ clients: ClientRow[]; unmatched: UnmatchedEntry[] }> {
+  const resp = await request("/api/clients");
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({}));
     throw new Error(body.message || "clients_fetch_failed");

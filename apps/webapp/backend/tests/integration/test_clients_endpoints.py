@@ -178,7 +178,7 @@ def api_with_aliases(api, clients_dir, tmp_path):
         (events_dir / f"{e['event_id']}.json").write_text(json.dumps(e, ensure_ascii=False), encoding="utf-8")
     write_json(clients_dir / "client_mapping.json", {"Yisrael I": DEBT})
     write_json(clients_dir / "mapping_notes.json", {"Yisrael I": "הערה"})
-    api.get("/api/events?refresh=1")  # the ledger reload (clients ?refresh=1 doesn't re-read events)
+    api.get("/api/events?refresh=1")  # reload the ledger (bugfix-074: any refresh reloads everything)
     return api
 
 
