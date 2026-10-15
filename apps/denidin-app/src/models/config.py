@@ -277,7 +277,7 @@ class AppConfiguration:
         # Set reminders sub-field defaults (Feature 054)
         if 'reminders' in config_data and config_data['reminders']:
             reminders_defaults = {
-                'max_active_reminders': 20
+                'max_active_reminders': 100
             }
             for key, value in reminders_defaults.items():
                 if key not in config_data['reminders']:
@@ -359,7 +359,7 @@ class AppConfiguration:
 
         # Validate reminders.max_active_reminders is a positive integer, if configured
         if self.reminders:
-            max_active = self.reminders.get('max_active_reminders', 20)
+            max_active = self.reminders.get('max_active_reminders', 100)
             if not isinstance(max_active, int) or isinstance(max_active, bool) or max_active < 1:
                 raise ValueError(
                     f"reminders.max_active_reminders must be a positive integer, got {max_active!r}"
