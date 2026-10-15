@@ -59,7 +59,7 @@ REMINDER_ACTION_FAILED_TRY_AGAIN = "לא הצלחתי לבצע את פעולת �
 # REMINDER_PAST_DATE_REJECTED / REMINDER_CAP_EXCEEDED: proposal-time rejections
 # (FR-005/FR-006), shown immediately instead of a false approval prompt.
 REMINDER_PAST_DATE_REJECTED = "אי אפשר להגדיר תזכורת למועד שכבר עבר. אנא ציין מועד עתידי."
-REMINDER_CAP_EXCEEDED = "כבר יש 20 תזכורות פעילות - המספר המרבי המותר. יש למחוק תזכורת קיימת לפני יצירת תזכורת חדשה."
+REMINDER_CAP_EXCEEDED = "הגעת למספר המרבי המותר של תזכורות פעילות. יש למחוק תזכורת קיימת לפני יצירת תזכורת חדשה."
 
 # Dynamic Capability Backbone (Feature 063) - flag-on fallback strings. Every
 # one of these can become a user-visible reply (a domain tool's result text may
