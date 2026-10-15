@@ -141,4 +141,4 @@ Feature 101: config switch green_api_host_mode (fixed default | instance) to cal
 
 ## [0.8.2] - 2026-10-15
 
-Agreements DB: edit fee agreements from the Clients tab UI and WhatsApp (Feature 089) with one-time migration of ledger agreements, agreement dates, and the webapp names-to-resolve list now changed only by the hide button
+Agreements DB: edit fee agreements from the Clients tab UI and WhatsApp (Feature 089) with one-time migration of ledger agreements, agreement dates, and the webapp names-to-resolve list now changed only by the hide button. Also in this release: Feature 066 (Bit, PayBox, cheque and cash deposits - incoming funds are now הפקדה events with the payment method as subtype, ledger schema v3, one-time migration of existing bank events), Feature 064 (after a deposit image the bot offers to create the 320), Feature 071 (a PDF is read in one model call), Feature 099 (cancelling a 320 issues a 330 credit note and then a negative 400 receipt)
