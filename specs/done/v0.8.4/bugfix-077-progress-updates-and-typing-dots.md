@@ -1,0 +1,1 @@
+../../repo/bugfixes/bugfix-077-progress-updates-and-typing-dots.md

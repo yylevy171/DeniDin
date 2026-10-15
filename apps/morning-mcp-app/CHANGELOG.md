@@ -142,3 +142,7 @@ Agreements DB: edit fee agreements from the Clients tab UI and WhatsApp (Feature
 ## [0.8.3] - 2026-10-15
 
 Realistic message handling (Feature 067): the app now works without turns - every tool acts the moment the model calls it, silence is a response with no tool call, and messages that arrive while the model works are merged into its next input at each hand-back, never aborting a model call. Created Morning documents are recorded in the ledger by their own flows right after the create (the reconciliation sweep stays a separate safety net), the deposit flow's slip-date rule applies only when a slip came, and a refresh in the webapp now reloads everything (bugfix-074).
+
+## [0.8.4] - 2026-10-15
+
+Reminders now also arrive as a .ics calendar file (F102); progress updates and typing dots fixed after 067 (b77); typo'd client names now surface the near-match as a candidate (b73)
