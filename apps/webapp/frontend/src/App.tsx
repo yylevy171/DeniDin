@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Image, Pressable, Text, TextInput, View } from "react-native";
 import { THEMES, ThemeName } from "./theme";
-import { AuthError, getToken, login, logout } from "./api";
+import { AuthError, getToken, login, logout, refreshAll } from "./api";
 import { Button, IconButton, HintPressable } from "./ui";
 import EventsView from "./EventsView";
 import ClientsView from "./ClientsView";
@@ -174,6 +174,38 @@ export default function App() {
     if (e instanceof AuthError) setAuthed(false);
   }, []);
 
+  // bugfix-074: any refresh reloads EVERYTHING. A page load (F5 / Ctrl+Shift+R / soft refresh) does one
+  // backend-wide hard reload before any view fetches; a refresh button does the same, then bumps
+  // `refreshEpoch` so every mounted view re-reads.
+  const [ready, setReady] = useState(false);
+  const [refreshEpoch, setRefreshEpoch] = useState(0);
+  const [refreshBusy, setRefreshBusy] = useState(false);
+  useEffect(() => {
+    if (!authed) {
+      setReady(false);
+      return;
+    }
+    let cancelled = false;
+    refreshAll()
+      .catch(onAuthErr) // anything but an expired session: show the (possibly stale) data anyway
+      .finally(() => {
+        if (!cancelled) setReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [authed, onAuthErr]);
+  const onRefreshAll = useCallback(async () => {
+    setRefreshBusy(true);
+    try {
+      await refreshAll();
+    } catch (e) {
+      onAuthErr(e);
+    }
+    setRefreshEpoch((n) => n + 1);
+    setRefreshBusy(false);
+  }, [onAuthErr]);
+
   useEffect(() => saveSettings(settings), [settings]);
   useEffect(() => saveTab(activeTab), [activeTab]);
   useEffect(() => {
@@ -254,14 +286,32 @@ export default function App() {
         />
       ) : null}
 
-      {visited.has("events") ? (
+      {!ready ? (
+        <Text testID="loading" style={{ color: theme.textDim, padding: 10 }}>
+          …טוען
+        </Text>
+      ) : null}
+      {ready && visited.has("events") ? (
         <View style={{ flex: 1, display: activeTab === "events" ? "flex" : "none" }}>
-          <EventsView theme={theme} settings={settings} onAuthErr={onAuthErr} />
+          <EventsView
+            theme={theme}
+            settings={settings}
+            onAuthErr={onAuthErr}
+            refreshEpoch={refreshEpoch}
+            refreshBusy={refreshBusy}
+            onRefreshAll={onRefreshAll}
+          />
         </View>
       ) : null}
-      {visited.has("clients") ? (
+      {ready && visited.has("clients") ? (
         <View style={{ flex: 1, display: activeTab === "clients" ? "flex" : "none" }}>
-          <ClientsView theme={theme} onAuthErr={onAuthErr} />
+          <ClientsView
+            theme={theme}
+            onAuthErr={onAuthErr}
+            refreshEpoch={refreshEpoch}
+            refreshBusy={refreshBusy}
+            onRefreshAll={onRefreshAll}
+          />
         </View>
       ) : null}
     </View>

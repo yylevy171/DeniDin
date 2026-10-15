@@ -744,22 +744,34 @@ function UnmatchedSection({
   );
 }
 
-export default function ClientsView({ theme, onAuthErr }: { theme: Theme; onAuthErr: (e: unknown) => void }) {
+export default function ClientsView({
+  theme,
+  onAuthErr,
+  refreshEpoch,
+  refreshBusy,
+  onRefreshAll,
+}: {
+  theme: Theme;
+  onAuthErr: (e: unknown) => void;
+  refreshEpoch: number;
+  refreshBusy: boolean;
+  onRefreshAll: () => void;
+}) {
   const [clients, setClients] = useState<ClientRow[]>([]);
   const [unmatched, setUnmatched] = useState<UnmatchedEntry[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true); // true from the first render: the first fetch is already pending
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
   const load = useCallback(
-    // "reload" = the refresh button: hard reload (Morning list re-fetched). "refresh" = after a
+    // "reload" = after a refresh-all (the backend already reloaded everything). "refresh" = after a
     // save: just re-read the report, which the backend recomputes from its own caches.
     async (mode: "load" | "refresh" | "reload") => {
       mode === "load" ? setLoading(true) : setRefreshing(true);
       setError(null);
       try {
-        const data = await fetchClients(mode === "reload");
+        const data = await fetchClients();
         setClients(data.clients);
         setUnmatched(data.unmatched);
       } catch (e: any) {
@@ -781,6 +793,11 @@ export default function ClientsView({ theme, onAuthErr }: { theme: Theme; onAuth
   useEffect(() => {
     load("load");
   }, [load]);
+
+  // bugfix-074: any refresh button (here or in another tab) reloads everything, then every view re-reads
+  useEffect(() => {
+    if (refreshEpoch > 0) load("reload");
+  }, [refreshEpoch]); // eslint-disable-line
 
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -862,14 +879,14 @@ export default function ClientsView({ theme, onAuthErr }: { theme: Theme; onAuth
         </Text>
         <View style={{ flex: 1 }} />
         <IconButton
-          icon={refreshing ? undefined : "refresh"}
-          glyph={refreshing ? "…" : undefined}
+          icon={refreshing || refreshBusy ? undefined : "refresh"}
+          glyph={refreshing || refreshBusy ? "…" : undefined}
           glyphSize={20}
           theme={theme}
           title="רענון"
           testID="clients-refresh"
-          onPress={() => load("reload")}
-          disabled={refreshing}
+          onPress={onRefreshAll}
+          disabled={refreshing || refreshBusy}
         />
       </View>
 
