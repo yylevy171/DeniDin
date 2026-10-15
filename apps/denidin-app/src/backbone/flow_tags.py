@@ -35,6 +35,7 @@ class FlowTag(str, Enum):
     CREATE_REMINDER = "flow_create_reminder"
     MODIFY_REMINDER = "flow_modify_reminder"
     AGREEMENT_MANAGEMENT = "flow_agreement_management"
+    REMINDERS_CALENDAR_FILE = "flow_reminders_calendar_file"
 
 
 @dataclass(frozen=True)
@@ -172,6 +173,14 @@ FLOW_INFO: tuple = (
         "recording a NEW agreement the user reports signing (flow_fee_agreement_provided_by_user), "
         "not for creating a fee agreement document, not for payments owed/received "
         "(flow_user_question), and not for invoices, clients or reminders."
+    ),
+    FlowInfo(
+        FlowTag.REMINDERS_CALENDAR_FILE,
+        "Giving the user a calendar (.ics) file of reminders they ALREADY have, because they ask for it "
+        "(\"תשלח לי את התזכורות ליומן\") or after they answer yes to the offer to export their reminders "
+        "that follows any listing of or question about their reminders. Lists the reminders, offers the "
+        "file, and sends it only on a yes. Not for creating, changing or cancelling a reminder (the file "
+        "for those is sent automatically), and never for invoices, documents, the ledger or agreements."
     ),
 )
 

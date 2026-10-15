@@ -262,6 +262,14 @@ class ReminderManager:
                 status TEXT NOT NULL
             );
 
+            -- Feature 102: the SEQUENCE the next calendar (.ics) file for a reminder carries. A table of its
+            -- own (not a column on `reminders`) so existing databases need no ALTER TABLE: a reminder with
+            -- no row simply starts at 0.
+            CREATE TABLE IF NOT EXISTS reminder_ics_sequences (
+                reminder_id TEXT PRIMARY KEY REFERENCES reminders(reminder_id),
+                next_sequence INTEGER NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS fired_occurrences (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 reminder_id TEXT NOT NULL REFERENCES reminders(reminder_id),
@@ -406,6 +414,62 @@ class ReminderManager:
             (reminder_id,),
         ).fetchone()
         return dict(row) if row else None
+
+    def claim_ics_sequence(self, reminder_id: str) -> int:
+        """Feature 102: the SEQUENCE the next calendar file for this reminder must carry. Returns the
+        stored counter (0 for a reminder with no row yet) and stores counter+1, so every file generated
+        for a reminder (create, change, delete, on-demand) carries a strictly higher value than every
+        earlier one. Works for a cancelled reminder too (its CANCEL file still needs one). Raises
+        ReminderNotFoundError for an unknown id."""
+        if self._conn.execute(
+            "SELECT 1 FROM reminders WHERE reminder_id = ?", (reminder_id,)
+        ).fetchone() is None:
+            raise ReminderNotFoundError(f"no reminder with reminder_id={reminder_id!r}")
+        row = self._conn.execute(
+            "SELECT next_sequence FROM reminder_ics_sequences WHERE reminder_id = ?", (reminder_id,)
+        ).fetchone()
+        claimed = int(row["next_sequence"]) if row else 0
+        self._conn.execute(
+            "INSERT INTO reminder_ics_sequences (reminder_id, next_sequence) VALUES (?, ?) "
+            "ON CONFLICT(reminder_id) DO UPDATE SET next_sequence = excluded.next_sequence",
+            (reminder_id, claimed + 1),
+        )
+        self._conn.commit()
+        return claimed
+
+    def get_for_calendar(self, reminder_id: str) -> Optional[Dict[str, Any]]:
+        """Feature 102: a reminder of ANY status (a cancelled one still produces its CANCEL file) with its
+        stored single-occurrence exceptions and the current `ics_sequence` (read only - nothing is
+        claimed). None when there is no such reminder."""
+        row = self._conn.execute(
+            "SELECT r.reminder_id, r.message_text, r.rrule, r.dtstart, "
+            "COALESCE(s.next_sequence, 0) AS ics_sequence FROM reminders r "
+            "LEFT JOIN reminder_ics_sequences s ON s.reminder_id = r.reminder_id WHERE r.reminder_id = ?",
+            (reminder_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        exceptions = self._conn.execute(
+            "SELECT recurrence_id, dtstart_override, summary_override, status FROM reminder_exceptions "
+            "WHERE reminder_id = ? ORDER BY recurrence_id",
+            (reminder_id,),
+        ).fetchall()
+        return {**dict(row), "exceptions": [dict(exc) for exc in exceptions]}
+
+    def list_for_calendar(self, reminder_ids: List[str]) -> List[Dict[str, Any]]:
+        """Feature 102: `get_for_calendar` for each id, ACTIVE reminders only, in the given order;
+        unknown and no-longer-active ids are left out."""
+        entries = []
+        for reminder_id in reminder_ids:
+            entry = self.get_for_calendar(reminder_id)
+            if entry is not None and self._is_active(reminder_id):
+                entries.append(entry)
+        return entries
+
+    def _is_active(self, reminder_id: str) -> bool:
+        return self._conn.execute(
+            "SELECT 1 FROM reminders WHERE reminder_id = ? AND status = 'active'", (reminder_id,)
+        ).fetchone() is not None
 
     def _reconstruct_calendar(self, reminder_row: sqlite3.Row) -> "icalendar.Calendar":
         """Build an icalendar.Calendar with the master VEVENT plus one override VEVENT

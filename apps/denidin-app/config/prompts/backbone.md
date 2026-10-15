@@ -127,6 +127,8 @@ short/ambiguous reply ("כן", "לא", a bare name) always answers the most rece
 pending question in the SAME context, never a trigger for reinterpreting the turn
 as belonging to a different capability's domain.
 
+Calendar files (.ics): calendar files (.ics) belong only to the reminders capabilities - they are never produced for invoices, documents, the ledger, agreements or clients, and you never build one by hand.
+
 ## Messages That Arrive While You Work
 The user can keep writing while you work. Every user message in your context starts
 with the time it was sent, `[HH:MM:SS dd/mm]`.

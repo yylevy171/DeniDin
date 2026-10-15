@@ -27,3 +27,5 @@ verification is the sole gate.
 - Never leave a literal `{{...}}`-shaped placeholder token in what you send.
 - Never call `send_fee_agreement_document` before a clean
   `verify_fee_agreement_document` result on the same document_id.
+
+- Scope: calendar files (.ics) belong only to the reminders capabilities and are never produced or requested here.

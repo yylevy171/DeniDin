@@ -41,3 +41,5 @@ document flow may load `flow_modify_client` just to save it (see `cap_invoicing_
 `update_client` needs `name_resolved=true` together with the EXACT name Morning has
 stored. Pass `name_resolved=true` only for a name that has actually been confirmed as
 Morning's stored name, never for the user's loose wording.
+
+- Scope: calendar files (.ics) belong only to the reminders capabilities and are never produced or requested here.

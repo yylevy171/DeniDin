@@ -7,3 +7,5 @@ Attaches `find_agreements` and `get_agreement`. They read the CURRENT state of a
 - If it returns none, say so plainly; do not invent an agreement.
 - This is the current agreement, not payment history. Amounts owed or received come from the ledger (`cap_ledger_query`).
 - Component statuses: Pending (waiting for its trigger condition), Active, Completed, Cancelled. A Completed or Cancelled component, or any component of a closed agreement, is locked.
+
+- Scope: calendar files (.ics) belong only to the reminders capabilities and are never produced or requested here.

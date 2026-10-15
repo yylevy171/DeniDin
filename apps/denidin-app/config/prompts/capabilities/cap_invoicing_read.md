@@ -57,3 +57,5 @@ attached** — only say a tool is unavailable when it genuinely isn't attached
 or a call actually failed.
 
 Results are already in Hebrew; keep your reply in Hebrew too.
+
+- Scope: calendar files (.ics) belong only to the reminders capabilities and are never produced or requested here.
