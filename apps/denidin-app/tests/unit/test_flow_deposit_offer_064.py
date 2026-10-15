@@ -60,7 +60,8 @@ def test_the_client_step_does_not_stop_before_the_offer():
     """64-1: after resolving the client the model must go on to the ledger recording and the offer. There is
     no 'end of turn' any more; the report goes out with cap_send_to_user and the flow continues."""
     assert "end_turn" not in FLOW
-    assert "cap_send_progress_update" not in FLOW
+    # bugfix-077 (PM decision): every flow now mentions progress updates once, at its top, as a line
+    # about sending them between steps - the assertion that the deposit flow never mentions them is gone.
     assert "Load `cap_approval_with_buttons` now" in _offer_step()
 
 

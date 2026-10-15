@@ -6,6 +6,8 @@ Capabilities: `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons`
 
 Follow these steps in order, to the letter.
 
+Progress updates (`cap_send_progress_update`) can be sent between the steps, in plain words, so the user understands what is going on.
+
 1. Load `cap_client_read` and look up the client by the name the user gave, with `resolve_client_name` - it also finds similar names (other spellings), which an exact search such as `list_clients` misses.
 2. Handle what you find:
    - A clean exact match (`resolve_client_name` returned an exact match for that very name): use `cap_send_to_user` to tell the user plainly that the client already exists. Do not modify it and do not offer to. The flow is complete.

@@ -39,6 +39,7 @@ from src.models.message import AIRequest, AIResponse, WhatsAppMessage
 from src.models.user import Role
 from src.utils.capability_audit_log import log_capability_action, log_loading_action
 from src.utils.logger import read_version, DEFAULT_VERSION_FILE
+from src.backbone.typing_policy import typing_wanted_for_next_call
 from src.tool_actions.messaging_actions import build_react_to_message_payload
 from src.core.ai_manager import AIManager
 from src.utils.wire_log import audit_wire, debug_wire
@@ -663,9 +664,11 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
         chat_id: str = turn_context["chat_id"]  # every message has a chat
         input_items, previous_id = self._first_input(request, chat_id)
         told_text_ignored = False
+        show_typing = True
         for _round in range(MAX_BACKBONE_TOOL_LOOP_ITERATIONS):
             tags, instructions, tools = self._build_round_inputs(request, chat_id, turn_context)
-            response = self._call_chained(request, chat_id, input_items, previous_id, instructions, tools)
+            response = self._call_chained(request, chat_id, input_items, previous_id, instructions, tools,
+                                          show_typing=show_typing)
             previous_id = getattr(response, "id", None)
             last_output_at = now_local()  # when the model's most recent output came back
             has_calls = any(getattr(item, "type", None) == "function_call"
@@ -684,16 +687,19 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
                     return
                 told_text_ignored = True
                 input_items = [{"role": "developer", "content": PLAIN_TEXT_IGNORED_NOTE}]
+                show_typing = True
                 continue
             told_text_ignored = False
             input_items = self._compose_follow_up_input(chat_id, outputs, last_output_at)
+            show_typing = typing_wanted_for_next_call(response, outputs, input_items)
         logger.warning(
             "Conversation hit MAX_BACKBONE_TOOL_LOOP_ITERATIONS=%d for request %s - pausing.",
             MAX_BACKBONE_TOOL_LOOP_ITERATIONS, request.request_id,
         )
 
     def _call_chained(self, request: AIRequest, chat_id: str, input_items: List[Dict[str, Any]],
-                      previous_id: Optional[str], instructions: str, tools: List[Dict[str, Any]]) -> Any:
+                      previous_id: Optional[str], instructions: str, tools: List[Dict[str, Any]],
+                      show_typing: bool = True) -> Any:
         """One model call continuing the chat's chain (`previous_id`), or starting a new one when
         there is none. The new response id is stored on the session as the chain's head. When
         OpenAI no longer knows the chain (previous_response_not_found) it is dropped and the
@@ -710,7 +716,7 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
             kwargs["previous_response_id"] = previous_id
         try:
             response = self._call_model("conversation (chained)" if previous_id else "conversation (new chain)",
-                                        chat_id, kwargs)
+                                        chat_id, kwargs, show_typing=show_typing)
         except BadRequestError as exc:
             if not previous_id or getattr(exc, "code", None) != CHAIN_NOT_FOUND_CODE:
                 raise
@@ -719,7 +725,8 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
             kwargs.pop("previous_response_id")
             kwargs["input"] = self._window_input(request, chat_id) + [
                 item for item in input_items if item.get("role") == "user"]
-            response = self._call_model("conversation (new chain after expiry)", chat_id, kwargs)
+            response = self._call_model("conversation (new chain after expiry)", chat_id, kwargs,
+                                        show_typing=show_typing)
         self.session_manager.set_ai_chain_id(chat_id, getattr(response, "id", None))
         return response
 
@@ -869,14 +876,14 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
                             "output": json.dumps(payload, ensure_ascii=False)})
         return outputs
 
-    def _call_model(self, context: str, chat_id: str, kwargs: Dict[str, Any]) -> Any:
+    def _call_model(self, context: str, chat_id: str, kwargs: Dict[str, Any], show_typing: bool = True) -> Any:
         """One Responses API call, wire-logged both directions, its mcp_call items accumulated,
         telemetry recorded. WhatsApp's typing indicator is on exactly while the call is in
-        flight. Retries explicitly once on an HTTP 424 (a gap the OpenAI SDK's own max_retries
+        flight (unless `show_typing` is False - see typing_policy.py). Retries explicitly once on an HTTP 424 (a gap the OpenAI SDK's own max_retries
         never covers - see AIManager.call_model_with_retry's docstring)."""
         audit_wire("openai", "out", context, kwargs)
         debug_wire("openai", "out", context, kwargs)
-        typing_job = self.denidin.start_typing(chat_id)
+        typing_job = self.denidin.start_typing(chat_id) if show_typing else None
         try:
             # Retry + Feature 080 timing via the shared AIManager.timed_model_call: a failed
             # call is timed and counted too.

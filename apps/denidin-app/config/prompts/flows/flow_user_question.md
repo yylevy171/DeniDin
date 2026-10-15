@@ -7,6 +7,8 @@ Flows it may load: `flow_invoicing_query`.
 
 Follow these steps in order, to the letter.
 
+Progress updates (`cap_send_progress_update`) can be sent between the steps, in plain words, so the user understands what is going on.
+
 1. Decide where the answer lives, and load only what you need:
    - Questions about past agreements, deposits, or how much a client or payer owes or has paid: start with `cap_ledger_query`. It is a fast cache over Morning and also covers agreement-level amounts that Morning cannot see.
    - A live document's own status, recent documents, a download link, or a financial summary: go straight to `flow_invoicing_query`. Skip the ledger for anything only Morning holds.

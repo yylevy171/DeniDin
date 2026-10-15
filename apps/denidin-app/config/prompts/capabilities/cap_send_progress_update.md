@@ -1,16 +1,9 @@
 # Capability: Send progress update (always present)
 
-`send_progress_update(text)` sends one brief interim WhatsApp message while you
-are still working. It sends exactly like `send_to_user` and you keep working. Keep it to a short plain sentence.
+`send_progress_update(text)` sends the user a short in-between message while you keep working.
 
-Users are waiting on the other end and don't like silence - they want to know
-something is happening with their request, not just get one final answer out
-of nowhere.
-
-Call this every single time you interact with any tool or capability -
-loading a flow or capability, calling a real domain tool, an MCP call,
-anything that is not just talking to the user - before or after that step,
-in the same round as whatever else you are doing. Never skip it and never
-wait for a separate round.
-
-- Never a substitute for telling the user the outcome: report it with `send_to_user`.
+When a request takes several steps, people don't like silence. A line like
+"בודק את החשבוניות של הלקוח" tells them what you are about to do and that it is
+happening. Use your judgment about when it helps - typically before or between the steps
+of a longer piece of work, not for every small step. Write it in the user's terms: what is
+being done for them.
