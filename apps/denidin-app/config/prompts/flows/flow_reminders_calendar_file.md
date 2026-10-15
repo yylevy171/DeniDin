@@ -6,6 +6,8 @@ Capabilities: `cap_reminders_read`, `cap_approval_with_buttons`.
 
 Follow these steps in order, to the letter.
 
+Progress updates (`cap_send_progress_update`) can be sent between the steps, in plain words, so the user understands what is going on.
+
 1. Load `cap_reminders_read` and list the user's active reminders. Answer the user's question about them, if they asked one.
 2. If the user already asked for a calendar file, go to step 4 with the reminders they named (or all of them if they said "all"). If it is unclear which reminders they mean, use `cap_send_to_user` to ask which; never guess.
 3. Offer: load `cap_approval_with_buttons` and ask `לייצא את התזכורות שלך לקובץ יומן (ics)?`. Send nothing until the user answers. On a no, or no answer, do nothing more; the flow is complete.
