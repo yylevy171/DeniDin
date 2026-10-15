@@ -64,7 +64,8 @@ one-time event were unaffected. The same update **without** an embedded `VTIMEZO
 | One file holding several events (one-time, weekly series, one-time; each its own `UID`) | **Works.** All 3 import from a single tap. |
 | Later file with only one of those `UID`s (update) | **Works.** Only that event changes; the others are untouched. |
 
-Not tested: iOS and other calendar apps. The PM's decision: Android is what counts.
+Not tested: iOS and other calendar apps; and re-importing an **unchanged** reminder file (an on-demand re-send,
+higher `SEQUENCE`, same content) onto a phone that already has the entry. The PM's decision: Android is what counts.
 
 ---
 
@@ -72,7 +73,8 @@ Not tested: iOS and other calendar apps. The PM's decision: Android is what coun
 
 - **REQ-102-01 (a calendar file with every reminder)**: whenever DeniDin creates a reminder (Feature 054),
   one-time **or recurring**, it also sends a `.ics` file for it into the chat the reminder was created from
-  (`delivery_chat_id`), **alongside** `reminders.db`, never instead of it: the reminder is stored and
+  (`delivery_chat_id`; for a later modify/delete/on-demand file, the chat the user is asking in),
+  **alongside** `reminders.db`, never instead of it: the reminder is stored and
   delivered by the 054 text nudge exactly as before. A recurring reminder is a single `.ics` carrying its
   `RRULE` (a series), not one file per occurrence.
 - **REQ-102-02 (shape of the event, mirrors DeniDin reminders)**:
@@ -80,8 +82,10 @@ Not tested: iOS and other calendar apps. The PM's decision: Android is what coun
   - No alert/`VALARM` of any kind.
   - `SUMMARY` is always `דנידין תזכורת: <reminder text>`.
   - Times as `TZID=Asia/Jerusalem` with **no embedded `VTIMEZONE`** (Gate Zero 2 defect above).
-  - `UID` = the reminder's own stable RFC5545 UID; `SEQUENCE` starts at 0 and increases by 1 with every
-    change; no location or description required.
+  - `UID` = the reminder's own stable RFC5545 UID; `SEQUENCE` is a per-reminder counter: every file generated for a
+    reminder (create, change, delete, on-demand) carries a value strictly higher than every earlier file for it
+    (the first is 0); no location or description required.
+  - File name `reminder_<id8>.ics` (one reminder) or `reminders_<YYYYMMDD>.ics` (several), no caption.
 - **REQ-102-03 (approval)**: no new approval. The `.ics` is sent when the existing 054 approval is given.
 - **REQ-102-04 (modify / delete - verified working)**: every change to a reminder that has an `.ics`
   sends a new `.ics`, always the complete picture of the reminder in one file:
@@ -97,14 +101,18 @@ Not tested: iOS and other calendar apps. The PM's decision: Android is what coun
 - **REQ-102-06 (RBAC)**: same as 054 - GODFATHER/ADMIN only; no new tool is exposed to any other role.
 - **REQ-102-07 (failure)**: if the file send fails, the reminder is still stored (or changed/deleted) and
   the user is told plainly that the calendar file could not be sent.
-- **REQ-102-08 (constitution)**: `runtime_constitution.md`'s "Reminder Management" section (and the
-  backbone reminder capability) is updated so the model knows the `.ics` is automatic and is never
-  requested separately; no new tool-bearing family is added (METHODOLOGY §XXI check still applies).
+- **REQ-102-08 (prompt boundaries)**: the backbone prompts (`config/prompts/`: `cap_reminders_read.md`,
+  `cap_reminders_write.md`, the reminder flows, a new calendar-file flow and `backbone.md`) state when the
+  calendar file applies (automatic after a reminder write; on request; offered after listing), when it does NOT
+  (never for invoices, clients, documents, the ledger or agreements; never to interpret a confirmation reply),
+  and that ambiguity is resolved by asking. Every other tool-bearing capability prompt excludes calendar files
+  back (both directions, per the tool-bearing-feature rule). `runtime_constitution.md` no longer exists.
 
 - **REQ-102-09 (on-demand .ics for an existing reminder)**: a user can ask for the calendar file of any
   existing reminder ("תשלח לי קובץ יומן לתזכורת של ..."). DeniDin finds it and generates and sends the
-  `.ics` (same `UID` and the current `SEQUENCE`, so importing it onto a phone that already has the entry
-  updates it rather than duplicating). It is read-only, so it needs **no approval**. If several reminders
+  `.ics` (same `UID`, a strictly higher `SEQUENCE` than any earlier file, so importing it onto a phone that
+  already has the entry is expected to update it rather than duplicate it - an unchanged re-send is not yet
+  verified on a phone, see section 2). It is read-only, so it needs **no approval**. If several reminders
   match, DeniDin asks which one (never guesses). Applies to one-time and recurring reminders.
 - **REQ-102-10 (offering the .ics)**: when the user asks about their reminders in general, or asks to list
   them (`list_reminders`), DeniDin answers as today and then **offers** the calendar file (in the same
@@ -118,15 +126,14 @@ the 15-minute alarm, native event cards, location/end-time fields, the embedded 
 
 ## 4. Decisions (PM, 2026-10-15)
 
-0b. The offer in REQ-102-10 is asked with the backbone's `approval_with_yes_no_buttons` capability (stateless, yes/no buttons or a typed "כן"/"לא"), e.g. "לייצא את התזכורות שלך לקובץ יומן (ics)?". A yes sends the file; a no ends it.
-0. "All my reminders" (REQ-102-10): **one `.ics` file with several events**, each with its own stable `UID` (Gate Zero 2: verified on Android).
-
 1. **No feature flag.**
 2. The transient `.ics` is authored exactly as the Feature 083 docx is (same temp-file handling, then `sendFileByUpload`).
 3. The `.ics` is sent **after** the confirmation text of the reminder creation.
 4. An open-ended recurring reminder (no `COUNT`/`UNTIL`) produces an open-ended series on the calendar - intended.
 5. Modifying/deleting a reminder created before this feature: **send the update/cancel `.ics` as usual**.
-6. Backbone only: the legacy `AIHandler` path and the backbone feature flag are gone from master (merged 2026-10-15); nothing in this feature targets a legacy path.
+6. "All my reminders" (REQ-102-10): **one `.ics` file with several events**, each with its own stable `UID` (Gate Zero 2: verified on Android).
+7. The offer in REQ-102-10 is asked with the backbone's `approval_with_yes_no_buttons` capability (stateless, yes/no buttons or a typed "כן"/"לא"), e.g. "לייצא את התזכורות שלך לקובץ יומן (ics)?". A yes sends the file; a no ends it.
+8. Backbone only: the legacy `AIHandler` path and the backbone feature flag are gone from master (merged 2026-10-15); nothing in this feature targets a legacy path.
 
 ## 5. Open items
 

@@ -12,7 +12,7 @@
    reminder approval; User approves.
    **Then** the reminder is in `reminders.db`, and DeniDin sends a `.ics` that parses as valid
    iCalendar with: `SUMMARY` = `דנידין תזכורת: דיון בבית המשפט`, DTSTART = DTEND = Monday 11:00
-   Asia/Jerusalem (TZID only, **no embedded VTIMEZONE**), **no VALARM**.
+   Asia/Jerusalem (TZID only, **no embedded VTIMEZONE component**), **no VALARM**, UID = the reminder's id, SEQUENCE 0.
 2. **UAT 1.2** - User declines the approval. **Then** no reminder and no `.ics`.
 3. **UAT 1.3** - A recurring request ("כל יום ראשון ב-9:00"). **Then** DeniDin sends one `.ics` carrying the `RRULE`, and the 054 reminder is stored as today.
 4. **UAT 1.4** - The reminder's due time arrives. **Then** the 054 text nudge is still delivered.
