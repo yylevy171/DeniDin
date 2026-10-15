@@ -5,8 +5,7 @@
 **Revised**: 2026-10-11 — Feature 090 ("Removing the Concept of a Turn") folded in; the design was
 re-clarified one question at a time with the product owner (see Clarifications, Session
 2026-10-11). This revision **supersedes** the 2026-08-30 discard-and-merge-turn design.
-**Status**: In progress — spec revised 2026-10-11; acceptance scenarios approved; `speckit.plan`, `speckit.tasks`
-and `speckit.analyze` (all findings fixed) completed 2026-10-12. Implementation in progress.
+**Status**: Done — implemented and accepted 2026-10-15 (unit/integration 1826 passed; billed G8-G12 and expensive G11 acceptance runs passed). PR: pending number.
 **Priority**: P2 (first-pass estimate)
 **Absorbs**: Feature 090 (obsolete, folded in — `specs/repo/features/090-remove-turn-concept/`).
 **Input**: User description (2026-08-30): "Today the denidin bot responds 1:1 to any message
