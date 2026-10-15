@@ -1,6 +1,6 @@
 # Bugfix 073: Client Resolution Robustness (Levenshtein Rescue Hatch)
 
-**Status:** Done - Merged to master (PR #704)
+**Status:** Fix implemented 2026-10-15 on branch `feature/100-bugfix-073-client-resolution` (built with Feature 100); PR pending. (PR #704 merged only this spec text, not code.)
 
 ## Problem Description
 In the current client resolution mechanism (`resolve_client_by_name`), perfectly viable and highly relevant candidates are occasionally dropped due to a hardcoded threshold (`_COMMON_WORD_DISCOVERY_CAP = 10`) combined with strict exact-match intersection rules.
@@ -30,3 +30,13 @@ This ensures that extremely relevant matches (like "מור פלימבו", which 
 ## References
 - `reports/prod_trace_2218.md`
 - `reports/dev_trace_yehoshua.md`
+
+## Implemented fix (2026-10-15, product-owner approved)
+- `_grow_word` records every client any search returns into a set that is passed through all filters
+  of `resolve_client_by_name`; at the final step every client in the set within the Levenshtein limit
+  of the whole query is added back to the candidates, which are sorted by distance (closest first).
+- Limit by query length: up to 5 characters 1; 6-10 characters 2; 11 or more 3.
+- A rescued client is only a candidate, never an exact match: the operator still confirms it.
+- No extra Morning calls. Checked offline against the prod client list: "מור פלומבו" -> 1 candidate,
+  "מור פלימבו" (it was 0 before the fix).
+- Tests: `apps/morning-mcp-app/tests/unit/test_tools_resolve_client_rescue_073.py`.

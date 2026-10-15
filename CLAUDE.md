@@ -617,6 +617,8 @@ Standalone `MorningClient`/`MorningAuth` for the Morning (Green Invoice) sandbox
   split, not just totals.
 - **Spec:** `specs/repo/bugfixes/bugfix-071-morning-vat-zero-defect.md`.
 
+**Client-name rescue hatch (bugfix-073, 2026-10-15)**: `resolve_client_by_name` (`morning-mcp-app`) no longer loses a near-miss to its deterministic filters. `_grow_word` records every client any search returns into a `seen` set passed through all filters (the common-word cap `_COMMON_WORD_DISCOVERY_CAP` and the intersection chain both discard); at the end every client in `seen` within a Levenshtein limit of the whole query is added back to the candidates, sorted closest-first. Limit by query length: up to 5 characters 1, 6-10 characters 2, 11+ 3 (`_rescue_distance_limit`). A rescued client is only a *candidate*, never an exact match, so the operator still confirms a typo'd name ("מור פלומבו" -> "מור פלימבו"). No extra Morning calls. Spec: `specs/repo/bugfixes/bugfix-073-client-resolution-robustness.md`. The related Feature 100 (a resolved-names cache in the prompt) was moved back to the backlog 2026-10-15: Feature 067 already cut repeated lookups by about a third (see its `user-stories.md`).
+
 ### `apps/webapp/` (separate app, own backend/frontend/e2e/config/Docker)
 A standalone, read-only web UI (Feature 068) for browsing `denidin-app`'s ledger data — no
 write path of any kind. `backend/` is a Starlette BFF (`src/webapp_backend/`: `server.py` the
