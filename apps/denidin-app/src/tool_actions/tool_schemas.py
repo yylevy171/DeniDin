@@ -134,6 +134,34 @@ LIST_REMINDERS_TOOL: Dict[str, Any] = {
     "parameters": {"type": "object", "properties": {}, "required": [], "additionalProperties": False},
 }
 
+# Feature 102: on-demand calendar (.ics) file for existing active reminders. Read-only (it never changes a
+# reminder), so it is attached with cap_reminders_read and needs no approval; the automatic file after a
+# create/modify/delete is NOT this tool (the backbone sends that itself).
+SEND_REMINDERS_CALENDAR_FILE_TOOL: Dict[str, Any] = {
+    "type": "function",
+    "name": "send_reminders_calendar_file",
+    "description": (
+        "Sends the user ONE calendar (.ics) file containing the given ACTIVE reminders, so they can add "
+        "them to their phone's calendar. Call it ONLY when the user explicitly asks for a calendar file / "
+        "to add reminders to their calendar, or after they said yes to the offer to export their "
+        "reminders. NEVER call it after creating, changing or deleting a reminder - that file is sent "
+        "automatically. Pass the reminder_id of every reminder to include (get them from list_reminders; "
+        "never guess an id). Read-only: needs no approval. Returns whether the file was sent."
+    ),
+    "strict": True,
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "reminder_ids": {
+                "type": "array", "minItems": 1, "items": {"type": "string"},
+                "description": "The reminder_id of each active reminder to put in the file.",
+            },
+        },
+        "required": ["reminder_ids"],
+        "additionalProperties": False,
+    },
+}
+
 # Feature 080 (REQ-080-02): send_progress_update is the mechanism the model
 # actually uses to send a real, mid-turn interim WhatsApp message on a
 # multi-step/slow turn - see runtime_constitution.md's "Proactive Progress

@@ -18,3 +18,5 @@ Progress updates (`cap_send_progress_update`) can be sent between the steps, in 
 5. On a yes, make the change or cancel. If the action fails, use `cap_send_to_user` to tell the user plainly what happened. Retry once only if the reason is fixable; otherwise stop.
 6. If the user drops the request or changes the subject mid-way, do nothing further and treat the flow as complete.
 7. End. Use `cap_send_to_user` to report the outcome. Then unload `cap_reminders_read`, `cap_reminders_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
+
+Note: after a successful change or cancel, the system sends the user the updated calendar file automatically, right after your confirmation. Never request it, mention it as pending, or produce it yourself.

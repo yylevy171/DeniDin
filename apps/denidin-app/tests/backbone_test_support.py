@@ -27,16 +27,33 @@ class FakeBot:
     def __init__(self) -> None:
         self.sent: list = []
         self.buttons: list = []
+        # Feature 102: every uploaded file as (chat_id, file_name, content bytes read at upload time - the
+        # temp file is deleted right after), and `events` - everything sent, in order, as ("text", text) /
+        # ("buttons", body) / ("file", file_name).
+        self.files: list = []
+        self.events: list = []
+        self.file_error: Any = None  # an exception to raise from sendFileByUpload
         self.api = SimpleNamespace(sending=SimpleNamespace(
-            sendMessage=self._send_message, sendInteractiveButtons=self._send_buttons))
+            sendMessage=self._send_message, sendInteractiveButtons=self._send_buttons,
+            sendFileByUpload=self._send_file_by_upload))
 
     def _send_message(self, chat_id: str, text: str, *args: Any) -> Any:
         self.sent.append((chat_id, text))
+        self.events.append(("text", text))
         return SimpleNamespace(code=200, data={"idMessage": f"SENT{len(self.sent)}"})
 
     def _send_buttons(self, chat_id: str, body: str, buttons: Any, header: Any, footer: Any) -> Any:
         self.buttons.append((chat_id, body, buttons))
+        self.events.append(("buttons", body))
         return SimpleNamespace(code=200, data={"idMessage": f"BTN{len(self.buttons)}"})
+
+    def _send_file_by_upload(self, chat_id: str, path: str, fileName: str = "", caption: str = "") -> Any:
+        if self.file_error is not None:
+            raise self.file_error
+        with open(path, "rb") as handle:
+            self.files.append((chat_id, fileName, handle.read()))
+        self.events.append(("file", fileName))
+        return SimpleNamespace(code=200, data={"idMessage": f"FILE{len(self.files)}"})
 
     @property
     def sent_texts(self) -> list:

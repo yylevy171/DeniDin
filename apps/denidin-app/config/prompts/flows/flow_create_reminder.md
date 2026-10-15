@@ -14,3 +14,5 @@ Progress updates (`cap_send_progress_update`) can be sent between the steps, in 
 4. Only after a clear yes: call `create_reminder`. If it fails, tell the user plainly what happened; retry once only if the reason is fixable, otherwise stop.
 5. If the user drops the request or changes the subject at any point, do nothing further; the flow is complete.
 6. End: report the outcome with `cap_send_to_user`, then unload `cap_reminders_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
+
+Note: after the reminder is created, the system sends the user its calendar file automatically, right after your confirmation. Never request it, mention it as pending, or produce it yourself.

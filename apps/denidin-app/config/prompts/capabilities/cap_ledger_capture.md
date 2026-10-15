@@ -187,3 +187,5 @@ ledger history:
   content — is **not** a ledger event. Verdict `none`.
 - If the conversation shows the Morning tunnel was unavailable now, you have no MCP evidence
   to resolve a client — verdict `none`.
+
+- Scope: calendar files (.ics) belong only to the reminders capabilities and are never produced or requested here.

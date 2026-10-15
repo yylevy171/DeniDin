@@ -21,6 +21,7 @@ from src.backbone.capability_tags import ALWAYS_PRESENT_CAPABILITIES, Capability
 from src.backbone.flow_tags import FlowTag, flow_catalog_text
 from src.backbone.loading import apply_loading, describe_loading, parse_requested
 from src.backbone.pending_messages import format_pending_items
+from src.capabilities.reminders.calendar_file import flush_queued_files
 from src.backbone.prompt_cache import MtimePromptCache
 from src.backbone.resolution_tools import RESOLUTION_TOOLS, extract_resolution_tool_calls
 from src.capabilities.toolsets import (
@@ -72,6 +73,7 @@ BACKBONE_FLOWS: Tuple[FlowTag, ...] = (
     FlowTag.CREATE_REMINDER,
     FlowTag.MODIFY_REMINDER,
     FlowTag.AGREEMENT_MANAGEMENT,
+    FlowTag.REMINDERS_CALENDAR_FILE,
 )
 
 # Information reaches the user ONLY through tools (send_to_user, approval_with_yes_no_buttons,
@@ -159,6 +161,9 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
         # calls the tool.
         self._turn_sent_texts: List[str] = []
         self._turn_offered_approval: bool = False
+        # Feature 102: {reminder_id: "PUBLISH"|"CANCEL"} of the reminders this turn created/changed/deleted,
+        # flushed as calendar (.ics) files after the conversation ends. Reset every turn.
+        self._turn_reminder_calendar_queue: Dict[str, str] = {}
 
         # Set once per handle_message() call (2026-09-15) - the ChromaDB
         # daily_summary semantic recall for this turn's own query, appended into
@@ -441,6 +446,7 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
             self._turn_last_response = None
             self._turn_original_message = request.original_message
             self._turn_offered_approval = False
+            self._turn_reminder_calendar_queue = {}
             # Long-term memory recall (2026-09-15, closing a real gap - see
             # _recall_memory's own docstring): computed once here, read by
             # build_instructions for every round this turn makes, same
@@ -488,7 +494,12 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
                 if approval_was_pending and (
                         self._turn_answers_approval or self.is_negative_reply(request.user_prompt)):
                     self.session_manager.set_approval_message_id(effective_chat_id, None)
-            self._run_conversation(request, turn_context)
+            try:
+                self._run_conversation(request, turn_context)
+            finally:
+                # Feature 102: the calendar file for every reminder written this turn goes out once the
+                # conversation has ended (after the model's confirmation text), even if the turn failed.
+                self._flush_reminder_calendar_files(effective_chat_id)
             return self._activity_record(request)
         # Legacy's per-error replies (AIHandler._get_response_impl), checked in its order:
         # APITimeoutError and RateLimitError are both APIErrors (C8, 2026-10-04).
@@ -510,6 +521,21 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
                 request.request_id, exc, exc_info=True,
             )
             return self._report_failure(request, BACKBONE_UNEXPECTED_ERROR)
+
+    def queue_reminder_calendar_file(self, reminder_id: str, method: str) -> None:
+        """Feature 102: records that this turn wrote `reminder_id` (method PUBLISH for a create/change,
+        CANCEL for a whole-series delete); the last operation per reminder wins."""
+        self._turn_reminder_calendar_queue[reminder_id] = method
+
+    def _flush_reminder_calendar_files(self, chat_id: Optional[str]) -> None:
+        """Feature 102: sends the calendar files queued this turn, then clears the queue. Never raises."""
+        queue, self._turn_reminder_calendar_queue = self._turn_reminder_calendar_queue, {}
+        if not queue or not chat_id:
+            return
+        try:
+            flush_queued_files(self.denidin, self.reminder_manager, chat_id, queue)
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.error("Failed to flush reminder calendar files: %s", exc, exc_info=True)
 
     def _report_failure(self, request: AIRequest, message: str) -> AIResponse:
         """A model call failed after its retries (or something unexpected broke): the friendly

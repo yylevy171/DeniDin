@@ -18,3 +18,5 @@ What to do with the result:
    - Start with `סיכום:` followed by a brief Hebrew summary of the content.
    - Then bullets (•) with: the document type (סוג מסמך); key dates, if present; the main parties/entities, if identifiable; important numbers/amounts, if present.
    - End with the facts, not with questions - except the question step 3 or step 4 requires.
+
+- Scope: calendar files (.ics) belong only to the reminders capabilities and are never produced or requested here.

@@ -46,3 +46,5 @@ times as it appears - never your own retyping of it. This holds everywhere the n
 appears from then on: the approval text, every tool call, every message to the user.
 Before sending an approval or calling a write tool, check the name you are about to
 use against the tool result, letter by letter.
+
+- Scope: calendar files (.ics) belong only to the reminders capabilities and are never produced or requested here.

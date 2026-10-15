@@ -308,3 +308,5 @@ out loud. **Never ask for or mention `internal_morning_id`** to the user.
   never reused from an earlier similar-looking turn.
 
 Messages that arrive while you work (see the backbone section of the same name) are handled the same way inside this capability: read them in order, never act on a write because of a message that came after you asked for approval, and never use this capability to interpret an unrelated reply.
+
+- Scope: calendar files (.ics) belong only to the reminders capabilities and are never produced or requested here.
