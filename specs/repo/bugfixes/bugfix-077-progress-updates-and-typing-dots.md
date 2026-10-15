@@ -58,3 +58,14 @@ cannot be undone and is never repeated because of anything that follows; when un
 The tool result for a failed reaction is deliberately unchanged (hiding the error was rejected). Not added: a
 morning-mcp-app duplicate-document backstop (offered, declined).
 Tests: `tests/unit/test_created_documents_are_final_077.py` (structure only).
+
+
+## Addendum 2026-10-15 - typing dots decision (PM approved option 1)
+
+No delay and no change to the ping length. The model call that follows a round whose only tool call was
+`send_to_user`, with no waiting user message, runs without the typing indicator (`src/backbone/typing_policy.py`,
+wired in `Backbone._run_conversation`/`_call_model`). Every other call keeps it. Known cost: if the model sends a
+message and then keeps working, there are no dots during that one thinking gap; they return with the next real
+tool call. Not done: a Green API way to clear typing early (none known), a model-set "more coming" flag (would
+bring back an end-of-turn signal). Tests: `tests/unit/test_typing_after_last_message_077.py`.
+Not verified live: needs a look at a real chat on dev.
