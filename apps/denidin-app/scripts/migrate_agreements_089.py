@@ -71,17 +71,18 @@ def _load_events(events_dir: Path) -> List[Tuple[Path, Dict[str, Any]]]:
 
 
 def _event_time(event: Dict[str, Any]) -> datetime:
-    """The event's own time, Israel local, naive: `event_datetime` (`DD/MM/YYYY HH:MM`), else its
+    """The event's own time, Israel local, naive: `event_datetime` (`DD/MM/YYYY HH:MM`, or ISO), else its
     `message_timestamp` (ISO), else the date/time inside its event id (letter + DDMMYY + HHMM + seq);
     `datetime.min` if none parses."""
     try:
         return datetime.strptime(str(event.get("event_datetime") or ""), "%d/%m/%Y %H:%M")
     except ValueError:
         pass
-    try:
-        return to_local(datetime.fromisoformat(str(event.get("message_timestamp")))).replace(tzinfo=None)
-    except ValueError:
-        pass
+    for field in ("event_datetime", "message_timestamp"):
+        try:
+            return to_local(datetime.fromisoformat(str(event.get(field)))).replace(tzinfo=None)
+        except ValueError:
+            continue
     try:
         return datetime.strptime(str(event.get("event_id") or "")[1:11], "%d%m%y%H%M")
     except ValueError:
@@ -230,6 +231,20 @@ def _apply_decisions(result: Dict[str, Any], decisions: Dict[str, Any]) -> None:
         match[0]["status"] = change["status"]
 
 
+def _drop_unresolved_clients(result: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Human decision 2026-10-15: no DB entry without a KNOWN Morning client. An agreement whose client
+    name does not resolve to an official client is not created, and its ledger events are left exactly
+    as they are. Returns what was skipped, for the report."""
+    skipped = []
+    for key in [k for k, g in result["agreements"].items() if not g["line"].get("official_name")]:
+        group = result["agreements"].pop(key)
+        skipped.append({"agreement_id": key, "raw_names": sorted(group["raw_names"]),
+                        "components": len(group["components"])})
+        for path in [p for p, info in result["rewrite"].items() if info["agreement_id"] == key]:
+            del result["rewrite"][path]
+    return skipped
+
+
 def migrate(data_root: Path, resolution_path: Path, dry_run: bool = False,
             decisions: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     data_root = Path(data_root)
@@ -239,6 +254,7 @@ def migrate(data_root: Path, resolution_path: Path, dry_run: bool = False,
     resolution = json.loads(Path(resolution_path).read_text(encoding="utf-8"))
     result = plan(_load_events(data_root / "events"), resolution)
     _apply_decisions(result, decisions or {})
+    skipped_unresolved = _drop_unresolved_clients(result)
     zero_filled = []
     for group in result["agreements"].values():
         for component in group["components"]:
@@ -246,6 +262,7 @@ def migrate(data_root: Path, resolution_path: Path, dry_run: bool = False,
                 component["amount"] = 0  # human decision 2026-10-15: a component with no value gets amount 0
                 zero_filled.append({"agreement_id": group["agreement_id"], "label": component.get("label")})
     report: Dict[str, Any] = {
+        "skipped_unresolved_clients": skipped_unresolved,
         "zero_filled_components": zero_filled,
         "agreements": len(result["agreements"]),
         "components": sum(len(g["components"]) for g in result["agreements"].values()),

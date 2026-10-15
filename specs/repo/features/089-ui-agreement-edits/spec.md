@@ -2,8 +2,8 @@
 
 **Feature Branch**: `feature/089-ui-agreement-edits`  
 **Created**: 2026-09-30  
-**Updated**: 2026-10-05  
-**Status**: Draft (clarified 2026-10-05)  
+**Updated**: 2026-10-15  
+**Status**: Done (merged to master; PR #TBD)  
 **Category**: Capability  
 **Input**: User description: "allow to manage agreements, specifically edit wording and numbers from the ui. Edits reach ledger. Completely different module for agreements (Agreements DB) that handles lifecycle. DB is source of truth, each change is a new revision. Ledger becomes documentation of initial creation."
 
@@ -142,3 +142,33 @@ The Webapp UI will integrate this into the existing "Clients" tab, allowing user
   The legacy `הסכם` ledger events with `event_subtype` `מבוטל` or `ביטול` MUST mark the component they refer to as `Cancelled` in the Agreements DB.
 - **REQ-089-12: UI De-Duplication**  
   Any duplicated or misunderstood legacy agreements that bypass the inference rules will manifest in the UI, where partners can manually clean them up using the new Lifecycle UI controls and the component delete action (REQ-089-15).
+
+
+---
+
+## Addendum 2026-10-15: release-day data load (comments + ledger -> Agreements DB)
+
+Human decisions made while preparing the first prod load:
+
+- **Comments are free text.** Nothing is parsed out of a Clients-tab comment. Agreements that exist only in
+  comments are entered by hand-written proposals (one JSON item per agreement: client, title,
+  `agreement_date`, description, status, components).
+- **`agreement_date`.** `AgreementsManager.create_agreement` / `POST /agreements` accept an optional
+  `agreement_date` (YYYY-MM-DD): the agreement's own creation date (`created_at`). `updated_at` is always the
+  write time. VAT is only `כולל` / `לא כולל` / empty; "לא צוין" is stored as empty by the migration.
+- **No DB entry without a known Morning client.** `migrate_agreements_089.py` skips any ledger agreement whose
+  client does not resolve to an official client (listed in the report as `skipped_unresolved_clients`; their
+  ledger events are left untouched). Such clients appear after they are created in Morning and the load is rebuilt.
+- **Amount 0.** A component with neither amount nor percent (hourly rates, retainers) is stored with amount 0;
+  the migration lists these as `zero_filled_components`.
+- **Migrated agreements** take `created_at` from their earliest ledger event (`event_datetime`, else
+  `message_timestamp`, else the id), and duplicate-label merging orders events by real time.
+- **Ledger vs. comment conflicts** are decided per client by the human (`--decisions` JSON:
+  `skip_agreement_ids`, `component_status`).
+- **Offline staging.** `apps/denidin-app/scripts/build_agreements_staging_089.py` builds the comment agreements
+  (DB + `הסכם` events carrying the agreement dates, spread over distinct minutes to respect the 10-events-a-minute
+  cap) into a staging folder, never into a dev/prod data root. Release day: stop the environment, copy
+  `agreements/agreements.db` and the changed `events/*.json`, start it. `apps/webapp/backend/scripts/build_agreements_from_proposal.py`
+  is the API-driven variant for a live stack.
+- **Bugfix (webapp):** the "names to resolve" list is changed ONLY by the hide button (`hidden_unmatched.json`);
+  no note text removes a name any more (`clients_reader._split_unmatched`).

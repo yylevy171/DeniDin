@@ -90,9 +90,10 @@ def test_us7_1_components_created_hours_bank_invoice_untouched(script, world):
     before = {i: _read(world, i) for i in ("A010726007", "B010726008", "C010726009")}
     report = script.migrate(world.root, world.resolution)
     assert report["status"] == "migrated"
-    assert report["agreements"] == 4 and report["components"] == 6
+    assert report["agreements"] == 3 and report["components"] == 5
     ids = {a["agreement_id"] for a in _manager(world.root).list_agreements()}
-    assert ids == {"0726-דנה-ערעור", "0726-רן-ייעוץ", "0726-מיכל-חוזה", "0726-זר-משהו"}
+    assert ids == {"0726-דנה-ערעור", "0726-רן-ייעוץ", "0726-מיכל-חוזה"}  # no known client, no entry
+    assert [s["agreement_id"] for s in report["skipped_unresolved_clients"]] == ["0726-זר-משהו"]
     assert {i: _read(world, i) for i in before} == before
 
 
@@ -104,8 +105,7 @@ def test_us7_2_events_rewritten_to_v4_with_clean_names(script, world):
     unchanged = {k: v for k, v in event.items()
                  if k not in ("client_name", "original_client_name", "schema_version", "component_status", "agreement_status")}
     assert unchanged == {k: v for k, v in original.items() if k not in ("client_name", "schema_version")}
-    unresolved = _read(world, "A010726006")
-    assert unresolved["client_name"] == "גורם זר" and unresolved["original_client_name"] == "גורם זר"
+    assert _read(world, "A010726006")["event_id"] == "A010726006" and "original_client_name" not in _read(world, "A010726006")
 
 
 def test_us7_3_status_inference(script, world):
@@ -131,18 +131,18 @@ def test_us7_5_second_run_is_noop_and_backup_exists_first(script, world):
     backup = Path(first["backup"])
     assert {p.name: p.read_bytes() for p in backup.glob("*.json")} == {
         n: b for n, b in originals.items() if n in {p.name for p in backup.glob("*.json")}}
-    assert len(list(backup.glob("*.json"))) == first["events_rewritten"] == 7
+    assert len(list(backup.glob("*.json"))) == first["events_rewritten"] == 6
     snapshot = {p.name: p.read_bytes() for p in world.events.glob("*.json")}
     second = script.migrate(world.root, world.resolution)
     assert second["status"] == "already_migrated"
     assert {p.name: p.read_bytes() for p in world.events.glob("*.json")} == snapshot
-    assert len(_manager(world.root).list_agreements()) == 4
+    assert len(_manager(world.root).list_agreements()) == 3
 
 
 def test_dry_run_writes_nothing(script, world):
     originals = {p.name: p.read_bytes() for p in world.events.glob("*.json")}
     report = script.migrate(world.root, world.resolution, dry_run=True)
-    assert report["status"] == "dry_run" and report["components"] == 6
+    assert report["status"] == "dry_run" and report["components"] == 5
     assert report["unresolved_names"] == ["גורם זר"]
     assert {p.name: p.read_bytes() for p in world.events.glob("*.json")} == originals
     assert not (world.root / "agreements" / "migration_089.json").exists()
