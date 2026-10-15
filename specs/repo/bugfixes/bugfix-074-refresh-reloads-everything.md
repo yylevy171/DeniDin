@@ -1,7 +1,7 @@
 # Bugfix 074: Any Refresh Reloads Everything
 
 **Bugfix Branch**: `bugfix/074-refresh-reloads-everything`
-**Status**: Done (2026-10-15) - PR pending. Fix lands on master; reaches prod with the next release.
+**Status**: Done (2026-10-15) - PR #724. Fix lands on master; reaches prod with the next release.
 
 ## 1. Description & Business Impact
 
