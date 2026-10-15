@@ -40,7 +40,7 @@ Last updated: 2026-10-15
 - (deleted: case4, case5a, case5b, case7)
 
 ## G9 - allocation, important ones (billed) - approved list of 3
-- test_uat_1_3_closing_transaction_account_above_threshold_asks_for_id - FAILED (2026-10-15): model skipped the client-ID check and asked for the 320 approval; investigated, awaiting decision
+- test_uat_1_3_closing_transaction_account_above_threshold_asks_for_id - FAILED twice (2026-10-15); dropped by the user (scenario never happens)
 - test_uat_2_1_valid_id_saved_then_document_issued - NOT RUN (sequence stopped at 1_3)
 - test_uat_3_3_client_already_has_an_id - NOT RUN (sequence stopped at 1_3)
 - (not run, by decision: uat_2_2, 2_3, 3_1, 3_2, 3_4, 3_5, edge x2)
@@ -59,8 +59,8 @@ Last updated: 2026-10-15
 ## G11 - expensive vision tests (each needs the user's approval, one at a time)
 Chosen so far: the six-component agreement image (ledger capture).
 - test_ledger_event_capture_e2e.py::test_given_real_six_component_agreement_image_mor_ben_shaya_then_all_components_correctly_persisted - PENDING-APPROVAL
-- e2e_media_client_resolution.py::TestMediaClientResolutionE2E::test_us7a_deposit_image_zero_matches_new_client - RUNNING (2026-10-15)
-- test_deposit_offer_064_e2e.py::TestDepositOffer064E2E::test_64_1_yes_starts_the_320_flow - QUEUED after us7a
+- e2e_media_client_resolution.py::TestMediaClientResolutionE2E::test_us7a_deposit_image_zero_matches_new_client - PASSED 2026-10-15 (before the deposit flow rewrite)
+- test_deposit_offer_064_e2e.py::TestDepositOffer064E2E::test_64_1_yes_starts_the_320_flow - FAILED 2026-10-15 (assertion read the summary message too); assertion fixed to the buttons message; rerun -> PASSED 2026-10-15 on the rewritten deposit flow
 Dropped by decision: us7d, us9, allocation slip, A8 (already done).
 
 ## G12 - ledger capture (billed), approved list

@@ -146,10 +146,12 @@ class DepositImageE2EBase:
         send = get_button_send(notification)
         assert send is not None, f"the offer must be sent as yes/no buttons: {reply!r}"
         assert [b.get("buttonId") or b.get("id") for b in send["buttons"]] and len(send["buttons"]) == 2
-        assert any(w in reply for w in _OFFER_WORDS), f"the question must be about a חשבונית מס / קבלה: {reply!r}"
+        # The offer is the buttons message alone; the earlier summary message of the slip may name the payer.
+        offer = send["body"]
+        assert any(w in offer for w in _OFFER_WORDS), f"the question must be about a חשבונית מס / קבלה: {offer!r}"
         client = manifest["resolution"]["name"]
-        assert client not in reply, f"the offer must not name the client: {reply!r}"
-        assert not re.search(r"\d{3,}", reply), f"the offer must carry no amount or number: {reply!r}"
+        assert client not in offer, f"the offer must not name the client: {offer!r}"
+        assert not re.search(r"\d{3,}", offer), f"the offer must carry no amount or number: {offer!r}"
 
 
 
