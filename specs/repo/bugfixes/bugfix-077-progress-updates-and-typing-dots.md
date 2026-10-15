@@ -1,6 +1,6 @@
 # bugfix-077: progress updates went quiet after 067; typing dots appear after the last message
 
-**Status**: In progress - root causes found 2026-10-15, fix directions decided by the PM (below). Typing item awaiting a decision.
+**Status**: Done - PR pending (number filled in after the PR exists). Prompts/tool descriptions rewritten as guidelines, completed-write-is-final guidance added, typing dots fixed (option 1). Not verified against the real model or live on dev.
 **Found by**: PM, live in dev/prod on 0.8.3.
 
 ## Problem 1 - far fewer progress updates (reactions unchanged, out of scope)
