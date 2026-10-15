@@ -107,6 +107,19 @@ def _execute_modify_or_delete(backbone, tool_name: str, args: Dict[str, Any], ch
     return _execute(backbone, tool_name, args, chat_id, created_by_phone, created_by_role)
 
 
+def _queue_calendar_file(backbone, tool_name: str, arguments: Dict[str, Any], result: Dict[str, Any]) -> None:
+    """Feature 102: queues the calendar file for a SUCCESSFUL write (the backbone sends it after the
+    conversation ends). A whole-series delete is a CANCEL; every other write is a PUBLISH of the current
+    state; a modify that changed nothing queues nothing."""
+    if result.get("changed") is False:
+        return
+    reminder_id = result.get("reminder_id") or arguments.get("reminder_id")
+    if not reminder_id:
+        return
+    is_cancel = tool_name == DELETE_REMINDER_TOOL["name"] and arguments.get("scope") == "whole_series"
+    backbone.queue_reminder_calendar_file(str(reminder_id), "CANCEL" if is_cancel else "PUBLISH")
+
+
 def _execute(backbone, tool_name: str, arguments: Dict[str, Any], chat_id: str,  # pylint: disable=too-many-positional-arguments
              created_by_phone: str, created_by_role: str) -> str:
     """Executes one of the three reminders-write tools immediately against the
@@ -141,6 +154,7 @@ def _execute(backbone, tool_name: str, arguments: Dict[str, Any], chat_id: str, 
                 created_by_phone=created_by_phone, created_by_role=created_by_role,
                 delivery_chat_id=chat_id,
             )
+            _queue_calendar_file(backbone, tool_name, arguments, result)
             if tool_name == CREATE_REMINDER_TOOL["name"]:
                 result_text = f"✅ נוצרה תזכורת (מזהה {result['reminder_id']}), מועד: {result['due_at']}"
             elif tool_name == MODIFY_REMINDER_TOOL["name"]:

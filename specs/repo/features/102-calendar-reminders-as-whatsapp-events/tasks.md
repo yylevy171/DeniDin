@@ -7,7 +7,7 @@ without the user's go-ahead. All runs go through `scripts/run_unit_integration_t
 ## Phase 1 - Builder and storage (foundation for every story)
 - [ ] T001A Tests `tests/unit/test_reminder_ics.py`: UID/SEQUENCE/prefix/zero-duration/no VALARM/no VTIMEZONE/TZID, one-time, recurring `RRULE`, `EXDATE` for CANCELLED exceptions, override `VEVENT` with `RECURRENCE-ID`, `METHOD:CANCEL`+`STATUS:CANCELLED`, multi-entry file, file names, `ValueError` cases, DST-crossing series keeps wall-clock time. (REQ-102-02/04, UAT 1.1/2.x)
 - [ ] T001B Implement `src/utils/reminder_ics.py` (contracts/ics-file-format.md).
-- [ ] T002A Tests `tests/unit/test_reminder_manager_ics.py`: migration adds `ics_sequence` to a pre-existing DB without it and is idempotent; `claim_ics_sequence` returns 0,1,2... per reminder; `get_for_calendar` returns cancelled reminders + exceptions; `list_for_calendar` active-only in the given order; unknown id -> None/omitted.
+- [ ] T002A Tests `tests/unit/test_reminder_manager_ics.py`: the `reminders` table is untouched, a pre-feature DB (no sequence table) works and keeps its rows, repeated starts never reset the counter; `claim_ics_sequence` returns 0,1,2... per reminder; `get_for_calendar` returns cancelled reminders + exceptions; `list_for_calendar` active-only in the given order; unknown id -> None/omitted.
 - [ ] T002B Implement the `ReminderManager` additions (`data-model.md`).
 
 ## Phase 2 - Delivery (US1, US2, US4, UAT 3.3)

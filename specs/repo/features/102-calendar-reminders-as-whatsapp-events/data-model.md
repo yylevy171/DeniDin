@@ -1,13 +1,20 @@
 # Data Model: 102 - Calendar Reminders as WhatsApp Events (.ics)
 
-## Schema change (the only one)
+## Schema change (the only one): a new table, no change to `reminders`
 
-`reminders.ics_sequence INTEGER NOT NULL DEFAULT 0`
+```sql
+CREATE TABLE IF NOT EXISTS reminder_ics_sequences (
+    reminder_id TEXT PRIMARY KEY REFERENCES reminders(reminder_id),
+    next_sequence INTEGER NOT NULL
+);
+```
 
-- Added by an idempotent migration in `ReminderManager._init_schema` (`PRAGMA table_info(reminders)`; `ALTER TABLE ... ADD COLUMN` only
-  when missing). Existing rows get 0. A fresh DB creates the column in `CREATE TABLE`.
+- Created by `ReminderManager._init_schema` with `IF NOT EXISTS`: no `ALTER TABLE`, no migration step, and the
+  `reminders` table (pinned exactly by the existing approved schema test) is untouched. A reminder with no row
+  (every reminder that pre-dates this feature) starts at 0.
 - Semantics: the `SEQUENCE` the **next** file for that reminder will carry.
-  `claim_ics_sequence(reminder_id)` returns the stored value and stores value+1 (one transaction).
+  `claim_ics_sequence(reminder_id)` returns the stored value (0 when there is no row) and stores value+1.
+- `get_for_calendar` reports the stored value as `ics_sequence` (read only).
 - No other table changes. `reminder_exceptions` and `fired_occurrences` are unchanged.
 
 ## Calendar entry (in-memory value object passed to the builder)

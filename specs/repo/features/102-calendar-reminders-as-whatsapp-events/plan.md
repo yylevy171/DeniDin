@@ -17,7 +17,7 @@ the `.ics` is generated from it on demand.
 - **Language/stack**: Python 3.11, the existing `denidin-app` (Starlette-free bot; Green API via
   `whatsapp-api-client-python`; `icalendar` already a dependency, `recurring_ical_events` for occurrences).
 - **Storage**: existing SQLite `reminders.db` (`reminders`, `reminder_exceptions`, `fired_occurrences`),
-  plus ONE new column `reminders.ics_sequence`.
+  plus ONE new table `reminder_ics_sequences` (the `reminders` table is untouched).
 - **Testing**: pytest through `scripts/run_unit_integration_tests.sh`; billed tests authored only, run only
   with the user's go-ahead.
 - **Constraints**: backbone only (the legacy `AIHandler` path is gone). No environment variables, no
@@ -44,7 +44,7 @@ Re-check after design: still OK (no new violation introduced in Phase 1).
 ## Design (summary; detail in `research.md`, `data-model.md`, `contracts/`)
 
 1. **`src/utils/reminder_ics.py`** (new, pure): builds the `.ics` bytes from reminder rows (REQ-102-02).
-2. **`ReminderManager`**: `ics_sequence` column (idempotent migration), `claim_ics_sequence()`,
+2. **`ReminderManager`**: `reminder_ics_sequences` table (`IF NOT EXISTS`, no ALTER), `claim_ics_sequence()`,
    `get_for_calendar()` (any status, with exceptions), `list_for_calendar()`.
 3. **Delivery**: `WhatsAppHandler.send_calendar_file()` + `DeniDin.send_calendar_file()` (temp file under
    `{data_root}/tmp/reminder_ics/`, deleted in `finally`, outbound note stored).
@@ -62,7 +62,7 @@ Re-check after design: still OK (no new violation introduced in Phase 1).
 ```text
 apps/denidin-app/
   src/utils/reminder_ics.py                       NEW
-  src/managers/reminder_manager.py                + ics_sequence, claim_ics_sequence, get_for_calendar, list_for_calendar
+  src/managers/reminder_manager.py                + reminder_ics_sequences table, claim_ics_sequence, get_for_calendar, list_for_calendar
   src/handlers/whatsapp_handler.py                + send_calendar_file
   denidin.py                                      + DeniDin.send_calendar_file
   src/capabilities/reminders/handler.py           queue on write success; dispatch send_reminders_calendar_file

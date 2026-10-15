@@ -20,7 +20,7 @@ All decisions below are grounded in the Gate Zero results (`spec.md` section 2) 
 ## R4 - `SEQUENCE` bookkeeping
 - **Problem**: update/cancel only work if `SEQUENCE` increases per file for the same `UID`; a re-sent
   unchanged file (on-demand) is untested on the phone.
-- **Decision**: a persisted per-reminder counter `ics_sequence` (default 0). Every file generated for a
+- **Decision**: a persisted per-reminder counter in its own table `reminder_ics_sequences` (absent row = 0; a separate table, not a column, so the approved `reminders` schema test and every existing database stay untouched). Every file generated for a
   reminder *claims* the current value and increments the stored one, so every file for a reminder carries a
   strictly higher `SEQUENCE` than any before - including on-demand re-sends and reminders that pre-date this
   feature (their first file carries 0, as a fresh entry would). Monotonic by construction, so no
@@ -57,7 +57,7 @@ All decisions below are grounded in the Gate Zero results (`spec.md` section 2) 
 
 ## R9 - Pre-feature reminders (PM decision 5)
 - Modify/delete of a reminder that never had a file simply sends the update/cancel file as usual; the
-  `ics_sequence` column defaults to 0 for existing rows (idempotent `ALTER TABLE`).
+  a reminder with no `reminder_ics_sequences` row starts at 0 (no migration needed).
 
 ## R10 - Boundaries in the prompts
 - `runtime_constitution.md` is gone; `config/prompts/` is the constitution. The new capability behavior needs

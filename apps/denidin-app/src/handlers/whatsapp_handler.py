@@ -308,6 +308,26 @@ class WhatsAppHandler:
             )
             return False
 
+    def send_calendar_file(self, chat_id: str, path: str, file_name: str) -> bool:
+        """Feature 102: sends the .ics file at `path` to `chat_id` via `sendFileByUpload` (no caption - the
+        confirmation text carries the words). Same retry policy as every other send (once on 5xx/timeout/
+        connection error after 1s, never on a 4xx). Returns True on a confirmed send, False on any
+        failure - never raises. Leaves the file alone: deleting it is the caller's job
+        (DeniDin.send_calendar_file)."""
+        if self.green_api_bot is None:
+            logger.error("[102] Cannot send a calendar file - no live bot object injected.")
+            return False
+        try:
+            self._send_file_with_retry(chat_id, path, file_name, "")
+            logger.info(f"[102] Calendar file sent: file_name={file_name!r}, chat_id={chat_id!r}")
+            _wire_payload = {"chat_id": chat_id, "message": f"[calendar file: {file_name}]"}
+            audit_wire("whatsapp", "out", "file", _wire_payload)
+            debug_wire("whatsapp", "out", "file", _wire_payload)
+            return True
+        except (requests.HTTPError, requests.Timeout, requests.ConnectionError) as e:
+            logger.error(f"[102] Failed to send calendar file {file_name!r} after retry: {e}", exc_info=True)
+            return False
+
     def is_media_message(self, notification: Notification) -> bool:
         """
         Check if notification contains a media message.

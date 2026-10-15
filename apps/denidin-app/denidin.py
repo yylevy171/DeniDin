@@ -9,6 +9,7 @@ import sys
 import signal
 import time
 import uuid
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from whatsapp_chatbot_python import Notification
 from openai import OpenAI
@@ -523,6 +524,30 @@ class DeniDin:  # pylint: disable=too-many-instance-attributes,too-many-public-m
             return False
         self.store_outbound_to_chat(chat_id, caption or f"[מסמך: {generated.temp_path.name}]")
         return True
+
+    def send_calendar_file(self, chat_id: str, file_name: str, content: bytes) -> bool:
+        """Feature 102: sends a reminder calendar (.ics) file to `chat_id` and stores a note of it once
+        sent. The content is written to a unique temp file under {data_root}/tmp/reminder_ics/ (the way
+        the fee-agreement docx is authored), uploaded, and the temp file is deleted whatever the outcome.
+        False - never raises - on any failure (nothing is stored then)."""
+        if self.whatsapp_handler is None:
+            return False
+        temp_path = Path(self.config.data_root) / "tmp" / "reminder_ics" / f"{uuid.uuid4().hex}_{file_name}"
+        try:
+            temp_path.parent.mkdir(parents=True, exist_ok=True)
+            temp_path.write_bytes(content)
+            if not self.whatsapp_handler.send_calendar_file(chat_id, str(temp_path), file_name):
+                return False
+            self.store_outbound_to_chat(chat_id, f"[קובץ יומן: {file_name}]")
+            return True
+        except Exception as e:  # pylint: disable=broad-except
+            logger.error(f"[102] Failed to send calendar file {file_name!r} to {chat_id}: {e}", exc_info=True)
+            return False
+        finally:
+            try:
+                temp_path.unlink(missing_ok=True)
+            except OSError as e:
+                logger.warning(f"[102] Failed to delete temp calendar file {temp_path}: {e}")
 
     def send_reaction(self, chat_id: str, id_message: str, emoji: str) -> bool:
         """Feature 084: sets (or, with emoji "", clears) a reaction on a message - not a

@@ -25,7 +25,7 @@ tap the received file on Android and confirm the calendar sheet opens.
 ## Operational notes
 - No new config. The temp folder is `{data_root}/tmp/reminder_ics/` and is emptied after every send.
 - Deploying needs a new release (prompts under `config/prompts/` are baked into the image) - a human decision.
-- The `reminders.db` migration (`ics_sequence`) runs automatically at startup and is idempotent.
+- The new `reminder_ics_sequences` table is created automatically at startup (`IF NOT EXISTS`); existing reminders start at SEQUENCE 0.
 
 ## Manual device checks (not automatable)
 1. **UAT 3.1** - on Android, tap a received `.ics` in WhatsApp: the calendar sheet opens with the title and time, no alert.
