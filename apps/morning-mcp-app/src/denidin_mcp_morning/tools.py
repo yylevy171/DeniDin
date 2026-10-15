@@ -2195,8 +2195,12 @@ _COMMON_WORD_DISCOVERY_CAP = 10  # user decision, 2026-08-11 - see resolve_clien
 
 def _rescue_distance_limit(query: str) -> int:
     """Strict Levenshtein limit for the rescue hatch (bugfix-073, user
-    decision 2026-10-15): 1 for a query of up to 5 characters, 2 above."""
-    return 1 if len(query.strip()) <= 5 else 2
+    decision 2026-10-15): 1 for a query of up to 5 characters, 2 for 6-10,
+    3 for 11 or more."""
+    length = len(query.strip())
+    if length <= 5:
+        return 1
+    return 2 if length <= 10 else 3
 
 
 def _rescued_by_distance(query: str, seen: Dict[str, Client]) -> Dict[str, Client]:

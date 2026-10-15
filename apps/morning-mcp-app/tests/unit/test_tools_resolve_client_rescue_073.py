@@ -61,3 +61,9 @@ def test_rescue_does_not_turn_a_near_miss_into_an_exact_match():
     exact, _ = tools.resolve_client_by_name(client, "מור פלומבו")
 
     assert exact is None  # the operator must still confirm a typo'd name
+
+
+def test_rescue_distance_limit_scales_with_query_length():
+    limit = tools._rescue_distance_limit
+    assert [limit("א" * n) for n in (1, 5, 6, 10, 11, 20)] == [1, 1, 2, 2, 3, 3]
+    assert limit("  " + "א" * 5 + "  ") == 1  # measured on the stripped query
