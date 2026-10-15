@@ -167,8 +167,11 @@ class RecordingBot:
         self.notifications_by_chat = {}
         self.unclaimed = []  # sends to a chat no test notification was ever created for
         self._counter = 0
+        # Feature 102: set to an exception to make every sendFileByUpload fail (UAT 3.3).
+        self.file_error = None
         self.api = SimpleNamespace(
-            sending=SimpleNamespace(sendMessage=self._send_message, sendInteractiveButtons=self._send_buttons),
+            sending=SimpleNamespace(sendMessage=self._send_message, sendInteractiveButtons=self._send_buttons,
+                                    sendFileByUpload=self._send_file_by_upload),
             serviceMethods=SimpleNamespace(sendTyping=lambda *a, **k: SimpleNamespace(code=200, data={})),
             marking=SimpleNamespace(readChat=lambda *a, **k: SimpleNamespace(code=200, data={})),
         )
@@ -200,6 +203,22 @@ class RecordingBot:
         return SimpleNamespace(code=200, data={'idMessage': id_message}, error=None)
 
 
+    def _send_file_by_upload(self, chat_id, path, fileName="", caption=""):
+        """Feature 102: records an uploaded file on the chat's notification as
+        {'file_name', 'content', 'after_message_count'} in `_test_sent_files` - the bytes are read NOW
+        (the app deletes its temp file right after the send), and `after_message_count` is how many
+        messages the user had already received, so a test can assert the file came AFTER the text."""
+        if self.file_error is not None:
+            raise self.file_error
+        target = self._target(chat_id)
+        record = {'file_name': fileName, 'content': Path(path).read_bytes(),
+                  'after_message_count': len(target._test_sent_messages) if target is not None else 0}
+        if target is not None:
+            target._test_sent_files.append(record)
+        logger.info(f"\n📎 Would send file to user: {fileName}")
+        return SimpleNamespace(code=200, data={'idMessage': self._next_id(chat_id)}, error=None)
+
+
 RECORDING_BOT = RecordingBot()
 
 
@@ -228,6 +247,7 @@ def create_real_notification(event_dict):
     notification.event = event_dict
     notification._test_sent_messages = []
     notification._test_button_sends = []
+    notification._test_sent_files = []
 
     def track_answer(message):
         """Track what would be sent to user"""
