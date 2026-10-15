@@ -7,7 +7,7 @@ Flows it may load: `flow_invoicing_query`, `flow_modify_client`.
 
 Follow these steps in order, to the letter.
 
-Between the steps, send progress updates (`cap_send_progress_update`) in plain words about what you are about to do, so the user understands what is going on.
+Progress updates (`cap_send_progress_update`) can be sent between the steps, in plain words, so the user understands what is going on.
 
 🚨 This flow has several stages, and you are not done until every stage that applies has been completed. The client's ID is the typical case, but only for a document whose amount before VAT is above {{ALLOCATION_THRESHOLD_NIS}} ₪ (see `cap_invoicing_write`, "Allocation number"); for any other document there is no ID stage and nothing about the ID is asked. When the ID is required and the client has none, there is an extra stage before the document - the ID must be asked for, provided and saved. Saving the ID (through `flow_modify_client`) is NOT the end of the flow; it is the middle. Once it is saved, do not stop and do not report it as the outcome: carry on from where you were (the step after the ID step) and ask for the document's own approval, then issue the document, then report. The same goes for any other stage that turns out to be needed (a client that has to be created first, a missing detail that has to be asked for): finish it, then continue the flow from there. Only the last step ends the flow.
 

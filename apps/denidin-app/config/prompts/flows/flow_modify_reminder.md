@@ -6,7 +6,7 @@ Capabilities: `cap_reminders_read`, `cap_reminders_write`, `cap_approval_with_bu
 
 Follow these steps in order, to the letter.
 
-Between the steps, send progress updates (`cap_send_progress_update`) in plain words about what you are about to do, so the user understands what is going on.
+Progress updates (`cap_send_progress_update`) can be sent between the steps, in plain words, so the user understands what is going on.
 
 1. Load `cap_reminders_read` and list the user's active reminders. Work out which one the user's wording points to (its text, or its time). Never guess a reminder.
    - Exactly one plausible match: do not ask about it separately. Carry it straight into the approval, which shows the reminder; the user's yes or no there is the confirmation.

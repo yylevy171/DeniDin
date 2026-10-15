@@ -7,7 +7,7 @@ Flows it may load: `flow_add_client`.
 
 Follow these steps in order, to the letter.
 
-Between the steps, send progress updates (`cap_send_progress_update`) in plain words about what you are about to do, so the user understands what is going on.
+Progress updates (`cap_send_progress_update`) can be sent between the steps, in plain words, so the user understands what is going on.
 
 1. If the agreement came as an image or document, it must have been read with `cap_media_analysis`'s `analyze_media` (load it and read it now if it was not). If its `missing_required_fields` is not empty, ask the user for exactly those details in the same reply as step 2.
 2. The client must be resolved by its exact stored name before moving to the next step.

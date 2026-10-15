@@ -6,7 +6,7 @@ Capabilities: `cap_client_read`, `cap_client_write`, `cap_approval_with_buttons`
 
 Follow these steps in order, to the letter.
 
-Between the steps, send progress updates (`cap_send_progress_update`) in plain words about what you are about to do, so the user understands what is going on.
+Progress updates (`cap_send_progress_update`) can be sent between the steps, in plain words, so the user understands what is going on.
 
 1. Load `cap_client_read` and resolve the client by the name the user gave, even if it looks exact.
    - An exact stored name: copy it character for character from the `resolve_client_name` result, never retyped (see `cap_client_read`).

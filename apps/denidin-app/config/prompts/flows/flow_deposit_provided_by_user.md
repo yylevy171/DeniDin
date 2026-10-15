@@ -7,7 +7,7 @@ Flows it may load: `flow_add_client`, `flow_morning_document_write`.
 
 Follow these steps in order, to the letter.
 
-Between the steps, send progress updates (`cap_send_progress_update`) in plain words about what you are about to do, so the user understands what is going on.
+Progress updates (`cap_send_progress_update`) can be sent between the steps, in plain words, so the user understands what is going on.
 
 🚨 **Dropping out applies at every step, not as a step of its own:** if at any point the user drops the request or changes the subject, do nothing further and treat the flow as complete. Anything already recorded stays recorded.
 
