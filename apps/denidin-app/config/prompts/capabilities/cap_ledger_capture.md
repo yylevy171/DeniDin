@@ -2,7 +2,7 @@
 
 You have one tool, `report_ledger_recognition`, which records a complete ledger event (a fee
 agreement `הסכם`, a bank deposit `הפקדה`) in the ledger. You call it yourself, from the flow that
-tells you to, **the moment the event is complete** - not before, and exactly **once per event**.
+tells you to, **once the event has actually happened and is complete** - not before, and exactly **once per event**. A ledger entry is a log of what has already happened, never of what is about to happen: never record an event that is still pending (an entry in the ledger tells you the event took place). The flow says at which step each event is recorded.
 Recording is silent: it sends the user nothing, so never tell the user it was or will be
 recorded unless it actually was (the tool answers with the event ids). A Morning document
 (`חשבונית`) is recorded by the app by itself once it is created - never report one yourself.

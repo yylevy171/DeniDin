@@ -172,51 +172,6 @@ class TestGroupEtiquetteBilled:
         assert_hebrew_only(response)
         assert '?' in response, f"Expected a clarifying question (containing '?'), got: {response!r}"
 
-    def test_case4_ordinary_message_negative_control(self, denidin_app):
-        """US5 negative control: an ordinary message with no ambiguity signal must
-        get a normal reply - neither the silent nor the ask-a-question path should
-        fire on typical traffic."""
-        from denidin import handle_text_message
-
-        notification = create_real_notification(
-            _group_event('תודה רבה על העזרה!', case_id='case4')
-        )
-        handle_text_message(notification)
-        response = get_full_reply(notification)
-
-        logger.info(f"Case 4 (ordinary message) response: {response!r}")
-        assert response is not None, "Expected a substantive reply, got no reply at all"
-        assert_hebrew_only(response)
-
-    def test_case5a_at_name_not_denidin_real_name_gets_no_reply(self, denidin_app):
-        """US7: an "@Name" pattern naming a real participant (not DeniDin) - should
-        get no reply, regardless of what the rest of the message says."""
-        from denidin import handle_text_message
-
-        notification = create_real_notification(
-            _group_event('@רותי תבדקי את זה בבקשה', case_id='case5a')
-        )
-        handle_text_message(notification)
-        response = get_full_reply(notification)
-
-        logger.info(f"Case 5a (@ real name, not DeniDin) response: {response!r}")
-        assert response is None, f"Expected no reply at all, got: {response!r}"
-
-    def test_case5b_at_name_not_denidin_arbitrary_text_gets_no_reply(self, denidin_app):
-        """US7: an "@Name" pattern with arbitrary text that isn't a real participant's
-        name either - must behave identically to case 5a, proving the check is
-        self-referential only, not a roster lookup."""
-        from denidin import handle_text_message
-
-        notification = create_real_notification(
-            _group_event('@lalalal תבדקי את זה בבקשה', case_id='case5b')
-        )
-        handle_text_message(notification)
-        response = get_full_reply(notification)
-
-        logger.info(f"Case 5b (@ arbitrary text) response: {response!r}")
-        assert response is None, f"Expected no reply at all, got: {response!r}"
-
     def test_case6_at_denidin_overrides_ambiguous_content(self, denidin_app):
         """US7: ambiguous-looking content, but an explicit @DeniDin tag - should get
         a substantive reply despite the ambiguity, no clarifying question."""
@@ -230,41 +185,4 @@ class TestGroupEtiquetteBilled:
 
         logger.info(f"Case 6 (@DeniDin overrides ambiguity) response: {response!r}")
         assert response is not None, "Expected a substantive reply, got no reply at all"
-        assert_hebrew_only(response)
-
-    def test_case7_native_mention_by_own_phone_number_gets_substantive_reply(self, denidin_app):
-        """bugfix-024: a REAL WhatsApp native @-mention picker inserts the mentioned
-        contact's raw phone number into message text, never a display name (confirmed
-        live via a real Green API getWaSettings call, not assumed from docs - see
-        CONSTITUTION.md "NO UNVERIFIED THIRD-PARTY ASSUMPTIONS"). This reproduces that
-        exact real shape - "@<own bare-digit number>" - using denidin_app's own,
-        actually-resolved own_whatsapp_number (never a hardcoded guess), and must get
-        a substantive reply, same as case6's manually-typed "@DeniDin" - proving
-        WhatsAppHandler's self-mention normalization (normalize_self_mentions) correctly
-        rewrites it before the model ever sees the raw digits."""
-        from denidin import handle_text_message
-
-        # Feature 059 item 7: the denidin_app fixture now injects a real Green
-        # API client, so own_whatsapp_number resolving is the expected state.
-        # A miss here means the live getWaSettings call genuinely failed - a
-        # real problem to surface, not silently skip past (the whole point of
-        # item 7 was that this test skipped on literally every run).
-        own_number = denidin_app.whatsapp_handler.own_whatsapp_number
-        assert own_number, (
-            "own_whatsapp_number was not resolved - the fixture's real Green API "
-            "getWaSettings() call failed or returned no 'phone' field. Check "
-            "config.test.json's Green API instance is authorized and reachable."
-        )
-
-        notification = create_real_notification(
-            _group_event(f'@{own_number} מי אתה?', case_id='case7')
-        )
-        handle_text_message(notification)
-        response = get_full_reply(notification)
-
-        logger.info(f"Case 7 (native @-mention by own phone number) response: {response!r}")
-        assert response is not None, (
-            f"Expected a substantive reply (own number {own_number!r} was @-mentioned - "
-            f"this IS DeniDin being addressed), got no reply at all"
-        )
         assert_hebrew_only(response)

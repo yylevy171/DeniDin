@@ -13,8 +13,8 @@ APPROVAL_CAP = (CONFIG / "capabilities" / "cap_approval_with_buttons.md").read_t
 
 
 def _offer_step() -> str:
-    start = FLOW.index("6. 🚨 **The offer")
-    return FLOW[start:FLOW.index("7. The user's next message")]
+    start = FLOW.index("4. 🚨 **The document")
+    return FLOW[start:FLOW.index("5. The user's next message")]
 
 
 def test_offer_step_exists_and_is_scoped_to_images_with_a_resolved_client():
@@ -41,7 +41,7 @@ def test_user_instruction_wins_over_the_offer():
 
 
 def test_reply_handling_covers_yes_no_and_anything_else():
-    reply = FLOW[FLOW.index("7. The user's next message"):FLOW.index("8. End.")]
+    reply = FLOW[FLOW.index("5. The user's next message"):FLOW.index("6. End.")]
     assert "A yes" in reply and "A no" in reply and "Anything else" in reply
     assert "do not ask again" in reply
 
