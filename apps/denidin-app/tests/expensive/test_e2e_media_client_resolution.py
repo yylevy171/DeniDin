@@ -44,7 +44,7 @@ from tests.billed._ledger_069_acceptance import assert_ledger_event_matches_mani
 from tests.billed._ledger_069_post_turn_base import drive_capture, seed_scenario
 from tests.e2e_helpers import (
     create_real_notification,
-    get_response,
+    get_full_reply,
     assert_response_exists,
     wipe_chat_messages_on_disk,
 )
@@ -183,7 +183,7 @@ class TestMediaClientResolutionE2E:
             },
         })
         handle_image_message(notification)
-        reply = get_response(notification)
+        reply = get_full_reply(notification)
         assert_response_exists(reply)
         return reply, trigger_epoch
 

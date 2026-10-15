@@ -4,12 +4,11 @@ Unit tests for the today_timestamp threading chain (Feature 043, tasks.md T007a)
 Written BEFORE implementation, per TDD workflow (METHODOLOGY.md SS VI).
 
 research.md R4 found the image-path ledger-classification call
-(AIHandler.capture_ledger_events_from_text) has NO way to override wall-clock
-"today" at all - test_ai_handler_instructions.py (T006) already covers
-_build_instructions itself; this file covers the 4-hop threading a real replay
+(the AI manager's capture_ledger_events_from_text) had NO way to override wall-clock
+"today" at all - the instruction building is covered elsewhere; this file covers the 4-hop threading a real replay
 needs: MediaHandler.process_media_message's existing `timestamp` argument ->
 _extract_text -> the extractor's analyze_media -> (image/PDF path only)
-AIHandler.capture_ledger_events_from_text. Omitted/None at any hop must
+the AI manager's capture_ledger_events_from_text. Omitted/None at any hop must
 preserve current behavior exactly (matches T006's "None preserves wall-clock"
 guarantee at the bottom of the chain).
 """
@@ -21,58 +20,7 @@ from src.handlers.extractors.image_extractor import ImageExtractor
 from src.handlers.extractors.pdf_extractor import PDFExtractor
 from src.handlers.media_handler import MediaHandler
 from src.models.media import Media
-from tests.ai_handler_test_support import make_ai_handler
 from tests.extractor_test_support import make_extractor_ai_manager
-
-
-class TestCaptureLedgerEventsFromTextThreadsReferenceTimestamp:
-    def test_passes_today_timestamp_into_build_instructions(self, tmp_path):
-        from unittest.mock import MagicMock
-        from src.handlers.ai_handler import AIHandler
-        from src.models.config import AppConfiguration
-
-        config = AppConfiguration(
-            green_api_instance_id="test", green_api_token="test", ai_api_key="test-key",
-            ai_model="gpt-4o-mini", ai_reply_max_tokens=1000, log_level="INFO",
-            data_root=str(tmp_path),
-            constitution_config={"file": "runtime_constitution.md", "base_dir": str(tmp_path)},
-        )
-        (tmp_path / "runtime_constitution.md").write_text("# Constitution", encoding="utf-8")
-        client = MagicMock()
-        mock_response = Mock()
-        mock_response.output = []
-        mock_response.id = "resp_1"
-        client.responses.create.return_value = mock_response
-        handler = make_ai_handler(client, config)
-
-        handler.capture_ledger_events_from_text("some extracted text", today_timestamp=1706600034)
-
-        sent_kwargs = client.responses.create.call_args.kwargs
-        assert "2024-01-30" in sent_kwargs["instructions"]
-
-    def test_omitted_today_timestamp_still_works(self, tmp_path):
-        """No TypeError, no behavior change, when the caller doesn't pass it."""
-        from unittest.mock import MagicMock
-        from src.handlers.ai_handler import AIHandler
-        from src.models.config import AppConfiguration
-
-        config = AppConfiguration(
-            green_api_instance_id="test", green_api_token="test", ai_api_key="test-key",
-            ai_model="gpt-4o-mini", ai_reply_max_tokens=1000, log_level="INFO",
-            data_root=str(tmp_path),
-            constitution_config={"file": "runtime_constitution.md", "base_dir": str(tmp_path)},
-        )
-        (tmp_path / "runtime_constitution.md").write_text("# Constitution", encoding="utf-8")
-        client = MagicMock()
-        mock_response = Mock()
-        mock_response.output = []
-        mock_response.id = "resp_1"
-        client.responses.create.return_value = mock_response
-        handler = make_ai_handler(client, config)
-
-        result = handler.capture_ledger_events_from_text("some extracted text")
-
-        assert result == []
 
 
 class TestImageExtractorThreadsReferenceTimestamp:

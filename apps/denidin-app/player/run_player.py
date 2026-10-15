@@ -19,7 +19,7 @@ from typing import Dict, List, Optional
 
 from player.config_safety import PlayerSafetyError, validate_data_root
 from player.export_parser import ParsedMessage, filter_date_range, filter_from_line, parse_export
-from player.export_source import PlayerExportSource
+from player.export_source import PlayerBot, PlayerExportSource
 from player.media_server import LocalMediaServer
 from player.player_config import PlayerConfigError, load_player_config
 
@@ -154,6 +154,8 @@ def run_replay(
     # always resolves to "" (no live Green API to ask) - PlayerConfig.whatsapp_own_number
     # is the operator-supplied substitute, same idea as sender_map.
     denidin.denidin_app.whatsapp_handler.own_whatsapp_number = whatsapp_own_number
+    # The model's sends go to a recording stand-in: nothing is ever sent for real.
+    denidin.denidin_app.green_api_bot = PlayerBot()
 
     resolved_extract_dir = extract_dir or (data_root / "_player_extracted")
     all_messages = parse_export(export_zip, resolved_extract_dir)

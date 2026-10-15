@@ -163,6 +163,8 @@ def build_health_check_fns(
     morning_mcp_locator: Optional[MorningMcpLocator] = None,
     memory_manager=None,
     log_path: Optional[Path] = None,
+    queue_monitor=None,
+    thread_supervisor=None,
 ) -> Dict[str, Callable[[], bool]]:
     """Binds each live object to its check via closure, once, producing the
     zero-arg callables start_health_server actually calls per request. Any
@@ -180,6 +182,11 @@ def build_health_check_fns(
         checks["chromadb_connectivity"] = lambda: check_chromadb_connectivity(memory_manager)
     if log_path is not None:
         checks["logs_writing"] = lambda: check_log_freshness(log_path)
+    if queue_monitor is not None and thread_supervisor is not None:
+        # Feature 067 (REQ-RMH-035/036), counted toward `status` (human decision 2026-10-13): queues
+        # within their limits, not stalled, and the dispatcher + session threads alive.
+        checks["intake_pipeline"] = lambda: (queue_monitor.within_limits() and queue_monitor.not_stalled()
+                                             and thread_supervisor.all_alive())
     return checks
 
 

@@ -2,7 +2,7 @@
 
 Goal: record a receipt (400) for a client with no linked invoice, such as a deposit (פיקדון) - money that is not income.
 
-Capabilities: `cap_client_read`, `cap_invoicing_write`, `cap_approval_with_buttons`.
+Capabilities: `cap_client_read`, `cap_invoicing_write`, `cap_approval_with_buttons`, `cap_ledger_capture`.
 Flows it may load: `flow_add_client`.
 
 Follow these steps in order, to the letter.
@@ -15,6 +15,6 @@ Follow these steps in order, to the letter.
    - No such client, or the user chose to create a new one: Load `flow_add_client` to create it, then continue with the exact name that was created. If the user declines to add the client, the flow is complete.
 2. Load `cap_invoicing_write`. Gather what is still missing. Anything you don't have from the user or the source, use `cap_send_to_user` to ask for, one question at a time; never guess or invent a value.
 3. Issuing the receipt MUST be approved by the user first. Load `cap_approval_with_buttons` and ask, with a message containing all the details the user needs to approve. Act only on a clear yes. On a no, do nothing, and use `cap_send_to_user` to ask what to change.
-4. On a yes, issue the receipt. If the action fails, use `cap_send_to_user` to tell the user plainly what happened. Retry once only if the reason is fixable; otherwise stop.
+4. On a yes, issue the receipt. If the action fails, use `cap_send_to_user` to tell the user plainly what happened. Retry once only if the reason is fixable; otherwise stop. 🚨 **Right after each document is created, record it in the ledger - once per document, before you report.** Load `cap_ledger_capture` if it is not loaded and call `report_ledger_recognition` with `verdict` `complete` and an `event` whose `source_type` is `חשבונית`, `event_subtype` `הפקה`, and `accounting_document_json` the successful `create_*` result copied verbatim (see `cap_ledger_capture`). A call that failed records nothing.
 5. If the user drops the request or changes the subject mid-way, do nothing further and treat the flow as complete.
-6. End. Use `cap_send_to_user` to report the outcome — no download link is required in this report. Then unload `cap_client_read`, `cap_invoicing_write`, `cap_approval_with_buttons` and this flow, keeping any that other work still in progress needs.
+6. End. Use `cap_send_to_user` to report the outcome — no download link is required in this report. Then unload `cap_client_read`, `cap_invoicing_write`, `cap_approval_with_buttons`, `cap_ledger_capture` and this flow, keeping any that other work still in progress needs.

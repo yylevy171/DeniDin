@@ -298,3 +298,13 @@ def _clean_ledger_events_around_every_test():
     _clear_ledger_events()
     yield
     _clear_ledger_events()
+
+
+@pytest.fixture(autouse=True)
+def _fresh_conversation_for_every_test():
+    """Feature 067: the model carries each chat's whole conversation (its chain), so a question
+    one test leaves unanswered would be "answered first" by the next test in the same chat.
+    Every test starts every chat from a clean conversation."""
+    from tests.e2e_helpers import start_every_chat_fresh
+    start_every_chat_fresh()
+    yield

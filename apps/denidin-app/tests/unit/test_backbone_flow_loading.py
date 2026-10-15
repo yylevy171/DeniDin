@@ -153,15 +153,17 @@ def test_flows_persist_across_turns_and_rebuild_every_round(env):
     client.responses.create.side_effect = [
         _call("load_flows", {"flows": ["flow_add_client"]}, "r1"),
         _call("send_to_user", {"text": "x"}, "r2"),
+        SimpleNamespace(output=[], output_text="", id="r3", usage=None),
     ]
-    _orch(env, client).single_turn(_request(), chat_id="chat1", user_role="godfather")
-    first, second = (c.kwargs for c in client.responses.create.call_args_list)
+    _orch(env, client).handle_message(_request(), chat_id="chat1", user_role="godfather")
+    first, second, _paused = (c.kwargs for c in client.responses.create.call_args_list)
     assert "FLOW[flow_add_client]" not in first["instructions"] and "FLOW[flow_add_client]" in second["instructions"]
 
     client2 = MagicMock()
-    client2.responses.create.return_value = _call("send_to_user", {"text": "y"})
-    _orch(env, client2).single_turn(_request(), chat_id="chat1", user_role="godfather")
-    assert "FLOW[flow_add_client]" in client2.responses.create.call_args.kwargs["instructions"]
+    client2.responses.create.side_effect = [_call("send_to_user", {"text": "y"}),
+                                            SimpleNamespace(output=[], output_text="", id="r9", usage=None)]
+    _orch(env, client2).handle_message(_request(), chat_id="chat1", user_role="godfather")
+    assert "FLOW[flow_add_client]" in client2.responses.create.call_args_list[0].kwargs["instructions"]
 
 
 def test_idle_sweep_clears_flows_too(env):

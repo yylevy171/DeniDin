@@ -66,89 +66,22 @@ def sample_ai_response():
 
 
 class TestGreenAPIErrorHandling:
-    """Test Green API HTTP error handling"""
-    
+    """A Green API HTTP error on a send is logged with its status and never raised (send_to_chat -> None)."""
+
+    @pytest.mark.parametrize("status", [400, 401, 429, 500])
+    @patch('time.sleep')
     @patch('src.handlers.whatsapp_handler.logger')
-    def test_send_response_catches_http_400_error(
-        self, mock_logger, whatsapp_handler, mock_notification, sample_ai_response
-    ):
-        """Test send_response catches 400 error and logs status code"""
+    def test_send_to_chat_logs_the_http_error_and_returns_none(self, mock_logger, _sleep, whatsapp_handler, status):
         response = Mock()
-        response.status_code = 400
-        response.text = "Bad Request"
-        
-        mock_notification.answer.side_effect = requests.HTTPError(
-            "400 Bad Request", response=response
-        )
-        
-        # Should raise after retries
-        with pytest.raises(requests.HTTPError):
-            whatsapp_handler.send_response(mock_notification, sample_ai_response)
-        
-        # Verify error was logged with status code
+        response.status_code = status
+        whatsapp_handler.denidin.green_api_bot = Mock()
+        whatsapp_handler.denidin.green_api_bot.api.sending.sendMessage.side_effect = requests.HTTPError(
+            f"{status} error", response=response)
+
+        assert whatsapp_handler.send_to_chat("1234567890@c.us", "Test response") is None
+
         assert mock_logger.error.called
-        log_call_args = str(mock_logger.error.call_args)
-        assert "400" in log_call_args or "Bad Request" in log_call_args
-    
-    @patch('src.handlers.whatsapp_handler.logger')
-    def test_send_response_catches_http_401_error(
-        self, mock_logger, whatsapp_handler, mock_notification, sample_ai_response
-    ):
-        """Test send_response catches 401 authentication error"""
-        response = Mock()
-        response.status_code = 401
-        response.text = "Unauthorized"
-        
-        mock_notification.answer.side_effect = requests.HTTPError(
-            "401 Unauthorized", response=response
-        )
-        
-        with pytest.raises(requests.HTTPError):
-            whatsapp_handler.send_response(mock_notification, sample_ai_response)
-        
-        assert mock_logger.error.called
-        log_call_args = str(mock_logger.error.call_args)
-        assert "401" in log_call_args or "auth" in log_call_args.lower()
-    
-    @patch('src.handlers.whatsapp_handler.logger')
-    def test_send_response_catches_http_429_error(
-        self, mock_logger, whatsapp_handler, mock_notification, sample_ai_response
-    ):
-        """Test send_response catches 429 rate limit error"""
-        response = Mock()
-        response.status_code = 429
-        response.text = "Too Many Requests"
-        
-        mock_notification.answer.side_effect = requests.HTTPError(
-            "429 Too Many Requests", response=response
-        )
-        
-        with pytest.raises(requests.HTTPError):
-            whatsapp_handler.send_response(mock_notification, sample_ai_response)
-        
-        assert mock_logger.error.called
-        log_call_args = str(mock_logger.error.call_args)
-        assert "429" in log_call_args or "rate limit" in log_call_args.lower()
-    
-    @patch('src.handlers.whatsapp_handler.logger')
-    def test_send_response_catches_http_500_error(
-        self, mock_logger, whatsapp_handler, mock_notification, sample_ai_response
-    ):
-        """Test send_response catches 500 server error"""
-        response = Mock()
-        response.status_code = 500
-        response.text = "Internal Server Error"
-        
-        mock_notification.answer.side_effect = requests.HTTPError(
-            "500 Internal Server Error", response=response
-        )
-        
-        with pytest.raises(requests.HTTPError):
-            whatsapp_handler.send_response(mock_notification, sample_ai_response)
-        
-        assert mock_logger.error.called
-        log_call_args = str(mock_logger.error.call_args)
-        assert "500" in log_call_args or "server" in log_call_args.lower()
+        assert str(status) in str(mock_logger.error.call_args)
 
 
 class TestUnsupportedMessageTypes:

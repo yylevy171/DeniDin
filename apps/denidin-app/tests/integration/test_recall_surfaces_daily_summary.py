@@ -12,7 +12,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.handlers.ai_handler import AIHandler
+from src.backbone.backbone import Backbone as AIHandler
 from src.managers.memory_collections import collection_name_for_chat
 from src.models.message import WhatsAppMessage
 from src.utils.time_utils import local_calendar_date, now_local
@@ -59,7 +59,7 @@ class TestRecallSurfacesDailySummary:
         handler = make_ai_handler(fake_client(capture), cfg)
         self._seed_summaries(handler)
 
-        handler.single_turn(_msg(handler, "מתי הפגישה עם רואה חשבון?"),
+        handler.handle_message(_msg(handler, "מתי הפגישה עם רואה חשבון?"),
                              chat_id=CHAT, user_phone=CHAT, sender="Avi", recipient="DeniDin")
 
         assert capture, "the OpenAI boundary must have been called"
@@ -77,7 +77,7 @@ class TestRecallSurfacesDailySummary:
         handler = make_ai_handler(fake_client(capture), cfg)
         self._seed_summaries(handler)  # includes 2 legacy session_summary records
         # a plain turn still succeeds and still recalls daily summaries
-        handler.single_turn(_msg(handler, "עדכון כללי"),
+        handler.handle_message(_msg(handler, "עדכון כללי"),
                              chat_id=CHAT, user_phone=CHAT, sender="Avi", recipient="DeniDin")
         assert capture
         assert "RECALLED MEMORIES" in capture[-1]["instructions"]

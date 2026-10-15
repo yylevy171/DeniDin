@@ -36,7 +36,7 @@ from tests.billed._ledger_069_post_turn_base import (
     seed_scenario,
     clean_069_chat_history,  # noqa: F401 - autouse fixture, registers in this module
 )
-from tests.e2e_helpers import create_real_notification, get_response
+from tests.e2e_helpers import create_real_notification, get_full_reply
 
 _HTTP_PORT = 8770
 
@@ -92,7 +92,7 @@ class TestLedgerPostTurnCaptureDocx:
             },
         })
         denidin_module._process_media_message(notification)  # media entry point
-        first_reply = get_response(notification)
+        first_reply = get_full_reply(notification)
         logger.info("US10 media/synthetic-turn reply: %r", first_reply)
 
         events, _, completing_epoch = drive_capture(

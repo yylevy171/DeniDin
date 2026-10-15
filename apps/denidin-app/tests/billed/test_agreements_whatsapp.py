@@ -22,7 +22,7 @@ import pytest
 
 from src.models.config import AppConfiguration
 from src.utils.time_utils import now_local
-from tests.e2e_helpers import create_real_notification, get_response, sanity_worker_data_root, wipe_chat_messages_on_disk
+from tests.e2e_helpers import create_real_notification, get_full_reply, sanity_worker_data_root, wipe_chat_messages_on_disk
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +117,7 @@ class TestAgreementsWhatsAppBilled:
         }
         notification = create_real_notification(event)
         handle_text_message(notification)
-        return get_response(notification)
+        return get_full_reply(notification)  # Feature 067: every message of the reply, not just the last
 
     @staticmethod
     def _seed(app, title=APPEAL, components=None):

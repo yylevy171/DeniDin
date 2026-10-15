@@ -20,7 +20,7 @@ from urllib.parse import unquote
 
 import pytest
 
-from src.managers.pending_approval_manager import BUTTON_ID_APPROVE, BUTTON_ID_DECLINE
+from src.handlers.whatsapp_handler import BUTTON_ID_APPROVE, BUTTON_ID_DECLINE
 from tests.billed._ledger_069_acceptance import load_manifest
 from tests.billed._ledger_069_post_turn_base import seed_scenario
 from tests.billed.denidin_mcp_e2e_helpers import (
@@ -38,7 +38,7 @@ from src.models.config import AppConfiguration
 from tests.e2e_helpers import (
     assert_response_exists,
     create_real_notification,
-    get_response,
+    get_full_reply,
     wipe_chat_messages_on_disk,
 )
 
@@ -130,7 +130,7 @@ class DepositImageE2EBase:
                 "caption": "", "jpegThumbnail": "", "isForwarded": False, "forwardingScore": 0}},
         })
         handle_image_message(notification)
-        reply = get_response(notification)
+        reply = get_full_reply(notification)
         assert_response_exists(reply)
         _track_approval_buttons(GODFATHER_CHAT_ID, notification)
         return reply, notification
@@ -146,10 +146,12 @@ class DepositImageE2EBase:
         send = get_button_send(notification)
         assert send is not None, f"the offer must be sent as yes/no buttons: {reply!r}"
         assert [b.get("buttonId") or b.get("id") for b in send["buttons"]] and len(send["buttons"]) == 2
-        assert any(w in reply for w in _OFFER_WORDS), f"the question must be about a חשבונית מס / קבלה: {reply!r}"
+        # The offer is the buttons message alone; the earlier summary message of the slip may name the payer.
+        offer = send["body"]
+        assert any(w in offer for w in _OFFER_WORDS), f"the question must be about a חשבונית מס / קבלה: {offer!r}"
         client = manifest["resolution"]["name"]
-        assert client not in reply, f"the offer must not name the client: {reply!r}"
-        assert not re.search(r"\d{3,}", reply), f"the offer must carry no amount or number: {reply!r}"
+        assert client not in offer, f"the offer must not name the client: {offer!r}"
+        assert not re.search(r"\d{3,}", offer), f"the offer must carry no amount or number: {offer!r}"
 
 
 

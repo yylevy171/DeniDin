@@ -8,6 +8,7 @@ import logging
 import sys
 import signal
 import time
+import uuid
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from whatsapp_chatbot_python import Notification
 from openai import OpenAI
@@ -15,7 +16,6 @@ from src.models.config import AppConfiguration
 from src.utils.logger import get_logger, reconfigure_file_rotation
 from src.sources.green_api_source import GreenAPIMessageSource
 from src.utils.green_api_bot import (
-    send_typing_indicator,
     start_typing_keepalive,
     stop_typing_keepalive,
 )
@@ -41,7 +41,6 @@ from src.managers.roll_marker_store import RollMarkerStore
 from src.managers.session_manager import SessionManager
 from src.managers.telemetry_manager import TelemetryManager
 from src.managers.user_manager import UserManager
-from src.managers.ledger_event_recognizer import LedgerEventRecognizer
 from src.handlers.whatsapp_handler import WhatsAppHandler
 from src.handlers.media_handler import MediaHandler
 from src.managers.group_membership_resolver import GroupMembershipResolver
@@ -50,6 +49,11 @@ from src.services.reminder_delivery_service import (
     run_startup_reminder_sweep, start_reminder_scheduler,
 )
 from src.services.capability_reset_service import start_capability_reset_scheduler
+from src.intake.denidin_dispatcher import DeniDinDispatcher
+from src.intake.intake_coordinator import IntakeCoordinator
+from src.services.queue_monitor_service import QueueMonitor, start_queue_monitor_scheduler
+from src.services.thread_supervisor import ThreadSupervisor, start_thread_supervisor_scheduler
+from src.utils.bounded_queue import QueueSettings
 from src.services.accounting_reconciliation_service import (
     run_startup_accounting_reconciliation_sweep, start_accounting_reconciliation_scheduler,
 )
@@ -179,8 +183,8 @@ class DeniDin:  # pylint: disable=too-many-instance-attributes,too-many-public-m
     DeniDin application instance (REQ-063-08). Owns DeniDin's managers (users,
     sessions, roll markers, long-term memory, ledger events, reminders, the Morning
     MCP locator, the document templates, telemetry), its WhatsApp side
-    (`whatsapp_handler`), and exactly one AI implementation, `ai_manager` (the legacy
-    AIHandler when the backbone flag is off, the Backbone when it is on). Every one of
+    (`whatsapp_handler`), and exactly one AI implementation, `ai_manager` (the
+    Backbone). Every one of
     them takes this object as its only constructor argument and reaches anything else
     it needs through it.
 
@@ -205,8 +209,6 @@ class DeniDin:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         self.green_api = green_api
         # The live bot - set by __main__ once it exists; None in tests and the player.
         self.green_api_bot: Optional[Any] = None
-        # Feature 063: whether the backbone flag selected the Backbone.
-        self.backbone_enabled = bool((config.feature_flags or {}).get('enable_capability_backbone', False))
         # Memory system and RBAC are always on (2026-07-14 decision).
         self.memory_enabled = True
         self.rbac_enabled = True
@@ -228,8 +230,6 @@ class DeniDin:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         self.whatsapp_handler: Any = None
         self.media_handler: Any = None
         self.ai_manager: Any = None
-        # Feature 069: the post-turn ledger recognition, run after every turn's reply.
-        self.ledger_event_recognizer: Any = None
         # The most recent AIResponse of any turn, for observability / E2E test
         # verification (e.g. a turn's mcp_calls) - set after every turn, both paths.
         self.last_response = None
@@ -246,8 +246,15 @@ class DeniDin:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         # Feature 080: the per-turn typing keep-alive renewal jobs' scheduler (research.md
         # R1) - started by initialize_app.
         self.typing_keepalive_scheduler: Any = None
-        # The turn in progress per chat - what send_progress_update sends through.
-        self._turns_in_progress: Dict[str, Tuple[Notification, Any, bool]] = {}
+        # Feature 067: what the poller received and the dispatcher has not handled yet
+        # (IntakeCoordinator), the dispatcher thread, and the queue monitor / thread
+        # supervisor. All None until __main__ builds them (tests, the player: none).
+        self.intake: Any = None
+        self.dispatcher: Any = None
+        self.queue_monitor: Any = None
+        self.thread_supervisor: Any = None
+        self.queue_monitor_scheduler: Any = None
+        self.thread_supervisor_scheduler: Any = None
         self._logger = get_logger(__name__)
 
     def get_collection(self):
@@ -299,7 +306,7 @@ class DeniDin:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         return "godfather"
 
     def store_inbound(self, message: Any, *, content: Optional[str] = None,
-                      internal: bool = False) -> Optional[str]:
+                      internal: bool = False, raise_on_error: bool = False) -> Optional[str]:
         """Stores a message received from the user (a WhatsAppMessage), under its own
         `message.message_id`. `content` defaults to message.text_content. A group
         message is addressed to the group itself.
@@ -309,7 +316,10 @@ class DeniDin:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         it isn't the user's WhatsApp message itself.
 
         A Green API redelivery of a message already stored (same idMessage) is not
-        stored twice. Returns the stored message_id, or None if nothing was stored."""
+        stored twice. Returns the stored message_id, or None if nothing was stored.
+
+        ``raise_on_error`` (Feature 067): the poller must not acknowledge a message it
+        failed to store, so it asks for the failure instead of the usual log-and-None."""
         if self.session_manager is None or not message.chat_id:
             return None
         try:
@@ -332,6 +342,8 @@ class DeniDin:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         except Exception as e:  # pylint: disable=broad-except
             logger.error(f"Failed to store inbound message for {getattr(message, 'chat_id', None)}: {e}",
                          exc_info=True)
+            if raise_on_error:
+                raise
             return None
 
     def store_outbound(self, reply_to: Any, content: str, *,
@@ -364,7 +376,8 @@ class DeniDin:  # pylint: disable=too-many-instance-attributes,too-many-public-m
                          exc_info=True)
             return None
 
-    def store_outbound_to_chat(self, chat_id: str, content: str) -> Optional[str]:
+    def store_outbound_to_chat(self, chat_id: str, content: str, *,
+                               mcp_calls: Optional[List[Dict]] = None) -> Optional[str]:
         """Stores a message just sent to `chat_id` when there's no inbound message to
         address it from (e.g. a generated document sent by a tool) - addressed to the
         chat itself."""
@@ -375,7 +388,7 @@ class DeniDin:  # pylint: disable=too-many-instance-attributes,too-many-public-m
                 chat_id=chat_id, role="assistant", content=content,
                 user_role=self._stored_role(chat_id if chat_id.endswith("@c.us") else None),
                 sender=self._own_jid, sender_name="DeniDin",
-                recipient=chat_id, recipient_name=chat_id,
+                recipient=chat_id, recipient_name=chat_id, mcp_calls=mcp_calls,
             ))
         except Exception as e:  # pylint: disable=broad-except
             logger.error(f"Failed to store outbound message for {chat_id}: {e}", exc_info=True)
@@ -402,9 +415,65 @@ class DeniDin:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         received - before any processing, so it's in the session whatever happens to
         the rest of the turn. Returns the WhatsAppMessage, whose message_id is the
         stored message's id."""
+        if self.intake is not None and not internal:
+            # Feature 067: the poller already parsed and stored this message (same
+            # message_id) before acknowledging it - hand the handler that one.
+            prestored = self.intake.prestored_for(notification)
+            if prestored is not None:
+                return prestored
         message = self.whatsapp_handler.process_notification(notification)
         self.store_inbound(message, content=content, internal=internal)
         return message
+
+    # Feature 067: message types the poller stores before acknowledging them, and the
+    # content each is stored with - exactly what its handler stores (a handler's later
+    # receive() then finds it already stored). Types not listed (button taps, edits,
+    # deletes, unsupported types) are stored by their own handler as before.
+    @staticmethod
+    def _prestore_content(type_message: str, notification: Notification) -> Tuple[bool, Optional[str]]:
+        if type_message in ("textMessage", "extendedTextMessage", "contactMessage"):
+            return True, None
+        if type_message in ("imageMessage", "documentMessage", "videoMessage"):
+            file_data = notification.event.get('messageData', {}).get('fileMessageData', {})
+            return True, file_data.get('caption', '') or f"[{file_data.get('fileName', 'file')} sent]"
+        if type_message == "contactsArrayMessage":
+            return True, "[contacts sent]"
+        return False, None
+
+    def prestore(self, notification: Notification) -> Any:
+        """Called by the poller, before it acknowledges the webhook: parses and stores the
+        message when its type is stored at receipt, and returns the WhatsAppMessage (None
+        for other types). A storing failure raises - the poller then does not acknowledge
+        and the webhook is redelivered (REQ-RMH-021)."""
+        type_message = notification.event.get('messageData', {}).get('typeMessage', '')
+        stored_type, content = self._prestore_content(type_message, notification)
+        if not stored_type or self.whatsapp_handler is None:
+            return None
+        message = self.whatsapp_handler.process_notification(notification)
+        self.store_inbound(message, content=content, raise_on_error=True)
+        return message
+
+    def receive_pending(self, chat_id: str) -> Any:
+        """Feature 067, at a model hand-back: the messages that arrived in `chat_id` while
+        the model was working (already stored) - a ``Drained`` (text to attach, media to
+        mention) or None when there is no intake (tests, the player)."""
+        if self.intake is None:
+            return None
+        return self.intake.drain_attachable(chat_id)
+
+    def start_typing(self, chat_id: str) -> Optional[str]:
+        """Switches WhatsApp's typing indicator on for `chat_id` - the AI layer calls it just
+        before an OpenAI call goes out (the indicator is on exactly while a call is in
+        flight). Returns the keep-alive job id for `stop_typing`, or None without a live bot."""
+        if self.green_api_bot is None or self.typing_keepalive_scheduler is None:
+            return None
+        return start_typing_keepalive(
+            self.typing_keepalive_scheduler, self.green_api_bot, chat_id, False, uuid.uuid4().hex)
+
+    def stop_typing(self, job_id: Optional[str]) -> None:
+        """Switches the typing indicator off (the call it covered has returned)."""
+        if self.typing_keepalive_scheduler is not None:
+            stop_typing_keepalive(self.typing_keepalive_scheduler, job_id)
 
     def send_text(self, notification: Notification, text: str, *, wire_context: str = "text") -> Any:
         """Sends a canned/notice reply in `notification`'s chat, and stores it once sent
@@ -413,43 +482,36 @@ class DeniDin:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         self.store_outbound(self.whatsapp_handler.process_notification(notification), sent.text)
         return sent
 
-    def send_response(self, notification: Notification, response: Any) -> Optional[str]:
-        """Sends a turn's AIResponse (plain text, or Feature 047's approval buttons) and
-        stores what was sent. Returns the sent idMessage when it went out as approval
-        buttons - for `ai_manager.record_sent_message_id` - else None."""
-        sent = self.whatsapp_handler.send_response(notification, response)
-        if sent is None:
-            return None
-        self.store_outbound(
-            self.whatsapp_handler.process_notification(notification), sent.text,
-            mcp_calls=None if sent.is_notice else response.mcp_calls,
-        )
-        return sent.whatsapp_id_message if sent.as_buttons else None
-
-    def begin_turn(self, notification: Notification, message: Any, is_blocked: bool) -> None:
-        """Marks `message`'s turn as in progress in its chat - send_progress_update
-        sends through it until end_turn."""
-        self._turns_in_progress[message.chat_id] = (notification, message, is_blocked)
-
-    def end_turn(self, chat_id: str) -> None:
-        self._turns_in_progress.pop(chat_id, None)
-
-    def send_progress_update(self, chat_id: Optional[str], text: str) -> bool:
-        """Feature 080: sends an interim message in the turn in progress in `chat_id`,
-        stores it (a progress update is a message like any other), and re-fires the
-        typing indicator - WhatsApp clears it client-side the instant a message is
-        delivered (bugfix 2026-09-13). False when no turn is in progress there (nothing
-        sent); an exception propagates."""
-        turn = self._turns_in_progress.get(chat_id) if chat_id else None
-        if turn is None or self.whatsapp_handler is None:
-            logger.debug(f"[080] No turn in progress in {chat_id!r} - progress update not sent")
+    def send_to_user(self, chat_id: Optional[str], text: str, *,
+                     mcp_calls: Optional[List[Dict]] = None) -> bool:
+        """Sends `text` to `chat_id` right away (the model's send_to_user) and stores it
+        once sent. False - never raises - when it was not sent."""
+        if not chat_id or self.whatsapp_handler is None:
+            logger.warning(f"No chat or no WhatsApp handler - message not sent (chat={chat_id!r})")
             return False
-        notification, message, is_blocked = turn
-        sent = self.whatsapp_handler.send_progress_update(notification, text)
-        self.store_outbound(message, sent.text)
-        if self.green_api_bot is not None:
-            send_typing_indicator(self.green_api_bot, message.chat_id, is_blocked)
+        sent = self.whatsapp_handler.send_to_chat(chat_id, text)
+        if sent is None:
+            return False
+        self.store_outbound_to_chat(chat_id, sent.text, mcp_calls=mcp_calls)
         return True
+
+    def send_approval_buttons(self, chat_id: Optional[str], text: str, *,
+                              mcp_calls: Optional[List[Dict]] = None) -> bool:
+        """Sends `text` to `chat_id` right away as the "כן"/"לא" approval buttons (the model's
+        approval_with_yes_no_buttons), stores it, and remembers the sent message's id on the
+        chat so a later tap can be matched against it (the stale-tap guard). False - never
+        raises - when nothing was sent; when the buttons could not be sent, the failure
+        notice goes out instead and the chat has no outstanding approval."""
+        if not chat_id or self.whatsapp_handler is None:
+            logger.warning(f"No chat or no WhatsApp handler - approval not sent (chat={chat_id!r})")
+            return False
+        sent = self.whatsapp_handler.send_buttons_to_chat(chat_id, text)
+        if sent is None:
+            return False
+        self.store_outbound_to_chat(chat_id, sent.text, mcp_calls=None if sent.is_notice else mcp_calls)
+        if sent.as_buttons and sent.whatsapp_id_message and self.session_manager is not None:
+            self.session_manager.set_approval_message_id(chat_id, sent.whatsapp_id_message)
+        return not sent.is_notice
 
     def send_document(self, chat_id: str, generated: Any, caption: str) -> bool:
         """Feature 083: sends a generated, verified document to `chat_id` and stores it
@@ -483,6 +545,13 @@ class DeniDin:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         billed-test failure (2026-08-03, "attempt to write a readonly
         database") traced to exactly that gap.
         """
+        for sched_name in ("queue_monitor_scheduler", "thread_supervisor_scheduler"):
+            sched = getattr(self, sched_name)
+            if sched is not None:
+                sched.shutdown(wait=False)
+        if self.dispatcher is not None:
+            self._logger.info("Stopping dispatcher thread...")
+            self.dispatcher.stop()
         if self.cleanup_thread:
             self._logger.info("Stopping session cleanup thread...")
             self.cleanup_thread.stop()
@@ -506,6 +575,8 @@ class DeniDin:  # pylint: disable=too-many-instance-attributes,too-many-public-m
             self._logger.info("Stopping typing keep-alive scheduler...")
             self.typing_keepalive_scheduler.shutdown(wait=False)
             self._logger.info("Typing keep-alive scheduler stopped")
+        if self.session_manager is not None and hasattr(self.session_manager, "close"):
+            self.session_manager.close()
         if self.memory_manager is not None:
             self._logger.info("Closing ChromaDB client...")
             self.memory_manager.client.close()
@@ -533,11 +604,7 @@ def _handle_not_initialized_error(notification: Notification, message_type: str)
 
 def start_capability_reset_if_enabled(denidin: "DeniDin"):
     """Feature 063: starts the idle capability-reset scheduler, or returns None.
-    Only ever started when the backbone flag is on (`backbone` is
-    constructed only then - the legacy path never loads capabilities) AND
-    `capabilities_reset_minutes` > 0 (0 = inactive, the default)."""
-    if not denidin.backbone_enabled:
-        return None
+    Only started when `capabilities_reset_minutes` > 0 (0 = inactive, the default)."""
     return start_capability_reset_scheduler(
         denidin, getattr(denidin.config, "capabilities_reset_minutes", 0)
     )
@@ -545,7 +612,7 @@ def start_capability_reset_if_enabled(denidin: "DeniDin"):
 
 def build_denidin_objects(denidin: DeniDin) -> None:
     """Builds every object DeniDin owns except its AI implementation (initialize_app
-    selects that by the backbone flag) onto `denidin`, each constructed with DeniDin
+    builds that) onto `denidin`, each constructed with DeniDin
     itself and reading its own settings off DeniDin's config."""
     config = denidin.config
     # Feature 080: the one RequestTelemetry store, shared with the AI implementation's
@@ -583,11 +650,7 @@ def build_denidin_objects(denidin: DeniDin) -> None:
     # Feature 039: most-permissive-role RBAC resolution for group turns, through the
     # Green API groups client (degrades to sender-only RBAC without one).
     denidin.group_membership_resolver = GroupMembershipResolver(denidin)
-    # Feature 069: the post-turn ledger recognition - runs after every turn's reply,
-    # whichever AI implementation produced it.
-    denidin.ledger_event_recognizer = LedgerEventRecognizer(denidin)
-    # The media pipeline (the legacy path's MediaHandler; the backbone path uses its
-    # MediaFileManager to download and archive).
+    # The media pipeline (its MediaFileManager downloads and archives).
     denidin.media_handler = MediaHandler(denidin)
 
 
@@ -653,12 +716,8 @@ def initialize_app(config_dict: dict, green_api: Optional[Any] = None) -> DeniDi
     # Feature 063 / REQ-063-08: one-time selection, at startup, of the ONE AI
     # implementation that handles this process's turns - the legacy AIHandler (flag
     # off) or the Backbone (flag on). The other one is never constructed.
-    if denidin.backbone_enabled:
-        from src.backbone.backbone import Backbone
-        denidin.ai_manager = Backbone(denidin)
-    else:
-        from src.handlers.ai_handler import AIHandler
-        denidin.ai_manager = AIHandler(denidin)
+    from src.backbone.backbone import Backbone
+    denidin.ai_manager = Backbone(denidin)
 
     # Feature 070: sessions never expire and there is no session-cleanup thread.
     # Aged conversation is rolled to daily summaries by the nightly
@@ -720,50 +779,22 @@ def _resolve_group_user_phone(message) -> Optional[str]:
     return resolution.phone if resolution else None
 
 
-def _send_ai_response_and_attach(notification: Notification, chat_id: str, ai_response) -> None:
-    """Send this turn's AI reply, then - when it was sent as interactive approval
-    buttons (Feature 047/054) - hand the returned idMessage to the AI implementation
-    (`record_sent_message_id`), so a later tap's stanzaId can be matched against it.
-
-    Extracted verbatim from `_process_conversational_message` (Feature 069) so the
-    post-turn ledger-recognition hook has a clean seam to run after.
-    """
-    sent_id_message = denidin_app.send_response(notification, ai_response)
-    if sent_id_message is not None:
-        denidin_app.ai_manager.record_sent_message_id(chat_id, sent_id_message)
-
-
-def _run_post_turn_ledger_recognition(
-    *, chat_id: str, sender_phone: Optional[str], reply_text: str, turn_mcp_calls
-) -> None:
-    """Feature 069 (mechanism move): after a conversational turn's reply has been
-    sent, run the post-turn ledger recognition (LedgerEventRecognizer - RBAC-gated,
-    best-effort, every failure logged and swallowed, FR-069-006)."""
-    if denidin_app.ledger_event_recognizer is None:
-        return
-    denidin_app.ledger_event_recognizer.recognize_after_turn(
-        chat_id=chat_id, sender_phone=sender_phone,
-        reply_text=reply_text, turn_mcp_calls=turn_mcp_calls,
-    )
-
-
 def _process_conversational_message(notification: Notification, *, internal: bool = False) -> None:
     """
-    Shared turn-processing logic for any message type that flows into the conversational
-    AIHandler pipeline: validate -> parse -> AIHandler -> send response, with the same global
-    error handling/fallback-message behavior. Feature 039: group messages are no longer
-    gated by a mention check - addressed to DeniDin by default, same as 1:1.
+    Processing for any message type that flows into the conversational pipeline: validate ->
+    store on receipt -> hand to the AI implementation, which sends everything the model says
+    through its tools the moment the model says it (nothing is sent from here). Feature 039:
+    group messages are no longer gated by a mention check - addressed to DeniDin by default,
+    same as 1:1.
 
-    Extracted (Feature 030) from what was previously handle_text_message's own body, so the new
-    contactMessage router (a shared WhatsApp contact card - see handle_contact_message) can reuse
-    it verbatim instead of duplicating this ~90-line try/except block. Callers MUST have already
-    confirmed denidin_app is initialized.
+    Extracted (Feature 030) from what was previously handle_text_message's own body, so the
+    contactMessage router (a shared WhatsApp contact card - see handle_contact_message) can
+    reuse it. Callers MUST have already confirmed denidin_app is initialized.
 
     Args:
         notification: Green API notification object containing message data
-        internal: the message is DeniDin-generated context re-entering the pipeline
-            (Feature 069's ledger-stash turn), not the user's own WhatsApp message -
-            stored without its WhatsApp idMessage.
+        internal: the message is DeniDin-generated context re-entering the pipeline, not the
+            user's own WhatsApp message - stored without its WhatsApp idMessage.
     """
     try:
         # Validate message type
@@ -773,13 +804,11 @@ def _process_conversational_message(notification: Notification, *, internal: boo
 
         # Parsed into a WhatsAppMessage (message_id, received_timestamp) and stored the
         # moment it's received - before any processing, so it's in the session whatever
-        # happens to the rest of the turn.
+        # happens to the rest.
         message = denidin_app.receive(notification, internal=internal)
 
         # Create tracking prefix for all logs related to this message
         tracking = f"[msg_id={message.message_id}] [recv_ts={message.received_timestamp.isoformat()}]"
-
-        # Log incoming message with tracking
         logger.info(
             f"{tracking} Received message from {message.sender_name} ({message.sender_id}): "
             f"{message.text_content[:100]}..."
@@ -787,131 +816,30 @@ def _process_conversational_message(notification: Notification, *, internal: boo
 
         # Feature 039 (US4): group turns are governed by the most-permissive role
         # present among the group's members, not the individual sender alone.
-        # None for 1:1 and for any resolution failure - AIHandler.create_request
-        # itself falls back to message.sender_id when user_phone is None, so 1:1
-        # RBAC there is unaffected. single_turn has no such message-aware
-        # fallback (it only knows `sender`, which Feature 039 repurposed to hold
-        # the display name, not the phone - see the comment below), so its call
-        # must always resolve to a real phone explicitly.
+        # None for 1:1 and for any resolution failure.
         group_user_phone = _resolve_group_user_phone(message)
-
-        # Create AI request
         ai_request = denidin_app.ai_manager.create_request(message, user_phone=group_user_phone)
         logger.debug(f"{tracking} Created AI request {ai_request.request_id}")
 
-        # Feature 048: show WhatsApp's typing indicator while DeniDin works on a reply to
-        # this turn - fires on every inbound conversational turn uniformly, including a
-        # user's yes/no reply to a pending approval (same entry point, no special-casing
-        # needed - see user-stories.md US1 scenario 4). Best-effort/log-only; skipped for
-        # blocked senders (mirrors feature 045's read-receipt precedent). Single call, no
-        # renewal (spec.md Q1) - a renewal loop was tried and reverted 2026-08-13 after live
-        # testing surfaced an unresolved scheduling delay; accepted limitation that the
-        # indicator may lapse before the reply arrives on turns slower than ~20s.
-        is_blocked = denidin_app.user_manager.get_user(message.sender_id).is_blocked
-        # Feature 080 (REQ-080-01): when the feature flag is on, use the renewal-loop
-        # keep-alive instead of feature 048's single-shot call - see
-        # src/utils/green_api_bot.py's start_typing_keepalive docstring. keepalive_job_id
-        # stays None (no-op stop below) whenever the flag is off, preserving feature 048's
-        # exact prior behavior byte-for-byte.
-        keepalive_job_id = None
-        if denidin_app.green_api_bot is not None:
-            if denidin_app.typing_keepalive_scheduler is not None:
-                keepalive_job_id = start_typing_keepalive(
-                    denidin_app.typing_keepalive_scheduler, denidin_app.green_api_bot,
-                    message.chat_id, is_blocked, ai_request.request_id,
-                )
-            else:
-                send_typing_indicator(denidin_app.green_api_bot, message.chat_id, is_blocked)
-
-        # Get AI response (with retry logic and fallbacks built-in)
-        # Feature 039: pass the resolved display name (not the raw WhatsApp id) as
-        # sender, so Message.sender/recipient hold a readable name, not a phone
-        # number - see SessionManager.add_message for the "AI" sentinel retirement.
         # user_phone must be the real phone (group_user_phone for a group, else
-        # message.sender_id) - single_turn's own RBAC fallback is `user_phone or
-        # sender`, and `sender` is now a display name, not a phone (found
-        # 2026-08-04: this silently broke RBAC-gated Morning MCP tool attachment
-        # for every 1:1 conversation, resolving the display name as an unknown
-        # phone -> defaulting to CLIENT role).
-        # Feature 080: send_progress_update (a tool) sends through the turn in progress.
-        denidin_app.begin_turn(notification, message, is_blocked)
-        # Feature 063 / REQ-063-08: one call, whichever AI implementation the flag
-        # selected at startup - each resolves the turn's RBAC role itself from
-        # user_phone.
+        # message.sender_id): `sender` is a display name since Feature 039.
         effective_user_phone = group_user_phone or message.sender_id
-        try:
-            ai_response = denidin_app.ai_manager.single_turn(
-                ai_request,
-                chat_id=message.chat_id,
-                sender=message.sender_display_name,
-                user_phone=effective_user_phone,
-                sender_phone=message.sender_id,
-                is_group=message.is_group,
-                chat_name=message.chat_name,
-            )
-        finally:
-            denidin_app.end_turn(message.chat_id)
-        # The most recent turn's AIResponse, for observability / E2E test
-        # verification (e.g. its mcp_calls) - kept on DeniDin, both paths.
-        denidin_app.last_response = ai_response
-        logger.info(
-            f"{tracking} AI response generated: {ai_response.tokens_used} tokens, "
-            f"{len(ai_response.response_text)} chars"
-        )
-        # Feature 080: DeniDin's turn ends the instant it's about to send anything (or
-        # concludes with no reply) - stop the renewal job here, before the outbound send,
-        # matching feature 048's Q4 "DeniDin's turn" semantics exactly. No-op if
-        # keepalive_job_id is None (flag off, or no live bot).
-        if denidin_app.typing_keepalive_scheduler is not None:
-            stop_typing_keepalive(denidin_app.typing_keepalive_scheduler, keepalive_job_id)
-
-        # Feature 039 (US4a): should_reply=False means the model determined this
-        # message wasn't for DeniDin - not an error, not a failure, just no reply.
-        # The user's message was already stored on receipt; nothing is sent, so nothing
-        # more is stored.
-        if not ai_response.should_reply:
-            logger.info(f"{tracking} No reply sent (should_reply=False, no-reply sentinel)")
-            return
-
-        # Send response (with retry logic built-in)
-        # Feature 047: when this turn just sent a new pending approval as
-        # interactive buttons, send_response returns the sent idMessage - attach it
-        # to the pending approval so a later tap's stanzaId can be matched against
-        # it (contracts/pending-approval-message-binding.md). None in every other
-        # case (plain-text sends, no-reply, or a failed buttons send).
-        # Feature 054 bug (caught 2026-08-17 via a real billed test - a button tap
-        # was always rejected as stale): a pending approval is EITHER an MCP one
-        # (pending_approval_manager) OR a local-tool one, e.g. create/modify/delete
-        # reminder (pending_local_tool_approval_manager) - never both at once for
-        # the same chat - but this call site only ever attached to the MCP manager.
-        # attach_sent_message_id() is a documented no-op (logged, never raises) on
-        # whichever manager has nothing pending for this chat, so calling both
-        # unconditionally is safe.
-        _send_ai_response_and_attach(notification, message.chat_id, ai_response)
-        logger.info(f"{tracking} Response sent to {message.sender_name}")
-
-        # Feature 069 (mechanism move): ledger capture is a post-turn recognition
-        # step now - it runs LAST, after the operator's reply is already out, "like
-        # a finally block", and never changes that reply. Best-effort/self-contained.
-        _run_post_turn_ledger_recognition(
+        ai_response = denidin_app.ai_manager.handle_message(
+            ai_request,
             chat_id=message.chat_id,
-            sender_phone=group_user_phone or message.sender_id,
-            reply_text=ai_response.response_text,
-            turn_mcp_calls=ai_response.mcp_calls,
+            sender=message.sender_display_name,
+            user_phone=effective_user_phone,
+            sender_phone=message.sender_id,
+            is_group=message.is_group,
+            chat_name=message.chat_name,
         )
+        # What the call did (the texts it sent, its Morning calls, its usage) - for
+        # observability / E2E test verification. Nothing is delivered from it.
+        denidin_app.last_response = ai_response
+        logger.info(f"{tracking} Handled: {ai_response.tokens_used} tokens, {len(ai_response.mcp_calls)} Morning calls")
 
     except Exception as e:
-        # Feature 080: safety net - stop any still-running keep-alive job even if the try
-        # block raised before reaching its own stop_typing_keepalive call above (e.g.
-        # single_turn itself raised). NameError guards the case the job was never started
-        # (exception before keepalive_job_id was assigned).
-        try:
-            if denidin_app.typing_keepalive_scheduler is not None:
-                stop_typing_keepalive(denidin_app.typing_keepalive_scheduler, keepalive_job_id)
-        except NameError:
-            pass
         # Global exception handler - catches anything not handled by specific handlers
-        # Try to include tracking if message was processed
         try:
             tracking = f"[msg_id={message.message_id}] [recv_ts={message.received_timestamp.isoformat()}]"
             logger.error(
@@ -929,22 +857,10 @@ def _process_conversational_message(notification: Notification, *, internal: boo
         # the user's own message was already stored on receipt).
         try:
             denidin_app.send_text(notification, ERROR_PROCESSING_MESSAGE_TRY_AGAIN)
-            try:
-                logger.info(f"{tracking} Generic fallback message sent to user")
-            except (NameError, AttributeError):
-                logger.info("Generic fallback message sent to user (no tracking available)")
+            logger.info("Generic fallback message sent to user")
         except Exception as fallback_error:
             # Even fallback failed - log and continue
-            try:
-                logger.error(
-                    f"{tracking} Failed to send fallback message: {fallback_error}",
-                    exc_info=True
-                )
-            except (NameError, AttributeError):
-                logger.error(
-                    f"Failed to send fallback message (no tracking available): {fallback_error}",
-                    exc_info=True
-                )
+            logger.error(f"Failed to send fallback message: {fallback_error}", exc_info=True)
 
 
 def _reply_unsupported(notification: Notification) -> None:
@@ -961,93 +877,34 @@ def _reply_unsupported(notification: Notification) -> None:
         logger.error(f"Failed to send unsupported message auto-reply: {e}", exc_info=True)
 
 
-def _handle_media_message(notification: Notification, message) -> Optional[Dict]:
+def _process_media_message(notification: Notification) -> None:
     """
-    The legacy (flag-off) media path: processes an image/document through MediaHandler
-    and sends the summary back to the user.
-
-    Returns the MediaHandler result dict (Feature 069: so the caller can route a
-    recognised `ledger_stash` as a synthetic conversational turn); None when the
-    processing failed. CHK111: the caption is the WhatsApp message text from the
-    webhook, not file metadata.
+    The media message (image, document, video, audio) path: download and validate the file
+    up front (MediaFileManager - no extraction), then hand it RAW to the AI implementation.
+    The model is told only "media attached, type X, caption Y"; it itself loads
+    cap_media_analysis and calls analyze_media, which does the real extraction
+    (src/capabilities/media_analysis/handler.py). Ledger recognition of a fee-agreement /
+    bank-deposit event happens in the flows that handle them.
 
     Args:
-        notification: Green API notification containing the media message
-        message: the already-stored inbound message (its message_id is the stored
-            message's id, which MediaHandler fills image_path/extracted_text into)
-    """
-    # Green API nests file metadata inside fileMessageData. It does NOT provide the file
-    # size - MediaFileManager determines it after download.
-    file_message_data = notification.event.get('messageData', {}).get('fileMessageData', {})
-    filename = file_message_data.get('fileName', 'unknown')
-    mime_type = file_message_data.get('mimeType', '')
-    logger.info(f"Processing media message: {filename} ({mime_type}) from {message.sender_id}")
-
-    result = denidin_app.media_handler.process_media_message(
-        file_url=file_message_data.get('downloadUrl', ''),
-        filename=filename,
-        mime_type=mime_type,
-        file_size=0,
-        caption=file_message_data.get('caption', ''),  # CHK111: User's message text
-        sender_phone=message.sender_id,
-        chat_id=message.chat_id,
-        timestamp=message.timestamp,
-        message_id=message.message_id,
-    )
-
-    if not result.get("success", False):
-        logger.warning(f"Media processing failed: {result.get('error_message', 'Unknown error')}")
-        denidin_app.send_text(
-            notification, FILE_TOO_LARGE_REFUSAL if result.get("too_large") else FAILED_TO_PROCESS_FILE_DEFAULT)
-        return None
-
-    # Feature 069 (Phase 9/10): a recognised fee-agreement / bank-deposit image or DOCX
-    # is NOT answered with the plain extraction summary - the caller routes
-    # `ledger_stash` as a synthetic conversational turn, and the operator gets that
-    # turn's reply instead (a client-resolution question, a confirmation, etc.).
-    if result.get("ledger_stash"):
-        logger.info(
-            f"[069] media ledger event recognised "
-            f"(source_type={result.get('ledger_stash_source_type')!r}) - routing a "
-            f"synthetic conversational turn instead of the plain media summary"
-        )
-        return result
-
-    # Send summary to user (no approval workflow - just send as reply)
-    logger.info(f"Sending media processing summary to {message.sender_id}")
-    denidin_app.send_text(notification, result.get("summary", ""))
-    return result
-
-
-def _process_media_message_via_backbone(notification: Notification, message, keepalive_job_id) -> None:
-    """Feature 063 (REQ-063-04a, real design 2026-09-15 - corrects the 2026-09-14
-    shortcut this used to take): the flag-on media path, split out of
-    `_process_media_message` so that function's own complexity stays bounded.
-
-    Threads RAW, not-yet-extracted media into the Backbone - no
-    eager extraction before the model decides it needs cap_media_analysis. This does ONLY a
-    download + format/size validation up front (reusing the unmodified,
-    standalone low-level MediaFileManager methods, REQ-063-03 - never the
-    monolithic MediaHandler.process_media_message, which also extracts/
-    persists/ledger-detects in the same call and is left completely untouched
-    for the flag-off legacy path). The backbone gets the raw `Media`
-    object; the model is told only "media attached, not yet extracted", and itself
-    CHOOSES whether to `load_capabilities(["cap_media_analysis"])` and call its
-    `analyze_media` tool (src/capabilities/media_analysis/handler.py makes the
-    real extraction call only then); ledger recognition of a fee-agreement/
-    bank-deposit event is denidin.py's shared post-turn step, same as any text
-    turn - not an eager side effect of
-    downloading.
+        notification: Green API notification object containing media message data
     """
     from src.models.media import Media
     from src.models.message import AIRequest
 
-    message_data = notification.event.get('messageData', {})
-    file_message_data = message_data.get('fileMessageData', {})
-    file_url = file_message_data.get('downloadUrl', '')
-    filename = file_message_data.get('fileName', 'unknown')
-    mime_type = file_message_data.get('mimeType', '')
-    caption = file_message_data.get('caption', '')
+    # 2026-09-30: stored the moment it's received - caption, or "[<filename> sent]" with no
+    # caption. The saved file's path and its extracted text are filled into this same stored
+    # message later.
+    _file_data = notification.event.get('messageData', {}).get('fileMessageData', {})
+    message = denidin_app.receive(
+        notification,
+        content=_file_data.get('caption', '') or f"[{_file_data.get('fileName', 'file')} sent]",
+    )
+
+    file_url = _file_data.get('downloadUrl', '')
+    filename = _file_data.get('fileName', 'unknown')
+    mime_type = _file_data.get('mimeType', '')
+    caption = _file_data.get('caption', '')
 
     file_manager = denidin_app.media_handler.media_file_manager
     try:
@@ -1057,32 +914,26 @@ def _process_media_message_via_backbone(notification: Notification, message, kee
         file_manager.validate_file_size(len(content))
         media_type = file_manager.validate_format(filename, mime_type)
     except ValueError as exc:
-        logger.warning(f"Media download/validation failed (flag-on path): {exc}")
-        if denidin_app.typing_keepalive_scheduler is not None:
-            stop_typing_keepalive(denidin_app.typing_keepalive_scheduler, keepalive_job_id)
-        denidin_app.send_text(
-            notification, FILE_TOO_LARGE_REFUSAL if isinstance(exc, FileTooLargeError) else FAILED_TO_PROCESS_FILE_DEFAULT)
+        logger.warning(f"Media download/validation failed: {exc}")
+        refusal = FILE_TOO_LARGE_REFUSAL if isinstance(exc, FileTooLargeError) else FAILED_TO_PROCESS_FILE_DEFAULT
+        denidin_app.send_text(notification, refusal)
         return
 
-    if denidin_app.typing_keepalive_scheduler is not None:
-        stop_typing_keepalive(denidin_app.typing_keepalive_scheduler, keepalive_job_id)
-
-    # Archive the file (2026-09-30) - the same MediaFileManager.store_media step the
-    # legacy MediaHandler uses; its data_root-relative path is persisted as the user
-    # message's image_path. A storage failure is logged and the turn continues on the
+    # Archive the file (2026-09-30) - its data_root-relative path is persisted as the user
+    # message's image_path. A storage failure is logged and processing continues on the
     # in-memory bytes (image_path stays None) - the user still gets an answer.
     media_path = None
     try:
         media_path = file_manager.store_media(content, filename, message.sender_id)
     except Exception as exc:  # pylint: disable=broad-except
-        logger.error(f"Failed to archive incoming media file (flag-on path): {exc}", exc_info=True)
+        logger.error(f"Failed to archive incoming media file: {exc}", exc_info=True)
     if media_path:
         denidin_app.update_message(message.chat_id, message.message_id, image_path=media_path)
 
     media = Media(data=content, mime_type=mime_type, filename=filename, media_type=media_type)
     # user_prompt is the caption only ("" when none) - the backbone prepends the
-    # "[מדיה מצורפת: ...]" marker itself. The turn runs on config.ai_model like any
-    # other turn; only analyze_media's extractor uses config.ai_vision_model.
+    # "[ATTACHED MEDIA: ...]" marker itself. The model runs on config.ai_model like for any
+    # other message; only analyze_media's extractor uses config.ai_vision_model.
     request = AIRequest(
         user_prompt=caption,
         constitution="",
@@ -1094,97 +945,22 @@ def _process_media_message_via_backbone(notification: Notification, message, kee
         original_message=message,
         media=media,
     )
-    is_blocked = denidin_app.user_manager.get_user(message.sender_id).is_blocked
-    denidin_app.begin_turn(notification, message, is_blocked)
-    try:
-        response = denidin_app.ai_manager.single_turn(
-            request, chat_id=message.chat_id,
-            sender=message.sender_display_name, user_phone=message.sender_id,
-            sender_phone=message.sender_id, is_group=message.is_group, chat_name=message.chat_name,
-        )
-    finally:
-        denidin_app.end_turn(message.chat_id)
-    denidin_app.last_response = response
-    # Same send as a text turn (plain text or approval buttons), stored once sent.
-    if response.should_reply:
-        _send_ai_response_and_attach(notification, message.chat_id, response)
-
-    # 2026-09-15 (closing a real gap): a media turn is a real godfather/admin
-    # turn exactly like a text one - it needs the SAME shared post-turn ledger
-    # recognition hook _process_conversational_message already runs, so a
-    # fee-agreement/bank-deposit photo captures correctly under flag-on too.
-    # recognize_ledger_event reads its context from the session (every message of
-    # this turn is already stored, as it was received/sent), not from locals.
-    _run_post_turn_ledger_recognition(
-        chat_id=message.chat_id, sender_phone=message.sender_id,
-        reply_text=response.response_text, turn_mcp_calls=response.mcp_calls,
+    denidin_app.last_response = denidin_app.ai_manager.handle_message(
+        request, chat_id=message.chat_id,
+        sender=message.sender_display_name, user_phone=message.sender_id,
+        sender_phone=message.sender_id, is_group=message.is_group, chat_name=message.chat_name,
     )
 
 
-def _process_media_message(notification: Notification) -> None:
-    """
-    Feature 048 (2026-08-13, corrected same day): the media turn (images, documents,
-    video, audio) with the typing indicator around its processing - originally scoped OUT
-    of this feature (spec.md Q2), which was wrong: "typing while processing" plainly
-    includes media, not just conversational turns. Mirrors _process_conversational_message's
-    shape, not its full error handling (_handle_media_message has its own failure path
-    via FAILED_TO_PROCESS_FILE_DEFAULT).
-
-    Args:
-        notification: Green API notification object containing media message data
-    """
-    # 2026-09-30: stored the moment it's received (both paths) - caption, or
-    # "[<filename> sent]" with no caption. The saved file's path and its extracted
-    # text are filled into this same stored message later in the turn.
-    _file_data = notification.event.get('messageData', {}).get('fileMessageData', {})
-    message = denidin_app.receive(
-        notification,
-        content=_file_data.get('caption', '') or f"[{_file_data.get('fileName', 'file')} sent]",
-    )
-    is_blocked = denidin_app.user_manager.get_user(message.sender_id).is_blocked
-    # Feature 080: same renewal-vs-single-call choice as _process_conversational_message
-    # above - see that function's comment for the full rationale.
-    keepalive_job_id = None
-    if denidin_app.green_api_bot is not None:
-        if denidin_app.typing_keepalive_scheduler is not None:
-            keepalive_job_id = start_typing_keepalive(
-                denidin_app.typing_keepalive_scheduler, denidin_app.green_api_bot,
-                message.chat_id, is_blocked, message.message_id,
-            )
-        else:
-            send_typing_indicator(denidin_app.green_api_bot, message.chat_id, is_blocked)
-
-    # Feature 063 (REQ-063-04a, real design 2026-09-15 - corrects the 2026-09-14
-    # shortcut this used to take): when the flag is on, media messages enter
-    # through the SAME Backbone as text turns, RAW - no eager
-    # extraction before the model even decides it needs cap_media_analysis. See
-    # _process_media_message_via_backbone's own docstring for the full design.
-    if denidin_app.backbone_enabled:
-        _process_media_message_via_backbone(notification, message, keepalive_job_id)
+def _log_inbound_webhook(notification: Notification) -> None:
+    """Wire-log the raw inbound webhook - unless it was already logged when the poller
+    received it (Feature 067: a message is logged at receipt, because one that joins the
+    model's work at a hand-back never reaches a handler)."""
+    intake = getattr(denidin_app, "intake", None) if denidin_app is not None else None
+    if intake is not None and intake.inbound_logged_for(notification):
         return
-
-    result = _handle_media_message(notification, message)
-    if denidin_app.typing_keepalive_scheduler is not None:
-        stop_typing_keepalive(denidin_app.typing_keepalive_scheduler, keepalive_job_id)
-
-    # Feature 069 (Phase 9/10): a fee-agreement / bank-deposit image or DOCX was
-    # recognised. Instead of replying with the plain extraction summary,
-    # re-enter the conversational pipeline with a synthetic textMessage carrying
-    # the structured "ledger stash" - so the operator gets a real turn (client
-    # resolution question / confirmation), and the post-turn ledger recognition
-    # step runs over it exactly as it would for a typed message.
-    if isinstance(result, dict) and result.get("ledger_stash"):
-        stash_text = result["ledger_stash"]
-        logger.info(
-            f"[069] routing recognised media ledger event "
-            f"(source_type={result.get('ledger_stash_source_type')!r}) as a synthetic "
-            f"conversational turn"
-        )
-        message_data = notification.event.setdefault("messageData", {})
-        message_data.clear()
-        message_data["typeMessage"] = "textMessage"
-        message_data["textMessageData"] = {"textMessage": stash_text}
-        _process_conversational_message(notification, internal=True)
+    audit_wire("whatsapp", "in", "webhook", notification.event)
+    debug_wire("whatsapp", "in", "webhook", notification.event)
 
 
 def handle_text_message(notification: Notification) -> None:
@@ -1195,8 +971,7 @@ def handle_text_message(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing message data
     """
-    audit_wire("whatsapp", "in", "webhook", notification.event)
-    debug_wire("whatsapp", "in", "webhook", notification.event)
+    _log_inbound_webhook(notification)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "text")
         return
@@ -1217,8 +992,7 @@ def handle_contact_message(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing message data
     """
-    audit_wire("whatsapp", "in", "webhook", notification.event)
-    debug_wire("whatsapp", "in", "webhook", notification.event)
+    _log_inbound_webhook(notification)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "contact")
         return
@@ -1239,8 +1013,7 @@ def handle_contacts_array_message(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing message data
     """
-    audit_wire("whatsapp", "in", "webhook", notification.event)
-    debug_wire("whatsapp", "in", "webhook", notification.event)
+    _log_inbound_webhook(notification)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "contacts array")
         return
@@ -1257,8 +1030,7 @@ def handle_image_message(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing image data
     """
-    audit_wire("whatsapp", "in", "webhook", notification.event)
-    debug_wire("whatsapp", "in", "webhook", notification.event)
+    _log_inbound_webhook(notification)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "image")
         return
@@ -1274,8 +1046,7 @@ def handle_document_message(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing document data
     """
-    audit_wire("whatsapp", "in", "webhook", notification.event)
-    debug_wire("whatsapp", "in", "webhook", notification.event)
+    _log_inbound_webhook(notification)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "document")
         return
@@ -1291,8 +1062,7 @@ def handle_video_message(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing video data
     """
-    audit_wire("whatsapp", "in", "webhook", notification.event)
-    debug_wire("whatsapp", "in", "webhook", notification.event)
+    _log_inbound_webhook(notification)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "video")
         return
@@ -1352,8 +1122,7 @@ def handle_edited_message(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing the edit
     """
-    audit_wire("whatsapp", "in", "webhook", notification.event)
-    debug_wire("whatsapp", "in", "webhook", notification.event)
+    _log_inbound_webhook(notification)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "editedMessage")
         return
@@ -1378,8 +1147,7 @@ def handle_deleted_message(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing the deletion
     """
-    audit_wire("whatsapp", "in", "webhook", notification.event)
-    debug_wire("whatsapp", "in", "webhook", notification.event)
+    _log_inbound_webhook(notification)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "deletedMessage")
         return
@@ -1408,8 +1176,7 @@ def handle_ignored_message_default(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing message data
     """
-    audit_wire("whatsapp", "in", "webhook", notification.event)
-    debug_wire("whatsapp", "in", "webhook", notification.event)
+    _log_inbound_webhook(notification)
 def handle_button_tap(notification: Notification) -> None:
     """
     Feature 047: handle a WhatsApp interactive-buttons tap resolving a pending
@@ -1430,8 +1197,7 @@ def handle_button_tap(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing the tap
     """
-    audit_wire("whatsapp", "in", "webhook", notification.event)
-    debug_wire("whatsapp", "in", "webhook", notification.event)
+    _log_inbound_webhook(notification)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "interactiveButtonsResponse")
         return
@@ -1443,61 +1209,17 @@ def handle_button_tap(notification: Notification) -> None:
     # answer it gives ("כן"/"לא"); the synthetic requests below reuse its message_id.
     message = denidin_app.receive(notification, content="כן" if selected_id == "denidin_approve" else "לא")
 
-    # Feature 080: a button tap is a real turn too (resolve_button_tap can itself take a
-    # while - it's a live MCP/local-tool call, same as any other turn) - start the same
-    # renewal-loop typing keep-alive the conversational path uses (denidin.py's own
-    # _process_conversational_message), so a slow tap-resolution doesn't leave the user
-    # staring at a stopped "typing…" indicator. This was missing entirely pre-2026-09-13 -
-    # a real gap, not something this feature deliberately scoped out.
-    is_blocked = denidin_app.user_manager.get_user(message.sender_id).is_blocked
-    keepalive_job_id = None
-    if denidin_app.green_api_bot is not None and denidin_app.typing_keepalive_scheduler is not None:
-        keepalive_job_id = start_typing_keepalive(
-            denidin_app.typing_keepalive_scheduler, denidin_app.green_api_bot,
-            message.chat_id, is_blocked, message.message_id,
-        )
-
-    # A tap is a turn like any other: same progress-update delivery as a typed reply.
-    denidin_app.begin_turn(notification, message, is_blocked)
-    try:
-        # Feature 063 / REQ-063-08: one call, whichever AI implementation the flag
-        # selected - None for a stale/superseded tap.
-        ai_response = denidin_app.ai_manager.resolve_button_tap(message, selected_id, stanza_id)
-        if ai_response is not None:
-            denidin_app.last_response = ai_response
-    finally:
-        denidin_app.end_turn(message.chat_id)
-        # DeniDin's turn is over the instant resolve_button_tap returns (or raises) -
-        # matching feature 048/080's "stop the instant the turn ends" semantics.
-        if denidin_app.typing_keepalive_scheduler is not None:
-            stop_typing_keepalive(denidin_app.typing_keepalive_scheduler, keepalive_job_id)
-
+    # A tap resolves like a typed "כן"/"לא": the AI implementation continues the conversation
+    # (None for a stale/superseded tap - nothing is done at all, no reply of any kind).
+    ai_response = denidin_app.ai_manager.resolve_button_tap(message, selected_id, stanza_id)
     if ai_response is None:
-        # Stale/superseded tap, or no pending approval at all - spec.md
-        # Clarifications: silently ignore, send nothing at all (no send_response
-        # call, no notification.answer call).
         logger.info(
             f"[047] Button tap produced no resolution for chat={message.chat_id!r} "
-            f"(selected_id={selected_id!r}, stanza_id={stanza_id!r}) - sending nothing"
+            f"(selected_id={selected_id!r}, stanza_id={stanza_id!r}) - doing nothing"
         )
         return
-
-    # Under the Backbone a tap's resolution CAN chain a fresh approval - the same
-    # send-and-record as a typed turn (also Feature 098's "save the ID, then issue
-    # the document" chain on the legacy path).
-    _send_ai_response_and_attach(notification, message.chat_id, ai_response)
-    logger.info(f"[047] Button tap resolved and response sent for chat={message.chat_id!r}")
-
-    # Feature 069: a button tap that resolved an approval (e.g. an add_client or a
-    # create_* document) is a real turn - run the same post-turn ledger recognition
-    # the typed-reply path runs, so a חשבונית/הסכם/בנק completed via a tap is
-    # captured identically. Best-effort/self-contained (see the function's docstring).
-    _run_post_turn_ledger_recognition(
-        chat_id=message.chat_id,
-        sender_phone=message.sender_id,
-        reply_text=ai_response.response_text,
-        turn_mcp_calls=ai_response.mcp_calls,
-    )
+    denidin_app.last_response = ai_response
+    logger.info(f"[047] Button tap resolved for chat={message.chat_id!r}")
 
 
 def handle_unsupported_message_default(notification: Notification) -> None:
@@ -1509,8 +1231,7 @@ def handle_unsupported_message_default(notification: Notification) -> None:
     Args:
         notification: Green API notification object containing message data
     """
-    audit_wire("whatsapp", "in", "webhook", notification.event)
-    debug_wire("whatsapp", "in", "webhook", notification.event)
+    _log_inbound_webhook(notification)
     if denidin_app is None:
         _handle_not_initialized_error(notification, "unsupported")
         return
@@ -1706,6 +1427,7 @@ def main() -> None:
         'accounting_ledger_update_freq': startup_config.accounting_ledger_update_freq,
         # Feature 063: idle-reset threshold (minutes) - same must-be-listed-here rule.
         'capabilities_reset_minutes': startup_config.capabilities_reset_minutes,
+        'message_queues': startup_config.message_queues,
         # Feature 069: context-window size for the post-turn ledger recognition call.
         'ledger_recognition_context_window_hours': startup_config.ledger_recognition_context_window_hours,
         # Feature 098: fills the constitution's {{ALLOCATION_THRESHOLD_NIS}} -
@@ -1768,6 +1490,27 @@ def main() -> None:
         lambda chat_id: denidin.user_manager.get_user(chat_id).is_blocked
     )
 
+    # Feature 067: the poller (live_bot) only receives, stores and acknowledges; the
+    # DeniDinDispatcher thread handles what it queued, one message at a time, through the
+    # same dispatch_notification the replay player uses. Queue limits/warnings and thread
+    # supervision (REQ-RMH-033..036) are built here too - started HERE, never inside
+    # initialize_app() (tests call that and must not get background threads).
+    queue_settings = QueueSettings.from_config(denidin.config)
+    denidin.intake = IntakeCoordinator(denidin)
+    live_bot.intake = denidin.intake
+    denidin.dispatcher = DeniDinDispatcher(denidin.intake, dispatch_notification)
+    denidin.queue_monitor = QueueMonitor(queue_settings)
+    denidin.queue_monitor.register(denidin.intake.queues)
+    denidin.queue_monitor.register(lambda: [denidin.session_manager.queue])
+    denidin.thread_supervisor = ThreadSupervisor(queue_settings)
+    denidin.thread_supervisor.register("dispatcher", denidin.dispatcher.is_alive, denidin.dispatcher.start)
+    denidin.thread_supervisor.register(
+        "session-manager-actor", denidin.session_manager.is_alive, denidin.session_manager.start)
+    denidin.dispatcher.start()
+    denidin.queue_monitor_scheduler = start_queue_monitor_scheduler(denidin.queue_monitor, queue_settings)
+    denidin.thread_supervisor_scheduler = start_thread_supervisor_scheduler(
+        denidin.thread_supervisor, queue_settings)
+
     # bugfix-076 (2026-09-07): localhost-only /health server + heartbeat writer, for the
     # prod-only external health-check prober. Started FIRST among this block - deliberately
     # BEFORE the reminder/accounting-reconciliation/daily-roll startup sweeps below, which is a
@@ -1804,6 +1547,8 @@ def main() -> None:
             morning_mcp_locator=denidin.morning_mcp_locator,
             memory_manager=denidin.memory_manager,
             log_path=resolve_log_path(),
+            queue_monitor=denidin.queue_monitor,
+            thread_supervisor=denidin.thread_supervisor,
         )
         # bugfix-069: report-only fields (e.g. whatsapp_authorized) - never fail status.
         info_fns = build_health_info_fns(green_api=live_bot.api)
@@ -1835,8 +1580,7 @@ def main() -> None:
         )
 
     # Feature 063: idle capability-reset sweep (capabilities_reset_minutes; 0 =
-    # inactive) - only meaningful when the backbone flag is on (that's the only
-    # path that loads capabilities). Same deliberate placement as above.
+    # inactive). Same deliberate placement as above.
     denidin.capability_reset_scheduler = start_capability_reset_if_enabled(denidin)
 
     # Feature 070: nightly 02:00 Israel-local daily-summary roll - same
@@ -1888,6 +1632,13 @@ def main() -> None:
             if denidin.daily_roll_scheduler is not None:
                 logger.info("Stopping daily-summary roll scheduler...")
                 denidin.daily_roll_scheduler.shutdown(wait=False)
+
+            # Feature 067: stop the dispatcher thread and the queue monitor / thread supervisor
+            for scheduler in (denidin.queue_monitor_scheduler, denidin.thread_supervisor_scheduler):
+                if scheduler is not None:
+                    scheduler.shutdown(wait=False)
+            if denidin.dispatcher is not None:
+                denidin.dispatcher.stop()
 
             # Raise KeyboardInterrupt to break out of message_source.start()'s
             # blocking bot.run_forever() call, below.

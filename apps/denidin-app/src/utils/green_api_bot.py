@@ -17,8 +17,9 @@ import logging
 import time
 from typing import Any, Callable, Optional
 
-from whatsapp_chatbot_python import GreenAPIBot, GreenAPIBotError
+from whatsapp_chatbot_python import GreenAPIBot, GreenAPIBotError, Notification
 
+from src.utils.bounded_queue import QueueLimitExceeded
 from src.utils.logger import get_logger
 from src.utils.wire_log import audit_wire, debug_wire
 
@@ -340,6 +341,30 @@ class DeniDinGreenAPIBot(GreenAPIBot):
         # notification, before it's dispatched to any router handler. Set by denidin.py once
         # denidin_app exists (needed for the blocked-sender check). None = no-op.
         self.on_notification_received: Optional[Callable[[dict], None]] = None
+        # Feature 067: the IntakeCoordinator (src/intake) the poller hands received messages
+        # to (its Notifications use the router's state manager). None = today's
+        # behaviour exactly (the router handles each webhook synchronously) - the player
+        # and tests never set it.
+        self.intake: Optional[Any] = None
+
+    def _submit_to_intake(self, data: dict) -> None:
+        """Feature 067: receive -> (room check) -> store -> acknowledge -> queue, so a burst
+        is read, stored and acknowledged at once while the dispatcher thread handles the
+        messages one at a time. A full intake drops the message without storing it
+        (REQ-RMH-033); a failed store raises, so it is not acknowledged and Green API
+        redelivers it (REQ-RMH-021)."""
+        body = data["body"]
+        intake = self.intake
+        assert intake is not None
+        try:
+            intake.check_room(body)
+        except QueueLimitExceeded:
+            self.api.receiving.deleteNotification(data["receiptId"])
+            return
+        notification = Notification(body, self.api, self.router.message.state_manager)
+        item = intake.prepare(notification)
+        self.api.receiving.deleteNotification(data["receiptId"])
+        intake.submit(item)
 
     def run_forever(self) -> None:
         self.api.session.headers["Connection"] = "keep-alive"
@@ -359,6 +384,10 @@ class DeniDinGreenAPIBot(GreenAPIBot):
                     except Exception as hook_error:  # pylint: disable=broad-except
                         # A hook failure must never break notification processing itself.
                         self.logger.log(logging.ERROR, hook_error)
+
+                if getattr(self, "intake", None) is not None and data["body"].get("typeWebhook") == "incomingMessageReceived":
+                    self._submit_to_intake(data)
+                    continue
 
                 self.router.route_event(data["body"])
                 self.api.receiving.deleteNotification(data["receiptId"])

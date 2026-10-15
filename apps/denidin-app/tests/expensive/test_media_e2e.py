@@ -22,7 +22,7 @@ from urllib.parse import unquote
 from src.models.config import AppConfiguration
 from tests.e2e_helpers import (
     create_real_notification,
-    get_response,
+    get_full_reply,
     assert_response_exists,
     assert_hebrew_only,
     assert_summary_exists,
@@ -181,7 +181,7 @@ class TestWhatsAppE2E:
         logger.info("="*80)
         
         handle_image_message(notification)
-        response = get_response(notification)
+        response = get_full_reply(notification)
         
         logger.info(f"Response length: {len(response)} chars")
         logger.info(f"FULL RESPONSE:\n{response}")
@@ -248,7 +248,7 @@ class TestWhatsAppE2E:
         handle_document_message(notification)
         
         # Verify user got a response
-        response = get_response(notification)
+        response = get_full_reply(notification)
         
         # Log the FULL response without truncation
         logger.info(f"[test_e2e_hebrew_docx_from_whatsapp] Response length: {len(response)} chars")
@@ -319,7 +319,7 @@ class TestWhatsAppE2E:
         handle_document_message(notification)
         
         # Verify user got a response
-        response = get_response(notification)
+        response = get_full_reply(notification)
         
         # Log the FULL response without truncation
         logger.info(f"[test_e2e_hebrew_pdf_from_you] Response length: {len(response)} chars")
@@ -379,7 +379,7 @@ class TestWhatsAppE2E:
         logger.info("="*80)
         
         handle_document_message(notification)
-        response = get_response(notification)
+        response = get_full_reply(notification)
         
         logger.info(f"Response length: {len(response)} chars")
         logger.info(f"FULL RESPONSE:\n{response}")
@@ -434,7 +434,7 @@ class TestWhatsAppE2E:
         logger.info("="*80)
         
         handle_document_message(notification)
-        response = get_response(notification)
+        response = get_full_reply(notification)
         
         logger.info(f"Response length: {len(response)} chars")
         logger.info(f"FULL RESPONSE:\n{response}")

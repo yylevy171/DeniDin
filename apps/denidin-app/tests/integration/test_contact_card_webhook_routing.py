@@ -51,8 +51,6 @@ class TestContactsArrayMessageRouting:
                 'ai_reply_max_tokens': config.ai_reply_max_tokens,
                 'log_level': config.log_level,
                 'data_root': config.data_root,
-                # Legacy AIHandler routing tests: pin the backbone flag off (config.test.json keeps it ON).
-                'feature_flags': {**(config.feature_flags or {}), 'enable_capability_backbone': False},
                 'godfather_phone': config.godfather_phone,
                 'memory': config.memory,
                 'constitution_config': config.constitution_config,
@@ -121,7 +119,7 @@ class TestContactsArrayMessageRouting:
         # AIHandler at all, so the exact friendly-decline constant below - rather than an
         # AI-generated Hebrew reply, an exception from a placeholder OpenAI key, or the
         # multi-second latency a real API round trip would add - is itself the proof that
-        # AIHandler.single_turn was never reached.
+        # AIHandler.handle_message was never reached.
         sent_message = self._get_sent_message(notification)
         assert sent_message == CONTACT_CARD_ONE_AT_A_TIME, (
             f"Expected friendly one-at-a-time decline (constant): {CONTACT_CARD_ONE_AT_A_TIME}\n"

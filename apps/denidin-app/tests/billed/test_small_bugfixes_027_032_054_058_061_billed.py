@@ -39,7 +39,7 @@ from tests.billed.denidin_mcp_e2e_helpers import (
     build_text_webhook,
     pick_existing_client,
 )
-from tests.e2e_helpers import create_real_notification, get_response
+from tests.e2e_helpers import create_real_notification, get_full_reply
 
 pytestmark = pytest.mark.billed
 
@@ -64,7 +64,7 @@ def test_bugfix_027_client_stored_with_ascii_apostrophe_can_get_a_document(denid
     client = pick_existing_client(name=_APOSTROPHE_CLIENT_NAME)
     assert "'" in client["name"], "precondition: the stored name must contain an ASCII apostrophe"
 
-    text = f"{client['name']} שילם 47 שח היום עבור שכר טרחה כולל מע\"מ. תפיק חשבונית מס קבלה"
+    text = f"{client['name']} שילם 47 שח במזומן היום עבור שכר טרחה כולל מע\"מ. תפיק חשבונית מס קבלה"
     (ask_reply, _), (reply, ai_response) = _send_turn_and_approve(
         GODFATHER_CHAT_ID, text, id_prefix="BF027",
     )
@@ -273,7 +273,7 @@ def test_bugfix_058_error_reply_sent_to_user_is_persisted_in_session(
             message_id=f"BF058_{int(time.time())}",
         ))
         denidin.handle_text_message(notification)
-        reply = get_response(notification)
+        reply = get_full_reply(notification)
 
         assert reply, "the user received no message at all (expected the fallback error text)"
         window = broken_app.session_manager.get_rolling_window(GODFATHER_CHAT_ID)

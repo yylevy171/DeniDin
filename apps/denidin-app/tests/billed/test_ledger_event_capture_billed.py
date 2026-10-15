@@ -36,7 +36,7 @@ from tests.e2e_helpers import (
     sanity_worker_data_root,
     create_real_notification,
     event_datetime_for_message_ts,
-    get_response,
+    get_full_reply,
     assert_response_exists,
     ClarificationAnswerBank,
     converse_until_ledger_events_captured,
@@ -300,7 +300,7 @@ class TestLedgerEventCaptureBilled:
         handle_text_message(notification)
         logger.info("WHEN DeniDin processes it")
 
-        response = get_response(notification)
+        response = get_full_reply(notification)
         assert_response_exists(response)
 
         after = len(self._events_for_chat(denidin_app, chat_id))

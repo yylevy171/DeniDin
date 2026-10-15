@@ -1,7 +1,7 @@
 """Feature 080: TelemetryBuilder + TelemetryManager - per-request latency/token telemetry.
 
 TelemetryBuilder accumulates timing/token data across one in-flight request, threaded through
-AIHandler.single_turn() and its helpers (never global/thread-local state - AIHandler already
+AIHandler.handle_message() and its helpers (never global/thread-local state - AIHandler already
 serves concurrent chats, so telemetry must be scoped to the single in-flight request).
 TelemetryManager persists the finished RequestTelemetry into a SQLite store, one row per
 request, mirroring the RollMarkerStore/ReminderManager connection idiom already established in

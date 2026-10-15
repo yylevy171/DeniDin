@@ -107,33 +107,16 @@ class TestFeeAgreementGenerationFlow:
 
     @staticmethod
     def _create_notification(chat_id, sender, sender_name, text, msg_id):
-        from whatsapp_chatbot_python import Notification
+        # Feature 067: the app sends everything by chat id through the bot, so the notification
+        # must be the shared test one (registered with the RecordingBot), not a bare stub.
+        from tests.e2e_helpers import create_real_notification
 
-        notification = Notification.__new__(Notification)
-        notification.event = {
+        return create_real_notification({
             'typeWebhook': 'incomingMessageReceived',
             'idMessage': msg_id,
             'senderData': {'chatId': chat_id, 'sender': sender, 'senderName': sender_name},
             'messageData': {'typeMessage': 'textMessage', 'textMessageData': {'textMessage': text}},
-        }
-        notification._test_sent_messages = []
-        notification._test_button_sends = []
-        notification._test_document_sends = []
-
-        def track_answer(message):
-            notification._test_sent_messages.append(message)
-            logger.info(f"Would send to user: {message}")
-
-        def track_answer_with_interactive_buttons(body, buttons, header=None, footer=None):
-            from types import SimpleNamespace
-            id_message = f"TEST_BUTTONS_{msg_id}_{len(notification._test_button_sends)}"
-            notification._test_button_sends.append({'body': body, 'buttons': buttons, 'idMessage': id_message})
-            notification._test_sent_messages.append(body)
-            return SimpleNamespace(code=200, data={'idMessage': id_message}, error=None)
-
-        notification.answer = track_answer
-        notification.answer_with_interactive_buttons = track_answer_with_interactive_buttons
-        return notification
+        })
 
     def _send_text(self, chat_id, sender, sender_name, text, label):
         from denidin import handle_text_message
@@ -163,33 +146,10 @@ class TestFeeAgreementGenerationFlow:
 
     @staticmethod
     def _reset_session(denidin_app, chat_id):
-        """2026-09-14 (explicit human instruction, following a real observed
-        failure): the godfather chat's session is a PERSISTENT on-disk
-        record, and `denidin_app` here is a process-wide singleton reused
-        across every test in this file (`if denidin.denidin_app is None`) -
-        so without an explicit reset, one test's client/date/signer exchange
-        leaks into the next test's turn as prior conversation history, and
-        the model (correctly) treats it as part of the same ongoing thread
-        instead of a fresh request. Deletes the session's own directory and
-        its chat_index row directly - SessionManager is a pure read-through
-        over chat_index.db + the session directory (no in-memory cache), so
-        the next turn for this chat_id transparently creates a brand new
-        session."""
-        sm = denidin_app.session_manager
-        session_id = sm._index_lookup(chat_id) or sm.chat_to_session.get(chat_id)
-        if session_id is None:
-            return
-        session_dir = sm.storage_dir / session_id
-        if session_dir.exists():
-            shutil.rmtree(session_dir)
-        # Must go through the SessionManager's OWN live connection - a
-        # separate sqlite3.connect() to the same file would leave
-        # `chat_to_session` (the in-memory fast-path cache `get_session()`
-        # also falls back to) stale, and get_session() would keep resolving
-        # to the just-deleted session_id regardless of what the DB says.
-        sm._index_conn.execute("DELETE FROM chat_sessions WHERE chat = ?", (chat_id,))
-        sm._index_conn.commit()
-        sm.chat_to_session.pop(chat_id, None)
+        """A clean conversation for the chat (history and model chain), from the outside -
+        the same helper every other billed/expensive test uses (Feature 067)."""
+        from tests.e2e_helpers import wipe_chat_messages_on_disk
+        wipe_chat_messages_on_disk(denidin_app.session_manager.storage_dir, chat_id)
 
     @pytest.fixture(autouse=True)
     def _isolated_godfather_session(self, denidin_app, config):

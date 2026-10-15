@@ -1,6 +1,6 @@
 """
 Integration test: text-message dispatch (denidin.py's _process_conversational_message)
-reaches the one AI implementation's single_turn (REQ-063-08: denidin_app.ai_manager -
+reaches the one AI implementation's handle_message (REQ-063-08: denidin_app.ai_manager -
 the Backbone with the flag on, AIHandler with it off; which one is decided once, in
 initialize_app - see test_initialize_app_backbone_flag.py).
 
@@ -68,14 +68,14 @@ def _base_fake_denidin():
 
 
 @pytest.mark.integration
-def test_text_dispatch_calls_the_ai_managers_single_turn_once():
+def test_text_dispatch_calls_the_ai_managers_handle_message_once():
     fake_denidin = _base_fake_denidin()
     response = AIResponse(
         request_id="r1", response_text="לאישור — תזכורת חדשה...", tokens_used=0,
         prompt_tokens=0, completion_tokens=0, model="gpt-5.6-luna",
         finish_reason="stop", timestamp=1735689600,
     )
-    fake_denidin.ai_manager.single_turn.return_value = response
+    fake_denidin.ai_manager.handle_message.return_value = response
 
     original_app = denidin_module.denidin_app
     denidin_module.denidin_app = fake_denidin
@@ -84,9 +84,9 @@ def test_text_dispatch_calls_the_ai_managers_single_turn_once():
     finally:
         denidin_module.denidin_app = original_app
 
-    fake_denidin.ai_manager.single_turn.assert_called_once()
+    fake_denidin.ai_manager.handle_message.assert_called_once()
     # The RBAC phone is passed; each implementation resolves the role from it itself.
-    call_kwargs = fake_denidin.ai_manager.single_turn.call_args.kwargs
+    call_kwargs = fake_denidin.ai_manager.handle_message.call_args.kwargs
     assert call_kwargs["user_phone"] == "111@c.us"
     assert call_kwargs["chat_id"] == "111@c.us"
     assert "user_role" not in call_kwargs

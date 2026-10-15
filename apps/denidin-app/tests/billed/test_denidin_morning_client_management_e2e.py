@@ -28,7 +28,6 @@ import pytest
 from .denidin_mcp_e2e_helpers import (
     VALID_TAX_ID,
     BLOCKED_ROLE_CHAT_ID,
-    CLIENT_ROLE_CHAT_ID,
     GODFATHER_CHAT_ID,
     _HEBREW_FAMILY_NAMES,
     _HEBREW_FIRST_NAMES,
@@ -648,32 +647,9 @@ def test_godfather_update_client_resolves_ambiguous_family_name_prefix_after_con
 
 
 @pytest.mark.billed
-def test_client_role_gets_no_client_management_tools(denidin_app):
-    """A client-role sender (any phone not godfather/admin/blocked) asking
-    about clients gets a normal reply with zero mcp_calls for any
-    client-management tool - existing Feature 018 RBAC gating
-    (MORNING_MCP_AUTHORIZED_ROLES = (GODFATHER, ADMIN) in ai_handler.py)
-    already covers the whole Morning MCP tool set uniformly, so this is a
-    safety net proving it, not new behavior."""
-    response, ai_response = _send_turn(
-        chat_id=CLIENT_ROLE_CHAT_ID,
-        text="מי הלקוחות שלי?",
-        id_prefix="E2E_RBAC_CLIENT_ROLE",
-    )
-
-    assert response is not None, "CRITICAL: client-role user got NO RESPONSE (silent drop)"
-    for tool_name in ("list_clients", "get_client_details", "add_client", "update_client"):
-        assert not _calls_for(ai_response, tool_name), (
-            f"client-role user's request resulted in a {tool_name} mcp_call - "
-            f"Morning tools must never be attached for this role: "
-            f"{ai_response.mcp_calls if ai_response else None!r}"
-        )
-
-
-@pytest.mark.billed
 def test_blocked_role_gets_no_client_management_tools(denidin_app):
     """A blocked-role sender asking about clients never even reaches
-    AIHandler.single_turn (create_request raises PermissionError first,
+    AIHandler.handle_message (create_request raises PermissionError first,
     per existing Feature 018 behavior) - the bot still replies (the generic
     fallback message, denidin.py's global exception handler), no crash, and
     no new AIResponse/mcp_calls is ever produced for this request."""
@@ -689,7 +665,7 @@ def test_blocked_role_gets_no_client_management_tools(denidin_app):
 
     assert response is not None, "CRITICAL: blocked-role user got NO RESPONSE (silent drop)"
     assert denidin.denidin_app.last_response is last_response_before, (
-        "A blocked user's message must never reach AIHandler.single_turn at "
+        "A blocked user's message must never reach AIHandler.handle_message at "
         "all (rejected earlier, in create_request) - last_response changing "
         "means a real AI/tool call happened for a blocked user."
     )

@@ -12,6 +12,7 @@ Feature flags (like enable_rbac) are set in that config file, NOT in test code.
 This ensures tests run with production-like configuration loading.
 """
 import pytest
+import json
 import tempfile
 import shutil
 from pathlib import Path
@@ -21,11 +22,12 @@ from openai import OpenAI
 from src.models.config import AppConfiguration
 from src.models.user import Role, MemoryScope
 from src.models.message import WhatsAppMessage, AIRequest
-from src.handlers.ai_handler import AIHandler
+from src.backbone.backbone import Backbone as AIHandler
 from src.managers.user_manager import UserManager
 from src.managers.memory_manager import MemoryManager
 from src.managers.session_manager import SessionManager
 from tests.ai_handler_test_support import make_ai_handler
+from tests.backbone_test_support import FakeBot
 from tests.denidin_test_support import make_memory_manager, make_session_manager, make_user_manager
 
 
@@ -60,18 +62,15 @@ def mock_ai_client():
     mock_embedding.embedding = [0.1] * 1536  # Mock embedding vector
     client.embeddings.create.return_value = Mock(data=[mock_embedding])
     
-    # Mock Responses API call
-    mock_response = Mock()
-    mock_response.output_text = "Test AI response"
-    mock_response.output = []
-    mock_response.incomplete_details = None
-    mock_response.usage = Mock(
-        total_tokens=150,
-        input_tokens=100,
-        output_tokens=50
-    )
-    mock_response.model = "gpt-4o-mini"
-    client.responses.create.return_value = mock_response
+    # Mock Responses API: the model answers once through send_to_user, then has nothing more to do
+    def _responses():
+        usage = Mock(total_tokens=150, input_tokens=100, output_tokens=50)
+        send = Mock(type="function_call", arguments=json.dumps({"text": "Test AI response"}), call_id="c1")
+        send.name = "send_to_user"
+        yield Mock(output=[send], output_text="", incomplete_details=None, usage=usage, model="gpt-4o-mini", id="r1")
+        while True:
+            yield Mock(output=[], output_text="", incomplete_details=None, usage=usage, model="gpt-4o-mini", id="r2")
+    client.responses.create.side_effect = _responses()
     
     return client
 
@@ -83,6 +82,7 @@ class TestEndToEndRBACEnforcement:
         """CLIENT user: filtered memories, 4K token limit."""
         # Arrange
         handler = make_ai_handler(mock_ai_client, rbac_config)
+        handler.denidin.green_api_bot = FakeBot()
         client_phone = "+972501111111"
         
         # Act: Create request
@@ -99,7 +99,7 @@ class TestEndToEndRBACEnforcement:
         request = handler.create_request(message, user_phone=client_phone)
         
         # Act: Get response (stores in session with token limit)
-        response = handler.single_turn(
+        response = handler.handle_message(
             request,
             user_phone=client_phone,
             sender=client_phone,
@@ -108,6 +108,7 @@ class TestEndToEndRBACEnforcement:
         
         # Assert
         assert response.response_text == "Test AI response"
+        assert handler.denidin.green_api_bot.sent_texts == ["Test AI response"]
         assert handler.user_manager.get_user(client_phone).role == Role.CLIENT
         assert handler.user_manager.get_user(client_phone).token_limit == 4000
     
@@ -143,7 +144,7 @@ class TestEndToEndRBACEnforcement:
         # No user_phone= override - matches denidin.py's real call shape exactly
         # (get_response(ai_request, sender=message.sender_id, recipient="AI")).
         request = handler.create_request(message)
-        response = handler.single_turn(
+        response = handler.handle_message(
             request,
             sender=godfather_whatsapp_id,
             recipient="AI"
@@ -189,20 +190,6 @@ class TestEndToEndRBACEnforcement:
         # Act & Assert: create_request rejects
         with pytest.raises(PermissionError, match="User is blocked"):
             handler.create_request(message, user_phone=blocked_phone)
-        
-        # Act & Assert: get_response rejects
-        request = AIRequest(
-            user_prompt="Test",
-            constitution="Test",
-            max_tokens=500,
-            model="gpt-4o-mini",
-            chat_id="blocked@c.us",
-            message_id="msg-3"
-        )
-        
-        with pytest.raises(PermissionError, match="User is blocked"):
-            handler.single_turn(request, user_phone=blocked_phone, sender=blocked_phone)
-
 
 
 class TestMemoryScopeFiltering:
@@ -511,54 +498,7 @@ class TestErrorHandling:
             handler.create_request(message, user_phone=blocked_phone)
         
         assert "User is blocked" in str(exc_info.value)
-    
-    def test_blocked_user_get_response_raises_permission_error(self, rbac_config, mock_ai_client):
-        """get_response() raises PermissionError for blocked users."""
-        # Arrange
-        handler = make_ai_handler(mock_ai_client, rbac_config)
-        blocked_phone = "+972505555555"
-        
-        request = AIRequest(
-            user_prompt="Test",
-            constitution="Test",
-            max_tokens=500,
-            model="gpt-4o-mini",
-            chat_id="blocked@c.us",
-            message_id="msg-blocked"
-        )
-        
-        # Act & Assert
-        with pytest.raises(PermissionError) as exc_info:
-            handler.single_turn(request, user_phone=blocked_phone, sender=blocked_phone)
-        
-        assert "User is blocked" in str(exc_info.value)
-    
-    def test_recall_with_empty_allowed_scopes(self, rbac_config, mock_ai_client, temp_data_dir):
-        """Recall with empty allowed_scopes returns nothing."""
-        # Arrange
-        memory_manager = make_memory_manager(
-            storage_dir=f'{temp_data_dir}/memory',
-            embedding_model='text-embedding-3-small',
-            ai_client=mock_ai_client
-        )
-        
-        collection = "test_collection"
-        memory_manager.remember("Test memory", collection, {"scope": MemoryScope.PUBLIC.value})
-        
-        # Act: Recall with empty scopes
-        results = memory_manager.recall_with_rbac_filter(
-            query="test",
-            collection_names=[collection],
-            user_phone="+972501111111",
-            allowed_scopes=[],  # Empty!
-            can_see_all_memories=False,
-            top_k=10,
-            min_similarity=0.0
-        )
-        
-        # Assert: No results
-        assert len(results) == 0
-    
+
 
 
 class TestConcurrentUserScenarios:

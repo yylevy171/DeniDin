@@ -1,10 +1,10 @@
 """
 Integration tests (Feature 098 on the Backbone, NOT billed): saving a client's ID
 and then issuing the document are two separate approvals, chained. The "yes" that
-saves the ID runs update_client AND offers the document's approval in the same
-turn; that turn must reach the user with buttons and no "nothing was performed"
-note, and the next "yes" is again an approved write. Real Backbone and
-SessionManager; only the OpenAI SDK boundary is mocked (CONSTITUTION §I/§V).
+saves the ID runs update_client AND offers the document's approval straight away;
+that approval reaches the user as buttons, and the next "yes" is again an approved
+write. Real Backbone, DeniDin, WhatsAppHandler and SessionManager; only the OpenAI SDK
+and the Green API bot are faked (CONSTITUTION §I/§V).
 """
 import json
 from pathlib import Path
@@ -13,12 +13,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.constants.error_messages import (
-    APPROVED_WRITE_POSSIBLY_DUPLICATED_NOTE,
-)
 from src.models.config import AppConfiguration
 from src.models.message import AIRequest
-from tests.backbone_test_support import make_backbone
+from tests.backbone_test_support import FakeBot, make_backbone
 from tests.denidin_test_support import make_session_manager
 
 pytestmark = pytest.mark.integration
@@ -62,8 +59,14 @@ def env(tmp_path):
     client = MagicMock()
     locator = SimpleNamespace(current_server_url=lambda: "https://morning.example/mcp")
     backbone = make_backbone(client, config, session_manager=sessions, morning_mcp_locator=locator)
+    backbone.denidin.green_api_bot = FakeBot()
     return SimpleNamespace(client=client, sessions=sessions, backbone=backbone,
+                           bot=backbone.denidin.green_api_bot,
                            approved=client.with_options.return_value.responses.create)
+
+
+def _end(rid="r-end"):
+    return _response(rid)
 
 
 def _id_given_offers_save_approval(env):
@@ -73,72 +76,68 @@ def _id_given_offers_save_approval(env):
         _response("r2", _fc("load_capabilities", {"capabilities": ["cap_client_write",
                                                                    "cap_approval_with_buttons"]})),
         _response("r3", _fc("approval_with_yes_no_buttons", {"text": SAVE_ID_PROMPT})),
+        _end("r3b"),
     ]
-    response = env.backbone.single_turn(_request("308253681"), chat_id=CHAT, user_role="godfather")
-    assert response.offer_approval_buttons is True
-    assert response.response_text == SAVE_ID_PROMPT
-    env.backbone.record_sent_message_id(CHAT, "STANZA-SAVE")
+    env.backbone.handle_message(_request("308253681"), chat_id=CHAT, user_role="godfather")
+    assert [b[1] for b in env.bot.buttons] == [SAVE_ID_PROMPT]
+    assert env.sessions.get_session(CHAT).approval_message_id == "BTN1"
 
 
-def _save_turn_reply():
-    """The approved save: update_client ran, then the document's own approval."""
-    return _response("r4", _mcp_call("update_client", {"status": "updated", "tax_id": "308253681"}),
-                     _fc("approval_with_yes_no_buttons", {"text": DOC_PROMPT}, call_id="c-doc"))
+def _save_turn_replies():
+    """The approved save: update_client ran, then the document's own approval is asked at once."""
+    return [_response("r4", _mcp_call("update_client", {"status": "updated", "tax_id": "308253681"}),
+                      _fc("approval_with_yes_no_buttons", {"text": DOC_PROMPT}, call_id="c-doc")),
+            _end("r4b")]
 
 
-def _assert_document_approval_offered(response):
-    assert response.offer_approval_buttons is True
-    assert response.response_text == DOC_PROMPT
-    assert APPROVED_WRITE_POSSIBLY_DUPLICATED_NOTE not in response.response_text
-    assert [c["name"] for c in response.mcp_calls] == ["update_client"]
+def _assert_document_approval_offered(env, saved):
+    assert [b[1] for b in env.bot.buttons] == [SAVE_ID_PROMPT, DOC_PROMPT]
+    assert [c["name"] for c in saved.mcp_calls] == ["update_client"]
+    assert env.sessions.get_session(CHAT).approval_message_id == "BTN2"  # the document's buttons are the live ones
 
 
 @pytest.mark.parametrize("answer", ["tap", "typed"])
 def test_yes_on_id_save_chains_into_the_document_approval_then_issues_it(env, answer):
     _id_given_offers_save_approval(env)
-    env.approved.side_effect = [
-        _save_turn_reply(),
+    env.approved.side_effect = _save_turn_replies() + [
         _response("r5", _mcp_call("create_combo_document", {"number": 98, "amount": 12000}),
                   _fc("send_to_user", {"text": "הופקה חשבונית מס/קבלה 98."})),
+        _end("r5b"),
     ]
 
     if answer == "tap":
-        saved = env.backbone.resolve_button_tap(_tap(), "denidin_approve", "STANZA-SAVE", user_role="godfather")
+        saved = env.backbone.resolve_button_tap(_tap(), "denidin_approve", "BTN1", user_role="godfather")
     else:
-        saved = env.backbone.single_turn(_request("כן"), chat_id=CHAT, user_role="godfather")
+        saved = env.backbone.handle_message(_request("כן"), chat_id=CHAT, user_role="godfather")
 
-    _assert_document_approval_offered(saved)
-    env.backbone.record_sent_message_id(CHAT, "STANZA-DOC")  # what denidin.py does after sending
+    _assert_document_approval_offered(env, saved)
 
     if answer == "tap":
         # The ID-save buttons are spent; only the document's buttons are live.
-        assert env.backbone.resolve_button_tap(_tap(), "denidin_approve", "STANZA-SAVE",
-                                               user_role="godfather") is None
-        issued = env.backbone.resolve_button_tap(_tap(), "denidin_approve", "STANZA-DOC", user_role="godfather")
+        assert env.backbone.resolve_button_tap(_tap(), "denidin_approve", "BTN1", user_role="godfather") is None
+        issued = env.backbone.resolve_button_tap(_tap(), "denidin_approve", "BTN2", user_role="godfather")
     else:
-        issued = env.backbone.single_turn(_request("כן"), chat_id=CHAT, user_role="godfather")
+        issued = env.backbone.handle_message(_request("כן"), chat_id=CHAT, user_role="godfather")
 
-    assert issued.response_text == "הופקה חשבונית מס/קבלה 98."
+    assert env.bot.sent[-1][1] == "הופקה חשבונית מס/קבלה 98."
     assert [c["name"] for c in issued.mcp_calls] == ["create_combo_document"]
-    assert issued.offer_approval_buttons is False
-    assert env.approved.call_count == 2  # both answers were approved-write turns (no retries)
+    assert env.approved.call_count == 4  # both answers were approved-write conversations (no SDK retries)
     env.client.with_options.assert_called_with(max_retries=0)
 
 
 def test_declining_the_document_after_saving_the_id_issues_nothing(env):
     _id_given_offers_save_approval(env)
-    env.approved.side_effect = [_save_turn_reply()]
-    saved = env.backbone.resolve_button_tap(_tap(), "denidin_approve", "STANZA-SAVE", user_role="godfather")
-    _assert_document_approval_offered(saved)
-    env.backbone.record_sent_message_id(CHAT, "STANZA-DOC")
+    env.approved.side_effect = _save_turn_replies()
+    saved = env.backbone.resolve_button_tap(_tap(), "denidin_approve", "BTN1", user_role="godfather")
+    _assert_document_approval_offered(env, saved)
 
     env.client.responses.create.side_effect = [
         _response("r6", _fc("send_to_user", {"text": "בסדר, המסמך לא הופק."})),
+        _end("r6b"),
     ]
-    declined = env.backbone.resolve_button_tap(_tap(), "denidin_decline", "STANZA-DOC", user_role="godfather")
+    declined = env.backbone.resolve_button_tap(_tap(), "denidin_decline", "BTN2", user_role="godfather")
 
-    assert declined.response_text == "בסדר, המסמך לא הופק."
+    assert env.bot.sent[-1][1] == "בסדר, המסמך לא הופק."
     assert declined.mcp_calls == []
-    assert declined.offer_approval_buttons is False
-    assert env.approved.call_count == 1  # a "no" is not an approved-write turn
+    assert env.approved.call_count == 2  # a "no" is not an approved-write conversation
     assert env.sessions.get_session(CHAT).approval_message_id is None

@@ -88,9 +88,12 @@ def test_99_2_declining_the_400_leaves_cash_unreversed(denidin_app):
 
 
 def test_99_3_already_cancelled_320_is_refused(denidin_app):
+    # REQ-099-07: a FULLY cancelled 320 (330 and the cash-reversing 400 both done) is refused.
+    # (A half-cancelled one - 330 only - is test_99_2's territory: finishing it may be offered.)
     client_name, _ = _seed_combo("E2E_099_3_SEED")
     _approve_330(client_name, "E2E_099_3_FIRST")
-    _send_turn(GODFATHER_CHAT_ID, "לא", id_prefix="E2E_099_3_SKIP_400")
+    _, ai_response = _send_turn(GODFATHER_CHAT_ID, "כן", id_prefix="E2E_099_3_APPROVE_400")
+    assert _calls_for(ai_response, "create_receipt"), f"setup: the 400 was not created: {ai_response.mcp_calls!r}"
     reply, ai_response = _send_turn(GODFATHER_CHAT_ID, _cancel_request(client_name), id_prefix="E2E_099_3_AGAIN")
     assert not _calls_for(ai_response, "create_credit_note"), "a second 330 was attempted"
     assert not _calls_for(ai_response, "create_receipt"), "a 400 was attempted on a cancelled 320"

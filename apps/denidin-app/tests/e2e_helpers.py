@@ -137,22 +137,92 @@ def wipe_chat_messages_on_disk(sessions_storage_dir, chat_id: str) -> None:
         data["active_flows"] = []
         data["approval_message_id"] = None
         data["active_document_message_id"] = None
+        data["ai_chain_id"] = None  # Feature 067: the model chain is the conversation too
         session_json.write_text(
             json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
         )
 
 
+def start_every_chat_fresh() -> None:
+    """Gives every chat the running app knows a clean conversation (no stored messages, no model
+    chain, no loaded flows/capabilities, no outstanding approval). Billed/expensive tests call this
+    before each test: the model now carries a chat's whole conversation, so an unanswered question
+    left by one test would otherwise block the next one ("first answer my earlier question")."""
+    import denidin  # pylint: disable=import-outside-toplevel
+    app = getattr(denidin, "denidin_app", None)
+    if app is None or getattr(app, "session_manager", None) is None:
+        return
+    for chat_id in list(app.session_manager.known_chats()):
+        wipe_chat_messages_on_disk(app.session_manager.storage_dir, chat_id)
+
+
+class RecordingBot:
+    """The Green API bot's sending side as the billed/expensive tests see it (Feature 067: the
+    app now sends everything by chat id through the live bot, not by answering a notification).
+    Every send is recorded on the LATEST notification created for that chat (`create_real_notification`
+    registers it), so `notification._test_sent_messages` / `_test_button_sends` keep holding exactly
+    what the user would have seen while that notification was being handled. Nothing is sent anywhere."""
+
+    def __init__(self):
+        self.notifications_by_chat = {}
+        self.unclaimed = []  # sends to a chat no test notification was ever created for
+        self._counter = 0
+        self.api = SimpleNamespace(
+            sending=SimpleNamespace(sendMessage=self._send_message, sendInteractiveButtons=self._send_buttons),
+            serviceMethods=SimpleNamespace(sendTyping=lambda *a, **k: SimpleNamespace(code=200, data={})),
+            marking=SimpleNamespace(readChat=lambda *a, **k: SimpleNamespace(code=200, data={})),
+        )
+
+    def register(self, chat_id, notification):
+        self.notifications_by_chat[chat_id] = notification
+
+    def _target(self, chat_id):
+        return self.notifications_by_chat.get(chat_id)
+
+    def _next_id(self, chat_id):
+        self._counter += 1
+        return f"TEST_SENT_{self._counter}"
+
+    def _send_message(self, chat_id, message, *_args, **_kwargs):
+        target = self._target(chat_id)
+        (target._test_sent_messages if target is not None else self.unclaimed).append(message)
+        logger.info(f"\n📤 Would send to user: {message}...")
+        return SimpleNamespace(code=200, data={'idMessage': self._next_id(chat_id)}, error=None)
+
+    def _send_buttons(self, chat_id, body, buttons, header=None, footer=None):
+        id_message = f"TEST_BUTTONS_{self._next_id(chat_id)}"
+        target = self._target(chat_id)
+        if target is not None:
+            target._test_button_sends.append({
+                'body': body, 'buttons': buttons, 'header': header, 'footer': footer, 'idMessage': id_message})
+            target._test_sent_messages.append(body)  # dual-write: get_response() reads what a user would see
+        logger.info(f"\n📤 Would send interactive buttons to user: body={body!r}")
+        return SimpleNamespace(code=200, data={'idMessage': id_message}, error=None)
+
+
+RECORDING_BOT = RecordingBot()
+
+
+def install_recording_bot(app) -> None:
+    """Makes `app` send through the shared RecordingBot (idempotent)."""
+    if app is not None and app.green_api_bot is not RECORDING_BOT:
+        app.green_api_bot = RECORDING_BOT
+
+
 def create_real_notification(event_dict):
     """
-    Create real SDK Notification object (not mocked).
-    
-    Tracks calls to answer() without actually calling Green API.
-    
+    Create real SDK Notification object (not mocked) whose sends are recorded, never delivered.
+
+    `.answer()` (the canned/notice replies the app still sends by answering) and the shared
+    RecordingBot (everything the model sends, by chat id) both land in `_test_sent_messages`;
+    approval buttons also land in `_test_button_sends`. The current app (if any) is switched to
+    the RecordingBot so the model's sends are captured.
+
     Args:
         event_dict: Dictionary containing the webhook event data
-        
+
     Returns:
-        Notification object with answer() method tracked
+        Notification object with its sends tracked
     """
     notification = Notification.__new__(Notification)
     notification.event = event_dict
@@ -163,34 +233,15 @@ def create_real_notification(event_dict):
         """Track what would be sent to user"""
         notification._test_sent_messages.append(message)
         logger.info(f"\n📤 Would send to user: {message}...")
-
-    _next_id = [0]
-
-    def track_answer_with_interactive_buttons(body, buttons, header=None, footer=None):
-        """Feature 047: a pending-approval prompt is delivered as interactive
-        buttons rather than plain text. `Notification.answer_with_interactive_buttons`
-        would go through a real `self.api.sending.sendInteractiveButtons`, which
-        this bare `Notification.__new__` construction never wires - so capture it
-        the same way `.answer()` is. `body` is ALSO appended to
-        `_test_sent_messages` (dual-write) so `get_response()` keeps returning
-        exactly what a user would read on screen regardless of delivery form, and
-        a real idMessage-shaped Response is returned so denidin.py's
-        `attach_sent_message_id` wiring fires exactly as in production. Identical
-        to `tests/billed/denidin_mcp_e2e_helpers.create_real_notification`'s stub
-        - kept in sync deliberately; the two notification factories should be
-        collapsed into one."""
-        _next_id[0] += 1
-        id_message = f"TEST_BUTTONS_{event_dict.get('idMessage', 'noid')}_{_next_id[0]}"
-        notification._test_button_sends.append({
-            'body': body, 'buttons': buttons, 'header': header, 'footer': footer,
-            'idMessage': id_message,
-        })
-        notification._test_sent_messages.append(body)
-        logger.info(f"\n📤 Would send interactive buttons to user: body={body!r}")
-        return SimpleNamespace(code=200, data={'idMessage': id_message}, error=None)
+        return SimpleNamespace(code=200, data={'idMessage': f"TEST_ANSWER_{event_dict.get('idMessage', 'noid')}"},
+                               error=None)
 
     notification.answer = track_answer
-    notification.answer_with_interactive_buttons = track_answer_with_interactive_buttons
+    chat_id = (event_dict.get('senderData') or {}).get('chatId')
+    if chat_id:
+        RECORDING_BOT.register(chat_id, notification)
+    import denidin  # pylint: disable=import-outside-toplevel
+    install_recording_bot(getattr(denidin, 'denidin_app', None))
     return notification
 
 
@@ -299,6 +350,21 @@ def get_response(notification):
     response". On a fast turn with no interim message, there's exactly one message and
     last == first, so this is unchanged for every caller that predates this feature."""
     return notification._test_sent_messages[-1] if notification._test_sent_messages else None
+
+
+def get_all_responses(notification):
+    """Every message the user saw while this notification was being handled, in order
+    (Feature 067: there is no single "final reply" - the model may send the data in one
+    message and a short wrap-up in another)."""
+    return list(notification._test_sent_messages)
+
+
+def get_full_reply(notification):
+    """All of the above joined, or None when nothing was sent. Use this for CONTENT
+    assertions (a name, an amount, a phone in the answer); `get_response` (the last message)
+    stays for questions about the last thing the user was left looking at."""
+    messages = get_all_responses(notification)
+    return "\n\n".join(messages) if messages else None
 
 
 def get_progress_updates(notification):
@@ -749,12 +815,14 @@ def converse_until_ledger_events_captured(
         })
         log.info(f"GIVEN turn {turn_num}: {text!r}")
         handle_text_message(notification)
-        reply = get_response(notification)
-        assert_response_exists(reply)
-        assert_document_approval_states_vat(reply)  # bugfix-071
+        reply = get_full_reply(notification)  # Feature 067: every message of the turn
         log.info(f"THEN turn {turn_num} reply: {reply!r}")
 
         events = events_for_chat(chat_id)
+        if not events:
+            # Silence is legitimate once the work is done, but a turn that captured nothing AND said
+            # nothing leaves the conversation with nothing to answer.
+            assert_response_exists(reply)
         entry = {"turn": turn_num, "sent": text, "reply": reply, "matched_topics": []}
         transcript.append(entry)
 

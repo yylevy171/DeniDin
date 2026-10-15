@@ -2,6 +2,18 @@
   "accounting_ledger_update_freq": 60,
   "allocation_threshold_nis": 5000,
   "capabilities_reset_minutes": 60,
+  "message_queues": {
+    "worker_queue_max": 100,
+    "session_max": 50,
+    "warn_fraction": 0.3,
+    "stall_seconds": 120,
+    "queue_check_interval_seconds": 10,
+    "thread_check_interval_seconds": 60,
+    "thread_max_restarts": 1,
+    "thread_restart_window_seconds": 100,
+    "session_call_timeout_seconds": 10,
+    "slow_call_seconds": 5
+  },
   "ai_api_key": "YOUR_OPENAI_API_KEY",
   "ai_embedding_model": "text-embedding-3-large",
   "ai_model": "gpt-5.6-luna",

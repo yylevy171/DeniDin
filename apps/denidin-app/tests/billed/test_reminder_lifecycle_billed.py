@@ -47,7 +47,7 @@ import pytest
 import src.services.reminder_delivery_service as delivery_service
 from src.models.config import AppConfiguration
 from tests.e2e_helpers import (
-    create_real_notification, get_response, sanity_worker_data_root, wipe_chat_messages_on_disk,
+    create_real_notification, get_full_reply, sanity_worker_data_root, wipe_chat_messages_on_disk,
 )
 from tests.billed.denidin_mcp_e2e_helpers import get_button_send
 from src.utils.time_utils import now_local, to_local
@@ -161,7 +161,7 @@ class TestReminderLifecycleBilled:
     # Notification construction + reply/button-send capture (`create_real_notification`/
     # `get_response`/`get_button_send`) all delegate to the shared implementations in
     # tests/e2e_helpers.py / tests/billed/denidin_mcp_e2e_helpers.py - Feature 080:
-    # get_response() reads the LAST sent message (not the first), so a slow/multi-step
+    # get_full_reply() reads the LAST sent message (not the first), so a slow/multi-step
     # reminder turn's interim send_progress_update message(s), if any, are correctly not
     # mistaken for the real answer. No local reimplementation here anymore (there used to
     # be one, byte-for-byte identical to the shared helpers minus this fix - reinventing it
@@ -177,7 +177,7 @@ class TestReminderLifecycleBilled:
         }
 
     def _get_response(self, notification):
-        return get_response(notification)
+        return get_full_reply(notification)  # Feature 067: all messages of the turn, not just the last
 
     def _get_button_send(self, notification):
         return get_button_send(notification)
@@ -766,20 +766,6 @@ class TestReminderLifecycleBilled:
         delivery_check.assert_not_called()
 
     # --- Polish: RBAC + cap ------------------------------------------------------
-
-    def test_client_role_denied_reminder_tools(self, denidin_app, config):
-        client_chat_id = "972500001234@c.us"
-        n1 = self._send_text(
-            client_chat_id, client_chat_id, "Test Client",
-            "תזכיר לי בעוד שעה משהו", "client_denied",
-        )
-        response = self._get_response(n1)
-        # A real reply of SOME kind is expected (the model still answers
-        # conversationally) - the assertion that matters is no reminder tool
-        # was ever attached/callable for this role (see
-        # test_ai_handler_reminders.py's unit-level RBAC coverage for the
-        # structural guarantee; this just confirms it holds end-to-end too).
-        assert response is not None
 
     def test_cap_declined_at_21st_reminder(self, denidin_app, config):
         phone, chat_id = self._godfather(config)

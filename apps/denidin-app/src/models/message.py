@@ -10,18 +10,6 @@ import uuid
 from src.models.media import Media
 from src.utils.time_utils import now_local
 
-# Feature 039's "send nothing this turn" signal. Defined here rather than in
-# ai_handler because bugfix-028 B5 makes AIResponse itself enforce the
-# response-owed contract, and a model may not import a handler.
-# `ai_handler.NO_REPLY_SENTINEL` re-exports this, so existing imports of it
-# (src and tests alike) keep working unchanged.
-NO_REPLY_SENTINEL = "[[NO_REPLY]]"
-
-
-def should_reply_for(text: str) -> bool:
-    """False iff the model's final text is exactly the [[NO_REPLY]] sentinel
-    (Feature 039) - the one check both the legacy AIHandler and the Backbone use."""
-    return (text or "").strip() != NO_REPLY_SENTINEL
 
 
 def _frame_contact_message_text(contact_message_data: Dict[str, Any]) -> str:
@@ -175,12 +163,12 @@ class AIRequest:
     # message through AIRequest (already threaded everywhere downstream
     # needs it) rather than threading yet another individual scalar
     # (sender/user_phone/etc. already exist as separate params on
-    # single_turn/create_request and this was exactly the pattern that
+    # handle_message/create_request and this was exactly the pattern that
     # caused the conflation in the first place).
     original_message: Optional["WhatsAppMessage"] = None
     # The file attached to this turn (its bytes, MIME type, filename and media_type), or
     # None for a text turn (Feature 063). Only the Backbone's media turns carry one - the
-    # legacy path processes media in MediaHandler, never through single_turn.
+    # legacy path processes media in MediaHandler, never through handle_message.
     media: Optional[Media] = None
 
     def __post_init__(self):

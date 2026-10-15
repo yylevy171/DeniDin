@@ -21,30 +21,6 @@ FAILED_TO_PROCESS_FILE_DEFAULT = "לא הצלחתי לעבד את הקובץ ה�
 # Contact card (vCard) errors - Feature 030
 CONTACT_CARD_ONE_AT_A_TIME = "אני יכול לטפל באיש קשר אחד בכל פעם. אנא שתף אותם אחד אחד."
 
-# Approval-resolution safety (2026-08-03) - an approved document-creating
-# action (Feature 022) must execute exactly once. An OpenAI-side 429 retry on
-# the approval-resolution call was observed to re-execute the already-
-# approved MCP tool server-side, creating two invoices for one approval.
-APPROVAL_FAILED_TRY_AGAIN = "לא הצלחתי לבצע את הפעולה כרגע. אנא נסה לאשר שוב בעוד רגע."
-# Backbone (2026-10-04): appended AFTER the model's own reply on the turn that answers
-# an approval - never replacing it. Duplicated: the same write succeeded twice with
-# identical arguments.
-APPROVED_WRITE_POSSIBLY_DUPLICATED_NOTE = (
-    "⚠️ שים לב: המערכת רשמה שאותה פעולה בוצעה פעמיים עם אותם פרטים. "
-    "כדאי לבדוק במורנינג שלא נוצר מסמך כפול."
-)
-APPROVAL_POSSIBLY_DUPLICATED = (
-    "אירעה שגיאה באישור הפעולה וייתכן שהיא בוצעה יותר מפעם אחת. "
-    "אנא בדוק ידנית במערכת לפני שתנסה שוב, ואל תאשר שוב בינתיים."
-)
-
-# Ledger-event follow-up safety net (bugfix-018, 2026-08-04) - the turn that
-# calls capture_ledger_event always has empty output_text (a real reply only
-# comes from the follow-up round-trip), so if that follow-up call itself
-# fails for any reason, there is no text to fall back to at all - never leave
-# the user with a silently empty WhatsApp message.
-LEDGER_FOLLOWUP_FAILED_TRY_AGAIN = "אני נתקלתי בשגיאה בעיבוד הודעתך. אנא נסה שוב או נסח אותה מחדש."
-
 # Interactive approval buttons send failure (Feature 047) - sendInteractiveButtons
 # failed, so the user never saw the approval details at all (not just a degraded
 # text-only version of them). Clarify decision: surface an error, never a silent
@@ -68,7 +44,7 @@ REMINDER_CAP_EXCEEDED = "הגעת למספר המרבי המותר של תזכו
 BACKBONE_CAPABILITY_NOT_CONFIGURED = "היכולת הזו לא זמינה כרגע. אנא נסה שוב מאוחר יותר."
 BACKBONE_NO_MEDIA_ATTACHED = "לא זוהה קובץ מצורף להודעה הזו, אין מה לחלץ."
 BACKBONE_UNEXPECTED_ERROR = "אני נתקלתי בשגיאה בעיבוד הודעתך. אנא נסה שוב."
-# The legacy single_turn's per-error fallbacks (AIHandler._get_response_impl's
+# The legacy handle_message's per-error fallbacks (AIHandler._get_response_impl's
 # APITimeoutError / RateLimitError / APIError replies), in Hebrew (C8, 2026-10-04).
 BACKBONE_AI_TIMEOUT = "יש לי בעיה להתחבר לשירות ה-AI כרגע. אנא נסה שוב מאוחר יותר."
 BACKBONE_AI_RATE_LIMITED = "אני עמוס כרגע. אנא נסה שוב בעוד דקה."

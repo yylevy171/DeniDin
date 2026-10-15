@@ -347,6 +347,15 @@ def _check_field(field: str, value: Any, rule: Dict, ev: Dict, *,
                 f"{field}: manifest uses \"$client\" but the test passed no resolved_client_name"
             )
             expected = resolved_client_name
+        if field == "payer_name":
+            # A payer name is copied from the source as written: an honorific ("מר") may be
+            # kept, and a slip often truncates the name. Either containing the other is the
+            # same person.
+            got, want = _norm_field(field, value), _norm_field(field, expected)
+            assert got and want and (want in got or got in want), (
+                f"{field}: expected {expected!r} (or a part/superstring of it), persisted event has {value!r}"
+            )
+            return
         assert _norm_field(field, value) == _norm_field(field, expected), (
             f"{field}: expected {expected!r}, persisted event has {value!r}"
         )
@@ -591,8 +600,9 @@ def _assert_extractor_carried_tested_values(
     # Hop 1 verifies a *content* value survived OCR/vision. Derived classifications
     # (`vat_status` = לא כולל/כולל, `source_type`, `event_subtype`) are the model's
     # own reading of "+ מע"מ" / the document shape — never a verbatim substring —
-    # so they belong to Hop 2's manifest check only, not this one.
-    _HOP1_SKIP = {"client_name", "vat_status", "source_type", "event_subtype"}
+    # so they belong to Hop 2's manifest check only, not this one. `agreement_status`
+    # (Feature 089) is assigned by code when the agreement is stored - no contract states it.
+    _HOP1_SKIP = {"client_name", "vat_status", "source_type", "event_subtype", "agreement_status"}
 
     def _walk(rules: Dict) -> None:
         for field, rule in rules.items():

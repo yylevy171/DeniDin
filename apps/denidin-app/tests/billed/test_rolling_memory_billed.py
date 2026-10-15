@@ -28,7 +28,6 @@ import pytest
 from src.managers.memory_collections import collection_name_for_chat
 from src.managers.message_integrity import assert_message_integrity
 from src.models.config import AppConfiguration
-from src.models.message import WhatsAppMessage
 from src.services import daily_summary_roll_service as svc
 from src.utils.time_utils import local_calendar_date, now_local
 
@@ -90,14 +89,11 @@ def _roll_ctx(app):
 
 
 def _worst_case_system_prompt(app):
-    """The largest fixed system prompt the running AI implementation sends: the
-    legacy constitution, or the backbone's instructions with every flow and every
-    capability loaded at once."""
-    if app.backbone_enabled:
-        from src.backbone.capability_tags import CapabilityTag
-        from src.backbone.flow_tags import FlowTag
-        return app.ai_manager.build_instructions(list(CapabilityTag), active_flows=list(FlowTag))
-    return app.ai_manager._load_constitution()  # pylint: disable=protected-access
+    """The largest system prompt a call can carry: the backbone's instructions with every flow
+    and every capability loaded at once."""
+    from src.backbone.capability_tags import CapabilityTag
+    from src.backbone.flow_tags import FlowTag
+    return app.ai_manager.build_instructions(list(CapabilityTag), active_flows=list(FlowTag))
 
 
 def _seed(sm, chat, role, content, days_ago, *, sender_name=None):
@@ -105,14 +101,6 @@ def _seed(sm, chat, role, content, days_ago, *, sender_name=None):
         chat_id=chat, role=role, content=content, user_role="godfather",
         sender_name=sender_name, timestamp=now_local() - timedelta(days=days_ago),
     )
-
-
-def _ask(app, chat, text):
-    m = WhatsAppMessage(message_id="q", chat_id=chat, sender_id=chat, sender_name="Avi",
-                        text_content=text, timestamp=0, message_type="text")
-    req = app.ai_manager.create_request(m, chat_id=chat, user_phone=chat)
-    return app.ai_manager.single_turn(req, chat_id=chat, user_phone=chat, sender="Avi",
-                                      recipient="DeniDin")
 
 
 class TestAC1RollThenRecall:
@@ -157,10 +145,10 @@ class TestAC1RollThenRecall:
 def _ask_via_denidin(app, chat, text, message_id):
     """One real turn through DeniDin's WhatsApp entry point (handle_text_message), so the
     message and reply are stored the way production stores them - REQ-063-08 moved storing
-    out of ai_manager.single_turn and onto DeniDin. Returns the reply the user would see."""
+    out of ai_manager.handle_message and onto DeniDin. Returns the reply the user would see."""
     import denidin
     from tests.billed.denidin_mcp_e2e_helpers import build_text_webhook
-    from tests.e2e_helpers import create_real_notification, get_response
+    from tests.e2e_helpers import create_real_notification, get_full_reply
 
     original_app = getattr(denidin, "denidin_app", None)
     try:
@@ -170,9 +158,17 @@ def _ask_via_denidin(app, chat, text, message_id):
         notification = create_real_notification(build_text_webhook(
             chat_id=chat, sender_name="Avi", text=text, message_id=message_id))
         denidin.handle_text_message(notification)
-        return get_response(notification)
+        return get_full_reply(notification)
     finally:
         denidin.denidin_app = original_app
+
+
+def _ask(app, chat, text):
+    """One user message through the real pipeline; returns an object whose `response_text` is
+    everything the model sent in reply (Feature 067: the model's sends go through the live bot)."""
+    import types
+    return types.SimpleNamespace(
+        response_text=_ask_via_denidin(app, chat, text, f"q_{abs(hash(text)) % 10**8}"))
 
 
 class TestAC2RestartContinuity:

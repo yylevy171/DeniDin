@@ -3,26 +3,26 @@
 from pathlib import Path
 
 CONFIG = Path(__file__).parent.parent.parent / "config"
-CONSTITUTION = (CONFIG / "runtime_constitution.md").read_text(encoding="utf-8")
 
 
-def _section(title):
-    start = CONSTITUTION.index(f"## {title}")
-    nxt = CONSTITUTION.find("\n## ", start + 3)
-    return CONSTITUTION[start: nxt if nxt != -1 else len(CONSTITUTION)]
+def _flow_description(tag):
+    from src.backbone.flow_tags import FLOW_INFO
+    return next(i.description for i in FLOW_INFO if i.tag == tag)
 
 
-def test_agreement_section_defines_when_and_when_not():
-    section = _section("Agreement Management")
-    assert "### When these tools apply" in section
-    assert "### When these tools do NOT apply" in section
-    assert "ASK" in section and "CANCELS its Pending" in section
+def test_agreement_flow_defines_when_and_when_not():
+    from src.backbone.flow_tags import FlowTag
+    description = _flow_description(FlowTag.AGREEMENT_MANAGEMENT)
+    assert "EXISTING" in description and "Not for" in description
+    flow = (CONFIG / "prompts" / "flows" / "flow_agreement_management.md").read_text(encoding="utf-8")
+    assert "more than one agreement" in flow and "ask" in flow
 
 
-def test_other_tool_sections_exclude_agreement_management_back():
-    for title in ("Reminder Management", "Ledger Event Querying", "Fee Agreement Document Generation",
-                  "Ledger Event Recognition", "Invoice Management Context"):
-        assert "Agreement Management" in _section(title), title
+def test_neighbouring_flows_exclude_agreement_management_back():
+    from src.backbone.flow_tags import FlowTag
+    for tag in (FlowTag.FEE_AGREEMENT_PROVIDED_BY_USER, FlowTag.DEPOSIT_PROVIDED_BY_USER,
+                FlowTag.USER_QUESTION, FlowTag.GENERATE_FEE_AGREEMENT_DOCX):
+        assert "flow_agreement_management" in _flow_description(tag), tag
 
 
 def test_write_prompt_lists_approval_data_points_and_cascade():

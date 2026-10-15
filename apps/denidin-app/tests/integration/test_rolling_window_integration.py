@@ -1,33 +1,35 @@
 """Feature 070 — rolling window through the real message path (T014a).
 
-Real SessionManager + real AIHandler on an isolated tmp data_root; OpenAI mocked
-at the network boundary only (responses + embeddings). Covers:
-- the exact `input` items handed to the OpenAI boundary == get_rolling_window()
-  output + the new user turn (golden shape);
-- restart continuity (bugfix-044 / AC-2 shape): a fresh AIHandler on the same
-  data_root continues the existing session, no "Created new session".
+Real SessionManager + real Backbone on an isolated tmp data_root; OpenAI and the Green API
+bot faked at the boundary only. Covers:
+- the exact `input` items handed to the OpenAI boundary when a chat starts a new model chain
+  == get_rolling_window() output + the new user turn (golden shape);
+- restart continuity (bugfix-044 / AC-2 shape): a fresh Backbone on the same data_root
+  continues the existing session (no "Created new session") and the model chain it left.
 """
 from types import SimpleNamespace
 
 import pytest
 
-from src.handlers.ai_handler import AIHandler
 from src.models.config import AppConfiguration
 from src.models.message import WhatsAppMessage
 from tests.helpers.seed import seed_message
 from tests.ai_handler_test_support import make_ai_handler
+from tests.backbone_test_support import FakeBot
 
 CHAT = "972501234567@c.us"
 
 
 def _fake_client(capture):
+    """The model answers each message with one send_to_user, then has nothing more to do."""
     def responses_create(**kwargs):
         capture.append(kwargs)
-        return SimpleNamespace(
-            id="resp_1", output=[], output_text="בסדר",
-            model="gpt-5.6-luna",
-            usage=SimpleNamespace(total_tokens=5, input_tokens=3, output_tokens=2),
-        )
+        n = len(capture)
+        if n % 2 == 1:
+            item = SimpleNamespace(type="function_call", name="send_to_user", arguments='{"text": "בסדר"}',
+                                   call_id=f"c{n}")
+            return SimpleNamespace(id=f"resp_{n}", output=[item], output_text="", model="gpt-5.6-luna", usage=None)
+        return SimpleNamespace(id=f"resp_{n}", output=[], output_text="", model="gpt-5.6-luna", usage=None)
 
     def embeddings_create(model, input):
         return SimpleNamespace(data=[SimpleNamespace(embedding=[0.0] * 8)])
@@ -70,13 +72,11 @@ def _turn(handler, text, message_id="m-new"):
     )
     app.store_inbound(m)
     request = handler.create_request(m, chat_id=CHAT, user_phone=CHAT)
-    response = handler.single_turn(request, chat_id=CHAT, user_phone=CHAT, sender="Avi", recipient="DeniDin")
-    app.store_outbound(m, response.response_text)
-    return response
+    return handler.handle_message(request, chat_id=CHAT, user_phone=CHAT, sender="Avi", recipient="DeniDin")
 
 
 @pytest.mark.integration
-class TestRollingWindowThroughAIHandler:
+class TestRollingWindowThroughTheBackbone:
     def test_input_items_are_the_rolling_window_plus_new_turn(self, tmp_path):
         capture = []
         handler = make_ai_handler(_fake_client(capture), _config(tmp_path))
@@ -95,9 +95,12 @@ class TestRollingWindowThroughAIHandler:
         _turn(handler, "יום שלישי")
 
         assert capture, "OpenAI boundary must have been called"
-        sent = capture[-1]["input"]
-        assert sent[:-1] == expected_window
-        assert sent[-1] == {"role": "user", "content": "יום שלישי"}
+        assert "previous_response_id" not in capture[0]  # a new chain: the window is the context
+        sent = capture[0]["input"]
+        # user items carry their send time (REQ-RMH-007): "[HH:MM:SS dd/mm] <text>"
+        assert [i["role"] for i in sent[:-1]] == [i["role"] for i in expected_window]
+        assert all(got["content"].endswith(want["content"]) for got, want in zip(sent[:-1], expected_window))
+        assert sent[-1]["role"] == "user" and sent[-1]["content"].endswith("יום שלישי")
         # day-2 content is out of the 2-day window
         assert not any("יום ראשון" in i["content"] for i in sent)
         assert any("יום שני" in i["content"] for i in sent)
@@ -109,7 +112,7 @@ class TestRollingWindowThroughAIHandler:
         sid = h1.session_manager.get_session(CHAT).session_id
         counter_after_1 = h1.session_manager.get_session(CHAT).message_counter
 
-        # "Restart": brand-new AIHandler on the SAME data_root.
+        # "Restart": brand-new Backbone on the SAME data_root.
         cap2 = []
         caplog.clear()
         with caplog.at_level("INFO"):
@@ -122,5 +125,6 @@ class TestRollingWindowThroughAIHandler:
             "Created new session" in r.message and CHAT in r.message
             for r in caplog.records
         )
-        # the pre-restart turn is in the model's context on the new process
-        assert any("ראשון" in i["content"] for i in cap2[-1]["input"])
+        # the model chain the first process left continues on the new one (the pre-restart
+        # turn is in the model's context through it)
+        assert cap2[0]["previous_response_id"] == "resp_2"

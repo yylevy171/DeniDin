@@ -9,7 +9,7 @@ Flow (entry point is the real Green API webhook, dispatched through the actual
     Green API contactMessage webhook (godfather sender)
       -> handle_contact_message (real router handler, not a direct internal call)
       -> WhatsAppMessage.from_notification (vCard framed into text_content)
-      -> AIHandler.single_turn
+      -> AIHandler.handle_message
            -> client.responses.create (real OpenAI Responses API call)
               with the real Morning MCP server registered as a remote tool
       -> bot replies in Hebrew
@@ -55,7 +55,7 @@ from tests.billed.denidin_mcp_e2e_helpers import (
     _calls_for,
     _seed_client,
     create_real_notification,
-    get_response,
+    get_full_reply,
 )
 
 # `denidin_app`/`denidin_config`/`live_morning_tunnel` are no longer imported
@@ -111,7 +111,7 @@ def _send_contact_card(chat_id: str, display_name: str, vcard: str, id_prefix: s
         message_id=f"{id_prefix}_{int(datetime.now(timezone.utc).timestamp())}"
     ))
     handle_contact_message(notification)
-    response = get_response(notification)
+    response = get_full_reply(notification)
 
     import denidin
     ai_response = denidin.denidin_app.last_response

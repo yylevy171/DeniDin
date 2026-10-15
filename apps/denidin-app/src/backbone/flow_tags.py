@@ -118,22 +118,23 @@ FLOW_INFO: tuple = (
         "The user reports or forwards a fee agreement (הסכם) - as text or as an image - made with a"
         " client, or logs hours worked for a client (e.g. \"רן אורפני 4 שעות על היום\" - a work-log"
         " entry, never a reminder request). An agreement must never belong to a client Morning does"
-        " not manage, so this makes sure the client exists first. Recording the agreement in the"
-        " ledger happens automatically after the turn."
+        " not manage, so this makes sure the client exists first. It records the agreement in the"
+        " ledger itself, once it is complete. Changing the terms of an EXISTING agreement is flow_agreement_management, not this flow."
     ),
     FlowInfo(
         FlowTag.DEPOSIT_PROVIDED_BY_USER,
         "The user reports or forwards a bank deposit or a payment received - as text, or as a bank"
         " slip or payment screenshot. Reads the slip, makes sure the client exists in Morning, and"
         " when the user asks for a Morning document for it (or it is unclear whether they do), "
-        "hands over to flow_morning_document_write. Recording the deposit in the ledger happens "
-        "automatically after the turn."
+        "hands over to flow_morning_document_write. It records the deposit in the ledger itself, right after "
+        "the client is resolved. Changing the terms of an EXISTING agreement is flow_agreement_management, not this flow."
     ),
     FlowInfo(
         FlowTag.USER_QUESTION,
         "Answering a question about the user's clients, past agreements, deposits, or amounts owed "
         "and paid. Decides where the answer lives (the ledger first, Morning when it may hold it), "
-        "and never answers that nothing exists before checking Morning where Morning could hold it."
+        "and never answers that nothing exists before checking Morning where Morning could hold it. "
+        "What an EXISTING agreement currently says (its components, terms, statuses) is flow_agreement_management, not this flow."
     ),
     FlowInfo(
         FlowTag.INVOICING_QUERY,
@@ -145,7 +146,8 @@ FLOW_INFO: tuple = (
         FlowTag.GENERATE_FEE_AGREEMENT_DOCX,
         "Generating a fee agreement document (הסכם שכר טרחה) as a .docx file to send to a "
         "prospective client. The client does not exist yet, so no client lookup is involved. "
-        "Recording an agreement the user reports belongs to flow_fee_agreement_provided_by_user."
+        "Recording an agreement the user reports belongs to flow_fee_agreement_provided_by_user; "
+        "changing an EXISTING agreement belongs to flow_agreement_management."
     ),
     FlowInfo(
         FlowTag.CREATE_REMINDER,

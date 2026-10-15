@@ -62,10 +62,8 @@ class AppConfiguration:
     feature_flags: Dict[str, bool] = field(default_factory=dict)
     memory: Dict = field(default_factory=dict)
     constitution_config: Dict = field(default_factory=dict)
-    # Feature 063 (Dynamic Capability Backbone) - parallel to constitution_config, only ever
-    # read by the new src/backbone when feature_flags['enable_capability_backbone']
-    # is true. AIHandler never reads this; a config that never sets the flag needs no
-    # backbone_config block at all (data-model.md's Config additions).
+    # Feature 063 (Dynamic Capability Backbone): where the backbone loads its prompts from
+    # (base_dir) and its settings. The backbone is the only AI implementation (Feature 067).
     backbone_config: Dict = field(default_factory=dict)
     user_roles: Dict = field(default_factory=dict)
 
@@ -90,6 +88,11 @@ class AppConfiguration:
     # inactive (no scheduler started). Top-level like
     # accounting_ledger_update_freq; deliberately NOT a feature flag.
     capabilities_reset_minutes: int = 0
+
+    # Feature 067: limits/warnings/supervision for the intake queues and the
+    # SessionManager actor queue. Keys and defaults: src/utils/bounded_queue.py
+    # QueueSettings (an absent/partial block means those defaults).
+    message_queues: Dict[str, Any] = field(default_factory=dict)
 
     # Feature 069: how many hours of chat history the post-turn ledger-recognition
     # call sees as its context window (float; DI only, never an env var). Older
@@ -192,6 +195,7 @@ class AppConfiguration:
             'reminders': {},
             'accounting_ledger_update_freq': 0,
             'capabilities_reset_minutes': 0,
+            'message_queues': {},
             'ledger_recognition_context_window_hours': 1.0,
             'allocation_threshold_nis': 5000,
             'logging': {}

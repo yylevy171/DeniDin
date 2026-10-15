@@ -1,6 +1,6 @@
 """Unit tests (Feature 063, 2026-09-15 real design correction): the flag-on media
 dispatch in denidin.py's `_process_media_message` threads RAW, not-yet-extracted
-media into Backbone.single_turn - downloading and validating only
+media into Backbone.handle_message - downloading and validating only
 (reusing the unmodified, standalone MediaFileManager methods), never running the
 full legacy MediaHandler.process_media_message pipeline (which also extracts/
 persists/ledger-detects in one call) for the flag-on path. Extraction itself is
@@ -42,9 +42,8 @@ def app(monkeypatch):
     fake.config.ai_vision_model = "gpt-5.6-luna"
     fake.green_api_bot = None
     fake.typing_keepalive_scheduler = None
-    fake.backbone_enabled = True
     fake.user_manager.get_user.return_value.is_blocked = False
-    fake.ai_manager.single_turn.return_value = AIResponse(
+    fake.ai_manager.handle_message.return_value = AIResponse(
         request_id="r1", response_text="בסדר.", tokens_used=0,
         prompt_tokens=0, completion_tokens=0, model="gpt-5.6-luna",
         finish_reason="stop", timestamp=1735689600,
@@ -53,9 +52,9 @@ def app(monkeypatch):
     return fake
 
 
-def test_flag_on_media_dispatch_never_calls_the_legacy_extraction_pipeline(app):
+def test_media_dispatch_never_calls_the_legacy_extraction_pipeline(app):
     """The old shortcut (process_media_message: download+extract+persist+ledger-
-    detect in one call) must never be invoked on the flag-on path — only the raw
+    detect in one call) must never be invoked on this path — only the raw
     low-level MediaFileManager pieces."""
     file_manager = app.media_handler.media_file_manager
     file_manager.download_file.return_value = (b"fake jpeg bytes", True)
@@ -70,7 +69,7 @@ def test_flag_on_media_dispatch_never_calls_the_legacy_extraction_pipeline(app):
 
 
 def test_flag_on_media_dispatch_passes_raw_media_not_pre_extracted_result(app):
-    """single_turn gets the raw file on request.media (with its media_type), not a
+    """handle_message gets the raw file on request.media (with its media_type), not a
     pre-extracted result - the model decides whether to extract, not denidin.py."""
     from src.models.media import Media
 
@@ -80,7 +79,7 @@ def test_flag_on_media_dispatch_passes_raw_media_not_pre_extracted_result(app):
 
     denidin_module._process_media_message(_media_notification(caption="קבלה"))  # pylint: disable=protected-access
 
-    request = app.ai_manager.single_turn.call_args.args[0]
+    request = app.ai_manager.handle_message.call_args.args[0]
     assert isinstance(request.media, Media)
     assert request.media.media_type == "image"
     assert request.media.data == b"fake jpeg bytes"
@@ -94,7 +93,7 @@ def test_flag_on_media_dispatch_download_failure_sends_friendly_error_without_ca
 
     denidin_module._process_media_message(_media_notification())  # pylint: disable=protected-access
 
-    app.ai_manager.single_turn.assert_not_called()
+    app.ai_manager.handle_message.assert_not_called()
     assert len(_media_notification()._test_sent_messages) == 0  # sanity: fresh fixture is empty
 
 
@@ -106,6 +105,6 @@ def test_flag_on_media_dispatch_unsupported_format_sends_friendly_error_without_
     notification = _media_notification()
     denidin_module._process_media_message(notification)  # pylint: disable=protected-access
 
-    app.ai_manager.single_turn.assert_not_called()
+    app.ai_manager.handle_message.assert_not_called()
     # Sent through DeniDin.send_text (REQ-063-08) - sends, then stores what was sent.
     app.send_text.assert_called_once_with(notification, FAILED_TO_PROCESS_FILE_DEFAULT)

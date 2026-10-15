@@ -88,6 +88,7 @@ def test_backbone_turn_records_round_spans_and_mcp_calls(prompts_root, tmp_path)
         _response([_mcp_call("resolve_client_name"),
                    _function_call("record_planning_status", {"status": "checking"}, "c1")], "r1"),
         _response([_function_call("send_to_user", {"text": "שלום"}, "c2")], "r2"),
+        _response([], "r3"),
     ]
     config = AppConfiguration(green_api_instance_id="x", green_api_token="y", ai_api_key="z",
                               backbone_config={"base_dir": str(prompts_root)})
@@ -96,10 +97,10 @@ def test_backbone_turn_records_round_spans_and_mcp_calls(prompts_root, tmp_path)
     request = AIRequest(user_prompt="מי הלקוח?", constitution="", max_tokens=1000,
                         model="gpt-5.6-luna", chat_id="chat1", message_id="msg1")
 
-    backbone.single_turn(request, chat_id="chat1", user_role="godfather")
+    backbone.handle_message(request, chat_id="chat1", user_role="godfather")
 
     row = telemetry_manager.get_latest_by_chat("chat1")
-    assert row["llm_turns_count"] == 2
+    assert row["llm_turns_count"] == 3  # the empty third response is a call too
     # two resolution rounds ("local_tools", as legacy names its dispatch span) + one MCP call
     assert row["tool_calls_count"] == 3
     assert row["slowest_tool_name"] is not None

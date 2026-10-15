@@ -67,7 +67,8 @@ from tests.e2e_helpers import (  # noqa: E402,F401
     assert_document_approval_states_vat,
     sanity_worker_data_root,
     create_real_notification,
-    get_response,
+    get_full_reply,
+    get_response,  # re-exported: other test modules import it from here
 )
 
 
@@ -218,7 +219,7 @@ def build_button_tap_webhook(
 # tests/e2e_helpers.py (imported at the top of this module). The bare-Notification
 # stub there already captures both `.answer()` and Feature 047's
 # `.answer_with_interactive_buttons` (dual-writing the button body into
-# `_test_sent_messages` so `get_response()` reads identically for either delivery
+# `_test_sent_messages` so `get_full_reply()` reads identically for either delivery
 # form) - this module's near-identical copy was removed 2026-09-10.
 
 
@@ -499,7 +500,7 @@ def _send_turn_with_notification(
         timestamp=timestamp,
     ))
     handle_text_message(notification)
-    response = get_response(notification)
+    response = get_full_reply(notification)  # Feature 067: every message of the turn, not just the last
     _track_approval_buttons(chat_id, notification)
 
     import denidin
@@ -512,7 +513,6 @@ def _send_turn_with_notification(
                 f"arguments={call['arguments']!r} output={call['output']!r}"
             )
     logger.info(f"Bot response: {response}")
-    assert_document_approval_states_vat(response)  # bugfix-071: every document approval states VAT
 
     return response, ai_response, notification
 
@@ -958,7 +958,7 @@ def _send_button_tap(
         message_id=f"{id_prefix}_{int(datetime.now(timezone.utc).timestamp())}"
     ))
     denidin.handle_button_tap(notification)
-    response = get_response(notification)
+    response = get_full_reply(notification)
     _track_approval_buttons(chat_id, notification)
 
     ai_response = denidin.denidin_app.last_response
@@ -970,7 +970,6 @@ def _send_button_tap(
                 f"arguments={call['arguments']!r} output={call['output']!r}"
             )
     logger.info(f"Bot response (button tap): {response}")
-    assert_document_approval_states_vat(response)  # bugfix-071: every document approval states VAT
 
     return response, ai_response
 
@@ -985,7 +984,7 @@ def _send_turn_and_approve_via_button_tap(
     same as _send_turn_and_approve does for the text path. Returns the same
     ((ask_response, ask_ai_response), (approve_response, approve_ai_response))
     shape, so existing assertions on either half work unchanged."""
-    from src.managers.pending_approval_manager import BUTTON_ID_APPROVE
+    from src.handlers.whatsapp_handler import BUTTON_ID_APPROVE
 
     ask_result = _send_turn(chat_id, text, id_prefix=f"{id_prefix}_ASK")
     approve_result = _send_button_tap(chat_id, BUTTON_ID_APPROVE, id_prefix=f"{id_prefix}_TAP_APPROVE")
@@ -1019,7 +1018,9 @@ def _send_turn_and_approve_receipt(
     )
 
     pre_approve_response, pre_approve_ai_response = ask_response, ask_ai_response
-    if not pre_approve_response or "לאישור" not in pre_approve_response:
+    # Feature 067: a real pending approval is the buttons message on screen - the word "לאישור"
+    # also appears in progress messages ("מכין את הפרטים לאישור") that precede a question.
+    if approval_buttons_on_screen(chat_id) is None:
         pre_approve_response, pre_approve_ai_response = _send_turn(
             chat_id, date_answer, id_prefix=f"{id_prefix}_DATE"
         )

@@ -125,6 +125,7 @@ def _local_tools_by_tag() -> Dict[CapabilityTag, Any]:
     from src.backbone.resolution_tools import APPROVAL_WITH_YES_NO_BUTTONS_TOOL
     from src.capabilities.agreements.tools import AGREEMENTS_READ_TOOLS, AGREEMENTS_WRITE_TOOLS
     from src.capabilities.media_analysis.tools import ANALYZE_MEDIA_TOOL
+    from src.managers.ledger_event_recognizer import RECOGNITION_TOOL
     from src.tool_actions.tool_schemas import (
         CREATE_REMINDER_TOOL, DELETE_REMINDER_TOOL, LIST_REMINDERS_TOOL, MODIFY_REMINDER_TOOL,
         QUERY_LEDGER_EVENTS_TOOL,
@@ -135,6 +136,7 @@ def _local_tools_by_tag() -> Dict[CapabilityTag, Any]:
         CapabilityTag.AGREEMENTS_READ: list(AGREEMENTS_READ_TOOLS),
         CapabilityTag.AGREEMENTS_WRITE: list(AGREEMENTS_WRITE_TOOLS),
         CapabilityTag.LEDGER_QUERY: [QUERY_LEDGER_EVENTS_TOOL],
+        CapabilityTag.LEDGER_CAPTURE: [RECOGNITION_TOOL],
         CapabilityTag.MEDIA_ANALYSIS: [ANALYZE_MEDIA_TOOL],
         CapabilityTag.APPROVAL_WITH_BUTTONS: [APPROVAL_WITH_YES_NO_BUTTONS_TOOL],
     }
@@ -186,7 +188,7 @@ def dispatch_local_tool(backbone, tag: CapabilityTag, tool_name: str,
         from src.capabilities.reminders.handler import dispatch_direct_tool_call
     elif tag in (CapabilityTag.AGREEMENTS_READ, CapabilityTag.AGREEMENTS_WRITE):
         from src.capabilities.agreements.handler import dispatch_direct_tool_call
-    elif tag == CapabilityTag.LEDGER_QUERY:
+    elif tag in (CapabilityTag.LEDGER_QUERY, CapabilityTag.LEDGER_CAPTURE):
         from src.capabilities.ledger_events.handler import dispatch_direct_tool_call
     elif tag == CapabilityTag.MEDIA_ANALYSIS:
         from src.capabilities.media_analysis.handler import dispatch_direct_tool_call

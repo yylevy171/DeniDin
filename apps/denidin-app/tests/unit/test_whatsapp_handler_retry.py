@@ -1,137 +1,83 @@
-"""
-Unit tests for WhatsAppHandler retry logic (Phase 5: US3)
-Tests retry behavior for Green API failures with exponential backoff
-"""
+"""WhatsAppHandler.send_to_chat retry policy (CONSTITUTION retry rule): one retry after 1s on a timeout,
+connection error or 5xx; never on a 4xx; it never raises - a send that could not be made returns None."""
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
+
 import pytest
-from unittest.mock import Mock, MagicMock, patch
 import requests
+
 from src.handlers.whatsapp_handler import WhatsAppHandler
 from tests.denidin_test_support import make_denidin
-from src.models.message import AIResponse
+
+CHAT = "972500000000@c.us"
+
+
+def _ok(n=1):
+    return SimpleNamespace(code=200, data={"idMessage": f"ID{n}"})
 
 
 @pytest.fixture
-def whatsapp_handler():
-    """Create WhatsAppHandler instance"""
-    return WhatsAppHandler(make_denidin())
+def handler():
+    app = make_denidin()
+    app.green_api_bot = Mock()
+    return WhatsAppHandler(app)
 
 
-@pytest.fixture
-def mock_notification():
-    """Create a mock Green API notification"""
-    notification = MagicMock()
-    notification.answer = MagicMock()
-    return notification
+def _send_message(handler):
+    return handler.green_api_bot.api.sending.sendMessage
 
 
-@pytest.fixture
-def sample_ai_response():
-    """Create a sample AI response"""
-    return AIResponse(
-        request_id="req_123",
-        response_text="This is a test response",
-        tokens_used=50,
-        prompt_tokens=10,
-        completion_tokens=40,
-        model="gpt-4o-mini",
-        finish_reason="stop",
-        timestamp=1234567890,
-        is_truncated=False
-    )
+def _http_error(status):
+    response = Mock()
+    response.status_code = status
+    return requests.HTTPError(f"{status}", response=response)
 
 
-class TestWhatsAppHandlerRetryLogic:
-    """Test retry logic for Green API calls"""
-    
-    def test_send_response_retries_on_request_exception(
-        self, whatsapp_handler, mock_notification, sample_ai_response
-    ):
-        """Test that send_response retries on network errors"""
-        # Simulate network timeout on first call, success on 2nd
-        mock_notification.answer.side_effect = [
-            requests.Timeout("Network timeout"),
-            None  # Success
-        ]
-        
-        # Should succeed after 1 retry
-        whatsapp_handler.send_response(mock_notification, sample_ai_response)
-        
-        # Verify it tried 2 times (initial + 1 retry)
-        assert mock_notification.answer.call_count == 2
-        mock_notification.answer.assert_called_with("This is a test response")
-    
-    @patch('time.sleep')  # Mock sleep to speed up test
-    def test_exponential_backoff_for_green_api(
-        self, mock_sleep, whatsapp_handler, mock_notification, sample_ai_response
-    ):
-        """Test fixed 1-second wait for Green API sendMessage"""
-        # Simulate failure then success
-        mock_notification.answer.side_effect = [
-            requests.Timeout("Connection timeout"),
-            None  # Success on 2nd attempt
-        ]
-        
-        whatsapp_handler.send_response(mock_notification, sample_ai_response)
-        
-        # Verify retry occurred
-        assert mock_notification.answer.call_count == 2
-        
-        # Verify 1 second wait was used
-        assert mock_sleep.call_count == 1
-        mock_sleep.assert_called_with(1)
-    
-    def test_send_response_fails_after_max_retries(
-        self, whatsapp_handler, mock_notification, sample_ai_response
-    ):
-        """Test that send_response fails after 2 attempts (1 retry) with clear error"""
-        # Simulate persistent network error
-        mock_notification.answer.side_effect = requests.Timeout("Persistent error")
-        
-        # Should raise exception after max retries
-        with pytest.raises(requests.Timeout):
-            whatsapp_handler.send_response(mock_notification, sample_ai_response)
-        
-        # Verify it tried 2 times (initial + 1 retry)
-        assert mock_notification.answer.call_count == 2
-    
-    def test_send_response_retries_on_http_error(
-        self, whatsapp_handler, mock_notification, sample_ai_response
-    ):
-        """Test retry on HTTPError (subclass of RequestException)"""
-        # Simulate HTTP error on first call, success on 2nd
-        response = Mock()
-        response.status_code = 500
-        mock_notification.answer.side_effect = [
-            requests.HTTPError("500 Server Error", response=response),
-            None  # Success
-        ]
-        
-        whatsapp_handler.send_response(mock_notification, sample_ai_response)
-        
-        assert mock_notification.answer.call_count == 2
-    
-    def test_send_response_retries_on_connection_error(
-        self, whatsapp_handler, mock_notification, sample_ai_response
-    ):
-        """Test retry on ConnectionError"""
-        mock_notification.answer.side_effect = [
-            requests.ConnectionError("Failed to connect"),
-            None  # Success
-        ]
-        
-        whatsapp_handler.send_response(mock_notification, sample_ai_response)
-        
-        assert mock_notification.answer.call_count == 2
-    
-    def test_send_response_retries_on_timeout(
-        self, whatsapp_handler, mock_notification, sample_ai_response
-    ):
-        """Test retry on Timeout error"""
-        mock_notification.answer.side_effect = [
-            requests.Timeout("Request timeout"),
-            None  # Success
-        ]
-        
-        whatsapp_handler.send_response(mock_notification, sample_ai_response)
-        
-        assert mock_notification.answer.call_count == 2
+@pytest.mark.parametrize("error", [requests.Timeout("t"), requests.ConnectionError("c"), _http_error(500)])
+def test_a_retryable_failure_is_retried_once_and_the_send_succeeds(handler, error):
+    _send_message(handler).side_effect = [error, _ok(2)]
+    with patch("time.sleep"):
+        sent = handler.send_to_chat(CHAT, "שלום")
+    assert _send_message(handler).call_count == 2
+    assert sent is not None and sent.whatsapp_id_message == "ID2"
+
+
+def test_the_wait_between_the_attempts_is_one_second(handler):
+    _send_message(handler).side_effect = [requests.Timeout("t"), _ok()]
+    with patch("time.sleep") as sleep:
+        handler.send_to_chat(CHAT, "שלום")
+    sleep.assert_called_once_with(1)
+
+
+def test_a_persistent_failure_stops_after_two_attempts_and_returns_none(handler):
+    _send_message(handler).side_effect = requests.Timeout("down")
+    with patch("time.sleep"):
+        assert handler.send_to_chat(CHAT, "שלום") is None
+    assert _send_message(handler).call_count == 2
+
+
+@pytest.mark.parametrize("status", [400, 401, 429])
+def test_a_4xx_is_never_retried(handler, status):
+    _send_message(handler).side_effect = _http_error(status)
+    assert handler.send_to_chat(CHAT, "שלום") is None
+    assert _send_message(handler).call_count == 1
+
+
+def test_a_non_200_answer_is_a_failed_send(handler):
+    _send_message(handler).return_value = SimpleNamespace(code=466, data={})
+    assert handler.send_to_chat(CHAT, "שלום") is None
+
+
+def test_an_empty_message_is_refused_without_calling_green_api(handler):
+    assert handler.send_to_chat(CHAT, "   ") is None
+    _send_message(handler).assert_not_called()
+
+
+def test_a_long_message_is_cut_before_it_is_sent(handler):
+    _send_message(handler).return_value = _ok()
+    handler.send_to_chat(CHAT, "א" * 4500)
+    assert _send_message(handler).call_args.args[1] == "א" * 4000 + "..."
+
+
+def test_without_a_live_bot_nothing_is_sent_and_nothing_raises():
+    assert WhatsAppHandler(make_denidin()).send_to_chat(CHAT, "שלום") is None

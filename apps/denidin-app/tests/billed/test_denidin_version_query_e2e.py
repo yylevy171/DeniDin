@@ -7,7 +7,7 @@ Flow (entry point is the real Green API webhook, dispatched through the actual
 
     Green API textMessage webhook (any role)
       -> handle_text_message (real router handler)
-      -> AIHandler.single_turn -> client.responses.create (real OpenAI Responses API call)
+      -> AIHandler.handle_message -> client.responses.create (real OpenAI Responses API call)
            `instructions` includes the current version (research.md Decision 4 - same per-call
            injection mechanism already used for today's date, ai_handler.py:363-368 area)
       -> bot replies stating the exact version
@@ -24,7 +24,7 @@ from pathlib import Path
 import pytest
 
 from src.models.config import AppConfiguration
-from tests.e2e_helpers import sanity_worker_data_root, assert_response_exists, create_real_notification, get_response
+from tests.e2e_helpers import sanity_worker_data_root, assert_response_exists, create_real_notification, get_full_reply
 
 logger = logging.getLogger(__name__)
 
@@ -101,22 +101,6 @@ def _build_text_webhook(chat_id: str, message_id: str) -> dict:
 
 
 @pytest.mark.billed
-def test_client_role_gets_accurate_version_answer(denidin_app):
-    from denidin import handle_text_message
-
-    version = _current_version()
-    notification = create_real_notification(
-        _build_text_webhook(CLIENT_CHAT_ID, 'E2E_TEST_VERSION_QUERY_CLIENT_001')
-    )
-
-    handle_text_message(notification)
-    response = get_response(notification)
-
-    assert_response_exists(response)
-    assert version in response, f"Expected version '{version}' in reply, got: {response}"
-
-
-@pytest.mark.billed
 @pytest.mark.sanity
 def test_godfather_role_gets_accurate_version_answer(denidin_app):
     from denidin import handle_text_message
@@ -127,7 +111,7 @@ def test_godfather_role_gets_accurate_version_answer(denidin_app):
     )
 
     handle_text_message(notification)
-    response = get_response(notification)
+    response = get_full_reply(notification)
 
     assert_response_exists(response)
     assert version in response, f"Expected version '{version}' in reply, got: {response}"

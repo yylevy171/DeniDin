@@ -184,8 +184,7 @@ def _build_reconciliation_prompt(since) -> str:
 class AccountingReconciler:
     """The accounting-document reconciliation sweep (Feature 025), its own class
     (REQ-063-08). Uses DeniDin's ledger and, from the AI implementation in use, only
-    the OpenAI client and the Morning MCP connection - so it runs the same whichever
-    implementation the backbone flag selects."""
+    the OpenAI client and the Morning MCP connection."""
 
     def __init__(self, ai_manager: Any, ledger_event_manager: Any):
         self.ai_manager = ai_manager

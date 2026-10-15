@@ -8,7 +8,7 @@ DeniDin is a WhatsApp AI assistant built on a multi-tier memory architecture wit
 
 **Memory model (Feature 070, 2026-09-03)**: there is exactly **one long-lived `Session` per chat** — it never expires and is never recreated (the chat→session mapping is authoritative in `chat_index.db`). Each turn reads a **rolling 14-day verbatim window** (Israel-local calendar days) capped read-only by the acting role's token limit; nothing is pruned at write time. A nightly **02:00 Israel-local roll** writes one `daily_summary` per (chat, date) into ChromaDB (claim-first two-phase, tracked in `roll_markers.db`) and physically **moves** (never deletes) out-of-window message files into `{session_dir}/archived/`. The pre-070 24-hour expiry + hourly `cleanup_service` transfer cycle is retired.
 
-**Two AI code paths (Feature 063, REQ-063-08)**: every turn is answered by exactly one *AI implementation* (`ai_manager`), chosen once at startup by `feature_flags.enable_capability_backbone` — the legacy `AIHandler` (flag off) or the capability `Backbone` (flag on). Both implement the same `AIManager` abstract base and are constructed with the `DeniDin` app object itself, reaching every manager through it. Only one of the two is ever constructed in a process. See §5.
+**One AI implementation (Feature 063, REQ-063-08; sole path since Feature 067)**: every message is handled by the capability `Backbone` (`ai_manager`), which implements the `AIManager` abstract base and is constructed with the `DeniDin` app object itself, reaching every manager through it. The legacy `AIHandler`, `runtime_constitution.md` and the `enable_capability_backbone` flag were removed. There is no "turn": see §5.
 
 **Repo structure**: this document describes `apps/denidin-app/`, one of two independently deployable apps in this monorepo under `apps/`. The other, `apps/morning-mcp-app/`, is a much smaller standalone Morning/Green Invoice API client — see "Sibling App: morning-mcp-app" near the end of this document. All `src/...` paths below are relative to `apps/denidin-app/`.
 
@@ -59,12 +59,12 @@ DeniDin is a WhatsApp AI assistant built on a multi-tier memory architecture wit
 │                        ▼                                         │
 │  ┌───────────────────────────────────────────────────────────┐  │
 │  │       ai_manager: ONE AI implementation (AIManager)       │  │
-│  │  - flag OFF: AIHandler (legacy, runtime_constitution.md)  │  │
-│  │  - flag ON:  Backbone (capability resolution loop)        │  │
+│  │  - Backbone (capability resolution loop; no "turn")       │  │
+│  │  - tools act at once; silence = no tool call              │  │
 │  │  - shared base: model calls/retry, fallback, rolling      │  │
 │  │    window, memory recall, create_request, Morning MCP     │  │
-│  │  - both built on DeniDin; use its managers (never build)  │  │
-│  │  - then: LedgerEventRecognizer (post-turn, both paths)    │  │
+│  │  - built on DeniDin; uses its managers (never builds)     │  │
+│  │  - ledger capture: inside the flows (no post-reply step)  │  │
 │  └───────┬──────────────────────────────────┬────────────────┘  │
 │          │                                  │                   │
 │          ▼                                  ▼                   │
@@ -183,6 +183,8 @@ Blocked (lowest)
 | Blocked | 0 | None | ❌ None |
 
 ### 3. Session Manager (`src/managers/session_manager.py`)
+
+*Feature 067: `SessionManager` is a thread-safe actor facade (one bounded queue, one thread) over `SessionStore` (`session_store.py`, single-thread-only); public signatures are unchanged.*
 
 **Tier 1 Memory - the rolling verbatim conversation window (Feature 070)**
 
@@ -312,7 +314,7 @@ UTC. They stay valid and compare correctly against new records because both side
 this was a fix-forward change with no migration. Only the *log lines* from before that date
 are genuinely ambiguous, since they carry no offset at all.
 
-### 5. AI Implementations — `AIManager`, `AIHandler`, `Backbone` (Feature 063, REQ-063-08)
+### 5. AI Implementation — `AIManager`, `Backbone` (Feature 063, REQ-063-08; no-turn model, Feature 067)
 
 **Ownership.** The `DeniDin` app object (`denidin.py`) is the center. Every manager — and the AI
 implementation — takes the `DeniDin` object as its **only** constructor argument, reads its own
@@ -325,21 +327,18 @@ green_api=)` light (every object `None`), then `build_denidin_objects(denidin)` 
 `morning_mcp_locator`, `reminder_manager`, `doc_template_engine`, `fee_agreement_tools`,
 `whatsapp_handler`, `group_membership_resolver`, `ledger_event_recognizer`, `media_handler`.
 `initialize_app()` then resolves DeniDin's own WhatsApp number onto the `WhatsAppHandler` and
-constructs exactly ONE AI implementation:
+constructs the AI implementation:
 
 ```
                      initialize_app()
                            │
    DeniDin(config) ──► build_denidin_objects(denidin)   (each object: X(denidin))
                            │
-     feature_flags.enable_capability_backbone ?
-          │ false                               │ true
-          ▼                                     ▼
-   AIHandler(denidin)                    Backbone(denidin)
-   src/handlers/ai_handler.py            src/backbone/backbone.py
-   (legacy; never imported by            (never constructed with the flag off;
-    the backbone)                          AIHandler never constructed with it on)
-          └──────────────► denidin_app.ai_manager ◄──────────┘
+                           ▼
+                   Backbone(denidin)            src/backbone/backbone.py
+                           │
+                           ▼
+                denidin_app.ai_manager
 ```
 
 Cross-references between objects are read at use time (properties over `getattr(denidin, ...)`),
@@ -355,10 +354,10 @@ DeniDin degrades instead of crashing.
 - `SessionManager` stores exactly the values it is given; it knows nothing of WhatsApp.
 - `DeniDin` coordinates the two by value: `receive()` (parse + store the moment a message arrives),
   `send_text()` / `send_response()` (send, then store what was sent), `store_inbound()` /
-  `store_outbound()` / `update_message()`, `send_document()`, `send_reaction()`. A turn is bracketed
-  by `begin_turn()` / `end_turn()`; `send_progress_update(chat_id, text)` sends (and stores) an interim
-  message in that chat's turn in progress — text, media and button-tap turns alike. Tools call these
-  DeniDin methods directly (progress updates, reactions, sending a generated document).
+  `store_outbound()` / `update_message()`, `send_to_user()` / `send_approval_buttons()` (by chat id, through the
+  live bot), `send_document()`, `send_reaction()`. There is no turn and no busy marking (Feature 067
+  no-turn redesign): every send happens the moment a tool runs; the typing indicator is on exactly while an
+  OpenAI call is in flight. Tools call these DeniDin methods directly.
 
 **External DeniDins.** Tools that reuse denidin-app managers outside the app build their own minimal
 stand-in holding only what they use, never importing `denidin.py`: `BackfillDeniDin`
@@ -370,9 +369,10 @@ config fields they and the nightly roll read) and `WebappDeniDin`
 **The shared contract — `AIManager` (`src/core/ai_manager.py`).** Abstract base both implement.
 denidin.py talks to `ai_manager` identically for both:
 
-- `single_turn(request, chat_id, *, user_role, sender, recipient, user_phone, is_group, chat_name,
-  sender_phone) -> AIResponse` — one inbound message, one reply (or a deliberate
-  `[[NO_REPLY]]` no-reply).
+- `handle_message(request, chat_id, *, user_role, sender, recipient, user_phone, is_group, chat_name,
+  sender_phone) -> AIResponse` — handles one inbound message. The `AIResponse` is only an
+  activity record (texts sent, Morning calls, tokens); nothing is delivered from it. Silence is a model
+  response with no tool call.
 - `resolve_button_tap(...)` — a Feature 047 interactive-button tap; `None` for a stale tap.
 - `record_sent_message_id(chat_id, message_id)` — the sent reply's WhatsApp `idMessage`, for the
   stale-tap guard.
@@ -382,16 +382,10 @@ denidin.py talks to `ai_manager` identically for both:
   telemetry (`telemetry_span`). Tool *actions* both paths run live in `src/tool_actions/`
   (schemas in `tool_schemas.py`).
 
-`DeniDin.last_response` holds the most recent turn's `AIResponse` (both paths) for
-observability and E2E verification.
+`DeniDin.last_response` holds the most recent `handle_message` call's activity record for
+observability and E2E verification (only that call's Morning calls — scenario-wide counts come from the wire log).
 
-**Legacy path — `AIHandler`.** One system prompt (`config/runtime_constitution.md`, the
-byte-stable, prompt-cache-eligible prefix) + recalled memories + `---` + today's Israel-local
-date/time; every tool attached up front by RBAC. Keeps its own legacy-only state: the two
-pending-approval managers (`PendingApprovalManager` for Morning MCP writes,
-`PendingLocalToolApprovalManager` for reminders), which also back the Feature 047 approval buttons.
-
-**Backbone path — `Backbone`.** A tool-driven *resolution loop*: the model starts with only the
+**`Backbone`.** A tool-driven *resolution loop*: the model starts with only the
 backbone prompt (`config/prompts/backbone.md`) and a few always-present capabilities, and itself
 calls `load_flows` / `load_capabilities` (and `unload_*`, `reset_to_backbone`) to attach the
 prompts and real tools it needs from the next round on. Flows (`config/prompts/flows/*.md`) are
@@ -400,13 +394,13 @@ blueprints naming which capabilities to load in what order; capabilities
 units of prompt + tools. The loaded set persists per chat (`Session.active_capabilities`), and
 `instructions` and `tools` are rebuilt from it on every API call. Writes are gated by the stateless
 `approval_with_yes_no_buttons` tool (the approval message id is kept on the session, not in a
-pending-approval manager). Idle chats are reset by `services/capability_reset_service.py` after
+pending-approval manager; a typed "כן" or a button tap runs the approved write). The chat's model chain (`Session.ai_chain_id`, `previous_response_id`, `truncation="auto"`) survives between messages. Idle chats are reset by `services/capability_reset_service.py` after
 `capabilities_reset_minutes`. Full design:
 `specs/repo/features/063-refactor-oversized-handlers/contracts/capability-resolution-loop.md`.
 
-**After every turn, either path** — `LedgerEventRecognizer`
-(`src/managers/ledger_event_recognizer.py`) runs the Feature 069 post-turn ledger recognition
-call. Ledger capture is not a backbone capability.
+**Ledger capture** lives in the flows (`cap_ledger_capture` / `report_ledger_recognition`); a created Morning
+document is recorded by `record_created_document`, and the 60-minute reconciliation sweep is the backup. There is
+no post-reply recognition step (the Feature 069 `LedgerEventRecognizer` post-turn call was removed).
 
 **Background services** take the `DeniDin` object as their global context and read its managers
 from it; only AI needs go through `ai_manager`. E.g. `AccountingReconciler`
@@ -543,6 +537,8 @@ hours-worked ledger lines (never components); API down gives an explicit error, 
 
 ### Message Processing Flow
 
+*Feature 067: the poller stores each message on receipt, acknowledges it and queues it (`IntakeCoordinator`); a single `DeniDinDispatcher` thread hands items to the handlers one at a time; at every model hand-back the backbone merges the messages that arrived meanwhile into the model's next input. No model call is ever aborted.*
+
 ```
 1. User sends WhatsApp message
    ↓
@@ -554,14 +550,11 @@ hours-worked ledger lines (never components); API down gives an explicit error, 
    ↓
 5. Session Manager loads/creates session
    ↓
-6. ai_manager.single_turn() — AIHandler (flag off) or Backbone (flag on):
+6. ai_manager.handle_message() — Backbone:
    a. Recalls relevant memories
-   b. Builds context (legacy: constitution; backbone: backbone prompt + loaded
-      flows/capabilities, reloaded each round)
-   c. Calls OpenAI (backbone: possibly several rounds as it loads capabilities)
-   d. Gets response
-   ↓
-6a. LedgerEventRecognizer: post-turn ledger recognition (both paths)
+   b. Builds context (backbone prompt + loaded flows/capabilities, reloaded each round)
+   c. Calls OpenAI (possibly several rounds as it loads capabilities); every tool acts at once
+      (`send_to_user` sends immediately); the app pauses on a response with no tool call
    ↓
 7. Session Manager:
    a. Appends user message (one JSON file)
@@ -719,8 +712,7 @@ See `apps/denidin-app/DEPLOYMENT.md` for the full systemd setup guide.
 1. Load configuration
 2. Initialize ChromaDB client
 3. Initialize OpenAI client
-3a. Build DeniDin's objects (`build_denidin_objects`) and the ONE AI implementation the
-    backbone flag selects (`AIHandler(denidin)` or `Backbone(denidin)`)
+3a. Build DeniDin's objects (`build_denidin_objects`) and the AI implementation (`Backbone(denidin)`)
 4. Reconcile `chat_index.db` against sessions on disk
 5. Run the startup daily-summary catch-up sweep (bounded by `catchup_lookback_days`)
 6. Start the nightly daily-summary roll scheduler

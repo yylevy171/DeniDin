@@ -50,10 +50,24 @@ def clean_069_chat_history(denidin_app):
     `denidin_app` fixture that module defines.
     """
     sessions_dir = denidin_app.session_manager.storage_dir
+
+    def _wipe_agreements() -> None:
+        # Feature 089: an agreement capture AMENDS an agreement that already exists under the
+        # same id (client + title), and an unchanged component then writes no ledger event. The
+        # Agreements DB is persistent, so a fixed-client scenario re-run (or a retry after a
+        # failure) would find last run's agreement and lose events. Start every scenario empty.
+        agreements = getattr(denidin_app, "agreements_manager", None)
+        if agreements is not None:
+            with agreements._connect() as db:  # pylint: disable=protected-access
+                for table in ("components", "agreements"):
+                    db.execute(f"DELETE FROM {table}")
+
     reset_manifest_cache()
     wipe_chat_messages_on_disk(sessions_dir, GODFATHER_CHAT_ID)
+    _wipe_agreements()
     yield
     wipe_chat_messages_on_disk(sessions_dir, GODFATHER_CHAT_ID)
+    _wipe_agreements()
     reset_manifest_cache()
 
 SENDER_DATA = {
