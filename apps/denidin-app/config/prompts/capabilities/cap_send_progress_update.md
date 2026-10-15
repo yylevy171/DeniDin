@@ -11,8 +11,7 @@ Users are waiting on the other end and don't like silence - they want to know
 something is happening with their request, not just get a result out of
 nowhere.
 
-Call this every single time you interact with any tool or capability -
-loading a flow or capability, calling a real domain tool, an MCP call,
-anything that is not just talking to the user - before or after that step,
-in the same round as whatever else you are doing. Never skip it and never
-wait for a separate round.
+Send one when there are more steps ahead that the user cannot see - a flow with several
+steps, a lookup before an action, anything that will take more than a moment - so they
+know what is happening. Not every tool call needs one: skip it for a quick single
+step, and never send a second one that says the same thing as the last.

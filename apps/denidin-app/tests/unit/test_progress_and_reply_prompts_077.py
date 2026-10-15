@@ -26,6 +26,11 @@ class TestTheTwoToolsAreUnawareOfEachOther:
         for banned in ("send_to_user", "final reply", "final answer", "end_turn"):
             assert banned not in text, f"cap_send_progress_update.md still mentions {banned!r}"
 
+    def test_progress_capability_prompt_does_not_demand_an_update_on_every_tool_call(self):
+        text = _read(PROMPTS / "capabilities" / "cap_send_progress_update.md").lower()
+        for banned in ("every single time", "never skip it", "any tool or capability"):
+            assert banned not in text, f"cap_send_progress_update.md still demands an update on every tool call: {banned!r}"
+
     def test_progress_tool_description_does_not_mention_a_final_answer_or_restrain_use(self):
         text = SEND_PROGRESS_UPDATE_TOOL["description"].lower()
         for banned in ("final answer", "send_to_user", "only on a turn you already know", "never on an ordinary"):

@@ -145,19 +145,14 @@ LIST_REMINDERS_TOOL: Dict[str, Any] = {
 SEND_PROGRESS_UPDATE_TOOL: Dict[str, Any] = {
     "type": "function",
     "name": "send_progress_update",
-    "description": (
-        "Send ONE short interim WhatsApp message to the user right away and keep working. "
-        "Say, in plain words the user understands, what you are about to do for them next "
-        "(e.g. checking the client's invoices). Use it between the steps of a request that "
-        "has more steps ahead, so the user knows something is happening."
-    ),
+    "description": "Sends a short in-between message to the user right now.",
     "strict": True,
     "parameters": {
         "type": "object",
         "properties": {
             "text": {
                 "type": "string",
-                "description": "The short message to show the user right now: what you are about to do for them.",
+                "description": "The message text.",
             },
         },
         "required": ["text"],
