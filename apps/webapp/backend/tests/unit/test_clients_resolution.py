@@ -130,10 +130,13 @@ class TestHideUnmatched:
         make_reader(tmp_path, OFFICIAL, events).hide_unmatched("בית")
         assert "בית" not in _unmatched(make_reader(tmp_path, OFFICIAL, events).get_report())
 
-    def test_existing_note_keyword_hiding_still_works(self, tmp_path):
-        events = [payment("C1", "בית", 10)]
-        report = make_reader(tmp_path, OFFICIAL, events, notes={"בית": "להסיר"}).get_report()
-        assert "בית" not in _unmatched(report)
+    def test_no_note_text_ever_hides_a_name(self, tmp_path):
+        """2026-10-15: the "הסר מהרשימה" button is the ONLY way a name leaves the list."""
+        notes = {"א": "להסיר", "ב": "אוחד לתוך X", "ג": "צריך לייצר לקוח חדש במורנינג", "ד": "לא לקוחה",
+                 "ה": "שיניתי את השם", "ו": "remove from the list", "ז": "need a new morning client"}
+        events = [payment(f"C{i}", name, 10) for i, name in enumerate(notes)]
+        report = make_reader(tmp_path, OFFICIAL, events, notes=notes).get_report()
+        assert set(notes) <= set(_unmatched(report))
 
     def test_delete_word_in_a_note_does_not_hide(self, tmp_path):
         events = [payment("C1", "בית", 10)]

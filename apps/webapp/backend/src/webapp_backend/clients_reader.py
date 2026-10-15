@@ -10,8 +10,8 @@ source the Events tab uses instead of a hardcoded sshfs path or a separate
 Morning-docs CSV merge (ledger events already include Morning-sourced חשבונית
 events via Feature 025's reconciliation sweep).
 
-``get_report()`` still writes ``new_morning_clients.json`` as a side effect on every call —
-preserved exactly, per Clarifications. Client comments are free-text notes only: nothing is
+``get_report()`` still writes ``new_morning_clients.json`` as a side effect on every call (now always
+an empty list: since 2026-10-15 no note text removes a name from the unmatched list). Client comments are free-text notes only: nothing is
 parsed out of them (2026-10-14).
 """
 import collections
@@ -281,27 +281,17 @@ def _apply_line_status(stats: Dict[str, Dict[str, Any]], client_status: Dict[str
 def _split_unmatched(
     unmatched: Dict[str, Dict[str, Any]], notes: Dict[str, str], hidden: Optional[set] = None
 ) -> Tuple[Dict[str, Dict[str, Any]], List[Dict[str, Any]]]:
+    """2026-10-15: the "הסר מהרשימה" button (`hidden`) is the ONLY thing that removes a name from the
+    list - no text in a note ever does. (`notes` is kept for the signature; the second value is the
+    legacy new-Morning-client list, now always empty because it was derived from note text.)"""
     final_unmatched: Dict[str, Dict[str, Any]] = {}
-    new_morning_clients: List[Dict[str, Any]] = []
     hidden = hidden or set()
     for u, udata in unmatched.items():
         udata["raw_text"] = list(udata["raw_text"])
-        if u in hidden:  # Feature 092: "הסר מהרשימה"
-            continue
-        note = notes.get(u, "").lower()
-        if any(term in note for term in
-               ["להסיר", "לא לקוחה",
-                "אוחד", "שיניתי את השם",
-                "remove from the list"]):
-            continue
-        if "לקוח חדש במורנינג" in note or "need a new morning client" in note:
-            new_morning_clients.append({
-                "raw_name": u, "agreements": udata["agreements"],
-                "deposits": udata["deposits"], "note": notes.get(u, ""),
-            })
+        if u in hidden:
             continue
         final_unmatched[u] = udata
-    return final_unmatched, new_morning_clients
+    return final_unmatched, []
 
 
 def _row_status(data: Dict[str, Any], display_agreed: float, display_paid: float,
