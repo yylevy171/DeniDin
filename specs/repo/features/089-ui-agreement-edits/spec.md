@@ -3,7 +3,7 @@
 **Feature Branch**: `feature/089-ui-agreement-edits`  
 **Created**: 2026-09-30  
 **Updated**: 2026-10-15  
-**Status**: Done (merged to master; PR #TBD)  
+**Status**: Done (merged to master; PR #721)  
 **Category**: Capability  
 **Input**: User description: "allow to manage agreements, specifically edit wording and numbers from the ui. Edits reach ledger. Completely different module for agreements (Agreements DB) that handles lifecycle. DB is source of truth, each change is a new revision. Ledger becomes documentation of initial creation."
 
