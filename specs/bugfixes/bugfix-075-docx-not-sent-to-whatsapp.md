@@ -1,1 +1,0 @@
-../repo/bugfixes/bugfix-075-docx-not-sent-to-whatsapp.md
