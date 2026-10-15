@@ -64,7 +64,7 @@ def test_bugfix_027_client_stored_with_ascii_apostrophe_can_get_a_document(denid
     client = pick_existing_client(name=_APOSTROPHE_CLIENT_NAME)
     assert "'" in client["name"], "precondition: the stored name must contain an ASCII apostrophe"
 
-    text = f"{client['name']} שילם 47 שח היום עבור שכר טרחה כולל מע\"מ. תפיק חשבונית מס קבלה"
+    text = f"{client['name']} שילם 47 שח במזומן היום עבור שכר טרחה כולל מע\"מ. תפיק חשבונית מס קבלה"
     (ask_reply, _), (reply, ai_response) = _send_turn_and_approve(
         GODFATHER_CHAT_ID, text, id_prefix="BF027",
     )

@@ -227,7 +227,7 @@ def test_godfather_creates_combo_document_via_whatsapp(denidin_app):
     # required information" rule) rather than attempt the call.
     ask_response, ask_ai_response = _send_turn(
         chat_id=GODFATHER_CHAT_ID,
-        text=f"{client_name} שילם {amount} שח. תפיק חשבונית מס קבלה",
+        text=f"{client_name} שילם {amount} שח במזומן. תפיק חשבונית מס קבלה",
         id_prefix="E2E_COMBO_ASK",
     )
     assert not _calls_for(ask_ai_response, "create_combo_document"), (
@@ -450,7 +450,7 @@ def test_receipt_for_the_net_amount_of_a_vat_added_invoice_is_flagged(denidin_ap
 
     response, ai_response = _send_turn(
         GODFATHER_CHAT_ID,
-        f"{client_name} שילם {amount} שח. תפיק קבלה",
+        f"{client_name} שילם {amount} שח במזומן. תפיק קבלה",
         id_prefix="E2E_RECEIPT_NET_AMOUNT",
     )
 

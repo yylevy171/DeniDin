@@ -164,7 +164,7 @@ def test_320_standalone_not_included_is_asked_then_created_with_vat_inside(denid
     client_name = pick_existing_client()["name"]
     description = _random_description()
     _assert_conflict_is_asked(
-        f"{client_name} שילם היום {AMOUNT} ₪ לא כולל מע״מ, עבור {description}. תפיק חשבונית מס קבלה",
+        f"{client_name} שילם היום במזומן {AMOUNT} ₪ לא כולל מע״מ, עבור {description}. תפיק חשבונית מס קבלה",
         ("create_combo_document",), id_prefix="BF071_S3_CONFLICT",
     )
 
@@ -195,7 +195,7 @@ def test_400_against_a_305_takes_vat_from_the_invoice(denidin_app):
     המסמך המקורי, and the receipt records 50 with no VAT of its own."""
     client_name, number = _seed_document("חשבונית מס", "כולל מע״מ", "BF071_S5_SEED")
     replies, approval, ai_response = _drive_to_approval(
-        f"{client_name} שילם היום את חשבונית מספר {number}. תפיק קבלה",
+        f"{client_name} שילם היום במזומן את חשבונית מספר {number}. תפיק קבלה",
         "create_receipt", id_prefix="BF071_S5",
     )
     assert not any(_asks_about_vat(r) for r in replies), f"asked about VAT on a receipt: {replies!r}"
