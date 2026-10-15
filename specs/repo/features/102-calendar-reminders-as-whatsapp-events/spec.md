@@ -1,7 +1,7 @@
 # Feature 102: Calendar Reminders as WhatsApp Events (.ics alongside reminders.db)
 
 **Feature Branch**: `feature/102-calendar-reminders-as-whatsapp-events`  
-**Status**: Done (PR pending)  
+**Status**: Done (PR #731)  
 **Priority**: P2 (Customer Experience & Architectural Resilience)  
 **User stories / acceptance scenarios**: `user-stories.md` (scenarios approved 2026-10-15)  
 **Origin**: CEO Request (2026-10-15) — "calendar reminders as whatsapp events instead of (or additional to) reminders.db"  
