@@ -83,3 +83,7 @@ Dropped by decision: us7d, us9, allocation slip, A8 (already done).
 - G10 (9 Morning document/client tests): all PASSED after (a) the deposit flow's slip-date rule scoped to deposits that came with a slip, (b) payment-reporting prompts stating the method ("במזומן") up front, since the deposit flow asks for it before any document, (c) `_send_turn_and_approve_receipt` detecting a pending approval by buttons on screen rather than the word "לאישור".
 - G9 (2 allocation tax-id tests): both PASSED.
 - Not run: G8 (4 etiquette tests), G11 six-component ledger image test (expensive, needs per-test approval).
+
+## 2026-10-15 update: G8 and G11
+- G8 (4 etiquette tests: case1, case2, case3, case6): all PASSED.
+- G11 six-component agreement image (expensive, run once with the user's approval): PASSED.
