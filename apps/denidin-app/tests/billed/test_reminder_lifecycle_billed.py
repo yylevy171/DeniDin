@@ -58,7 +58,6 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 GODFATHER_CHAT_ID_TEMPLATE = "{phone}@c.us"
-EXPORT_QUESTION = "לייצא את התזכורות שלך לקובץ יומן (ics)?"  # Feature 102
 
 
 @pytest.mark.billed
@@ -498,7 +497,7 @@ class TestReminderLifecycleBilled:
         )
         self._create_approved_reminder(
             denidin_app, config, phone, chat_id,
-            "תזכיר לי בעוד שבועיים לחדש רישיון תוכנה", "list_far_setup",
+            "תזכיר לי בעוד שבועיים בשעה 10:00 לחדש רישיון תוכנה", "list_far_setup",
         )
 
         n1 = self._send_text(chat_id, phone, "Test Godfather", "מה יש לי מחר?", "list_tomorrow")
@@ -508,7 +507,8 @@ class TestReminderLifecycleBilled:
         assert "רישיון" not in response, (
             f"a reminder ~2 weeks out must NOT be listed as due tomorrow, got: {response!r}"
         )
-        assert EXPORT_QUESTION in response, "Feature 102: a question about reminders ends with the calendar offer"
+        offer = self._get_button_send(n1)  # Feature 102: the calendar offer is yes/no buttons (wording is the model's)
+        assert offer is not None and "יומן" in offer["body"], "a question about reminders ends with the calendar offer"
         assert n1._test_sent_files == [], "nothing is sent before the user says yes"
 
     # --- US3: modify -------------------------------------------------------------

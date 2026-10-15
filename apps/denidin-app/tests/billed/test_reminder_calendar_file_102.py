@@ -20,12 +20,19 @@ from icalendar import Calendar
 
 from src.models.config import AppConfiguration
 from src.utils.time_utils import now_local
+from tests.billed.denidin_mcp_e2e_helpers import get_button_send
 from tests.e2e_helpers import (
     RECORDING_BOT, create_real_notification, get_full_reply, sanity_worker_data_root,
     wipe_chat_messages_on_disk,
 )
 
-EXPORT_QUESTION = "לייצא את התזכורות שלך לקובץ יומן (ics)?"
+
+
+def _offer_buttons(turn):
+    """The yes/no buttons message of the turn, if any. The wording is the model's (it adapts singular/plural),
+    so the offer is recognised by being a buttons message that is about a calendar file (יומן / ics)."""
+    sent = get_button_send(turn)
+    return sent if sent and ("יומן" in sent["body"] or "ics" in sent["body"].lower()) else None
 
 
 @pytest.mark.billed
@@ -112,13 +119,13 @@ class TestReminderCalendarOfferBilled:
         turn = self._say(config, "אילו תזכורות יש לי?", "list")
         reply = get_full_reply(turn) or ""
         assert "דיון בבית המשפט" in reply and "פגישה עם רואה החשבון" in reply
-        assert EXPORT_QUESTION in reply, "the offer is part of the same reply"
+        assert _offer_buttons(turn) is not None, "the offer is yes/no buttons, in the same turn as the list"
         assert turn._test_sent_files == []
 
     def test_a_question_about_reminders_also_offers_the_file(self, denidin_app, config):
         self._seed(denidin_app, config, "דיון בבית המשפט", 1)
         turn = self._say(config, "מה יש לי מחר ביומן התזכורות?", "question")
-        assert EXPORT_QUESTION in (get_full_reply(turn) or "")
+        assert _offer_buttons(turn) is not None, "expected yes/no buttons offering the calendar file"
         assert turn._test_sent_files == []
 
     def test_accepting_the_offer_sends_one_file_with_the_listed_reminders(self, denidin_app, config):
@@ -135,11 +142,11 @@ class TestReminderCalendarOfferBilled:
         self._say(config, "אילו תזכורות יש לי?", "decline_list")
         declined = self._say(config, "לא", "decline_no")
         assert declined._test_sent_files == []
-        assert EXPORT_QUESTION not in (get_full_reply(declined) or ""), "no further prompt after a no"
+        assert get_button_send(declined) is None, "no further prompt after a no"
 
     def test_an_unrelated_question_gets_no_calendar_offer(self, denidin_app, config):
         self._seed(denidin_app, config, "דיון בבית המשפט", 3)
         turn = self._say(config, "מה ההבדל בין חשבונית מס לקבלה?", "unrelated")
         reply = get_full_reply(turn) or ""
         assert reply and "יומן" not in reply and "ics" not in reply.lower()
-        assert turn._test_sent_files == []
+        assert get_button_send(turn) is None and turn._test_sent_files == []
