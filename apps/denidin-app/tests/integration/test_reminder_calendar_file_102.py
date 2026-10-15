@@ -127,6 +127,45 @@ class TestCalendarFileAfterApprovedWrites:
         assert f"UID:{reminder_id}".encode() in content
 
 
+    def _daily(self, app):
+        first = (now_local() + timedelta(days=1)).replace(hour=9, minute=0, second=0, microsecond=0)
+        recurrence = {"interval": 1, "freq": "daily", "weekdays": None, "month_day": None,
+                      "month_nth_weekday": None, "first_occurrence_at": first.isoformat(),
+                      "end_condition": "never", "end_count": None, "end_until": None}
+        reminder_id = app.reminder_manager.create_reminder(
+            "לשתות מים", "recurring", None, recurrence, SENDER, "GODFATHER", CHAT)["reminder_id"]
+        return reminder_id, first
+
+    def test_changing_one_occurrence_sends_the_master_plus_an_override(self, app):
+        reminder_id, first = self._daily(app)
+        args = {"reminder_id": reminder_id, "scope": "single_occurrence",
+                "occurrence_date_hint": (first + timedelta(days=1)).date().isoformat(),
+                "new_message_text": None, "new_due_at": (first + timedelta(days=1, hours=1)).isoformat(),
+                "new_recurrence": None}
+        self._answer(app, "כן", function_call("modify_reminder", args, rid="r1"),
+                     send_to_user("✅ עודכן", rid="r2"), nothing_more("r3"))
+        (_chat, _name, content), = app.green_api_bot.files
+        assert content.count(b"BEGIN:VEVENT") == 2 and b"RECURRENCE-ID" in content and b"RRULE:FREQ=DAILY" in content
+
+    def test_skipping_one_occurrence_sends_the_master_with_an_exdate(self, app):
+        reminder_id, first = self._daily(app)
+        args = {"reminder_id": reminder_id, "scope": "single_occurrence",
+                "occurrence_date_hint": (first + timedelta(days=1)).date().isoformat()}
+        self._answer(app, "כן", function_call("delete_reminder", args, rid="r1"),
+                     send_to_user("✅ הדילוג נשמר", rid="r2"), nothing_more("r3"))
+        (_chat, _name, content), = app.green_api_bot.files
+        assert b"METHOD:PUBLISH" in content and b"EXDATE" in content and content.count(b"BEGIN:VEVENT") == 1
+
+    def test_a_failed_file_send_keeps_the_reminder_and_tells_the_user(self, app):
+        app.green_api_bot.file_error = ConnectionError("down")
+        self._answer(app, "כן", function_call("create_reminder", self._create_args(), rid="r1"),
+                     send_to_user("✅ התזכורת נוצרה", rid="r2"), nothing_more("r3"))
+        assert len(app.reminder_manager.list_active()) == 1
+        assert app.green_api_bot.files == []
+        texts = [text for kind, text in app.green_api_bot.events if kind == "text"]
+        assert texts[0] == "✅ התזכורת נוצרה" and "לא הצלחתי לשלוח את קובץ היומן" in texts[-1]
+
+
 @pytest.mark.integration
 class TestDeliveryNudgeIsUnchanged:
 

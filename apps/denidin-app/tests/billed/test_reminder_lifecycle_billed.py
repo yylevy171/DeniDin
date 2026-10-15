@@ -43,6 +43,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from icalendar import Calendar
 
 import src.services.reminder_delivery_service as delivery_service
 from src.models.config import AppConfiguration
@@ -57,6 +58,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 GODFATHER_CHAT_ID_TEMPLATE = "{phone}@c.us"
+EXPORT_QUESTION = "לייצא את התזכורות שלך לקובץ יומן (ics)?"  # Feature 102
 
 
 @pytest.mark.billed
@@ -212,6 +214,20 @@ class TestReminderLifecycleBilled:
         phone = admin_phones[0]
         return phone, GODFATHER_CHAT_ID_TEMPLATE.format(phone=phone)
 
+    @staticmethod
+    def _ics_of(notification, reminder_id, method="PUBLISH"):
+        """Feature 102: the turn sent exactly one calendar file, for this reminder, with this METHOD, AFTER
+        the confirmation text. Returns its VEVENTs."""
+        files = notification._test_sent_files
+        assert len(files) == 1, f"expected exactly one .ics, got {[f['file_name'] for f in files]}"
+        calendar = Calendar.from_ical(files[0]["content"])
+        events = [c for c in calendar.walk() if c.name == "VEVENT"]
+        assert str(calendar.get("METHOD")) == method
+        assert {str(e["UID"]) for e in events} == {reminder_id}
+        assert files[0]["after_message_count"] == len(notification._test_sent_messages), \
+            "the file must be sent after the confirmation text"
+        return events
+
     # --- Delivery verification helpers ------------------------------------------
     # Real create/modify/cancel via conversation above; these prove the RESULT
     # actually fires (or doesn't) at the RIGHT moment - see module docstring for
@@ -307,6 +323,7 @@ class TestReminderLifecycleBilled:
         # --- Delivery: fires at the REAL persisted due time, not 5min early/late/twice ---
         reminder_id = self._new_reminder_id(reminder_manager, ids_before)
         due_at = self._due_at(reminder_manager, reminder_id)
+        self._ics_of(n2, reminder_id)  # Feature 102
 
         early = self._simulate_sweep(denidin_app, monkeypatch, due_at - timedelta(minutes=1))
         early.assert_not_called()
@@ -347,6 +364,7 @@ class TestReminderLifecycleBilled:
             f"expected exactly 1 new reminder to have been created, got {new_ids} "
             f"- confirmation text was: {confirmation!r}"
         )
+        self._ics_of(n2, next(iter(new_ids)))  # Feature 102
 
     @pytest.mark.sanity
     def test_godfather_creates_recurring_reminder(self, denidin_app, config, monkeypatch):
@@ -371,6 +389,7 @@ class TestReminderLifecycleBilled:
         # --- Delivery: TWO real occurrences, each fires on its own mark, never
         # re-delivering the first when the second comes due. ---
         reminder_id = self._new_reminder_id(reminder_manager, ids_before)
+        assert "RRULE" in self._ics_of(n2, reminder_id)[0]  # Feature 102
         far_future = now_local() + timedelta(days=45)
         occurrences = self._occurrences(reminder_manager, reminder_id, now_local(), far_future)
         assert len(occurrences) >= 2, "expected at least 2 upcoming Mon/Thu occurrences within 45 days"
@@ -489,6 +508,8 @@ class TestReminderLifecycleBilled:
         assert "רישיון" not in response, (
             f"a reminder ~2 weeks out must NOT be listed as due tomorrow, got: {response!r}"
         )
+        assert EXPORT_QUESTION in response, "Feature 102: a question about reminders ends with the calendar offer"
+        assert n1._test_sent_files == [], "nothing is sent before the user says yes"
 
     # --- US3: modify -------------------------------------------------------------
 
@@ -520,6 +541,7 @@ class TestReminderLifecycleBilled:
         # time must. ---
         new_due_at = self._due_at(reminder_manager, reminder_id)
         assert new_due_at != original_due_at, "modify must actually change the persisted due time"
+        self._ics_of(n2, reminder_id)  # Feature 102: the updated event
 
         old_check = self._simulate_sweep(denidin_app, monkeypatch, original_due_at)
         old_check.assert_not_called()
@@ -557,6 +579,7 @@ class TestReminderLifecycleBilled:
         assert proposal is not None
         n2 = self._send_text(chat_id, phone, "Test Godfather", "כן", "modify_single_approve")
         assert self._get_response(n2) is not None
+        assert any("RECURRENCE-ID" in e for e in self._ics_of(n2, reminder_id))  # Feature 102: master + override
 
         # --- Delivery: ONLY the detached (tomorrow's) occurrence's time
         # moved; the series' next untouched occurrence still fires at its
@@ -734,6 +757,7 @@ class TestReminderLifecycleBilled:
         # --- Delivery: a cancelled reminder must never fire, even at its own
         # real original due time ---
         assert reminder_manager.get_reminder(reminder_id) is None, "deleted reminder must no longer be active"
+        self._ics_of(n2, reminder_id, "CANCEL")  # Feature 102
         delivery_check = self._simulate_sweep(denidin_app, monkeypatch, due_at)
         delivery_check.assert_not_called()
 
@@ -761,6 +785,7 @@ class TestReminderLifecycleBilled:
         # --- Delivery: a deleted whole series must never fire, at its own
         # previously-real occurrence time or anywhere else ---
         assert reminder_manager.get_reminder(reminder_id) is None
+        self._ics_of(n2, reminder_id, "CANCEL")  # Feature 102
         assert self._occurrences(reminder_manager, reminder_id, now_local(), window_end) == []
         delivery_check = self._simulate_sweep(denidin_app, monkeypatch, first_occurrence_time)
         delivery_check.assert_not_called()
