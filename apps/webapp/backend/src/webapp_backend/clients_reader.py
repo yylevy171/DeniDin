@@ -486,9 +486,17 @@ class ClientsReader:
     def get_report(self, refresh: bool = False) -> Dict[str, Any]:
         with self._lock:
             if refresh:
-                self._official_cache = None
-                self._report_cache = None
+                self._drop_caches_locked()
             return self._report_locked()
+
+    def drop_caches(self) -> None:
+        """Forget the Morning client list and the computed report; the next read re-fetches/recomputes."""
+        with self._lock:
+            self._drop_caches_locked()
+
+    def _drop_caches_locked(self) -> None:
+        self._official_cache = None
+        self._report_cache = None
 
     def _report_locked(self) -> Dict[str, Any]:
         generation = self._generation_fn()

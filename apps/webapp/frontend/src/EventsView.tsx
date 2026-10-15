@@ -75,16 +75,22 @@ export default function EventsView({
   theme,
   settings,
   onAuthErr,
+  refreshEpoch,
+  refreshBusy,
+  onRefreshAll,
 }: {
   theme: Theme;
   settings: EventsSettings;
   onAuthErr: (e: unknown) => void;
+  refreshEpoch: number;
+  refreshBusy: boolean;
+  onRefreshAll: () => void;
 }) {
   const { width } = useWindowDimensions();
   const isMobile = width < 768;
 
   const [rows, setRows] = useState<EventRow[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true); // true from the first render: the first fetch is already pending
   const [refreshing, setRefreshing] = useState(false);
 
   // draft filters — all types/subtypes selected by default (== no filter)
@@ -121,7 +127,7 @@ export default function EventsView({
     async (mode: "load" | "refresh") => {
       mode === "refresh" ? setRefreshing(true) : setLoading(true);
       try {
-        const data = await fetchEvents(settings.daysBack, mode === "refresh");
+        const data = await fetchEvents(settings.daysBack);
         setRows(data.events);
         setLoadedDaysBack(settings.daysBack);
         setExpanded({});
@@ -157,6 +163,11 @@ export default function EventsView({
   useEffect(() => {
     load("load");
   }, [settings.daysBack]); // eslint-disable-line
+
+  // bugfix-074: any refresh button (here or in another tab) reloads everything, then every view re-reads
+  useEffect(() => {
+    if (refreshEpoch > 0) load("refresh");
+  }, [refreshEpoch]); // eslint-disable-line
 
   const visible = useMemo(() => {
     let out = rows.filter((r) => {
@@ -414,14 +425,14 @@ export default function EventsView({
         </Text>
         <View style={{ flex: 1 }} />
         <IconButton
-          icon={refreshing ? undefined : "refresh"}
-          glyph={refreshing ? "…" : undefined}
+          icon={refreshing || refreshBusy ? undefined : "refresh"}
+          glyph={refreshing || refreshBusy ? "…" : undefined}
           glyphSize={20}
           theme={theme}
           title="רענון"
           testID="refresh-data"
-          onPress={() => load("refresh")}
-          disabled={refreshing}
+          onPress={onRefreshAll}
+          disabled={refreshing || refreshBusy}
         />
       </View>
 

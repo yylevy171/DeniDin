@@ -160,13 +160,24 @@ def build_app(
             sessions.invalidate(token)
         return Response(status_code=204)
 
+    def refresh_all() -> None:
+        """bugfix-074: every refresh (browser reload or any refresh button) reloads EVERYTHING - the
+        ledger event files, the cached conversations and the Morning client list + clients report -
+        so no view is left showing data older than another. The conversation cache refills in the
+        background so the response isn't held up by it; the client list is re-fetched lazily by the
+        next report read (a Morning outage then surfaces there, as it always has)."""
+        reader.reload()
+        context_reader.reset()
+        context_reader.warm_in_background()
+        clients_reader.drop_caches()
+
+    def refresh(_request: Request) -> Response:
+        refresh_all()
+        return Response(status_code=204)
+
     def events(request: Request) -> JSONResponse:
         if request.query_params.get("refresh") == "1":
-            # Hard refresh: re-read the event files and drop the cached conversations; the
-            # context cache refills in the background so this response isn't held up by it.
-            reader.reload()
-            context_reader.reset()
-            context_reader.warm_in_background()
+            refresh_all()
         raw = request.query_params.get("days_back")
         try:
             days_back = int(raw) if raw is not None else DEFAULT_DAYS_BACK
@@ -201,7 +212,9 @@ def build_app(
 
     def clients(request: Request) -> JSONResponse:
         try:
-            return JSONResponse(clients_reader.get_report(refresh=request.query_params.get("refresh") == "1"))
+            if request.query_params.get("refresh") == "1":
+                refresh_all()
+            return JSONResponse(clients_reader.get_report())
         except MorningClientSourceError as exc:
             logger.warning("Morning client-list fetch failed: %s", exc)
             return _error(
@@ -405,6 +418,7 @@ def build_app(
             Route("/health", health, methods=["GET"]),
             Route("/api/auth/login", login, methods=["POST"]),
             Route("/api/auth/logout", logout, methods=["POST"]),
+            Route("/api/refresh", refresh, methods=["POST"]),
             Route("/api/events", events, methods=["GET"]),
             Route("/api/events/{event_id}", event_detail, methods=["GET"]),
             Route("/api/events/{event_id}/context", event_context, methods=["GET"]),
