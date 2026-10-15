@@ -600,8 +600,9 @@ def _assert_extractor_carried_tested_values(
     # Hop 1 verifies a *content* value survived OCR/vision. Derived classifications
     # (`vat_status` = לא כולל/כולל, `source_type`, `event_subtype`) are the model's
     # own reading of "+ מע"מ" / the document shape — never a verbatim substring —
-    # so they belong to Hop 2's manifest check only, not this one.
-    _HOP1_SKIP = {"client_name", "vat_status", "source_type", "event_subtype"}
+    # so they belong to Hop 2's manifest check only, not this one. `agreement_status`
+    # (Feature 089) is assigned by code when the agreement is stored - no contract states it.
+    _HOP1_SKIP = {"client_name", "vat_status", "source_type", "event_subtype", "agreement_status"}
 
     def _walk(rules: Dict) -> None:
         for field, rule in rules.items():

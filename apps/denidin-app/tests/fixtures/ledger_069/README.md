@@ -136,3 +136,11 @@ skips these; `client_name` and `description` have their own dedicated checks.
 - `payer_name`, `percent`, `percent_base`, `hours`, `hourly_rate`, `trigger_condition`,
   `component_label` → `None`.
 - `bank_number` / `bank_branch` / `bank_account` → populated from the slip.
+
+### Feature 089 fields (`agreement_status`, `component_status`, `original_client_name`)
+
+Every manifest must classify these like any other roster field. `הסכם` manifests:
+`agreement_status` = `{"tested": "Active"}` (assigned by code when the agreement is stored; Hop 1 skips
+it - no source states it), `component_status` = `{"free_text": true}` (Active or Pending, by the
+component's trigger), `original_client_name` = `{"free_text": true, "optional": true}`. Every other
+manifest (`הפקדה`, `חשבונית`): all three `{"null": true}`.
