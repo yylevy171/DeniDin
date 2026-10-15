@@ -1,8 +1,9 @@
-# Feature 102: Calendar Reminders as WhatsApp Events (Alternative/Hybrid to reminders.db)
+# Feature 102: Calendar Reminders as WhatsApp Events (.ics alongside reminders.db)
 
-**Feature Branch**: `feature/102-calendar-reminders-whatsapp-events`  
-**Status**: Backlog  
+**Feature Branch**: `feature/102-calendar-reminders-as-whatsapp-events`  
+**Status**: In Progress  
 **Priority**: P2 (Customer Experience & Architectural Resilience)  
+**User stories / acceptance scenarios**: `user-stories.md` (scenarios approved 2026-10-15)  
 **Origin**: CEO Request (2026-10-15) — "calendar reminders as whatsapp events instead of (or additional to) reminders.db"  
 **Depends on**: Feature 054 (Reminders Functionality & Management), Feature 063 (Dynamic Capability Backbone)  
 
@@ -25,109 +26,108 @@ Enable DeniDin to generate and deliver calendar events directly into WhatsApp as
 
 ---
 
-## 2. Strategic Alternatives: "Instead Of" vs. "Additional To"
+## 2. Gate Zero Results (2026-10-15, real dev instance 7105257767)
 
-| Dimension | Option A: "Instead Of" (Stateless Generator) | Option B: "Additional To" (Hybrid Mode - Recommended) |
-| :--- | :--- | :--- |
-| **Persistence** | Zero server state. DeniDin does not store the event in `reminders.db`. | Dual storage: Persisted in `reminders.db` AND delivered as an event immediately. |
-| **Scheduler** | APScheduler background worker eliminated or bypassed for events. | APScheduler remains active for proactive WhatsApp reminder pings at due time. |
-| **Device Calendar** | User imports event into iOS/Android Calendar via 1-tap. | User imports event into device calendar PLUS receives a proactive bot nudge. |
-| **Queryability** | DeniDin cannot list (`list_reminders`) or cancel past reminders. | Full conversational management retained (`list_reminders`, `modify_reminder`, `delete_reminder`). |
-| **Server Failure Impact** | **Zero risk**. Reminder alarms are handled natively by the user's device/OS. | **Low risk**. Even if the server dies, the user's device alarm will still fire. |
-| **Complexity** | Extremely low server footprint; high UX dependency on user tapping import. | Moderate: Combines existing Feature 054 flow with event dispatch. |
+| Question | Result |
+| :-- | :-- |
+| Does Green API have a native WhatsApp Event send method? | **No evidence of one.** The docs list none; no SDK or community project mentions one; 25 guessed method names (`sendEvent`, `sendEventMessage`, `createEvent`, ...) all returned the same nginx 403 as a made-up method, while real method `sendMessage` returned its own 400 validation error (so credentials/instance were good). |
+| Does Green API deliver an incoming native event? | **No.** A real event sent from the PM's phone produced no webhook at all; a plain text sent right after did (`textMessage`). |
+| Does `sendFileByUpload` deliver a `.ics` and does the phone open it? | **Yes.** HTTP 200; the PM tapped the file in WhatsApp and the phone's calendar opened with the event. |
 
-### PM Recommendation:
-Implement a configurable strategy (`mode: "hybrid" | "stateless" | "db_only"`, defaulting to `"hybrid"`). This offers the highest customer value: the lawyer gets immediate device calendar integration to manage their week, while DeniDin maintains its executive assistant role by sending a WhatsApp nudge when the moment arrives.
+**Decision (PM, 2026-10-15)**: native event cards are not achievable; the feature ships as a **`.ics` file only**.
+No Google Calendar link, no native event card.
 
----
-
-## 3. WhatsApp Delivery Mechanism: Technical Realities & Constraints
-
-### 3.1 WhatsApp Native Events (`eventMessage`) vs. Gateway Reality
-WhatsApp native groups and communities support native **Events** (`eventMessage` in the WhatsApp protocol, containing name, description, start/end time, location, call links, and RSVP buttons).
-* **The Green API Constraint**: DeniDin connects to WhatsApp via **Green API**. Green API's REST API natively supports `sendMessage`, `sendFileByUrl`, `sendLocation`, `sendContact`, and `sendPoll`. Green API does **not** currently document an official REST endpoint for constructing raw WhatsApp protobuf `eventMessage` cards.
-* **Engineering Action (Spike / Gate Zero)**: Claire's team must verify whether Green API has added or supports an unannounced `sendEvent` endpoint or custom JSON payload.
-
-### 3.2 The Reliable Cross-Platform Solution: `.ics` (iCalendar) Document Dispatch
-DeniDin already bundles `icalendar` (RFC5545) in `apps/denidin-app`.
-1. DeniDin generates a clean, standard `.ics` file containing the `VEVENT`, local timezone (`Asia/Jerusalem`), alarm trigger (`VALARM`, e.g., 15 minutes before), and meeting notes.
-2. DeniDin sends this file via Green API's `sendFileByUrl` / `uploadFile` (e.g., `Meeting_with_Client.ics`).
-3. **User Experience**: On both iOS and Android, tapping an `.ics` attachment in WhatsApp natively opens the operating system's Calendar sheet with a single-tap **"Add to Calendar"** button.
-
-### 3.3 Complementary Quick-Link: One-Tap Calendar Web URLs
-In the accompanying message text, DeniDin can provide a direct Google Calendar template URL:
-`https://calendar.google.com/calendar/render?action=TEMPLATE&text=...&dates=...&details=...`
-This allows instant web calendar addition without downloading a file on desktop clients.
+Known gap: the dev Green API instance is over its monthly quota (`readchat`, 100/100) - sends were unaffected.
 
 ---
 
-## 4. PM Functional Requirements
+### Gate Zero 2 - update / cancel / recurring on a real phone (PM's Android, 2026-10-15)
 
-- **REQ-102-01 (Intent & Parameter Extraction)**:
-  The AI must extract reminder parameters from natural Hebrew/English dialogue:
-  - Event title / summary (e.g., "פגישה עם לקוח", "דיון בבית משפט")
-  - Start date and time (in Israel local time `LOCAL_TZ`)
-  - Optional end date/time (defaulting to +60 minutes if unspecified for calendar events)
-  - Optional location (physical address, zoom link, or courthouse)
-  - Optional notes / description
-- **REQ-102-02 (Interactive Approval Flow)**:
-  Before dispatching the event or saving to DB, DeniDin MUST present an explicit approval summary with Yes/No interactive buttons (`approval_with_yes_no_buttons` or typed response).
-- **REQ-102-03 (RFC5545 .ics Generation)**:
-  Upon approval, the system must generate a valid `.ics` payload including:
-  - `UID`, `DTSTAMP`, `DTSTART`, `DTEND`, `SUMMARY`, `DESCRIPTION`, `LOCATION`
-  - A pre-configured `VALARM` (audio/display reminder 15 minutes prior to start).
-- **REQ-102-04 (Event Dispatch via WhatsApp)**:
-  The system must dispatch the event to the chat where the request originated (`delivery_chat_id`):
-  - Primary: As a file document (`.ics`) via Green API's file transmission.
-  - Secondary/Future-proof: If Green API native `eventMessage` is confirmed supported, emit native WhatsApp Event card.
-  - Accompanied by a concise confirmation message containing the Google Calendar deep link.
-- **REQ-102-05 (Storage Mode Configuration)**:
-  Add `reminder_event_mode` to `AppConfiguration`:
-  - `"hybrid"` (default): Create entry in `reminders.db` AND send WhatsApp `.ics`/event card.
-  - `"stateless"`: Send WhatsApp `.ics`/event card ONLY. Do not write to `reminders.db`.
-  - `"db_only"`: Legacy Feature 054 behavior (text notification only at scheduled time).
-- **REQ-102-06 (RBAC Governance)**:
-  Event creation must adhere to the same security gating as Feature 054: accessible strictly to `GODFATHER` and `ADMIN` roles. Unregistered or client numbers are blocked from scheduling.
+All files sent via `sendFileByUpload` to the dev chat and tapped in WhatsApp; the same `UID` is the key.
+
+| Case | Result |
+| :-- | :-- |
+| One-time: create; update (same UID, `SEQUENCE+1`, new time); cancel (`METHOD:CANCEL`, `STATUS:CANCELLED`) | **All work.** Update moves the existing entry (no duplicate); cancel removes it. |
+| Zero-length event, no alert | **Works.** Shown with no default alert. |
+| Weekly series (`RRULE:FREQ=WEEKLY;COUNT=4`) created across the 25 Oct clock change | **Works.** All 4 occurrences at the right time. |
+| Update whole series (same UID, `SEQUENCE+1`) | **Works**, all 4 move, including after the clock change. |
+| Move one occurrence (override VEVENT, same UID + `RECURRENCE-ID`) | **Works**, only that one moves. |
+| Delete one occurrence (`EXDATE` on the master, sent together with the existing overrides) | **Works**, only that one is removed, the moved one keeps its change. |
+| Cancel whole series (`METHOD:CANCEL`, same UID) | **Works**, all occurrences removed. |
+
+**Defect found and resolved: do NOT embed a `VTIMEZONE`.** With the `icalendar` library's generated
+`VTIMEZONE` embedded, updating a recurring series shifted every occurrence one hour earlier on Android
+(14:00 -> 13:00; reproduced on a series with no clock change in range). Creating a series and updating a
+one-time event were unaffected. The same update **without** an embedded `VTIMEZONE` (only
+`TZID=Asia/Jerusalem` on each time) was exact. Final rule: times carry `TZID=Asia/Jerusalem` only.
+
+| One file holding several events (one-time, weekly series, one-time; each its own `UID`) | **Works.** All 3 import from a single tap. |
+| Later file with only one of those `UID`s (update) | **Works.** Only that event changes; the others are untouched. |
+
+Not tested: iOS and other calendar apps. The PM's decision: Android is what counts.
 
 ---
 
-## 5. User Acceptance Tests (UAT)
+## 3. PM Functional Requirements (revised 2026-10-15)
 
-### UAT-1: Create Calendar Event with .ics Attachment (Hybrid Mode)
-- **Given**: DeniDin is configured with `reminder_event_mode: "hybrid"`.
-- **When**: The Godfather texts: *"תזכיר לי ביום שני הבא ב-11:00 דיון בבית המשפט השלום בתל אביב בנושא כהן"*.
-- **Then**: 
-  1. DeniDin parses the date, time (11:00 to 12:00), location, and summary.
-  2. DeniDin displays the interactive approval summary with "כן" / "לא" buttons.
-  3. Upon tapping "כן", DeniDin:
-     - Persists the record into `reminders.db`.
-     - Generates `court_hearing_cohen.ics`.
-     - Sends the `.ics` document directly to the WhatsApp chat.
-     - Provides a Google Calendar one-tap web link in the message body.
+- **REQ-102-01 (a calendar file with every reminder)**: whenever DeniDin creates a reminder (Feature 054),
+  one-time **or recurring**, it also sends a `.ics` file for it into the chat the reminder was created from
+  (`delivery_chat_id`), **alongside** `reminders.db`, never instead of it: the reminder is stored and
+  delivered by the 054 text nudge exactly as before. A recurring reminder is a single `.ics` carrying its
+  `RRULE` (a series), not one file per occurrence.
+- **REQ-102-02 (shape of the event, mirrors DeniDin reminders)**:
+  - Zero duration: `DTEND` = `DTSTART`.
+  - No alert/`VALARM` of any kind.
+  - `SUMMARY` is always `דנידין תזכורת: <reminder text>`.
+  - Times as `TZID=Asia/Jerusalem` with **no embedded `VTIMEZONE`** (Gate Zero 2 defect above).
+  - `UID` = the reminder's own stable RFC5545 UID; `SEQUENCE` starts at 0 and increases by 1 with every
+    change; no location or description required.
+- **REQ-102-03 (approval)**: no new approval. The `.ics` is sent when the existing 054 approval is given.
+- **REQ-102-04 (modify / delete - verified working)**: every change to a reminder that has an `.ics`
+  sends a new `.ics`, always the complete picture of the reminder in one file:
+  - modify the whole reminder: same `UID`, `SEQUENCE+1`, new values;
+  - modify one occurrence of a recurring reminder: the master plus an override `VEVENT` with
+    `RECURRENCE-ID` (all existing overrides are re-sent every time);
+  - delete one occurrence: the master with an `EXDATE`, plus the existing overrides;
+  - delete the reminder (one-time or whole series): `METHOD:CANCEL` + `STATUS:CANCELLED`,
+    `SEQUENCE+1`.
+  `reminders.db` already holds the master and per-occurrence exceptions (`reminder_exceptions`) from
+  which these files are generated.
+- **REQ-102-05 (scope)**: one-time and recurring reminders alike.
+- **REQ-102-06 (RBAC)**: same as 054 - GODFATHER/ADMIN only; no new tool is exposed to any other role.
+- **REQ-102-07 (failure)**: if the file send fails, the reminder is still stored (or changed/deleted) and
+  the user is told plainly that the calendar file could not be sent.
+- **REQ-102-08 (constitution)**: `runtime_constitution.md`'s "Reminder Management" section (and the
+  backbone reminder capability) is updated so the model knows the `.ics` is automatic and is never
+  requested separately; no new tool-bearing family is added (METHODOLOGY §XXI check still applies).
 
-### UAT-2: Stateless Event Generation
-- **Given**: DeniDin is configured with `reminder_event_mode: "stateless"`.
-- **When**: An Admin texts: *"תקבע לי תזכורת לפגישת ייעוץ מחר ב-16:00"*.
-- **Then**:
-  1. DeniDin prompts for approval.
-  2. Upon approval, DeniDin dispatches the calendar `.ics` document into the chat.
-  3. No record is written to `reminders.db`.
-  4. Querying `list_reminders` afterwards reports 0 active database reminders.
+- **REQ-102-09 (on-demand .ics for an existing reminder)**: a user can ask for the calendar file of any
+  existing reminder ("תשלח לי קובץ יומן לתזכורת של ..."). DeniDin finds it and generates and sends the
+  `.ics` (same `UID` and the current `SEQUENCE`, so importing it onto a phone that already has the entry
+  updates it rather than duplicating). It is read-only, so it needs **no approval**. If several reminders
+  match, DeniDin asks which one (never guesses). Applies to one-time and recurring reminders.
+- **REQ-102-10 (offering the .ics)**: when the user asks about their reminders in general, or asks to list
+  them (`list_reminders`), DeniDin answers as today and then **offers** the calendar file (in the same
+  reply): for one specific reminder, for several, or for all the listed ones. It sends nothing until the
+  user accepts. It does not offer in any unrelated context.
 
-### UAT-3: Mobile Device Import Verification
-- **Given**: A user receives an `.ics` attachment sent by DeniDin on iOS or Android WhatsApp.
-- **When**: The user taps the document in WhatsApp.
-- **Then**: The native operating system calendar application opens with pre-filled title, time, location, and 15-minute alarm, allowing immediate saving without errors.
-
-### UAT-4: RBAC Unauthorized Rejection
-- **Given**: An unknown client phone number texts: *"Remind me about our meeting tomorrow at 10am"*.
-- **When**: The message is processed by DeniDin.
-- **Then**: DeniDin refuses to invoke reminder/calendar tools and responds with standard unauthorized message.
+Removed from the earlier PM draft: the `hybrid`/`stateless`/`db_only` modes, the Google Calendar link,
+the 15-minute alarm, native event cards, location/end-time fields, the embedded timezone definition.
 
 ---
 
-## 6. Open Questions & Engineering Handoff (For Claire)
+## 4. Decisions (PM, 2026-10-15)
 
-1. **Green API Spike**: Can Green API send native WhatsApp `eventMessage` payloads via any undocumented endpoint, or is `.ics` document dispatch the verified production path?
-2. **Media Cleanup**: Where should transient `.ics` files be stored prior to upload (`data/tmp/` vs direct memory stream to Green API)?
-3. **Recurring Events in .ics**: Does the initial release support recurring RRULEs in the generated `.ics`, or should recurring series remain on `reminders.db` while one-time events get the calendar `.ics`? (PM Recommendation: Phase 1 should support one-time events; recurring `.ics` in Phase 2).
+0b. The offer in REQ-102-10 is asked with the backbone's `approval_with_yes_no_buttons` capability (stateless, yes/no buttons or a typed "כן"/"לא"), e.g. "לייצא את התזכורות שלך לקובץ יומן (ics)?". A yes sends the file; a no ends it.
+0. "All my reminders" (REQ-102-10): **one `.ics` file with several events**, each with its own stable `UID` (Gate Zero 2: verified on Android).
+
+1. **No feature flag.**
+2. The transient `.ics` is authored exactly as the Feature 083 docx is (same temp-file handling, then `sendFileByUpload`).
+3. The `.ics` is sent **after** the confirmation text of the reminder creation.
+4. An open-ended recurring reminder (no `COUNT`/`UNTIL`) produces an open-ended series on the calendar - intended.
+5. Modifying/deleting a reminder created before this feature: **send the update/cancel `.ics` as usual**.
+6. Backbone only: the legacy `AIHandler` path and the backbone feature flag are gone from master (merged 2026-10-15); nothing in this feature targets a legacy path.
+
+## 5. Open items
+
+None.
