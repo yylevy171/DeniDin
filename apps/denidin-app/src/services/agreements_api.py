@@ -117,6 +117,7 @@ def build_app(manager: AgreementsManager, auth_token: str) -> Starlette:
             components=components, actor=actor, payer_name=body.get("payer_name"),
             partner_name=body.get("partner_name"), partner_percent=body.get("partner_percent"),
             agreement_description=body.get("agreement_description"),
+            agreement_date=body.get("agreement_date"),
         ))
 
     async def edit(request: Request) -> Response:

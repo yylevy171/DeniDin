@@ -37,6 +37,7 @@ import json
 import shutil
 import sys
 from collections import defaultdict
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Tuple
@@ -49,7 +50,7 @@ from src.managers.agreements_manager import (  # noqa: E402  pylint: disable=wro
 from src.managers.ledger_event_manager import (  # noqa: E402  pylint: disable=wrong-import-position
     CURRENT_SCHEMA_VERSION, _slugify,
 )
-from src.utils.time_utils import now_local  # noqa: E402  pylint: disable=wrong-import-position
+from src.utils.time_utils import now_local, to_local  # noqa: E402  pylint: disable=wrong-import-position
 
 MARKER_NAME = "migration_089.json"
 _CANCEL_SUBTYPES = ("מבוטל", "ביטול")
@@ -67,6 +68,24 @@ def _load_events(events_dir: Path) -> List[Tuple[Path, Dict[str, Any]]]:
         except (OSError, json.JSONDecodeError):
             print(f"WARNING: unreadable event file skipped: {path.name}", file=sys.stderr)
     return out
+
+
+def _event_time(event: Dict[str, Any]) -> datetime:
+    """The event's own time, Israel local, naive: `event_datetime` (`DD/MM/YYYY HH:MM`), else its
+    `message_timestamp` (ISO), else the date/time inside its event id (letter + DDMMYY + HHMM + seq);
+    `datetime.min` if none parses."""
+    try:
+        return datetime.strptime(str(event.get("event_datetime") or ""), "%d/%m/%Y %H:%M")
+    except ValueError:
+        pass
+    try:
+        return to_local(datetime.fromisoformat(str(event.get("message_timestamp")))).replace(tzinfo=None)
+    except ValueError:
+        pass
+    try:
+        return datetime.strptime(str(event.get("event_id") or "")[1:11], "%d%m%y%H%M")
+    except ValueError:
+        return datetime.min
 
 
 def _raw_name(event: Dict[str, Any]) -> str:
@@ -94,7 +113,7 @@ def plan(events: List[Tuple[Path, Dict[str, Any]]], resolution: Dict[str, Any]) 
     agreements: Dict[str, Dict[str, Any]] = {}
     cancellations: List[Dict[str, Any]] = []
     rewrite: Dict[Path, Dict[str, Any]] = {}
-    for path, event in sorted(events, key=lambda pe: (str(pe[1].get("event_datetime") or ""), pe[0].name)):
+    for path, event in sorted(events, key=lambda pe: (_event_time(pe[1]), pe[0].name)):
         if event.get("source_type") != "הסכם" or not _is_blank(event.get("hours")):
             continue
         raw = _raw_name(event)
@@ -104,6 +123,7 @@ def plan(events: List[Tuple[Path, Dict[str, Any]]], resolution: Dict[str, Any]) 
         group = agreements.setdefault(key, {
             "agreement_id": key, "raw_names": set(), "client_name": official, "payer_name": event.get("payer_name"),
             "partner_name": None, "partner_percent": None, "line": line, "components": [],
+            "created_at": _event_time(event),  # events are visited oldest first: the agreement's own date
         })
         group["raw_names"].add(raw)
         if group["partner_name"] is None and not _is_blank(event.get("split_partner")):
@@ -117,7 +137,8 @@ def plan(events: List[Tuple[Path, Dict[str, Any]]], resolution: Dict[str, Any]) 
             "label": event.get("component_label") or event.get("description") or f"רכיב {len(group['components']) + 1}",
             "description": event.get("description"), "amount": event.get("amount"), "percent": event.get("percent"),
             "percent_base": event.get("percent_base"), "trigger_condition": event.get("trigger_condition"),
-            "vat_status": event.get("vat_status"), "txn_date": event.get("txn_date"),
+            "vat_status": None if event.get("vat_status") == "לא צוין" else event.get("vat_status"),
+            "txn_date": event.get("txn_date"),
             "origin_event_id": event.get("event_id"),
             "status": PENDING if not _is_blank(event.get("trigger_condition")) else ACTIVE,
         })
@@ -189,14 +210,43 @@ def _title_of(group: Dict[str, Any]) -> str:
     return parts[2].replace("_", " ") if len(parts) == 3 and parts[2] else group["agreement_id"]
 
 
-def migrate(data_root: Path, resolution_path: Path, dry_run: bool = False) -> Dict[str, Any]:
+def _apply_decisions(result: Dict[str, Any], decisions: Dict[str, Any]) -> None:
+    """Human decisions (2026-10-15, from reviewing ledger-vs-comment conflicts):
+    `skip_agreement_ids` - ledger agreements a client's comment replaces: not created, and their ledger
+    events are left exactly as they are; `component_status` - [{agreement_id, label, status}] overrides."""
+    skip = set(decisions.get("skip_agreement_ids", []))
+    unknown = skip - set(result["agreements"])
+    if unknown:
+        raise SystemExit(f"skip_agreement_ids not found in the ledger plan: {sorted(unknown)}")
+    for key in skip:
+        del result["agreements"][key]
+    for path in [p for p, info in result["rewrite"].items() if info["agreement_id"] in skip]:
+        del result["rewrite"][path]
+    for change in decisions.get("component_status", []):
+        group = result["agreements"].get(change["agreement_id"])
+        match = [c for c in (group or {}).get("components", []) if c["label"] == change["label"]]
+        if not match or change["status"] not in (ACTIVE, PENDING, COMPLETED, CANCELLED):
+            raise SystemExit(f"bad component_status decision: {change}")
+        match[0]["status"] = change["status"]
+
+
+def migrate(data_root: Path, resolution_path: Path, dry_run: bool = False,
+            decisions: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     data_root = Path(data_root)
     marker = data_root / "agreements" / MARKER_NAME
     if marker.exists():
         return {"status": "already_migrated", "marker": str(marker)}
     resolution = json.loads(Path(resolution_path).read_text(encoding="utf-8"))
     result = plan(_load_events(data_root / "events"), resolution)
+    _apply_decisions(result, decisions or {})
+    zero_filled = []
+    for group in result["agreements"].values():
+        for component in group["components"]:
+            if _is_blank(component.get("amount")) and _is_blank(component.get("percent")):
+                component["amount"] = 0  # human decision 2026-10-15: a component with no value gets amount 0
+                zero_filled.append({"agreement_id": group["agreement_id"], "label": component.get("label")})
     report: Dict[str, Any] = {
+        "zero_filled_components": zero_filled,
         "agreements": len(result["agreements"]),
         "components": sum(len(g["components"]) for g in result["agreements"].values()),
         "events_rewritten": len(result["rewrite"]),
@@ -220,7 +270,8 @@ def migrate(data_root: Path, resolution_path: Path, dry_run: bool = False) -> Di
             manager.import_migrated_agreement(
                 agreement_id=group["agreement_id"], title=_title_of(group), client_name=group["client_name"],
                 payer_name=group["payer_name"], partner_name=group["partner_name"],
-                partner_percent=group["partner_percent"], status=group["status"], components=group["components"])
+                partner_percent=group["partner_percent"], status=group["status"], components=group["components"],
+                created_at=to_local(group["created_at"]).isoformat() if group["created_at"] != datetime.min else None)
         except ValidationError as exc:
             raise SystemExit(f"cannot migrate agreement {group['agreement_id']!r}: {exc.message} {exc.fields}") from exc
     for path, info in result["rewrite"].items():
@@ -266,8 +317,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--data-root", required=True)
     ap.add_argument("--resolution", required=True, help="name_resolution.json from export_name_resolution.py")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--decisions", help="JSON: {skip_agreement_ids: [...], component_status: [{agreement_id, label, status}]}")
     args = ap.parse_args(argv)
-    report = migrate(Path(args.data_root), Path(args.resolution), args.dry_run)
+    decisions = json.loads(Path(args.decisions).read_text(encoding="utf-8")) if args.decisions else None
+    report = migrate(Path(args.data_root), Path(args.resolution), args.dry_run, decisions)
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0
 

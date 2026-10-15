@@ -21,12 +21,13 @@ import sqlite3
 import threading
 import uuid
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple, cast
 
 from src.managers.ledger_event_manager import _normalize_amount, _slugify
 from src.utils.logger import get_logger
-from src.utils.time_utils import local_isoformat, now_local
+from src.utils.time_utils import local_isoformat, now_local, to_local
 
 logger = get_logger(__name__)
 
@@ -371,6 +372,17 @@ class AgreementsManager:
     # Validation helpers
     # ------------------------------------------------------------------ #
 
+    @staticmethod
+    def _agreement_created_at(agreement_date: Optional[str]) -> Optional[str]:
+        """`YYYY-MM-DD` -> that day at 00:00 Israel time as an ISO string; None when not given."""
+        if not agreement_date:
+            return None
+        try:
+            day = datetime.strptime(str(agreement_date)[:10], "%Y-%m-%d")
+        except ValueError as exc:
+            raise ValidationError("invalid agreement", {"agreement_date": "must be YYYY-MM-DD"}) from exc
+        return local_isoformat(to_local(day))
+
     def _normalize_component_input(self, data: Dict[str, Any], *, require_value: bool) -> Dict[str, Any]:
         """Returns the cleaned component fields present in `data` (only keys given)."""
         fields: Dict[str, Any] = {}
@@ -524,8 +536,11 @@ class AgreementsManager:
         partner_percent: Any = None, agreement_id: Optional[str] = None,
         session_id: Optional[str] = None, message_id: Optional[str] = None,
         message_timestamp: Optional[int] = None, agreement_description: Optional[str] = None,
+        agreement_date: Optional[str] = None,
     ) -> Tuple[Dict[str, Any], List[str]]:
-        """Creates an agreement with >=1 component. Returns (agreement, ledger_event_ids)."""
+        """Creates an agreement with >=1 component. Returns (agreement, ledger_event_ids).
+        `agreement_date` (YYYY-MM-DD) is the agreement's own creation date (e.g. from a migrated comment);
+        it defaults to now. `updated_at` is always the time of this write."""
         self._check_actor(actor)
         errors: Dict[str, str] = {}
         client_name = _clean_text(client_name) or ""
@@ -548,12 +563,13 @@ class AgreementsManager:
                 raise ValidationError(f"agreement {agreement_id!r} already exists",
                                       {"title": "an agreement with this title already exists for the client this month"})
             now = local_isoformat()
+            created = self._agreement_created_at(agreement_date) or now
             conn.execute(
                 "INSERT INTO agreements (row_id, agreement_id, title, agreement_description, client_name, "
                 "payer_name, partner_name, partner_percent, status, created_at, updated_at) "
                 "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                 (uuid.uuid4().hex, agreement_id, title, _clean_text(agreement_description), client_name,
-                 _clean_text(payer_name), _clean_text(partner_name), percent, ACTIVE, now, now),
+                 _clean_text(payer_name), _clean_text(partner_name), percent, ACTIVE, created, now),
             )
             keys: List[str] = []
             for order, fields in enumerate(cleaned):
@@ -849,6 +865,7 @@ class AgreementsManager:
     def import_migrated_agreement(
         self, *, agreement_id: str, title: str, client_name: str, payer_name: Optional[str],
         partner_name: Optional[str], partner_percent: Any, status: str, components: List[Dict[str, Any]],
+        created_at: Optional[str] = None,
     ) -> Dict[str, Any]:
         """One-time migration entry (REQ-089-09): stores an agreement and its components exactly
         as given - explicit statuses and `origin_event_id`s, the ledger events already exist
@@ -865,7 +882,7 @@ class AgreementsManager:
                 "INSERT INTO agreements (row_id, agreement_id, title, client_name, payer_name, partner_name, "
                 "partner_percent, status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
                 (uuid.uuid4().hex, agreement_id, title, client_name, _clean_text(payer_name),
-                 _clean_text(partner_name), percent, status, now, now),
+                 _clean_text(partner_name), percent, status, created_at or now, now),
             )
             for order, data in enumerate(components):
                 if data.get("status") not in COMPONENT_STATUSES:

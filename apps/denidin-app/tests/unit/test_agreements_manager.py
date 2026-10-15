@@ -615,3 +615,21 @@ class TestAgreedTotalAndLineReopen:
         assert reopened["status"] == "Active"
         assert sorted(c["status"] for c in reopened["components"]) == ["Active", "Cancelled"]
         assert len(ids) == len(reopened["components"])
+
+
+class TestAgreementDate:
+    def test_agreement_date_sets_created_at_while_updated_at_is_the_write_time(self, mgr):
+        agreement, _ = mgr.create_agreement(
+            client_name="לקוח", title="הסכם ישן", components=[{"label": "שכר טרחה", "amount": 1000}],
+            actor="migration", agreement_date="2024-10-15")
+        assert agreement["created_at"].startswith("2024-10-15T00:00:00")
+        assert not agreement["updated_at"].startswith("2024-10-15")
+
+    def test_without_agreement_date_created_at_is_now(self, mgr):
+        agreement, _ = _create(mgr)
+        assert agreement["created_at"][:10] == agreement["updated_at"][:10]
+
+    def test_bad_agreement_date_is_rejected(self, mgr):
+        with pytest.raises(ValidationError):
+            mgr.create_agreement(client_name="לקוח", title="הסכם", components=[{"label": "א", "amount": 1}],
+                                 actor="migration", agreement_date="15/10/24")
