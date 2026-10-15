@@ -13,6 +13,6 @@ Architectural refactoring, prompt/constitution optimizations, code health, and d
 
 ## Bugfixes
 
-- **073**: `bugfix-073-client-resolution-robustness` — Status: In-progress
+- **073**: `bugfix-073-client-resolution-robustness` — Status: Done (v0.8.1)
 - **063**: `bugfix-063-docx-template-formatting-refinements` — Status: Done (v0.7.6)
 - **016**: `bugfix-016-logger-level-defaults-ignore-config` — Status: Done (v0.0.1)
