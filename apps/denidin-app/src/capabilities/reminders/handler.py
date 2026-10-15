@@ -18,7 +18,9 @@ from src.tool_actions.tool_schemas import (
     DELETE_REMINDER_TOOL,
     LIST_REMINDERS_TOOL,
     MODIFY_REMINDER_TOOL,
+    SEND_REMINDERS_CALENDAR_FILE_TOOL,
 )
+from src.capabilities.reminders.calendar_file import send_files_for
 from src.managers.reminder_manager import (
     InvalidRecurrenceError,
     OccurrenceNotFoundError,
@@ -45,6 +47,10 @@ def dispatch_direct_tool_call(backbone, tool_name: str, args: Dict[str, Any],
             return "⚠️ שירות התזכורות אינו זמין כרגע."
         return json.dumps({"reminders": build_list_reminders_summary(backbone.reminder_manager)},
                           ensure_ascii=False)
+
+    if tool_name == SEND_REMINDERS_CALENDAR_FILE_TOOL["name"]:
+        return send_files_for(backbone.denidin, backbone.reminder_manager, turn_context["chat_id"],
+                              list(args.get("reminder_ids") or []))
 
     chat_id: str = turn_context["chat_id"]  # every turn has a chat
     role = turn_context.get("role")

@@ -72,6 +72,7 @@ BACKBONE_FLOWS: Tuple[FlowTag, ...] = (
     FlowTag.CREATE_REMINDER,
     FlowTag.MODIFY_REMINDER,
     FlowTag.AGREEMENT_MANAGEMENT,
+    FlowTag.REMINDERS_CALENDAR_FILE,
 )
 
 # Information reaches the user ONLY through tools (send_to_user, approval_with_yes_no_buttons,

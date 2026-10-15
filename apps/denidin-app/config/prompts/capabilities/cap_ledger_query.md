@@ -96,3 +96,5 @@ Messages that arrive while you work (see the backbone section of the same name) 
 For what an agreement CURRENTLY says (its components, amounts, percents,
 triggers, statuses), use `cap_agreements_read` — the ledger holds events
 (what was recorded or paid over time), not the living agreement.
+
+- Scope: calendar files (.ics) belong only to the reminders capabilities and are never produced or requested here.

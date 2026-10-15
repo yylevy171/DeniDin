@@ -128,10 +128,10 @@ def _local_tools_by_tag() -> Dict[CapabilityTag, Any]:
     from src.managers.ledger_event_recognizer import RECOGNITION_TOOL
     from src.tool_actions.tool_schemas import (
         CREATE_REMINDER_TOOL, DELETE_REMINDER_TOOL, LIST_REMINDERS_TOOL, MODIFY_REMINDER_TOOL,
-        QUERY_LEDGER_EVENTS_TOOL,
+        QUERY_LEDGER_EVENTS_TOOL, SEND_REMINDERS_CALENDAR_FILE_TOOL,
     )
     return {
-        CapabilityTag.REMINDERS_READ: [LIST_REMINDERS_TOOL],
+        CapabilityTag.REMINDERS_READ: [LIST_REMINDERS_TOOL, SEND_REMINDERS_CALENDAR_FILE_TOOL],
         CapabilityTag.REMINDERS_WRITE: [CREATE_REMINDER_TOOL, MODIFY_REMINDER_TOOL, DELETE_REMINDER_TOOL],
         CapabilityTag.AGREEMENTS_READ: list(AGREEMENTS_READ_TOOLS),
         CapabilityTag.AGREEMENTS_WRITE: list(AGREEMENTS_WRITE_TOOLS),

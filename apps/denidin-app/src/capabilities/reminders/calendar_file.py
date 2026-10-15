@@ -7,6 +7,7 @@ on-demand request (`send_files_for`). Wraps ReminderManager (for the data and th
 `src/utils/reminder_ics.py` (the format); sends through `DeniDin.send_calendar_file`. Never raises - a file
 that cannot be built or sent never turns a saved reminder into an error.
 """
+import json
 import logging
 from typing import Any, Dict, List, Sequence
 
@@ -73,3 +74,24 @@ def flush_queued_files(denidin: Any, reminder_manager: Any, chat_id: str, queue:
         failed = True
     if failed:
         denidin.send_to_user(chat_id, NOTICE_SEND_FAILED)
+
+
+def send_files_for(denidin: Any, reminder_manager: Any, chat_id: str, reminder_ids: List[str]) -> str:
+    """On request: ONE PUBLISH file with every given ACTIVE reminder. Nothing is sent if any id is unknown
+    or no longer active. Returns the tool-result text for the model (JSON on success, a ⚠️ line else)."""
+    if reminder_manager is None:
+        return "⚠️ שירות התזכורות אינו זמין כרגע."
+    unique_ids = list(dict.fromkeys(reminder_ids))
+    found = {entry["reminder_id"] for entry in reminder_manager.list_for_calendar(unique_ids)}
+    missing = [reminder_id for reminder_id in unique_ids if reminder_id not in found]
+    if missing or not unique_ids:
+        return f"⚠️ לא נמצאה תזכורת פעילה עם המזהה: {', '.join(missing) or '(none given)'}"
+    try:
+        entries = [entry for entry in (_entry_for(reminder_manager, rid) for rid in unique_ids) if entry]
+        file_name = _send(denidin, chat_id, entries, PUBLISH)
+    except Exception as e:  # pylint: disable=broad-except
+        logger.error(f"[102] On-demand calendar file failed for chat {chat_id}: {e}", exc_info=True)
+        file_name = None
+    if file_name is None:
+        return "⚠️ לא הצלחתי לשלוח את קובץ היומן."
+    return json.dumps({"sent": True, "reminders": len(entries), "file_name": file_name}, ensure_ascii=False)
