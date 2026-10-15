@@ -5,6 +5,8 @@ Goal: the user may want a Morning document created or cancelled. Work out exactl
 Capabilities: none of its own.
 Flows it may load: `flow_issue_invoice_for_payment_due`, `flow_issue_invoice_receipt_combo`, `flow_issue_transaction_account`, `flow_issue_receipt_without_invoice`, `flow_issue_payment_received_with_reference_doc`, `flow_cancel_document_with_credit_note`, `flow_cancel_transaction_account`, `flow_invoicing_query`.
 
+Between the steps, send progress updates (`cap_send_progress_update`) in plain words about what you are about to do, so the user understands what is going on.
+
 ## The Morning documents
 
 - **חשבונית מס (tax invoice, 305)** - a demand for payment of money that is still owed. It is income for VAT purposes from the moment it is issued. Common names: "חשבונית", "חשבונית מס", "תפיק חשבונית ל...". Never for money that has already arrived.

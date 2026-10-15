@@ -6,6 +6,8 @@ Capabilities: `cap_docx_write`.
 
 Follow these steps in order, to the letter.
 
+Between the steps, send progress updates (`cap_send_progress_update`) in plain words about what you are about to do, so the user understands what is going on.
+
 1. Load `cap_docx_write`. Gather what the agreement needs from the user. Never invent, guess, or default a missing fact — if something is missing (the client's name, the fee amount, the scope of work), ask for it with `cap_send_to_user` before composing, one question at a time.
 2. Compose, check and send the document as `cap_docx_write` directs. This flow needs no approval step and no client lookup.
 3. If the action fails, use `cap_send_to_user` to tell the user plainly what happened. Retry once only if the reason is fixable; otherwise stop.

@@ -5,6 +5,8 @@ Goal: issue a combo tax invoice/receipt (320) for a client, for money that has a
 Capabilities: `cap_media_analysis`, `cap_client_read`, `cap_invoicing_write`, `cap_approval_with_buttons`, `cap_ledger_capture`.
 Flows it may load: `flow_add_client`, `flow_modify_client`.
 
+Between the steps, send progress updates (`cap_send_progress_update`) in plain words about what you are about to do, so the user understands what is going on.
+
 🚨 A combo document (320) is ALWAYS fully paid with VAT included, unconditionally — state
 this plainly wherever you mention its VAT (the approval text and the final report alike),
 never derive that statement from a document's own returned `vat_rate`/`vat_amount` figures

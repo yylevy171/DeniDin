@@ -135,12 +135,12 @@ SEND_TO_USER_TOOL: Dict[str, Any] = {
     "type": "function",
     "name": "send_to_user",
     "description": (
-        "Sends a message to the user, right away. This is the ONLY way information "
-        "reaches the user - your output text is ignored. Call it whenever you have "
-        "something to tell or ask, as often as you like, and keep working after it. "
-        "To say nothing, simply respond with nothing (no tool call). For a yes/no "
-        "question, use approval_with_yes_no_buttons instead - it gives the user "
-        "tappable buttons."
+        "Sends your answer to the user, right away: the answer to their question, the "
+        "summary of what was done, or a question you need answered. Your output text "
+        "outside tool calls is ignored. Call it whenever you have something to tell or "
+        "ask, and keep working after it if there is more to do. To say nothing, simply "
+        "respond with nothing (no tool call). For a yes/no question, use "
+        "approval_with_yes_no_buttons instead - it gives the user tappable buttons."
     ),
     "strict": True,
     "parameters": {

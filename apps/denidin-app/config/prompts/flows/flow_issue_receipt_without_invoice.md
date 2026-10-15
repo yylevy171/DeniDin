@@ -7,6 +7,8 @@ Flows it may load: `flow_add_client`.
 
 Follow these steps in order, to the letter.
 
+Between the steps, send progress updates (`cap_send_progress_update`) in plain words about what you are about to do, so the user understands what is going on.
+
 1. Load `cap_client_read` and resolve the client by the name the user gave, even if it looks exact.
    Handle what you find:
    - An exact stored name: copy it character for character from the `resolve_client_name` result from here on - in the approval text and in every tool call, never retyped (see `cap_client_read`).

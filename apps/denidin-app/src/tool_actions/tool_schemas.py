@@ -146,12 +146,10 @@ SEND_PROGRESS_UPDATE_TOOL: Dict[str, Any] = {
     "type": "function",
     "name": "send_progress_update",
     "description": (
-        "Send ONE short interim WhatsApp message to the user mid-turn, before your real "
-        "final answer is ready - use ONLY on a turn you already know will take a while "
-        "(e.g. processing a multi-page document, a multi-step tool sequence), never on an "
-        "ordinary fast turn. This is NOT your final answer and NEVER counts as one - you "
-        "MUST still produce a real final answer as a normal message after this. Never call "
-        "this in place of asking a genuine clarifying question."
+        "Send ONE short interim WhatsApp message to the user right away and keep working. "
+        "Say, in plain words the user understands, what you are about to do for them next "
+        "(e.g. checking the client's invoices). Use it between the steps of a request that "
+        "has more steps ahead, so the user knows something is happening."
     ),
     "strict": True,
     "parameters": {
@@ -159,7 +157,7 @@ SEND_PROGRESS_UPDATE_TOOL: Dict[str, Any] = {
         "properties": {
             "text": {
                 "type": "string",
-                "description": "The short interim status message to show the user right now.",
+                "description": "The short message to show the user right now: what you are about to do for them.",
             },
         },
         "required": ["text"],

@@ -7,6 +7,8 @@ Flows it may load: `flow_add_client`, `flow_morning_document_write`.
 
 Follow these steps in order, to the letter.
 
+Between the steps, send progress updates (`cap_send_progress_update`) in plain words about what you are about to do, so the user understands what is going on.
+
 🚨 **Dropping out applies at every step, not as a step of its own:** if at any point the user drops the request or changes the subject, do nothing further and treat the flow as complete. Anything already recorded stays recorded.
 
 🚨 **When the deposit came with a slip, the deposit's date is ALWAYS the date on the slip** (the bank slip, the Bit/PayBox confirmation, the cheque photo). Never ask the user which date to use, and never let a different date in the caption or in a message ("today", "yesterday", a date typed by the user) replace it or make you stop and ask. If the two differ, you may mention it in passing; the slip's date stands. **A deposit reported only in words has no slip:** its date is the one the user states; if they gave none, ask for it in one short question - never mention or ask for a photo or a slip.

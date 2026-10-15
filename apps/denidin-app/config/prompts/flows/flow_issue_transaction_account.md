@@ -7,6 +7,8 @@ Flows it may load: `flow_add_client`.
 
 Follow these steps in order, to the letter.
 
+Between the steps, send progress updates (`cap_send_progress_update`) in plain words about what you are about to do, so the user understands what is going on.
+
 1. Use this flow only if the user explicitly named a transaction account (חשבון עסקה). Never infer it from context; if the request is only for an invoice, use `flow_issue_invoice_for_payment_due`.
 2. Load `cap_client_read` and resolve the client by the name the user gave, even if it looks exact.
    Handle what you find:

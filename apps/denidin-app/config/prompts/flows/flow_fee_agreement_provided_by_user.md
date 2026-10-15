@@ -7,6 +7,8 @@ Flows it may load: `flow_add_client`.
 
 Follow these steps in order, to the letter.
 
+Between the steps, send progress updates (`cap_send_progress_update`) in plain words about what you are about to do, so the user understands what is going on.
+
 1. If the agreement came as an image or document, it must have been read with `cap_media_analysis`'s `analyze_media` (load it and read it now if it was not). If its `missing_required_fields` is not empty, ask the user for exactly those details in the same reply as step 2.
 2. The client must be resolved by its exact stored name before moving to the next step.
    - **Agreement given as an image or document:** 🚨 resolve it before you reply at all. Load `cap_client_read` and call `resolve_client_name` with the client name the user gave. If the user gave none, use the client name `analyze_media` extracted from the agreement, **copied verbatim, character for character, letter for letter, exactly as extracted**: never corrected, completed, or swapped for a similar name or a client from earlier in the conversation. Then send one reply (`cap_send_to_user`) that reports what the agreement contains and handles what you found.
