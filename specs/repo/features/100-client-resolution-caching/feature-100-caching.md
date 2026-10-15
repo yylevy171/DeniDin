@@ -1,5 +1,7 @@
 # Feature 100: Stateless Client Resolution Caching
 
+> **Status: BACKLOG (2026-10-15).** See `user-stories.md` for why it was not built: Feature 067 already removed most repeated lookups, and section 2's "210 redundant calls" figure was a miscount.
+
 ## 1. Background & The Problem
 The Backbone architecture dictates that the LLM operates in a strictly stateless manner across turns. When a user workflow spans multiple turns (e.g., querying a client, receiving 5 candidates, selecting one via a lazy shorthand like "רביבו", and then requesting to generate a document), each interim update or interaction ends a turn and drops the working context.
 

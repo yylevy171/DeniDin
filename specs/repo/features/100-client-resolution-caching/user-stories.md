@@ -2,7 +2,16 @@
 
 **Feature Branch**: `feature/100-bugfix-073-client-resolution` (built together with bugfix-073)
 **Related Spec**: `feature-100-caching.md` (same directory)
-**Status**: DRAFT 2026-10-15 - stories and acceptance scenarios awaiting product-owner approval. No plan, no code.
+**Status**: BACKLOG 2026-10-15 - product owner moved this back to the backlog. Stories below are an unapproved draft; no plan, no code.
+
+**Why it is not being built now (2026-10-15 analysis):** the "210 redundant calls" in the original
+spec text is wrong (the trace has 2 real `resolve_client_name` calls; the rest are the tool's
+description repeated in every prompt). Across the logged billed runs of 19 test files, runs on 067
+code (teammate2 on `feature/067` 2026-10-11..15, plus runs after the merge) re-resolve a name
+**0.45** extra times per client conversation vs **0.65** before 067 (-31%); document/invoice creation
+flows dropped to ~0. What remains is concentrated in the update-client flow (2 repeats per run) and
+the allocation-ID flow (~1.6 per client) - one Morning search each, no wrong outcomes found. Revisit
+only if those two flows become a measured cost or a correctness problem.
 
 ---
 
