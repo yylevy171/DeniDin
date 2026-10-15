@@ -25,6 +25,8 @@ FIXTURE_ROOT = HERE / ".fixture" / "clients"
 PASSWORD = "e2e-pass"
 PASSWORD_SALT = "denidin-pw"  # webapp_backend.auth.PASSWORD_SALT
 PORT = 8132
+AGREEMENTS_PORT = 8311  # the real denidin-app Agreements API (Feature 089)
+AGREEMENTS_TOKEN = "e2e-clients-agreements-token"
 
 DEV_CONFIG = HERE.parent / "backend" / "config" / "config.dev.json"
 MORNING_SRC = HERE.parents[1] / "morning-mcp-app" / "src"
@@ -43,11 +45,12 @@ F092_ROLES = [
     "past_client",      # UAT 4: activity only before 2025-09-01 (gray)
     "target_a",         # UAT 3 buttons + UAT 6 mapping target
     "target_b",         # UAT 6 + UAT 7 mapping target
-    "mig_check",        # UAT 5: comment "לבדוק"  -> migrated to check
-    "mig_active",       # UAT 5: comment "לקוח פעיל" -> migrated to active
-    "mig_closed",       # UAT 5: comment "לסגור" -> migrated to closed, real amounts kept
+    "mig_check",        # UAT 5: comment "לבדוק" routes nothing
+    "mig_active",       # UAT 5: comment "לקוח פעיל" routes nothing
+    "mig_closed",       # UAT 5: comment "לסגור" routes nothing, real amounts shown
     "yellow_no_agreement",  # manual testing only: paid 1,500, no agreement (yellow)
     "yellow_overpaid",      # manual testing only: agreed 2,000 / paid 2,600 (yellow)
+    "fuzzy_client",         # auto-match unlink: an event under a near-miss spelling is matched here by fuzzy matching
 ]
 YISRAEL_RAW_NAME = "Yisrael I"
 YISRAEL_NOTE = "שילם במזומן"
@@ -109,8 +112,7 @@ def main() -> None:
         d.mkdir(parents=True, exist_ok=True)
     for name in ("client_comments.json", "client_mapping.json", "mapping_notes.json"):
         (clients / name).write_text("{}", encoding="utf-8")
-    # Feature 092 UAT 5: legacy routing keywords in comments and NO migrations.json, so the
-    # backend's first report performs a real first-run migration.
+    # Feature 092 UAT 5: legacy routing keywords in comments - they must route nothing.
     (clients / "client_comments.json").write_text(json.dumps({
         f092["mig_check"]: "לבדוק",
         f092["mig_active"]: "לקוח פעיל",
@@ -127,7 +129,7 @@ def main() -> None:
            client_name=official, amount=1000, description=AGREEMENT_MARKER)
     _event(events, "C01e2e00002", now - timedelta(days=5), source_type="חשבונית",
            event_subtype="חשבונית מס קבלה", client_name=official, amount=400, description=INVOICE_MARKER)
-    _event(events, "B01e2e00003", now - timedelta(days=3), source_type="בנק", event_subtype="הפקדה",
+    _event(events, "B01e2e00003", now - timedelta(days=3), source_type="הפקדה", event_subtype="בנק",
            client_name=UNMATCHED_RAW_NAME, amount=250, description=UNMATCHED_MARKER)
 
     # ---- Feature 092 events ----
@@ -159,7 +161,10 @@ def main() -> None:
     _event(events, "C01e2e09112", now - timedelta(days=4), source_type="חשבונית",
            event_subtype="חשבונית מס קבלה", client_name=YISRAEL_RAW_NAME, amount=700,
            description="e2e-092-yisrael")
-    _event(events, "B01e2e09113", now - timedelta(days=4), source_type="בנק", event_subtype="הפקדה",
+    _event(events, "C01e2e09117", now - timedelta(days=4), source_type="חשבונית",
+           event_subtype="חשבונית מס קבלה", client_name=f092["fuzzy_client"][:-1], amount=333,
+           description="e2e-fuzzy")
+    _event(events, "B01e2e09113", now - timedelta(days=4), source_type="הפקדה", event_subtype="בנק",
            client_name=HIDE_RAW_NAME, amount=50, description="e2e-092-hide")
 
     cfg = {
@@ -174,6 +179,8 @@ def main() -> None:
         "morning_api_key_secret": dev["morning_api_key_secret"],
         "morning_auth_url": dev["morning_auth_url"],
         "morning_api_url": dev["morning_api_url"],
+        "denidin_agreements_url": f"http://127.0.0.1:{AGREEMENTS_PORT}",
+        "denidin_agreements_token": AGREEMENTS_TOKEN,
         # INFO, not WARNING: bugfix-066's /health "logs_writing" check needs fresh log lines
         # (startup + heartbeat are INFO); at WARNING /health is 503 and Playwright's webServer
         # wait never succeeds.
@@ -198,6 +205,7 @@ def main() -> None:
         "hidden_file": str(clients / "hidden_unmatched.json"),
         "migrations_file": str(clients / "migrations.json"),
         "notes_file": str(clients / "mapping_notes.json"),
+        "fuzzy_raw_name": f092["fuzzy_client"][:-1],
         "yisrael_raw_name": YISRAEL_RAW_NAME,
         "yisrael_note": YISRAEL_NOTE,
         "hide_raw_name": HIDE_RAW_NAME,

@@ -5,9 +5,11 @@ Customer-facing functional features, conversational intelligence, and business c
 
 ## Features
 
+- **102**: `102-calendar-reminders-as-whatsapp-events` — Status: Backlog
+- **101**: `101-green-api-instance-host` — Status: Repo
 - **100**: `100-client-resolution-caching` — Status: In-progress
 - **099**: `099-dual-doc-cancellation-320` — Status: In-progress
-- **098**: `098-mandatory-id-above-5000-nis` — Status: In-progress
+- **098**: `098-mandatory-id-above-5000-nis` — Status: Repo
 - **097**: `097-ai-driven-e2e-testing` — Status: Backlog
 - **096**: `096-approved-write-args-contract` — Status: Backlog
 - **095**: `095-google-drive-client-document-filing` — Status: Backlog
@@ -93,10 +95,11 @@ Customer-facing functional features, conversational intelligence, and business c
 - **002**: `002-007-memory-system` — Status: Done (v0.0.1)
 - **002**: `002-chat-session-management` — Status: Done (v0.0.1)
 - **001**: `001-whatsapp-chatbot-passthrough` — Status: Done (v0.0.1)
+- **bundle**: `bundle-064-066-071-099` — Status: In-progress
 
 ## Bugfixes
 
-- **072**: `bugfix-072-bank-deposit-missing-txn-date` — Status: In-progress
+- **072**: `bugfix-072-bank-deposit-missing-txn-date` — Status: Repo
 - **071**: `bugfix-071-morning-vat-zero-defect` — Status: Done (v0.8.0)
 - **070**: `bugfix-070-synthetic-media-turn-attributed-to-human-sender` — Status: Bugfixes
 - **069**: `bugfix-069-whatsapp-health-authorized` — Status: Done (v0.8.0)

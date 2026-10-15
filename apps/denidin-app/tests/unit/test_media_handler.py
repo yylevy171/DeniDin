@@ -694,7 +694,7 @@ class TestLedgerEventPersistenceViaMediaHandler:
             "raw_response": "בנק - הפקדה של 9,440 ₪",
             "extracted_text": "בנק - הפקדה של 9,440 ₪",
             "ledger_events": [{
-                "source_type": "בנק", "event_subtype": "הפקדה",
+                "source_type": "הפקדה", "event_subtype": "בנק",
                 "client_name": None, "payer_name": None,
                 "agreement_id": None, "reference_hint": None,
                 "component_count": 1,
@@ -727,7 +727,7 @@ class TestLedgerEventPersistenceViaMediaHandler:
 
         # Feature 069: a structured stash is surfaced for routing, NOT persisted here.
         assert result["ledger_stash"]
-        assert result["ledger_stash_source_type"] == "בנק"
+        assert result["ledger_stash_source_type"] == "הפקדה"
         assert "9,440" in result["ledger_stash"]
 
         events_dir = real_denidin_context.ledger_event_manager.storage_dir

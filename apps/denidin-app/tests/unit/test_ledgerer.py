@@ -118,8 +118,8 @@ def _agreement_verdict(trigger_id, **event_overrides):
 
 def _bank_verdict(trigger_id, **event_overrides):
     event = {
-        "source_type": "בנק",
-        "event_subtype": "הפקדה",
+        "source_type": "הפקדה",
+        "event_subtype": "בנק",
         "client_name": "דנה כהן",
         "description": "הפקדה בנקאית מהלקוח",
         "amount": "5000",
@@ -243,7 +243,7 @@ class TestBankComplete:
 
         assert len(created) == 1
         (record,) = _load_events(lem)
-        assert record["source_type"] == "בנק"
+        assert record["source_type"] == "הפקדה"
         assert record["event_id"].startswith("B")
         assert record["event_datetime"] == EXPECTED_EVENT_DATETIME
         assert record["vat_status"] == "כולל"          # code-forced for בנק
@@ -403,7 +403,7 @@ class TestInvoiceComplete:
 class TestDeclinedAndNone:
     def test_declined_persists_nothing(self, lem, sm):
         session, trigger_id, completing_id = _build_session(sm)
-        verdict = {"verdict": "declined", "source_type": "בנק",
+        verdict = {"verdict": "declined", "source_type": "הפקדה",
                    "client_name_stated": "יוסי מהחנייה",
                    "reason": "declined_by_operator"}
 

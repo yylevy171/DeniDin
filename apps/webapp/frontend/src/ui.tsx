@@ -3,6 +3,22 @@ import { Image, Pressable, ScrollView, Text, TextInput, View } from "react-nativ
 import type { Theme } from "./theme";
 import { ContextMessage, fetchMediaObjectUrl, searchClients } from "./api";
 
+/** Hover text for anything clickable. react-native-web's Pressable drops a `title` prop, so the tooltip lives
+ * on a layout-neutral wrapper (`display: contents` generates no box) and shows when hovering the child. */
+export function Hint({ title, children }: { title?: string; children: any }) {
+  if (!title) return children;
+  return createElement("div", { title, style: { display: "contents" } }, children);
+}
+
+/** A Pressable with a working hover `title`. */
+export function HintPressable({ title, ...rest }: { title?: string; [prop: string]: any }) {
+  return (
+    <Hint title={title}>
+      <Pressable {...rest} accessibilityLabel={rest.accessibilityLabel ?? title} />
+    </Hint>
+  );
+}
+
 export function Button({
   label,
   onPress,
@@ -27,10 +43,12 @@ export function Button({
   const color =
     variant === "ghost" ? theme.text : variant === "danger" ? "#fff" : theme.accentText;
   return (
-    <Pressable
+    <HintPressable
       onPress={disabled ? undefined : onPress}
       testID={testID}
-      {...({ title } as any)}
+      disabled={!!disabled}
+      accessibilityState={{ disabled: !!disabled }}
+      {...({ title: title ?? label } as any)}
       style={{
         paddingVertical: iconSize ? 6 : 8,
         paddingHorizontal: iconSize ? 10 : 14,
@@ -46,13 +64,21 @@ export function Button({
       <Text style={{ color, fontWeight: "600", fontSize: iconSize || 14, lineHeight: (iconSize || 14) + 4 }}>
         {label}
       </Text>
-    </Pressable>
+    </HintPressable>
   );
 }
 
 // Feather-style icon paths, drawn inline as real DOM <svg> (react-native-web renders View as a
 // div, so a raw SVG element nests fine on web). currentColor picks up the wrapper's `color`.
 const ICON_PATHS: Record<string, string> = {
+  pen: '<path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>',
+  check: '<polyline points="20 6 9 17 4 12"/>',
+  x: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+  plus: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+  trash:
+    '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>',
+  undo: '<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>',
+  play: '<polygon points="6 4 20 12 6 20 6 4"/>',
   refresh:
     '<path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>',
   gear:
@@ -68,6 +94,8 @@ export function IconButton({
   title,
   disabled,
   glyphSize = 17,
+  color,
+  background,
   testID,
 }: {
   glyph?: string;
@@ -77,20 +105,24 @@ export function IconButton({
   title?: string;
   disabled?: boolean;
   glyphSize?: number;
+  color?: string; // glyph colour override (default: theme.accentSoftText)
+  background?: string; // fill override (default: theme.accentSoft)
   testID?: string;
 }) {
+  const fg = color || theme.accentSoftText;
   return (
-    <Pressable
+    <HintPressable
       onPress={disabled ? undefined : onPress}
       testID={testID}
       disabled={!!disabled}
       accessibilityState={{ disabled: !!disabled }}
+      accessibilityLabel={title}
       {...({ title } as any)}
       style={{
         width: 36,
         height: 36,
         borderRadius: 8,
-        backgroundColor: theme.accentSoft,
+        backgroundColor: background || theme.accentSoft,
         alignItems: "center",
         justifyContent: "center",
         opacity: disabled ? 0.45 : 1,
@@ -100,14 +132,14 @@ export function IconButton({
         createElement("div", {
           style: { width: glyphSize, height: glyphSize, lineHeight: 0 },
           dangerouslySetInnerHTML: {
-            __html: `<svg width="${glyphSize}" height="${glyphSize}" viewBox="0 0 24 24" fill="none" stroke="${theme.accentSoftText}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:block">${ICON_PATHS[icon]}</svg>`,
+            __html: `<svg width="${glyphSize}" height="${glyphSize}" viewBox="0 0 24 24" fill="none" stroke="${fg}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:block">${ICON_PATHS[icon]}</svg>`,
           },
         })
       ) : (
         <Text
           selectable={false}
           style={{
-            color: theme.accentSoftText,
+            color: fg,
             fontSize: glyphSize,
             lineHeight: glyphSize,
             fontWeight: "700",
@@ -117,7 +149,7 @@ export function IconButton({
           {glyph}
         </Text>
       )}
-    </Pressable>
+    </HintPressable>
   );
 }
 
@@ -308,8 +340,9 @@ export function ClientNameInput({
           ) : null}
           <ScrollView style={{ maxHeight: 260 }} showsVerticalScrollIndicator>
             {suggests.map((s, i) => (
-              <Pressable
+              <HintPressable
                 key={s}
+                {...({ title: `בחירת הלקוח: ${s}` } as any)}
                 testID={`client-suggest-${s}`}
                 onPress={() => choose(s)}
                 onHoverIn={() => setCursor(i)}
@@ -329,7 +362,7 @@ export function ClientNameInput({
                 >
                   {s}
                 </Text>
-              </Pressable>
+              </HintPressable>
             ))}
           </ScrollView>
         </View>
@@ -410,12 +443,12 @@ function OptionRow({
   testID?: string;
 }) {
   return (
-    <Pressable
+    <HintPressable
       onPress={disabled ? undefined : onPress}
       testID={testID}
       disabled={!!disabled}
       accessibilityState={{ disabled: !!disabled, checked: on }}
-      {...({ "aria-checked": on ? "true" : "false" } as any)}
+      {...({ "aria-checked": on ? "true" : "false", title: label } as any)}
       style={{
         flexDirection: "row",
         alignItems: "center",
@@ -438,7 +471,7 @@ function OptionRow({
       >
         {label}
       </Text>
-    </Pressable>
+    </HintPressable>
   );
 }
 
@@ -473,8 +506,9 @@ export function MultiSelect({
   const idBase = testID || `ms-${label}`;
   return (
     <View style={{ position: "relative", zIndex: open ? 120 : 1 }}>
-      <Pressable
+      <HintPressable
         onPress={onToggleOpen}
+        {...({ title: `סינון לפי ${label}` } as any)}
         testID={idBase}
         style={{
           borderWidth: 1,
@@ -495,7 +529,7 @@ export function MultiSelect({
           {`  (${summary})`}
         </Text>
         <Text style={{ color: theme.textDim, fontSize: 11 }}>{open ? "▲" : "▼"}</Text>
-      </Pressable>
+      </HintPressable>
       {open ? (
         <View
           testID={`${idBase}-menu`}
@@ -553,18 +587,22 @@ function ChatImage({
 }: {
   path: string;
   theme: Theme;
-  onOpen: (url: string) => void;
+  onOpen: (url: string, isPdf: boolean) => void;
 }) {
   const [url, setUrl] = useState<string | null>(null);
+  const [isPdf, setIsPdf] = useState(false);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     let live = true;
     let created: string | null = null;
     fetchMediaObjectUrl(path)
-      .then((u) => {
+      .then(({ url: u, isPdf: pdf }) => {
         if (live) {
           created = u;
+          setIsPdf(pdf);
           setUrl(u);
+        } else {
+          URL.revokeObjectURL(u);
         }
       })
       .catch(() => live && setFailed(true));
@@ -580,24 +618,40 @@ function ChatImage({
         [מדיה לא זמינה]
       </Text>
     );
-  if (!url) return <Text style={{ color: theme.textDim }}>…טוען תמונה</Text>;
+  if (!url) return <Text style={{ color: theme.textDim }}>…טוען קובץ</Text>;
+  if (isPdf)
+    return (
+      <Pressable
+        testID="chat-pdf"
+        onPress={() => onOpen(url, true)}
+        style={{
+          width: 160, height: 90, borderRadius: 8, backgroundColor: theme.surfaceAlt,
+          alignItems: "center", justifyContent: "center", gap: 4,
+        }}
+      >
+        <Text style={{ fontSize: 28 }}>📄</Text>
+        <Text style={{ color: theme.text, fontSize: 12 }}>PDF — לחצו לפתיחה</Text>
+      </Pressable>
+    );
   return (
-    <Pressable testID="chat-image" onPress={() => onOpen(url)}>
+    <HintPressable testID="chat-image" onPress={() => onOpen(url, false)} {...({ title: "הגדלת התמונה" } as any)}>
       <Image
         source={{ uri: url }}
         style={{ width: 160, height: 160, borderRadius: 8, backgroundColor: theme.surfaceAlt }}
         resizeMode="cover"
       />
-    </Pressable>
+    </HintPressable>
   );
 }
 
 export function ImageOverlay({
   url,
+  isPdf = false,
   onClose,
   theme,
 }: {
   url: string;
+  isPdf?: boolean;
   onClose: () => void;
   theme: Theme;
 }) {
@@ -625,7 +679,16 @@ export function ImageOverlay({
         zIndex: 200,
       }}
     >
-      <Image source={{ uri: url }} style={{ width: "94%", height: "86%" }} resizeMode="contain" />
+      {isPdf ? (
+        <iframe
+          data-testid="pdf-viewer"
+          title="pdf"
+          src={url}
+          style={{ width: "94%", height: "86%", border: "none", backgroundColor: "#fff" }}
+        />
+      ) : (
+        <Image source={{ uri: url }} style={{ width: "94%", height: "86%" }} resizeMode="contain" />
+      )}
       <Button label="סגירה" onPress={onClose} theme={theme} testID="image-overlay-close" />
     </View>
   );
@@ -640,7 +703,7 @@ export function ChatPanel({
   messages: ContextMessage[] | undefined;
   error?: string;
   theme: Theme;
-  onOpenImage: (url: string) => void;
+  onOpenImage: (url: string, isPdf: boolean) => void;
 }) {
   if (error)
     return (

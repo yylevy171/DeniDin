@@ -72,9 +72,11 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
         "properties": {
             "source_type": {
                 "type": "string",
-                "enum": ["הסכם", "בנק", "חשבונית"],
+                "enum": ["הסכם", "הפקדה", "חשבונית"],
                 "description": (
-                    "הסכם for a fee-agreement event, בנק for a bank deposit/transfer, "
+                    "הסכם for a fee-agreement event, הפקדה for ANY incoming-funds event "
+                    "(a bank transfer, a Bit or PayBox payment, a cheque, or cash - the "
+                    "method goes in event_subtype), "
                     "חשבונית for a Morning-sourced accounting document (any document "
                     "type - invoice, receipt, credit note, etc.) transcribed from "
                     "structured document data given to you directly, never inferred "
@@ -90,12 +92,14 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
                 # agreement is captured as a fresh יצירה describing the current state
                 # instead - see runtime_constitution.md's Ledger Event Recognition
                 # section. Restore these enum values here when that capability is built.
-                "enum": ["יצירה", "הפקדה", "הפקה"],
+                "enum": ["יצירה", "בנק", "ביט", "פייבוקס", "צ׳ק", "מזומן", "הפקה"],
                 "description": (
                     "For source_type=הסכם: always יצירה (a correction/cancellation/"
                     "payment-confirmation for an existing arrangement is still captured "
                     "as יצירה, describing the current state - see the constitution). "
-                    "For source_type=בנק: always הפקדה. For source_type=חשבונית: pass "
+                    "For source_type=הפקדה: the METHOD the money arrived by - בנק (bank "
+                    "transfer/deposit), ביט, פייבוקס, צ׳ק (cheque) or מזומן (cash). For "
+                    "source_type=חשבונית: pass "
                     "הפקה as a placeholder - it is IGNORED and overwritten by code with "
                     "the document's real Morning type (e.g. חשבונית מס, חשבונית זיכוי, "
                     "קבלה), read from the accounting_document_json payload. Applies to "
@@ -105,10 +109,10 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
             "client_name": {
                 "type": ["string", "null"],
                 "description": (
-                    "The client's name, verbatim. For source_type=בנק, this is the "
-                    "depositor/account-holder name shown on the bank-transfer confirmation "
-                    "or banking-app screenshot ('שם חשבון מחויב' or the 'העברה מ-X' line) - "
-                    "always put it here, never in payer_name, which does not apply to בנק "
+                    "The client's name, verbatim. For source_type=הפקדה, this is the "
+                    "depositor/account-holder (or Bit/PayBox payer, or cheque drawer) name shown on the "
+                    "confirmation or screenshot ('שם חשבון מחויב' or the 'העברה מ-X' line) - "
+                    "always put it here, never in payer_name, which does not apply to הפקדה "
                     "events at all (see payer_name's own description)."
                 ),
             },
@@ -121,9 +125,9 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
                     "(often its own line right after the client name) - a strong, common "
                     "signal that X is the payer, not part of the agreement_id's label "
                     "component or description. "
-                    "ALWAYS null for source_type=בנק - a bank deposit's account-holder name "
+                    "ALWAYS null for source_type=הפקדה - a bank deposit's account-holder name "
                     "goes in client_name, never here; there is no payer/client distinction "
-                    "for a בנק event."
+                    "for a הפקדה event."
                 ),
             },
             "agreement_id": {
@@ -139,7 +143,7 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
                     "human-readable Hebrew label for the matter as a whole (e.g. 'ערעור "
                     "לארצי', 'תביעת נזיקין נגד מדינה' - a few words, not a full sentence) - "
                     "that label exists only inside this string, never as a separate field "
-                    "anywhere. Required (non-null) for source_type=הסכם; always null for בנק. "
+                    "anywhere. Required (non-null) for source_type=הסכם; always null for הפקדה. "
                     "Build it ONCE, when this matter's first component(s) are created, then "
                     "reuse this EXACT string verbatim for every later component/message "
                     "referencing this SAME matter - never rebuild, reword, or vary it."
@@ -167,7 +171,7 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
             "bank_number": {
                 "type": ["string", "null"],
                 "description": (
-                    "The bank's NUMBER (e.g. '31'), never its name - only for source_type=בנק, "
+                    "The bank's NUMBER (e.g. '31'), never its name - only for source_type=הפקדה, "
                     "always null for הסכם. A deposit screenshot's extracted text gives you the "
                     "number, not a name - never guess or invent a bank name to fill this in. "
                     "Null if the screenshot doesn't state it clearly."
@@ -175,11 +179,18 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
             },
             "bank_branch": {
                 "type": ["string", "null"],
-                "description": "The bank branch number, only for source_type=בנק, always null for הסכם.",
+                "description": "The bank branch number, only for source_type=הפקדה, always null for הסכם.",
             },
             "bank_account": {
                 "type": ["string", "null"],
-                "description": "The bank account number, only for source_type=בנק, always null for הסכם.",
+                "description": "The bank account number, only for source_type=הפקדה, always null for הסכם.",
+            },
+            "check_number": {
+                "type": ["string", "null"],
+                "description": (
+                    "The cheque's own number (מספר צ'ק), only for source_type=הפקדה with "
+                    "event_subtype=צ׳ק; null for every other event."
+                ),
             },
             "accounting_document_json": {
                 "type": ["string", "null"],
@@ -191,7 +202,7 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
                     "successful create_* result from the turn the operator had you issue "
                     "the document. Do not summarise it, reorder it, translate it, drop "
                     "fields, or fill anything in yourself - every value is read out of "
-                    "this JSON by code. ALWAYS null for הסכם/בנק."
+                    "this JSON by code. ALWAYS null for הסכם/הפקדה."
                 ),
             },
             "component_count": {
@@ -225,7 +236,7 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
                                 "(e.g. 'בסיס', 'שעות עבודה', 'בונוס אם מגיעים לפיצויים') - a "
                                 "few words, not a full sentence, distinct from other "
                                 "components of the same agreement. Required (non-null) for "
-                                "source_type=הסכם; always null for בנק."
+                                "source_type=הסכם; always null for הפקדה."
                             ),
                         },
                         "description": {
@@ -269,7 +280,7 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
                                 "non-null) - REQUIRED (non-null) - the actual date the hours "
                                 "were worked; resolve relative phrases like 'אתמול'/'היום' "
                                 "yourself using the current date given to you in your "
-                                "instructions. (2) for a source_type=בנק component - OPTIONAL "
+                                "instructions. (2) for a source_type=הפקדה component - OPTIONAL "
                                 "- the transaction/value date the screenshot itself states, "
                                 "ONLY when the screenshot shows an explicit date distinct from "
                                 "other dates that might also appear on screen (e.g. when it "
@@ -293,7 +304,7 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
                                 "The condition THIS component's amount/existence depends on, "
                                 "verbatim or closely paraphrased, when the source states one "
                                 "(e.g. 'אם הבקשה נקבעת לדיון', 'במידה ועושים גם ברע', 'בתנאי "
-                                "ש...') - only for source_type=הסכם, always null for בנק and "
+                                "ש...') - only for source_type=הסכם, always null for הפקדה and "
                                 "for an unconditional component. Put the condition itself here, "
                                 "not in description - description is for the component's own "
                                 "matter/content, this is specifically for what has to happen "
@@ -317,7 +328,7 @@ LEDGER_EVENT_TOOL: Dict[str, Any] = {
         },
         "required": [
             "source_type", "event_subtype", "client_name", "payer_name", "agreement_id",
-            "reference_hint", "bank_number", "bank_branch", "bank_account",
+            "reference_hint", "bank_number", "bank_branch", "bank_account", "check_number",
             "accounting_document_json",
             "component_count", "components",
         ],
@@ -392,7 +403,7 @@ RECOGNITION_TOOL: Dict[str, Any] = {
             },
             "source_type": {
                 "type": ["string", "null"],
-                "description": "verdict='declined' only: הסכם or בנק. Null otherwise.",
+                "description": "verdict='declined' only: הסכם or הפקדה. Null otherwise.",
             },
             "client_name_stated": {
                 "type": ["string", "null"],
@@ -433,6 +444,15 @@ def _stash_val(value: Any) -> str:
     return text or _STASH_MISSING
 
 
+_DEPOSIT_STASH_HEADLINE = {
+    "בנק": "📸 התקבלה תמונה של אסמכתת העברה/הפקדה בנקאית.",
+    "ביט": "📸 התקבלה תמונה של אישור תשלום בביט.",
+    "פייבוקס": "📸 התקבלה תמונה של אישור תשלום בפייבוקס.",
+    "צ׳ק": "📸 התקבלה תמונה של צ'ק.",
+    "מזומן": "התקבל תשלום במזומן.",
+}
+
+
 def build_ledger_stash_text(
     extracted_text: Optional[str],
     analysis: Optional[Dict],
@@ -449,23 +469,28 @@ def build_ledger_stash_text(
     `capture_ledger_events_from_text` returns per event) or None for a `.docx`
     where only the parsed body text is available.
 
-    `source_type` ∈ {"בנק", "הסכם"}; `source_medium` ∈ {"image", "document"}.
+    `source_type` ∈ {"הפקדה", "הסכם"} (a הפקדה's method is `analysis["event_subtype"]`);
+    `source_medium` ∈ {"image", "document"}.
     """
     a = analysis or {}
     is_doc = source_medium == "document"
     lines: List[str] = []
 
-    if source_type == "בנק":
-        # A בנק event always carries exactly one component (component_count: 1);
+    if source_type == "הפקדה":
+        # A הפקדה event always carries exactly one component (component_count: 1);
         # amount and txn_date live on it, not at the top level.
         comp = (a.get("components") or [{}])[0]
-        lines.append("📸 התקבלה תמונה של אסמכתת העברה/הפקדה בנקאית.")
-        lines.append(f"פעולה: {_stash_val(a.get('event_subtype') or 'הפקדה')}")
+        method = a.get("event_subtype") or "בנק"
+        lines.append(_DEPOSIT_STASH_HEADLINE.get(method, _DEPOSIT_STASH_HEADLINE["בנק"]))
+        lines.append(f"אמצעי תשלום: {_stash_val(method)}")
         lines.append(f"סכום: {_stash_val(comp.get('amount'))}")
         lines.append(f"תאריך הפקדה: {_stash_val(comp.get('txn_date'))}")
-        lines.append(f"מספר בנק: {_stash_val(a.get('bank_number'))}")
-        lines.append(f"מספר סניף: {_stash_val(a.get('bank_branch'))}")
-        lines.append(f"מספר חשבון: {_stash_val(a.get('bank_account'))}")
+        if method in ("בנק", "צ׳ק"):
+            lines.append(f"מספר בנק: {_stash_val(a.get('bank_number'))}")
+            lines.append(f"מספר סניף: {_stash_val(a.get('bank_branch'))}")
+            lines.append(f"מספר חשבון: {_stash_val(a.get('bank_account'))}")
+        if method == "צ׳ק":
+            lines.append(f"מספר צ'ק: {_stash_val(a.get('check_number'))}")
         lines.append(f"לקוח משלם: {_stash_val(a.get('client_name'))}")
     else:  # הסכם
         lines.append(

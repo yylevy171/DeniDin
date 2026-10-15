@@ -135,6 +135,9 @@ class Payment(BaseModel):
     bank_name: Optional[str] = None
     bank_branch: Optional[str] = None
     bank_account: Optional[str] = None
+    # Feature 066: Morning's `appType` (1 Bit, 3 PayBox; only on type-10 app payments) and cheque number.
+    app_type: Optional[int] = None
+    cheque_number: Optional[str] = None
 
     @model_validator(mode="before")
     @classmethod
@@ -148,6 +151,9 @@ class Payment(BaseModel):
         mapped.setdefault("bank_name", data.get("bankName"))
         mapped.setdefault("bank_branch", data.get("bankBranch"))
         mapped.setdefault("bank_account", data.get("bankAccount"))
+        mapped.setdefault("app_type", data.get("appType"))
+        cheque = data.get("chequeNum")
+        mapped.setdefault("cheque_number", None if cheque in (None, "") else str(cheque))
         return mapped
 
 

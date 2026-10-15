@@ -25,12 +25,15 @@ from src.constants.error_messages import (
     APP_NOT_READY_RETRY_LATER,
     ERROR_PROCESSING_MESSAGE_TRY_AGAIN,
     FAILED_TO_PROCESS_FILE_DEFAULT,
+    FILE_TOO_LARGE_REFUSAL,
     CONTACT_CARD_ONE_AT_A_TIME,
     UNSUPPORTED_MESSAGE_TYPE_SUPPORTED_TYPES,
 )
 from src.handlers.fee_agreement_tools import FeeAgreementToolHandler
 from src.handlers.morning_mcp_locator import MorningMcpLocator
 from src.managers.doc_template_engine import DocTemplateEngine
+from src.managers.agreements_manager import AgreementsManager
+from src.services.agreements_api import start_agreements_api
 from src.managers.ledger_event_manager import LedgerEventManager
 from src.managers.memory_manager import MemoryManager
 from src.managers.reminder_manager import ReminderManager
@@ -42,6 +45,7 @@ from src.managers.ledger_event_recognizer import LedgerEventRecognizer
 from src.handlers.whatsapp_handler import WhatsAppHandler
 from src.handlers.media_handler import MediaHandler
 from src.managers.group_membership_resolver import GroupMembershipResolver
+from src.managers.media_file_manager import FileTooLargeError
 from src.services.reminder_delivery_service import (
     run_startup_reminder_sweep, start_reminder_scheduler,
 )
@@ -213,6 +217,8 @@ class DeniDin:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         self.session_manager: Any = None
         self.roll_marker_store: Any = None
         self.ledger_event_manager: Any = None
+        # Feature 089: the Agreements DB (the living state of fee agreements).
+        self.agreements_manager: Any = None
         self.memory_manager: Any = None  # also None when long-term memory is disabled
         self.morning_mcp_locator: Any = None
         self.reminder_manager: Any = None
@@ -556,6 +562,9 @@ def build_denidin_objects(denidin: DeniDin) -> None:
     denidin.roll_marker_store = RollMarkerStore(denidin)
     # Feature 033: own permanent storage under {data_root}/events/ (REQ-STORE-001).
     denidin.ledger_event_manager = LedgerEventManager(denidin)
+    # Feature 089: {data_root}/agreements/agreements.db; every agreement write goes here first
+    # and produces the ledger events.
+    denidin.agreements_manager = AgreementsManager(denidin)
     if ((config.memory or {}).get('longterm', {}) or {}).get('enabled', True):
         denidin.memory_manager = MemoryManager(denidin)
     else:
@@ -988,7 +997,8 @@ def _handle_media_message(notification: Notification, message) -> Optional[Dict]
 
     if not result.get("success", False):
         logger.warning(f"Media processing failed: {result.get('error_message', 'Unknown error')}")
-        denidin_app.send_text(notification, FAILED_TO_PROCESS_FILE_DEFAULT)
+        denidin_app.send_text(
+            notification, FILE_TOO_LARGE_REFUSAL if result.get("too_large") else FAILED_TO_PROCESS_FILE_DEFAULT)
         return None
 
     # Feature 069 (Phase 9/10): a recognised fee-agreement / bank-deposit image or DOCX
@@ -1050,7 +1060,8 @@ def _process_media_message_via_backbone(notification: Notification, message, kee
         logger.warning(f"Media download/validation failed (flag-on path): {exc}")
         if denidin_app.typing_keepalive_scheduler is not None:
             stop_typing_keepalive(denidin_app.typing_keepalive_scheduler, keepalive_job_id)
-        denidin_app.send_text(notification, FAILED_TO_PROCESS_FILE_DEFAULT)
+        denidin_app.send_text(
+            notification, FILE_TOO_LARGE_REFUSAL if isinstance(exc, FileTooLargeError) else FAILED_TO_PROCESS_FILE_DEFAULT)
         return
 
     if denidin_app.typing_keepalive_scheduler is not None:
@@ -1705,6 +1716,8 @@ def main() -> None:
         # a config.dev.json/config.prod.json value doesn't silently do
         # nothing, exactly like accounting_ledger_update_freq's own history.
         'health_check_port': startup_config.health_check_port,
+        # Feature 089: Agreements API port/token. Same must-be-listed-here rule.
+        'agreements_api': startup_config.agreements_api,
         # Feature 070 (US5): log-retention tunables. Same "must also be listed
         # here or it silently has no effect" rule as accounting_ledger_update_freq.
         'logging': startup_config.logging,
@@ -1775,6 +1788,15 @@ def main() -> None:
     # on every probe, has no place running unattended during an ordinary test run). Gated by
     # config.health_check_port (0 = inactive, matching accounting_ledger_update_freq's convention
     # below).
+    # Feature 089: the Agreements API for the webapp backend. Started here (a real listener),
+    # never inside initialize_app(); port 0 = off.
+    agreements_api_config = denidin.config.agreements_api or {}
+    start_agreements_api(
+        denidin.agreements_manager,
+        int(agreements_api_config.get("port", 0) or 0),
+        agreements_api_config.get("auth_token", ""),
+    )
+
     if denidin.config.health_check_port > 0:
         check_fns = build_health_check_fns(
             ai_client=denidin.ai_client,

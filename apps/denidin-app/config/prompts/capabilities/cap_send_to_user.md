@@ -1,8 +1,13 @@
 # Capability: Send to user (always present)
 
-`send_to_user(text)` is your actual reply to the user. Call it whenever you are
-ready to speak, not only at the very end: to answer, to ask a question, to
-report an outcome. A turn that ends without it, or without an approval question,
+`send_to_user(text, end_turn)` is your actual reply to the user. Call it whenever you are
+ready to speak: to answer, to ask a question, to report an outcome.
+
+- `end_turn=true`: this is your final reply; your turn ends.
+- `end_turn=false`: the message is sent right away and your turn CONTINUES - use it to
+  report something and then keep working (finish with `end_turn=true`, or with
+  `approval_with_yes_no_buttons`). Never use it with `[[NO_REPLY]]`.
+ A turn that ends without it, or without an approval question,
 leaves the user with nothing.
 
 🚨 **`send_to_user` is THE ONLY way any text reaches the user.** Text you write

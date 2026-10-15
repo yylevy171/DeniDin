@@ -192,6 +192,14 @@ def format_original_not_linked_to_client() -> str:
     )
 
 
+def format_original_already_cancelled() -> str:
+    """Machine-readable JSON for a 320 that already has a credit note (330)
+    or a negative receipt against it (Feature 099) - nothing is created."""
+    return json.dumps(
+        {"status": "error", "reason": "original_already_cancelled"}, ensure_ascii=False
+    )
+
+
 def format_transaction_account_cancelled(document: dict) -> str:
     """Machine-readable JSON confirmation for cancel_transaction_account
     (feature 056, REQ-INV-026; 2026-09-04 JSON-only contract change).
@@ -297,6 +305,8 @@ def format_invoice_json(invoice: Invoice) -> str:
             "bank_number": payment.bank_name,
             "bank_branch": payment.bank_branch,
             "bank_account": payment.bank_account,
+            "app_type": payment.app_type,
+            "cheque_number": payment.cheque_number,
         },
         # Line items. denidin-app uses ONLY the first and warns if there are
         # more (user decision, 2026-08-23) - surfaced as a real array rather
@@ -316,6 +326,18 @@ def format_invoice_json(invoice: Invoice) -> str:
             "type": linked.type,
             "type_name": translate_document_type(linked.type) or None,
         },
+        # Feature 099: EVERY linked document (the first one is not enough to tell
+        # whether a 320 was already cancelled - it can carry both a 330 and a
+        # negative receipt). Additive; `linked_document` above is unchanged.
+        "linked_documents": [
+            {
+                "number": doc_link.number,
+                "type": doc_link.type,
+                "type_name": translate_document_type(doc_link.type) or None,
+                "amount": doc_link.amount,
+            }
+            for doc_link in invoice.linked_documents
+        ],
     }
     return json.dumps(doc, ensure_ascii=False)
 

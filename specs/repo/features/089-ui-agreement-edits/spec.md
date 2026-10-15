@@ -2,8 +2,8 @@
 
 **Feature Branch**: `feature/089-ui-agreement-edits`  
 **Created**: 2026-09-30  
-**Updated**: 2026-10-05  
-**Status**: Draft (clarified 2026-10-05)  
+**Updated**: 2026-10-15  
+**Status**: Done (merged to master; PR #721)  
 **Category**: Capability  
 **Input**: User description: "allow to manage agreements, specifically edit wording and numbers from the ui. Edits reach ledger. Completely different module for agreements (Agreements DB) that handles lifecycle. DB is source of truth, each change is a new revision. Ledger becomes documentation of initial creation."
 
@@ -21,11 +21,30 @@ The Webapp UI will integrate this into the existing "Clients" tab, allowing user
 
 ---
 
+## Terminology Glossary
+
+- **Agreement**: the engagement container for one client matter (`agreement_id`, e.g. `0726-ישראל_ישראלי-ערעור`). Holds payer, partner, partner %, status.
+- **Component**: one fee rule inside an agreement (identified by an immutable `component_key`, labelled uniquely within the agreement, e.g. retainer, success fee). Has its own status and amount/percent.
+- **Component status**: `Pending` (has a trigger, not yet triggered), `Active` (payment expected), `Completed` (paid), `Cancelled`.
+- **Agreement status**: `Active`, `Completed`, `Cancelled`. A closed agreement locks all its components.
+- **Locked**: a component that cannot be edited or have its status changed except by Reopen: Completed or Cancelled, or belonging to a non-Active agreement.
+- **Cascade**: the component status changes forced by closing an agreement (see REQ-089-06).
+- ~~**Revision**~~: removed 2026-10-13 (no revision log).
+- **Actor**: who made a write: `webapp`, `whatsapp` or `migration`.
+- **Agreements DB**: the SQLite source of truth for current agreement state, owned by denidin-app.
+- **Agreements API**: the bearer-authenticated HTTP API on denidin-app through which the webapp reads and writes the Agreements DB.
+- **Hours-worked line**: a `הסכם` ledger event with a non-null `hours`; ledger-only, never a component.
+- **`original_client_name`**: the raw, un-normalized client name preserved on a migrated ledger event; empty on new events.
+- **DEPRECATED: "agreement event" meaning a mutable ledger record**: ledger events stay append-only documentation; current state lives in the Agreements DB.
+
+---
+
 ## Clarifications
 
 ### Session 2026-10-05
 
-- Q: Ledger schema version bump to 3 (REQ-089-10)? → A: **Approved by the human, 2026-10-04.** The same commit that changes `CURRENT_SCHEMA_VERSION` must add the matching `SCHEMA_VERSION_HISTORY` entry.
+- Note (2026-10-09): the original input said the ledger "becomes documentation of initial creation". The later human decisions supersede that: every component write, agreement-level edit, close and reopen also writes ledger events (REQ-089-07), so the ledger mirrors the DB's history while the DB stays the source of truth for current state.
+- Q: Ledger schema version bump (REQ-089-10)? → A: **Approved by the human, 2026-10-04; the target was set to 4 on 2026-10-09, then dropped on 2026-10-14 when merging master (Feature 066 holds v3; `CURRENT_SCHEMA_VERSION` stays 3, 089 adds no history entry)**, covering the new fields `original_client_name`, `component_status`, `agreement_status` and populating `split_partner`/`split_percent`. Any commit that changes `CURRENT_SCHEMA_VERSION` must add the matching `SCHEMA_VERSION_HISTORY` entry.
 - Q: Rewriting historical prod ledger events (REQ-089-10)? → A: **Approved by the human, 2026-10-04**, as a one-time exception to ledger immutability, limited to the scope in REQ-089-10.
 - Q: Who owns the Agreements DB? → A: denidin-app owns it. The webapp writes to it through an HTTP API on denidin-app, and its read-only mount of denidin-app's data stays read-only.
 - Q: What ledger event does an edit or status change push? → A: A `source_type=הסכם` event with `event_subtype=יצירה` carrying the component's full new state. No new subtypes for edits.
@@ -41,7 +60,11 @@ The Webapp UI will integrate this into the existing "Clients" tab, allowing user
 - Q: Is creating an agreement from the UI in scope? → A: Yes.
 - Q: Is deleting a component from the UI in scope? → A: Yes, as a hard delete (for example, duplicates). It pushes a `הסכם` ledger event with `event_subtype=ביטול` whose `reference` is the event_id of the component's original ledger event.
 - Q: Feature flag? → A: No feature flag.
-- Q: Which ledger events does the v3 rewrite cover? → A: Only agreement-component `הסכם` events. Hours-worked lines, bank events and invoice events are not rewritten and keep their current schema version.
+- Q (session 2026-10-09, human): Ledger events for top-level edits, wording edits, agreement close/reopen? → A (revised same day): Top-level edits, agreement close and agreement reopen all write ledger events, one per component of the agreement. Wording-only component edits: yes, one event.
+- Q (2026-10-09): Does closing an agreement cascade? → A: Yes. Completed: Active components become Completed, Pending become Cancelled. Cancelled: every non-Completed component becomes Cancelled. Already Completed/Cancelled ones remain. Reopen does not restore them.
+- Q (2026-10-09): Default status of a component added by the bot with a trigger condition? → A: Pending, same as the UI.
+- Q (2026-10-09): How do [UI] acceptance tests run? → A: Playwright against a real denidin-app Agreements API on a seeded throwaway data root, no stand-in.
+- Q: Which ledger events does the migration rewrite cover? → A: Only agreement-component `הסכם` events. Hours-worked lines, bank events and invoice events are not rewritten and keep their current schema version.
 
 ---
 
@@ -52,7 +75,10 @@ The Webapp UI will integrate this into the existing "Clients" tab, allowing user
 *   **User Story 1:** View Client Agreements & Components List
 *   **User Story 2:** Create & Edit Agreement & Components Data (Top-Level vs Component-Level, incl. create agreement and delete component)
 *   **User Story 3:** Manage Component Lifecycle (Pending / Active / Completed / Cancelled)
-*   **User Story 4:** View Revision History & Cross-Platform Consistency
+*   **User Story 4:** Cross-Platform Consistency (the revision-history view and log were removed 2026-10-13)
+*   **User Story 5:** WhatsApp Agreement Conversations (Flows 1–5 as numbered UATs)
+*   **User Story 6:** Clients-Tab Agreed Total (REQ-089-14)
+*   **User Story 7:** One-Time Migration of Existing Agreements (REQ-089-09..12)
 
 ---
 
@@ -71,11 +97,11 @@ The Webapp UI will integrate this into the existing "Clients" tab, allowing user
 - **REQ-089-05: 4-State Lifecycle Management**  
   Components MUST support four states: `Pending` (conditional, not yet triggered), `Active` (triggered, payment expected), `Completed` (paid), and `Cancelled`. The UI MUST provide actions to transition between these states. The WhatsApp bot keeps today's conversational behavior (Flows 1–5 in `user-stories.md`); only its write path changes (REQ-089-01).
 - **REQ-089-06: Smart Defaulting & Locking**  
-  New components with a trigger condition MUST default to `Pending`; those without must default to `Active`. If an overall Agreement is marked `Completed` or `Cancelled`, all its underlying components MUST be locked from edits while retaining their historical internal statuses. 
+  New components with a trigger condition MUST default to `Pending`; those without must default to `Active`. If an overall Agreement is marked `Completed` or `Cancelled`, all its underlying components MUST be locked from edits, and the close cascades (decision 2026-10-09): marking the agreement `Completed` sets every `Active` component to `Completed` and every `Pending` component to `Cancelled`; marking it `Cancelled` sets every component that is not `Completed` to `Cancelled`. Components already `Completed`/`Cancelled` keep their status. Reopening the agreement sets only the agreement to `Active`; cascaded components stay as they are until reopened individually. 
 - **REQ-089-07: Ledger Synchronization**  
-  Any UI or WhatsApp write that creates a component, modifies a financial value (amount, percent) or changes a status MUST push a new event to the financial Ledger, produced by the Agreements DB write. The event is `source_type=הסכם`, `event_subtype=יצירה`, and carries the component's full new state. Deleting a component (REQ-089-15) pushes a `source_type=הסכם`, `event_subtype=ביטול` event whose `reference` is the event_id of the component's original ledger event.
+  Any UI or WhatsApp write that creates a component, changes any field of a component (including wording-only edits) or changes a component's status (including by an agreement-level close cascade, REQ-089-06) MUST push a new event to the financial Ledger, produced by the Agreements DB write. Agreement-level changes (edits to payer, partner, partner %, and the agreement's own close/reopen) also write ledger events: one per component of the agreement, each carrying that component's full state with the agreement-level values. The event is `source_type=הסכם`, `event_subtype=יצירה`, and carries the component's full new state. Deleting a component (REQ-089-15) pushes a `source_type=הסכם`, `event_subtype=ביטול` event whose `reference` is the event_id of the component's original ledger event.
 - **REQ-089-08: Concurrency Strategy**  
-  The system MUST adopt a "last write wins" strategy if concurrent edits are made between the Webapp UI and the WhatsApp Bot. Revisions MUST be chronologically viewable.
+  The system MUST adopt a "last write wins" strategy if concurrent edits are made between the Webapp UI and the WhatsApp Bot. (The revision log originally required here was removed by human decision 2026-10-13: there is no revision history anywhere.)
 - **REQ-089-13: Hours-Worked Lines Stay Ledger-Only**  
   A `הסכם` ledger event with a non-null `hours` value is an hours-worked line, not an agreement component. Hours-worked lines MUST NOT enter the Agreements DB, by migration or by new captures, and keep being written to the ledger as today.
 - **REQ-089-14: Clients-Tab Agreed Total**  
@@ -91,7 +117,7 @@ The Webapp UI will integrate this into the existing "Clients" tab, allowing user
 
 - **Agreement (Top-Level)**: Represents the engagement container. Contains Client Name, Payer Name, Partner Name, Partner %, and an overall lifecycle status.
 - **Component (Child)**: Represents a distinct financial rule or trigger (e.g., Retainer, Success Fee). Contains Label, Description, Value (Amount/Percent), VAT Status, Trigger Condition, and its own lifecycle status.
-- **Agreement Revision**: A historical snapshot of an Agreement or Component. Created upon any mutation (via UI or Bot).
+- ~~**Agreement Revision**~~: removed 2026-10-13 (no revision log).
 - **Hours-Worked Line** *(not an entity of the Agreements DB)*: A `הסכם` ledger event with `hours` set. Lives only in the ledger (REQ-089-13).
 
 ---
@@ -108,11 +134,41 @@ The Webapp UI will integrate this into the existing "Clients" tab, allowing user
 ### Historical Migration & Data Hygiene
 - **REQ-089-09: One-Time Ledger Migration**  
   A one-time migration script MUST execute to convert all existing agreement-component `fee_agreement` ledger events (`source_type=הסכם`, `hours` not set) into the new Agreements DB schema (Agreement -> Components). Hours-worked lines are not migrated (REQ-089-13).
-- **REQ-089-10: Ledger Schema Version 3 Upgrade (Mutating History)**  
-  *(Schema bump and prod rewrite both approved by the human, 2026-10-04.)* Despite the ledger's immutable nature, the migration MUST perform a one-time rewrite of the historical agreement-component `הסכם` ledger events (the same set as REQ-089-09) to bump them to Schema Version 3. Hours-worked lines, bank events and invoice events are NOT rewritten and keep their current schema version. This upgrade will move the existing dirty client name into a new `original_client_name` field on the ledger event itself, resolve the true Morning client name into the `client_name` field, and save the modified event back to the ledger file system. The true name comes from the Clients-tab mapping (confirmed mappings plus its automatic match to official Morning names); a name it cannot resolve keeps its raw value in `client_name`, with `original_client_name` still filled. New agreements created post-migration MUST enforce strict resolution upfront, leaving `original_client_name` empty.
+- **REQ-089-10: Ledger Schema Version 4 Upgrade (Mutating History)**  
+  *(Schema bump and prod rewrite both approved by the human, 2026-10-04.)* Despite the ledger's immutable nature, the migration MUST perform a one-time rewrite of the historical agreement-component `הסכם` ledger events (the same set as REQ-089-09) to bump them to Schema Version 4. Hours-worked lines, bank events and invoice events are NOT rewritten and keep their current schema version. This upgrade will move the existing dirty client name into a new `original_client_name` field on the ledger event itself, resolve the true Morning client name into the `client_name` field, and save the modified event back to the ledger file system. The true name comes from the Clients-tab mapping (confirmed mappings plus its automatic match to official Morning names); a name it cannot resolve keeps its raw value in `client_name`, with `original_client_name` still filled. New agreements created post-migration MUST enforce strict resolution upfront, leaving `original_client_name` empty.
 - **REQ-089-11: Smarter Status Inference**  
   The migration script MUST NOT blindly default all historical components to `Active`. It MUST cross-reference the client's current line status in the Webapp Clients tab. If a client's line is closed, their migrated agreements MUST become `Completed` when the client has paid at least the agreed amount, and `Cancelled` otherwise. Otherwise, components get the normal defaults (REQ-089-06).
 - **REQ-089-11a: Legacy Cancellation Events**  
   The legacy `הסכם` ledger events with `event_subtype` `מבוטל` or `ביטול` MUST mark the component they refer to as `Cancelled` in the Agreements DB.
 - **REQ-089-12: UI De-Duplication**  
   Any duplicated or misunderstood legacy agreements that bypass the inference rules will manifest in the UI, where partners can manually clean them up using the new Lifecycle UI controls and the component delete action (REQ-089-15).
+
+
+---
+
+## Addendum 2026-10-15: release-day data load (comments + ledger -> Agreements DB)
+
+Human decisions made while preparing the first prod load:
+
+- **Comments are free text.** Nothing is parsed out of a Clients-tab comment. Agreements that exist only in
+  comments are entered by hand-written proposals (one JSON item per agreement: client, title,
+  `agreement_date`, description, status, components).
+- **`agreement_date`.** `AgreementsManager.create_agreement` / `POST /agreements` accept an optional
+  `agreement_date` (YYYY-MM-DD): the agreement's own creation date (`created_at`). `updated_at` is always the
+  write time. VAT is only `כולל` / `לא כולל` / empty; "לא צוין" is stored as empty by the migration.
+- **No DB entry without a known Morning client.** `migrate_agreements_089.py` skips any ledger agreement whose
+  client does not resolve to an official client (listed in the report as `skipped_unresolved_clients`; their
+  ledger events are left untouched). Such clients appear after they are created in Morning and the load is rebuilt.
+- **Amount 0.** A component with neither amount nor percent (hourly rates, retainers) is stored with amount 0;
+  the migration lists these as `zero_filled_components`.
+- **Migrated agreements** take `created_at` from their earliest ledger event (`event_datetime`, else
+  `message_timestamp`, else the id), and duplicate-label merging orders events by real time.
+- **Ledger vs. comment conflicts** are decided per client by the human (`--decisions` JSON:
+  `skip_agreement_ids`, `component_status`).
+- **Offline staging.** `apps/denidin-app/scripts/build_agreements_staging_089.py` builds the comment agreements
+  (DB + `הסכם` events carrying the agreement dates, spread over distinct minutes to respect the 10-events-a-minute
+  cap) into a staging folder, never into a dev/prod data root. Release day: stop the environment, copy
+  `agreements/agreements.db` and the changed `events/*.json`, start it. `apps/webapp/backend/scripts/build_agreements_from_proposal.py`
+  is the API-driven variant for a live stack.
+- **Bugfix (webapp):** the "names to resolve" list is changed ONLY by the hide button (`hidden_unmatched.json`);
+  no note text removes a name any more (`clients_reader._split_unmatched`).

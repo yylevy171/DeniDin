@@ -111,6 +111,11 @@ class AppConfiguration:
     # accidentally starts a new listener.
     health_check_port: int = 0
 
+    # Agreements API (Feature 089) - the HTTP surface the webapp BACKEND (never the browser)
+    # uses to read/write the Agreements DB. Shape: {"port": 0, "auth_token": ""}.
+    # port 0 = off (no listener started), same convention as health_check_port.
+    agreements_api: Dict = field(default_factory=dict)
+
     # Log retention (Feature 070, US5). Top-level (not under `memory`) - this is an
     # operational concern, not part of the memory model. `rotation_when` feeds
     # logging.handlers.TimedRotatingFileHandler(when=...); `backup_count` 0 = keep
@@ -277,7 +282,7 @@ class AppConfiguration:
         # Set reminders sub-field defaults (Feature 054)
         if 'reminders' in config_data and config_data['reminders']:
             reminders_defaults = {
-                'max_active_reminders': 20
+                'max_active_reminders': 100
             }
             for key, value in reminders_defaults.items():
                 if key not in config_data['reminders']:
@@ -359,7 +364,7 @@ class AppConfiguration:
 
         # Validate reminders.max_active_reminders is a positive integer, if configured
         if self.reminders:
-            max_active = self.reminders.get('max_active_reminders', 20)
+            max_active = self.reminders.get('max_active_reminders', 100)
             if not isinstance(max_active, int) or isinstance(max_active, bool) or max_active < 1:
                 raise ValueError(
                     f"reminders.max_active_reminders must be a positive integer, got {max_active!r}"

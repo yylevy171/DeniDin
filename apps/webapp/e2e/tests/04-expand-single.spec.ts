@@ -222,7 +222,7 @@ test.describe("4.3 Right panel field manifest correctness (23)", () => {
       expect(keys).not.toContain(k);
   });
 
-  test("4.3.7 בנק/הפקדה: bank fields + vat_status shown even null", async ({ page }) => {
+  test("4.3.7 הפקדה/בנק: bank fields + vat_status shown even null", async ({ page }) => {
     await login(page);
     await setDaysBack(page, 14); // E2 is 8 days back
     await expect(row(page, "E2")).toBeVisible();
@@ -233,16 +233,16 @@ test.describe("4.3 Right panel field manifest correctness (23)", () => {
     expect(await fieldText(page, "E2", "vat_status")).toContain("—"); // vat_status null but ALWAYS-shown for הפקדה
   });
 
-  test("4.3.8/4.3.9 בנק non-הפקדה: bank fields IF-EXISTS only; payer_name IF-EXISTS", async ({ page }) => {
+  test("4.3.8/4.3.9 הפקדה/מבוטל: bank fields IF-EXISTS only; payer_name IF-EXISTS", async ({ page }) => {
     await login(page);
-    await expand(page, "E7"); // בנק/מבוטל, bank fields null, payer_name null
+    await expand(page, "E7"); // הפקדה/מבוטל, bank fields null, payer_name null
     await detailReady(page, "E7");
     const keys = await fieldKeys(page, "E7");
     expect(keys).not.toContain("bank_number");
     expect(keys).not.toContain("payer_name");
   });
 
-  test("4.3.10 בנק: split fields never shown", async ({ page }) => {
+  test("4.3.10 הפקדה: split fields never shown", async ({ page }) => {
     await login(page);
     await expand(page, "E7");
     await detailReady(page, "E7");
@@ -453,16 +453,15 @@ test.describe("4.4/4.5 Left panel — WhatsApp-style chat (17)", () => {
   });
 
   test("4.4.17 a document attachment (PDF/DOCX) renders/opens like an image", async ({ page }) => {
-    test.fixme(
-      true,
-      "Doc attachments currently fall through ChatImage and show 'media unavailable' rather " +
-        "than a clickable thumbnail opening the browser's PDF view. Stories 4-8 viewable→done. " +
-        "PLAYWRIGHT-TEST-PLAN 4.4/4.5.17."
-    );
     await login(page);
     await expand(page, "E13");
-    await page.getByTestId("context-panel-E13").getByTestId("chat-image").nth(0).click();
+    const pdf = page.getByTestId("context-panel-E13").getByTestId("chat-pdf");
+    await expect(pdf).toHaveCount(1);
+    await pdf.click();
     await expect(page.getByTestId("image-overlay")).toBeVisible();
+    await expect(page.getByTestId("pdf-viewer")).toBeVisible();
+    await page.getByTestId("image-overlay-close").click();
+    await expect(page.getByTestId("image-overlay")).toHaveCount(0);
   });
 });
 

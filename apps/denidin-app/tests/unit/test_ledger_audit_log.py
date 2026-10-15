@@ -53,7 +53,7 @@ def _build_session(sm):
 
 def _bank_verdict(trigger_id):
     return {"verdict": "complete", "trigger_message_id": trigger_id, "event": {
-        "source_type": "בנק", "event_subtype": "הפקדה", "client_name": "דנה כהן",
+        "source_type": "הפקדה", "event_subtype": "בנק", "client_name": "דנה כהן",
         "description": "הפקדה בנקאית", "amount": "5000", "txn_date": "2026-07-15",
         "vat_status": None, "payer_name": None, "components": [], "component_count": 0,
         "bank_number": "12", "bank_branch": "345", "bank_account": "678901",
@@ -129,7 +129,7 @@ def test_declined_and_none_emit_no_audit_line(lem, sm, caplog):
     caplog.set_level(logging.INFO)
 
     lem.persist_recognized_event(
-        {"verdict": "declined", "source_type": "בנק",
+        {"verdict": "declined", "source_type": "הפקדה",
          "client_name_stated": "יוסי", "reason": "declined_by_operator"},
         session, completing_id)
     lem.persist_recognized_event({"verdict": "none"}, session, completing_id)

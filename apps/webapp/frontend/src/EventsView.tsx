@@ -10,8 +10,7 @@ import {
   Field,
   IconButton,
   ImageOverlay,
-  MultiSelect,
-} from "./ui";
+  MultiSelect, HintPressable } from "./ui";
 
 export interface EventsSettings {
   daysBack: number;
@@ -21,16 +20,16 @@ export interface EventsSettings {
 // Canonical event types + subtypes (from prod data + runtime_constitution.md). The subtype
 // dropdown always offers the full union; options invalid for the currently-selected type(s)
 // are shown disabled rather than hidden.
-const EVENT_TYPES = ["הסכם", "בנק", "חשבונית"];
+const EVENT_TYPES = ["הסכם", "הפקדה", "חשבונית"];
 const SUBTYPES_BY_TYPE: Record<string, string[]> = {
   הסכם: ["יצירה", "עדכון", "מבוטל"],
-  בנק: ["הפקדה", "מבוטל"],
+  הפקדה: ["בנק", "ביט", "פייבוקס", "צ׳ק", "מזומן", "מבוטל"],
   חשבונית: ["חשבונית מס / קבלה", "חשבונית מס", "חשבונית זיכוי", "קבלה", "חשבון עסקה"],
 };
 const ALL_SUBTYPES = [
   ...new Set([
     ...SUBTYPES_BY_TYPE["הסכם"],
-    ...SUBTYPES_BY_TYPE["בנק"],
+    ...SUBTYPES_BY_TYPE["הפקדה"],
     ...SUBTYPES_BY_TYPE["חשבונית"],
   ]),
 ];
@@ -107,7 +106,7 @@ export default function EventsView({
 
   const [expanded, setExpanded] = useState<Record<string, { detail: any; ctx: any }>>({});
   const [sigma, setSigma] = useState<{ n: number; total: number } | null>(null);
-  const [lightbox, setLightbox] = useState<{ rowId: string; url: string } | null>(null);
+  const [lightbox, setLightbox] = useState<{ rowId: string; url: string; isPdf: boolean } | null>(null);
   const [openMenu, setOpenMenu] = useState<"type" | "sub" | "client" | null>(null);
   // sort direction — session-only (resets on reload / re-login), never persisted; default desc
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
@@ -311,8 +310,9 @@ export default function EventsView({
             borderRadius: 10,
           }}
         >
-          <Pressable
+          <HintPressable
             testID={`expand-toggle-${r.event_id}`}
+            {...({ title: expanded[r.event_id] ? "סגירת פרטי האירוע" : "פתיחת פרטי האירוע" } as any)}
             accessibilityState={{ expanded: !!expanded[r.event_id] }}
             {...({ "aria-expanded": expanded[r.event_id] ? "true" : "false" } as any)}
             onPress={() => toggleExpand(r.event_id)}
@@ -347,7 +347,7 @@ export default function EventsView({
             >
               {r.description || "—"}
             </Text>
-          </Pressable>
+          </HintPressable>
 
           {expanded[r.event_id] ? (
             <View
@@ -379,7 +379,7 @@ export default function EventsView({
                   messages={expanded[r.event_id].ctx?.messages}
                   error={expanded[r.event_id].ctx?.error}
                   theme={theme}
-                  onOpenImage={(url) => setLightbox({ rowId: r.event_id, url })}
+                  onOpenImage={(url, isPdf) => setLightbox({ rowId: r.event_id, url, isPdf })}
                 />
               </View>
             </View>
@@ -535,7 +535,7 @@ export default function EventsView({
             borderColor: theme.border,
           }}
         >
-          <Pressable
+          <HintPressable
             onPress={toggleAll}
             hitSlop={6}
             testID={allMode === "expand" ? "expand-all" : "collapse-all"}
@@ -544,9 +544,10 @@ export default function EventsView({
             <Text style={{ color: theme.accent, fontSize: 18, fontWeight: "800" }}>
               {allMode === "expand" ? "+" : "–"}
             </Text>
-          </Pressable>
-          <Pressable
+          </HintPressable>
+          <HintPressable
             testID="sort-toggle"
+            {...({ title: "שינוי כיוון המיון לפי תאריך" } as any)}
             {...({ "data-sort-dir": sortDir } as any)}
             onPress={() => {
               setOpenMenu(null);
@@ -559,7 +560,7 @@ export default function EventsView({
             <Text style={{ color: theme.accent, fontSize: 12, fontWeight: "800" }}>
               {sortDir === "desc" ? "▼" : "▲"}
             </Text>
-          </Pressable>
+          </HintPressable>
           <View style={{ flex: 1 }} />
         </View>
       ) : (
@@ -579,7 +580,7 @@ export default function EventsView({
             const isDate = c.label === "תאריך";
             if (i === 0) {
               return (
-                <Pressable
+                <HintPressable
                   key={i}
                   onPress={toggleAll}
                   hitSlop={6}
@@ -590,7 +591,7 @@ export default function EventsView({
                   <Text style={{ color: theme.accent, fontSize: 18, fontWeight: "800" }}>
                     {allMode === "expand" ? "+" : "–"}
                   </Text>
-                </Pressable>
+                </HintPressable>
               );
             }
             return (
@@ -610,8 +611,10 @@ export default function EventsView({
                   {c.label}
                 </Text>
                 {isDate ? (
-                  <Pressable
+                  <HintPressable
                     testID="sort-toggle"
+                    {...({ title: "שינוי כיוון המיון לפי תאריך" } as any)}
+            {...({ title: "שינוי כיוון המיון לפי תאריך" } as any)}
                     {...({ "data-sort-dir": sortDir } as any)}
                     onPress={() => {
                       setOpenMenu(null);
@@ -622,7 +625,7 @@ export default function EventsView({
                     <Text style={{ color: theme.accent, fontSize: 12, fontWeight: "800" }}>
                       {sortDir === "desc" ? "▼" : "▲"}
                     </Text>
-                  </Pressable>
+                  </HintPressable>
                 ) : null}
               </View>
             );
@@ -650,15 +653,16 @@ export default function EventsView({
 
       {/* click-away backdrop for open dropdowns */}
       {openMenu ? (
-        <Pressable
+        <HintPressable
           onPress={() => setOpenMenu(null)}
+          {...({ title: "סגירת התפריט" } as any)}
           style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 60 }}
         />
       ) : null}
 
       {/* full-app image viewer */}
       {lightbox ? (
-        <ImageOverlay url={lightbox.url} theme={theme} onClose={() => setLightbox(null)} />
+        <ImageOverlay url={lightbox.url} isPdf={lightbox.isPdf} theme={theme} onClose={() => setLightbox(null)} />
       ) : null}
     </View>
   );

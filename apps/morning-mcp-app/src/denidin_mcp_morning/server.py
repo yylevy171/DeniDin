@@ -378,6 +378,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         bank_account: Optional[str] = None,
         transaction_reference: Optional[str] = None,
         name_resolved: bool = False,
+        cheque_number: Optional[str] = None,
     ) -> str:
         """Create a combo tax invoice + receipt ("חשבונית מס/קבלה", document type 320)
         for a payment that has ALREADY been received - a single self-contained,
@@ -401,8 +402,9 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
 
         `payment_method` records how it arrived: "bank_transfer" (default), "cash",
         "cheque", "credit_card", "paypal", or an app ("bit", "pay", "paybox",
-        "colu", "google pay", "apple pay"). Bank details are stored only on a bank
-        transfer; a reference number (אסמכתה) only on an app or PayPal payment.
+        "colu", "google pay", "apple pay"). Bank details are stored on a bank
+        transfer or a cheque (a cheque also takes `cheque_number`, its own number);
+        a reference number (אסמכתה) only on an app or PayPal payment.
         `bank_number` is the bank's NUMBER (e.g. "31"), not its name - never
         invent a bank's name when only its number is known.
 
@@ -419,7 +421,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         return _call_with_error_boundary(
             tools.create_combo_document, morning_client, client_name, amount, description,
             payment_date, vat_included, payment_method, bank_number, bank_branch,
-            bank_account, transaction_reference, name_resolved, invoicing_rules
+            bank_account, transaction_reference, name_resolved, cheque_number, invoicing_rules
         )
 
     @mcp.tool(structured_output=False)
@@ -461,6 +463,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         bank_branch: Optional[str] = None,
         bank_account: Optional[str] = None,
         vat_included: Optional[bool] = None,
+        cheque_number: Optional[str] = None,
     ) -> str:
         """Create a receipt ("קבלה", document type 400) - either linked to an
         existing document being paid, or STANDALONE, with no invoice at all
@@ -477,6 +480,16 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         supports type-305 originals, raises a clear error for a type-300
         original (use create_combo_document_as_reference instead).
 
+        CANCELLING A 320 (original_internal_morning_id is a type-320 חשבונית
+        מס / קבלה): creates the receipt with a NEGATIVE amount that reverses
+        the 320's cash side (feature 099) - the 330 credit note that reverses
+        its revenue is a separate document, created first with
+        create_credit_note. Full cancellation only: never pass amount; the
+        payment method, details and date are set automatically (method and
+        details copied from the 320's first payment; date = today), so
+        payment_date is not needed. Refuses, creating nothing, when the 320
+        already has a 330 or a negative receipt against it.
+
         STANDALONE (original_internal_morning_id omitted): for money
         received that is NOT business income and has no invoice behind it -
         REQUIRES client_name (call resolve_client_name FIRST and pass
@@ -487,15 +500,16 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         tax invoice issued later for the same transaction does NOT need to
         reference this receipt back.
 
-        REQUIRES payment_date on both paths: the real date the money moved,
+        REQUIRES payment_date on the paying and standalone paths (not when cancelling a 320): the real date the money moved,
         ISO YYYY-MM-DD. "Today" is a genuinely fine answer for a verbal
         "mark as paid"/"received a deposit" request, but only once asked and
         confirmed - never silently assumed. Ask the user if it isn't already
         stated in the conversation.
 
         `payment_method` records how the money arrived, on both paths:
-        "bank_transfer" (default) or "cash". Bank details (`bank_number`,
-        `bank_branch`, `bank_account`) are stored only on a bank transfer.
+        "bank_transfer" (default), "cash", "cheque", or an app ("bit", "paybox").
+        Bank details (`bank_number`, `bank_branch`, `bank_account`) are stored on
+        a bank transfer or a cheque; `cheque_number` only on a cheque.
         `bank_number` is the bank's NUMBER (e.g. "31"), not its name - never
         invent a bank's name when only its number is known.
 
@@ -518,6 +532,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
             bank_branch,
             bank_account,
             vat_included,
+            cheque_number,
         )
 
     @mcp.tool(structured_output=False)
@@ -532,6 +547,7 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
         bank_branch: Optional[str] = None,
         bank_account: Optional[str] = None,
         transaction_reference: Optional[str] = None,
+        cheque_number: Optional[str] = None,
     ) -> str:
         """Create a combo document ("חשבונית מס/קבלה", document type 320) that
         closes an existing transaction account ("חשבון עסקה", document type 300),
@@ -564,13 +580,14 @@ def create_server(config: MorningMCPConfig, client: Optional[MorningClient] = No
 
         `payment_method` records how it arrived: "bank_transfer" (default), "cash",
         "cheque", "credit_card", "paypal", or an app ("bit", "pay", "paybox",
-        "colu", "google pay", "apple pay"). Bank details are stored only on a bank
-        transfer; a reference number (אסמכתה) only on an app or PayPal payment.
+        "colu", "google pay", "apple pay"). Bank details are stored on a bank
+        transfer or a cheque (a cheque also takes `cheque_number`, its own number);
+        a reference number (אסמכתה) only on an app or PayPal payment.
         `bank_number` is the bank's NUMBER (e.g. "31"), not its name."""
         return _call_with_error_boundary(
             tools.create_combo_document_as_reference, morning_client, original_internal_morning_id, payment_date,
             amount, description, vat_included, payment_method, bank_number, bank_branch,
-            bank_account, transaction_reference, invoicing_rules
+            bank_account, transaction_reference, cheque_number, invoicing_rules
         )
 
     @mcp.tool(structured_output=False)

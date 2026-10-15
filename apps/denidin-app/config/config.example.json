@@ -28,6 +28,7 @@
   "green_api_host_mode": "fixed",
   "green_api_media_host": null,
   "health_check_port": 0,
+  "agreements_api": {"port": 0, "auth_token": "CHANGE_ME"},
   "log_level": "DEBUG_for_dev_or_INFO_for_prod",
   "logging": {
     "backup_count": 0,
@@ -66,7 +67,7 @@
   },
   "poll_interval_seconds": 5,
   "reminders": {
-    "max_active_reminders": 20
+    "max_active_reminders": 100
   },
   "user_roles": {
     "admin_phones": [],

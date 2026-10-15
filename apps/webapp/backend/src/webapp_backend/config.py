@@ -19,6 +19,8 @@ _APP_FIELDS = {
     "morning_api_key_secret",
     "morning_auth_url",
     "morning_api_url",
+    "denidin_agreements_url",
+    "denidin_agreements_token",
 }
 
 
@@ -49,6 +51,9 @@ class AppConfig:
     morning_api_key_secret: str = ""
     morning_auth_url: str = ""
     morning_api_url: str = "https://api.greeninvoice.co.il/api/v1"
+    # Feature 089: denidin-app's Agreements API (the webapp BACKEND is its only caller).
+    denidin_agreements_url: str = ""
+    denidin_agreements_token: str = ""
     http: HttpConfig = field(default_factory=HttpConfig)
 
     def __post_init__(self) -> None:

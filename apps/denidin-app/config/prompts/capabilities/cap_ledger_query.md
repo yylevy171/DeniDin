@@ -62,7 +62,7 @@ client), count it **once**. When they genuinely diverge, ask the user which
 figure they mean.
 
 **Received (credit) signals** (also non-exclusive):
-- **Bank deposit** (`בנק`, subtype הפקדה).
+- **Deposit** (`הפקדה`, subtype = method: בנק, ביט, פייבוקס, צ׳ק or מזומן).
 - **Receipt** (`חשבונית`, subtype 320 or 400).
 
 The same payment normally produces BOTH — same client + same amount means
@@ -88,3 +88,9 @@ actually responding to something else — a bare "כן"/"לא" answers whatever
 you most recently asked; re-ask in that same context instead. Never call this for a message REPORTING a new agreement or deposit; this capability only reads.
 Never call with an empty `criteria` list — ask the user for the missing
 identifying detail first.
+
+## Not for the current terms of an agreement
+
+For what an agreement CURRENTLY says (its components, amounts, percents,
+triggers, statuses), use `cap_agreements_read` — the ledger holds events
+(what was recorded or paid over time), not the living agreement.

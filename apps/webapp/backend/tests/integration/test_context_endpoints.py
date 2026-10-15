@@ -18,7 +18,7 @@ def ctx_client(app_config, known_password):
     (root / "media").mkdir()
     (root / "media" / "shot.jpg").write_bytes(b"\xff\xd8\xffDATA")
     (root / "events" / "E1.json").write_text(json.dumps({
-        "event_id": "E1", "source_type": "בנק", "event_subtype": "הפקדה",
+        "event_id": "E1", "source_type": "הפקדה", "event_subtype": "בנק",
         "client_name": "פלוני", "amount": 1000, "description": "d",
         "event_datetime": "03/08/2026 19:20", "txn_date": None,
         "session_id": "s1", "message_id": "m2",
@@ -88,3 +88,36 @@ def test_lookback_minutes_clamped(ctx_client):
         "/api/events/E1/context?lookback_minutes=9999", headers=_auth(ctx_client)
     ).json()
     assert body["lookback_minutes_used"] == 60
+
+
+def test_a_pdf_message_is_served_as_a_pdf(app_config, known_password):
+    """A PDF sent to the bot is stored like an image (Message.image_path); the media endpoint
+    must serve it as application/pdf so the UI can open it in a viewer."""
+    from starlette.testclient import TestClient
+
+    from webapp_backend.server import build_app
+
+    root = Path(app_config.denidin_data_root)
+    (root / "events").mkdir(parents=True)
+    (root / "media").mkdir()
+    (root / "media" / "agreement.pdf").write_bytes(b"%PDF-1.4 DATA")
+    (root / "events" / "E1.json").write_text(json.dumps({
+        "event_id": "E1", "source_type": "הסכם", "event_subtype": "יצירה", "client_name": "פלוני",
+        "amount": 1, "description": "d", "event_datetime": "03/08/2026 19:20", "txn_date": None,
+        "session_id": "s1", "message_id": "m1",
+    }, ensure_ascii=False), encoding="utf-8")
+    sdir = root / "sessions" / "s1" / "messages"
+    sdir.mkdir(parents=True)
+    (root / "sessions" / "s1" / "session.json").write_text('{"session_id": "s1"}', encoding="utf-8")
+    (sdir / "m1.json").write_text(json.dumps({
+        "message_id": "m1", "role": "user", "content": "הסכם", "timestamp": "2026-08-03T19:15:00+00:00",
+        "image_path": "media/agreement.pdf",
+    }), encoding="utf-8")
+
+    with TestClient(build_app(app_config)) as c:
+        token = c.post("/api/auth/login", json={"password": known_password}).json()["token"]
+        headers = {"Authorization": f"Bearer {token}"}
+        media_url = c.get("/api/events/E1/context", headers=headers).json()["messages"][0]["media_url"]
+        media = c.get(media_url, headers=headers)
+    assert media.status_code == 200 and media.content == b"%PDF-1.4 DATA"
+    assert media.headers["content-type"] == "application/pdf"

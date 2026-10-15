@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { NAME_COL_W, RAW_NAMES_COL_W, AMOUNT_COL_W } from "./layout";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { Theme } from "./theme";
-import { AMOUNT_STATUS_TEXT_COLOR, CLIENT_STATUS_COLORS, CLIENT_STATUS_LABELS, LINE_BUTTONS } from "./clientsTheme";
+import { CLIENT_STATUS_COLORS, CLIENT_STATUS_LABELS, LINE_BUTTONS } from "./clientsTheme";
 import {
   AuthError,
   ClientRow,
@@ -14,17 +15,16 @@ import {
   saveClientMapping,
   setClientLineStatus,
   unlinkClientMapping,
+  rejectAutoMatch,
 } from "./api";
-import { Field, IconButton } from "./ui";
+import { Field, IconButton, HintPressable } from "./ui";
+import AgreementsSection from "./AgreementsSection";
 
 const SECTION_ORDER: ClientRow["status"][] = ["check", "active", "debt", "missing_agreement", "settled", "past"];
 
 // fixed-width column layout, mirroring EventsView's COLUMNS pattern — in this RTL page the
 // first column renders on the right, so keep the amount fields directly after the name instead
 // of pushing them away with a trailing flex spacer (that's what made them look "left-aligned").
-const NAME_COL_W = 170;
-const RAW_NAMES_COL_W = 170;
-const AMOUNT_COL_W = 92;
 
 // unmatched-names resolution table columns (client name | resolve-to dropdown | source | comment)
 const UNMATCHED_NAME_W = 140;
@@ -35,8 +35,8 @@ function fmt(n: number): string {
   return `₪${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function AmountText({ value, status, theme }: { value: number; status: "WHITE" | "YELLOW" | "GRAY"; theme: Theme }) {
-  const color = AMOUNT_STATUS_TEXT_COLOR[status] ?? theme.text;
+function AmountText({ value, theme }: { value: number; theme: Theme }) {
+  const color = theme.text;
   return <Text style={{ color, fontWeight: "700", fontSize: 13 }}>{fmt(value)}</Text>;
 }
 
@@ -63,9 +63,10 @@ function LineStatusButtons({
   return (
     <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
       {buttons.map((b) => (
-        <Pressable
+        <HintPressable
           key={b.action}
           testID={`line-btn-${b.action}-${row.official_name}`}
+          {...({ title: `סימון שורת הלקוח: ${b.label}` } as any)}
           onPress={busy ? undefined : () => press(b.action)}
           disabled={busy}
           style={{
@@ -79,7 +80,7 @@ function LineStatusButtons({
           }}
         >
           <Text style={{ color: b.color, fontSize: 12, fontWeight: "700" }}>{b.label}</Text>
-        </Pressable>
+        </HintPressable>
       ))}
     </View>
   );
@@ -91,16 +92,22 @@ function ClientRowCard({
   onSaveComment,
   onLineAction,
   onUnlink,
+  onAgreementsChanged,
+  onAuthErr,
 }: {
   row: ClientRow;
   theme: Theme;
   onSaveComment: (clientId: string, comment: string) => Promise<void>;
   onLineAction: (clientId: string, action: LineAction) => Promise<void>;
-  onUnlink: (rawName: string) => Promise<void>;
+  onUnlink: (rawName: string, auto?: boolean) => Promise<void>;
+  onAgreementsChanged: () => void;
+  onAuthErr: (e: unknown) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [unlinking, setUnlinking] = useState<string | null>(null);
+  // Agreement ("הסכם") events mirror the Agreements section above; this list is deposits and invoice documents only.
+  const paymentEvents = row.events.filter((ev) => ev.type !== "הסכם");
 
   const lineAction = async (clientId: string, action: LineAction) => {
     setActionError(null);
@@ -111,11 +118,11 @@ function ClientRowCard({
     }
   };
 
-  const unlink = async (rawName: string) => {
+  const unlink = async (rawName: string, auto = false) => {
     setActionError(null);
     setUnlinking(rawName);
     try {
-      await onUnlink(rawName);
+      await onUnlink(rawName, auto);
     } catch (e: any) {
       setActionError(e?.message || "ביטול השיוך נכשל. נסו שוב.");
     } finally {
@@ -148,7 +155,8 @@ function ClientRowCard({
       testID={`client-row-${row.official_name}`}
       style={{ backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: 10 }}
     >
-      <Pressable onPress={() => setExpanded((e) => !e)} style={{ padding: 10, gap: 4 }}>
+      <HintPressable onPress={() => setExpanded((e) => !e)} style={{ padding: 10, gap: 4 }}
+        {...({ title: expanded ? "סגירת פרטי הלקוח" : "פתיחת פרטי הלקוח" } as any)}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
           <Text style={{ color: theme.accent, fontWeight: "800", width: 18, fontSize: 16 }}>
             {expanded ? "–" : "+"}
@@ -164,69 +172,82 @@ function ClientRowCard({
           </Text>
           <View style={{ width: AMOUNT_COL_W, alignItems: "flex-end" }}>
             <Text style={{ color: theme.textDim, fontSize: 11 }}>הסכם</Text>
-            <AmountText value={row.display_agreed} status={row.agreed_status} theme={theme} />
+            <AmountText value={row.display_agreed} theme={theme} />
           </View>
           <View style={{ width: AMOUNT_COL_W, alignItems: "flex-end" }}>
             <Text style={{ color: theme.textDim, fontSize: 11 }}>שולם</Text>
-            <AmountText value={row.display_paid} status={row.paid_status} theme={theme} />
+            <AmountText value={row.display_paid} theme={theme} />
           </View>
           <LineStatusButtons row={row} onAction={lineAction} />
           <View style={{ flex: 1 }} />
         </View>
         {actionError ? <Text style={{ color: theme.danger, fontSize: 12 }}>{actionError}</Text> : null}
-      </Pressable>
+      </HintPressable>
 
       {expanded ? (
         <View style={{ borderTopWidth: 1, borderColor: theme.border, padding: 10, gap: 10 }}>
-          {row.mapped_aliases.length ? (
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-              <Text style={{ color: theme.textDim, fontSize: 12 }}>שמות ששויכו ידנית:</Text>
-              {row.mapped_aliases.map((alias) => (
-                <View
-                  key={alias}
-                  testID={`alias-${alias}`}
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 6,
-                    paddingVertical: 3,
-                    paddingHorizontal: 8,
-                    borderRadius: 999,
-                    borderWidth: 1,
-                    borderColor: theme.border,
-                  }}
-                >
-                  <Text style={{ color: theme.text, fontSize: 12 }}>{alias}</Text>
-                  <Pressable
-                    testID={`unlink-${alias}`}
-                    onPress={unlinking ? undefined : () => unlink(alias)}
-                    {...({ title: "בטל שיוך" } as any)}
+          {(
+            [
+              { names: row.mapped_aliases, auto: false, title: "שמות ששויכו ידנית:", hint: "בטל שיוך" },
+              { names: row.auto_aliases || [], auto: true, title: "שמות ששויכו אוטומטית:", hint: "בטל שיוך אוטומטי" },
+            ] as const
+          ).map((group) =>
+            group.names.length ? (
+              <View key={group.title} style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+                <Text style={{ color: theme.textDim, fontSize: 12 }}>{group.title}</Text>
+                {group.names.map((alias) => (
+                  <View
+                    key={alias}
+                    testID={`alias-${alias}`}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 6,
+                      paddingVertical: 3,
+                      paddingHorizontal: 8,
+                      borderRadius: 999,
+                      borderWidth: 1,
+                      borderColor: theme.border,
+                    }}
                   >
-                    <Text style={{ color: theme.danger, fontSize: 13, fontWeight: "800" }}>
-                      {unlinking === alias ? "…" : "×"}
-                    </Text>
-                  </Pressable>
-                </View>
-              ))}
-            </View>
-          ) : null}
-          {row.events.length ? (
-            <View style={{ gap: 4 }}>
-              {row.events.map((ev, i) => (
-                <View key={i} style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-                  <Text style={{ color: theme.textDim, fontSize: 12, width: 100 }}>{ev.date}</Text>
-                  <Text style={{ color: theme.textDim, fontSize: 12, width: 70 }}>{ev.type}</Text>
-                  <Text style={{ color: theme.textDim, fontSize: 12, width: 110 }}>{ev.subtype}</Text>
-                  <Text style={{ color: theme.text, fontSize: 12, width: 280 }}>{ev.desc}</Text>
-                  <Text style={{ color: theme.text, fontSize: 12, fontWeight: "700", width: 90 }}>
-                    {fmt(ev.amount)}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          ) : (
-            <Text style={{ color: theme.textDim, fontSize: 12, textAlign: "center" }}>לא נמצאו אירועים</Text>
+                    <Text style={{ color: theme.text, fontSize: 12 }}>{alias}</Text>
+                    <HintPressable
+                      testID={`unlink-${alias}`}
+                      onPress={unlinking ? undefined : () => unlink(alias, group.auto)}
+                      {...({ title: group.hint } as any)}
+                    >
+                      <Text style={{ color: theme.danger, fontSize: 13, fontWeight: "800" }}>
+                        {unlinking === alias ? "…" : "×"}
+                      </Text>
+                    </HintPressable>
+                  </View>
+                ))}
+              </View>
+            ) : null
           )}
+          <AgreementsSection clientId={row.official_name} theme={theme} onAuthErr={onAuthErr} onTotalsChanged={onAgreementsChanged} />
+          <View testID="payments-section" style={{ gap: 6 }}>
+            <Text style={{ color: theme.text, fontWeight: "800", fontSize: 15, textAlign: "right" }}>תשלומים</Text>
+            {paymentEvents.length ? (
+              <View style={{ gap: 4, padding: 8, borderWidth: 1, borderColor: theme.border, borderRadius: 8 }}>
+                {paymentEvents.map((ev, i) => (
+                  <View key={i} style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+                    <Text style={{ color: theme.textDim, fontSize: 12, width: 100 }}>{ev.date}</Text>
+                    <Text style={{ color: theme.textDim, fontSize: 12, width: 70 }}>{ev.type}</Text>
+                    <Text style={{ color: theme.textDim, fontSize: 12, width: 110 }}>{ev.subtype}</Text>
+                    <Text style={{ color: theme.text, fontSize: 12, width: 280 }}>{ev.desc}</Text>
+                    <Text style={{ color: theme.text, fontSize: 12, fontWeight: "700", width: 90 }}>
+                      {fmt(ev.amount)}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <View style={{ padding: 8, borderWidth: 1, borderColor: theme.border, borderRadius: 8 }}>
+                <Text style={{ color: theme.textDim, fontSize: 12, textAlign: "center" }}>לא נמצאו תשלומים</Text>
+              </View>
+            )}
+          </View>
 
           <View style={{ gap: 6 }}>
             <Text style={{ color: theme.textDim, fontSize: 12, textAlign: "right" }}>הערות תפעוליות</Text>
@@ -375,8 +396,9 @@ function ClientPicker({
                   הצעות חכמות
                 </Text>
                 {filteredSuggestions.map((s) => (
-                  <Pressable
+                  <HintPressable
                     key={s.name}
+                    {...({ title: `שיוך ללקוח: ${s.name}` } as any)}
                     onPress={() => choose(s.name)}
                     style={{ paddingVertical: 8, paddingHorizontal: 10 }}
                   >
@@ -386,7 +408,7 @@ function ClientPicker({
                         {s.reasons.join(" · ")}
                       </Text>
                     ) : null}
-                  </Pressable>
+                  </HintPressable>
                 ))}
               </>
             ) : null}
@@ -396,9 +418,9 @@ function ClientPicker({
                   כל הלקוחות
                 </Text>
                 {filteredRest.map((n) => (
-                  <Pressable key={n} onPress={() => choose(n)} style={{ paddingVertical: 7, paddingHorizontal: 10 }}>
+                  <HintPressable key={n} {...({ title: `שיוך ללקוח: ${n}` } as any)} onPress={() => choose(n)} style={{ paddingVertical: 7, paddingHorizontal: 10 }}>
                     <Text style={{ color: theme.text, fontSize: 13, textAlign: "right" }}>{n}</Text>
-                  </Pressable>
+                  </HintPressable>
                 ))}
               </>
             ) : null}
@@ -411,8 +433,9 @@ function ClientPicker({
         </View>
       ) : null}
       {open ? (
-        <Pressable
+        <HintPressable
           onPress={() => setOpen(false)}
+          {...({ title: "סגירת הרשימה" } as any)}
           style={{ position: "fixed" as any, top: 0, left: 0, right: 0, bottom: 0, zIndex: -1 }}
         />
       ) : null}
@@ -539,8 +562,9 @@ function UnmatchedRowCard({
           onPress={submitNote}
           disabled={noteSaving}
         />
-        <Pressable
+        <HintPressable
           testID={`hide-unmatched-${row.raw_name}`}
+          {...({ title: "הסרת השם מרשימת השמות לתיוג" } as any)}
           onPress={hiding ? undefined : hide}
           disabled={hiding}
           style={{
@@ -553,7 +577,7 @@ function UnmatchedRowCard({
           }}
         >
           <Text style={{ color: theme.danger, fontSize: 12, fontWeight: "700" }}>{hiding ? "…" : "הסר מהרשימה"}</Text>
-        </Pressable>
+        </HintPressable>
       </View>
     </View>
   );
@@ -566,21 +590,26 @@ function Section({
   onSaveComment,
   onLineAction,
   onUnlink,
+  onAgreementsChanged,
+  onAuthErr,
 }: {
   status: ClientRow["status"];
   rows: ClientRow[];
   theme: Theme;
   onSaveComment: (clientId: string, comment: string) => Promise<void>;
   onLineAction: (clientId: string, action: LineAction) => Promise<void>;
-  onUnlink: (rawName: string) => Promise<void>;
+  onUnlink: (rawName: string, auto?: boolean) => Promise<void>;
+  onAgreementsChanged: () => void;
+  onAuthErr: (e: unknown) => void;
 }) {
   const [open, setOpen] = useState(false);
   if (!rows.length) return null;
   const total = rows.reduce((s, r) => s + r.display_agreed, 0);
   return (
     <View testID={`section-${status}`} style={{ gap: 6 }}>
-      <Pressable
+      <HintPressable
         testID={`section-header-${status}`}
+        {...({ title: open ? "סגירת הקטגוריה" : "פתיחת הקטגוריה" } as any)}
         onPress={() => setOpen((o) => !o)}
         style={{
           flexDirection: "row",
@@ -599,7 +628,7 @@ function Section({
         <Text style={{ color: theme.textDim, fontSize: 12 }}>
           {rows.length} לקוחות · {fmt(total)}
         </Text>
-      </Pressable>
+      </HintPressable>
       {open ? (
         <View style={{ gap: 6 }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 10 }}>
@@ -625,6 +654,8 @@ function Section({
               onSaveComment={onSaveComment}
               onLineAction={onLineAction}
               onUnlink={onUnlink}
+              onAgreementsChanged={onAgreementsChanged}
+              onAuthErr={onAuthErr}
             />
           ))}
         </View>
@@ -652,8 +683,9 @@ function UnmatchedSection({
   if (!unmatched.length) return null;
   return (
     <View style={{ gap: 6 }}>
-      <Pressable
+      <HintPressable
         onPress={() => setOpen((o) => !o)}
+        {...({ title: open ? "סגירת הרשימה" : "פתיחת הרשימה" } as any)}
         style={{
           flexDirection: "row",
           alignItems: "center",
@@ -667,7 +699,7 @@ function UnmatchedSection({
         <Text style={{ color: theme.textDim, fontSize: 14 }}>{open ? "–" : "+"}</Text>
         <Text style={{ color: theme.danger, fontWeight: "800", fontSize: 15 }}>שמות לקוחות לתייג</Text>
         <Text style={{ color: theme.textDim, fontSize: 12 }}>{unmatched.length} לתיוג</Text>
-      </Pressable>
+      </HintPressable>
       {open ? (
         <View
           style={{
@@ -793,8 +825,9 @@ export default function ClientsView({ theme, onAuthErr }: { theme: Theme; onAuth
     await load("refresh");
   };
 
-  const unlink = async (rawName: string) => {
-    await unlinkClientMapping(rawName);
+  const unlink = async (rawName: string, auto = false) => {
+    if (auto) await rejectAutoMatch(rawName);
+    else await unlinkClientMapping(rawName);
     await load("refresh");
   };
 
@@ -865,6 +898,8 @@ export default function ClientsView({ theme, onAuthErr }: { theme: Theme; onAuth
                 onSaveComment={saveComment}
                 onLineAction={lineAction}
                 onUnlink={unlink}
+                onAgreementsChanged={() => { load("refresh"); }}
+                onAuthErr={onAuthErr}
               />
             ))}
 
