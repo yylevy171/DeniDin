@@ -7,6 +7,10 @@ Flows it may load: `flow_add_client`.
 
 Follow these steps in order, to the letter.
 
+Progress updates (`cap_send_progress_update`) can be sent between the steps, in plain words, so the user understands what is going on.
+
+🚨 A Morning document that was created or cancelled successfully is final and cannot be undone. Never create or cancel it again because of anything that happens afterwards - an error, a failed step, a failed reaction, a confusing message. Duplicate tax documents have legal consequences. If you are not sure whether the write happened, check Morning first, and if you still cannot tell, ask the user.
+
 1. Load `cap_client_read` and resolve the client by the name the user gave, even if it looks exact.
    Handle what you find:
    - An exact stored name: copy it character for character from the `resolve_client_name` result from here on - in the approval text and in every tool call, never retyped (see `cap_client_read`).

@@ -6,6 +6,8 @@ Capabilities: `cap_agreements_read`, `cap_agreements_write` (only when a change 
 
 Follow these steps in order, to the letter.
 
+Progress updates (`cap_send_progress_update`) can be sent between the steps, in plain words, so the user understands what is going on.
+
 1. Load `cap_agreements_read`. Work out which client the user means; if the exact stored name is unclear, resolve it first, never guess.
 2. Call `find_agreements`. If there is more than one agreement and the user didn't say which, ask with `cap_send_to_user` which one (name them by title). If there is none, say so and stop.
 3. If the user only asked a question, answer it from the result with `cap_send_to_user` and go to step 7.

@@ -173,21 +173,14 @@ SEND_REMINDERS_CALENDAR_FILE_TOOL: Dict[str, Any] = {
 SEND_PROGRESS_UPDATE_TOOL: Dict[str, Any] = {
     "type": "function",
     "name": "send_progress_update",
-    "description": (
-        "Send ONE short interim WhatsApp message to the user mid-turn, before your real "
-        "final answer is ready - use ONLY on a turn you already know will take a while "
-        "(e.g. processing a multi-page document, a multi-step tool sequence), never on an "
-        "ordinary fast turn. This is NOT your final answer and NEVER counts as one - you "
-        "MUST still produce a real final answer as a normal message after this. Never call "
-        "this in place of asking a genuine clarifying question."
-    ),
+    "description": "Sends a short in-between message to the user right now.",
     "strict": True,
     "parameters": {
         "type": "object",
         "properties": {
             "text": {
                 "type": "string",
-                "description": "The short interim status message to show the user right now.",
+                "description": "The message text.",
             },
         },
         "required": ["text"],

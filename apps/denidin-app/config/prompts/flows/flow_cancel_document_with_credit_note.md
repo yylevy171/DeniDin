@@ -7,6 +7,10 @@ Flows it may load: `flow_invoicing_query`.
 
 Follow these steps in order, to the letter.
 
+Progress updates (`cap_send_progress_update`) can be sent between the steps, in plain words, so the user understands what is going on.
+
+🚨 A Morning document that was created or cancelled successfully is final and cannot be undone. Never create or cancel it again because of anything that happens afterwards - an error, a failed step, a failed reaction, a confusing message. Duplicate tax documents have legal consequences. If you are not sure whether the write happened, check Morning first, and if you still cannot tell, ask the user.
+
 1. Load `flow_invoicing_query` and find the ONE real document the user means. Reuse an id and exact name you already have from earlier in this conversation. Otherwise search using only what the current request gives you (a client name, an amount, a date), and add a filter only if this request itself states one.
    - Exactly one plausible match: do not ask about it separately. Carry it straight into the approval, which shows its details; the user's yes or no there is the confirmation.
    - Several, or none: use `cap_send_to_user` to say what you found and ask what identifies the right one. Never guess and never ask the user for an internal id.
