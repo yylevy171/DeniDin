@@ -44,4 +44,4 @@ without the user's go-ahead. All runs go through `scripts/run_unit_integration_t
   5.1 list -> offer; 5.2 accept -> file; 5.3 decline -> nothing; 5.4 unrelated question -> no offer.
   UAT 3.1 stays a manual on-device check (Android, done in Gate Zero 2). The manual checklist (UAT 3.1 and the untested
   unchanged-re-send import) lives in `quickstart.md` under "Manual device checks".
-- [ ] T013 STOP and report to the user; the first billed run needs their explicit permission.
+- [x] T013 STOP and report to the user; the first billed run needs their explicit permission.
