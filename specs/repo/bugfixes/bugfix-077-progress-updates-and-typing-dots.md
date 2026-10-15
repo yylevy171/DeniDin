@@ -8,13 +8,14 @@
 Feature 067 (no-turn redesign) merged "interim" and "final" into one concept. Commit `b24109c2` and the
 prompt work around it changed what the MODEL reads:
 
-- `cap_send_progress_update.md` was rewritten to say it "sends exactly like `send_to_user`", and
-  lost "before your final reply" / the "every single time you interact with any tool" push - the two
-  tools now look identical to the model, so it uses the main one.
+- `cap_send_progress_update.md` kept 0.8.2's "call this every single time you interact with any tool" but
+  067 added "It sends exactly like `send_to_user`" - the two tools now look identical to the model.
+  (Correction 2026-10-15: an earlier version of this spec wrongly said 067 removed the "every single
+  time" line; it did not - the 0.8.3 prompt still has it.)
 - `cap_send_to_user.md` / `backbone.md` gained "send the answer once, never send a follow-up
   wrap-up or status message" and "progress updates say what is being done for the user" - all of it
   discourages interim messages.
-- The progress tool's own JSON-schema description (unchanged since Feature 080) says "use ONLY on a turn
+- The progress tool's own JSON-schema description (unchanged since Feature 080) CONTRADICTS the capability prompt above - it says "use ONLY on a turn
   you already know will take a while ... never on an ordinary fast turn" and "you MUST still produce a real
   final answer" - a restraint, and it mentions a concept (final answer) the progress tool should not know.
 
