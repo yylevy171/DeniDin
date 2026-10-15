@@ -1,1 +1,1 @@
-../repo/bugfixes/bugfix-062-naked-deposit-image-bypass.md
+../../repo/bugfixes/bugfix-062-naked-deposit-image-bypass.md

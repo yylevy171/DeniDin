@@ -1,1 +1,1 @@
-../repo/bugfixes/bugfix-051-list-reminders-cross-chat-disclosure.md
+../../repo/bugfixes/bugfix-051-list-reminders-cross-chat-disclosure.md

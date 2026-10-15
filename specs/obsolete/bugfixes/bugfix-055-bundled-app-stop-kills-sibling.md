@@ -1,1 +1,1 @@
-../repo/bugfixes/bugfix-055-bundled-app-stop-kills-sibling.md
+../../repo/bugfixes/bugfix-055-bundled-app-stop-kills-sibling.md

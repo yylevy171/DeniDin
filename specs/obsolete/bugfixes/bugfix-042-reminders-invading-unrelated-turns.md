@@ -1,1 +1,1 @@
-../repo/bugfixes/bugfix-042-reminders-invading-unrelated-turns.md
+../../repo/bugfixes/bugfix-042-reminders-invading-unrelated-turns.md

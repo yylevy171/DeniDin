@@ -1,1 +1,1 @@
-../repo/bugfixes/bugfix-050-morning-create-confirmations-omit-document-link.md
+../../repo/bugfixes/bugfix-050-morning-create-confirmations-omit-document-link.md
