@@ -14,5 +14,16 @@
     "name": "רועי שדה"
   },
   "files": "single",
-  "shared_fields": {}
+  "shared_fields": {
+    "agreement_status": {
+      "tested": "Active"
+    },
+    "component_status": {
+      "free_text": true
+    },
+    "original_client_name": {
+      "free_text": true,
+      "optional": true
+    }
+  }
 }

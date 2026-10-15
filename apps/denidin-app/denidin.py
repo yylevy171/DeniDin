@@ -55,7 +55,7 @@ from src.services.queue_monitor_service import QueueMonitor, start_queue_monitor
 from src.services.thread_supervisor import ThreadSupervisor, start_thread_supervisor_scheduler
 from src.utils.bounded_queue import QueueSettings
 from src.services.accounting_reconciliation_service import (
-    record_created_document, run_startup_accounting_reconciliation_sweep, start_accounting_reconciliation_scheduler,
+    run_startup_accounting_reconciliation_sweep, start_accounting_reconciliation_scheduler,
 )
 from src.services.health_server import (
     build_health_check_fns, build_health_info_fns, resolve_log_path, start_health_server,
@@ -512,15 +512,6 @@ class DeniDin:  # pylint: disable=too-many-instance-attributes,too-many-public-m
         if sent.as_buttons and sent.whatsapp_id_message and self.session_manager is not None:
             self.session_manager.set_approval_message_id(chat_id, sent.whatsapp_id_message)
         return not sent.is_notice
-
-    def record_created_document(self) -> None:
-        """A Morning document was just created: record it in the ledger now, in the
-        background (see accounting_reconciliation_service.record_created_document). No-op
-        without a ledger, and while the accounting reconciliation is switched off
-        (config.accounting_ledger_update_freq == 0)."""
-        if self.ledger_event_manager is None or not self.config.accounting_ledger_update_freq:
-            return
-        record_created_document(self)
 
     def send_document(self, chat_id: str, generated: Any, caption: str) -> bool:
         """Feature 083: sends a generated, verified document to `chat_id` and stores it

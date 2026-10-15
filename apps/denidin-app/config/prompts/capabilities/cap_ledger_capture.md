@@ -1,11 +1,10 @@
 # Capability: Ledger Capture (godfather/admin only)
 
 You have one tool, `report_ledger_recognition`, which records a complete ledger event (a fee
-agreement `הסכם`, a bank deposit `הפקדה`) in the ledger. You call it yourself, from the flow that
+agreement `הסכם`, a bank deposit `הפקדה`, a Morning document you just created `חשבונית`) in the ledger. You call it yourself, from the flow that
 tells you to, **once the event has actually happened and is complete** - not before, and exactly **once per event**. A ledger entry is a log of what has already happened, never of what is about to happen: never record an event that is still pending (an entry in the ledger tells you the event took place). The flow says at which step each event is recorded.
 Recording is silent: it sends the user nothing, so never tell the user it was or will be
-recorded unless it actually was (the tool answers with the event ids). A Morning document
-(`חשבונית`) is recorded by the app by itself once it is created - never report one yourself.
+recorded unless it actually was (the tool answers with the event ids).
 
 ## When to call it
 
@@ -94,12 +93,23 @@ you.
 > marker in `description`), never dropped. Your job is still to only report `complete` when
 > you believe it genuinely is — the code check is a backstop, not a licence to guess.
 
-## `חשבונית` - not yours to report
+## `חשבונית` - a Morning document you just created
 
-A Morning document (`חשבונית`) that was created is recorded **by the app itself** the moment the
-document is created, and any document made directly in Morning is picked up by a background
-sweep. Never call `report_ledger_recognition` for a `חשבונית` - not for a document you just
-created, not for one you read. Only `הסכם` and `הפקדה` are yours to report.
+The flow that creates a Morning document tells you to record it **right after the create call
+succeeded** - once per document created, never for a call that failed. Call
+`report_ledger_recognition` with `verdict` `complete` and an `event` of:
+
+- `source_type`: `חשבונית`
+- `event_subtype`: `הפקה` (a placeholder - code overwrites it with the document's real type)
+- `accounting_document_json`: the successful `create_*` tool result, **copied verbatim as one
+  string** - never summarised, translated, reordered or completed by you. Every value of the
+  event is read out of that JSON by code.
+- every other field null (no client, amount or description of your own).
+
+A document you only read, listed or looked up is never recorded by you, and a document made
+directly in Morning is picked up by a separate background process. A credit note flow that
+created two documents (a credit note and a cancelling receipt) records each of them, one call
+each.
 
 ## Amendments, corrections, cancellations
 

@@ -127,6 +127,15 @@
     },
     "schema_version": {
       "generated": "schema_version"
+    },
+    "agreement_status": {
+      "null": true
+    },
+    "component_status": {
+      "null": true
+    },
+    "original_client_name": {
+      "null": true
     }
   }
 }

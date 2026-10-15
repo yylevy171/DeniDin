@@ -104,10 +104,10 @@ CAPABILITY_INFO: tuple = (
     ),
     CapabilityInfo(
         CapabilityTag.LEDGER_CAPTURE,
-        "Recording a complete fee agreement (הסכם) or bank deposit (הפקדה) in the "
-        "ledger, silently. Load it only through the flow that handles such an event "
-        "(flow_fee_agreement_provided_by_user, flow_deposit_provided_by_user), never "
-        "directly. Morning documents are recorded by the app itself.",
+        "Recording a complete fee agreement (הסכם), bank deposit (הפקדה), or a Morning "
+        "document you just created (חשבונית) in the ledger, silently. Load it only through the flow that handles such an event "
+        "(flow_fee_agreement_provided_by_user, flow_deposit_provided_by_user, the flows "
+        "that create a Morning document), never directly.",
     ),
     CapabilityInfo(
         CapabilityTag.REMINDERS_WRITE,

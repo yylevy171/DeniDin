@@ -347,6 +347,15 @@ def _check_field(field: str, value: Any, rule: Dict, ev: Dict, *,
                 f"{field}: manifest uses \"$client\" but the test passed no resolved_client_name"
             )
             expected = resolved_client_name
+        if field == "payer_name":
+            # A payer name is copied from the source as written: an honorific ("מר") may be
+            # kept, and a slip often truncates the name. Either containing the other is the
+            # same person.
+            got, want = _norm_field(field, value), _norm_field(field, expected)
+            assert got and want and (want in got or got in want), (
+                f"{field}: expected {expected!r} (or a part/superstring of it), persisted event has {value!r}"
+            )
+            return
         assert _norm_field(field, value) == _norm_field(field, expected), (
             f"{field}: expected {expected!r}, persisted event has {value!r}"
         )

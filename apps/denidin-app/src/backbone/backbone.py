@@ -83,13 +83,6 @@ PLAIN_TEXT_IGNORED_NOTE = (
     "respond with nothing at all."
 )
 
-# The Morning tools that create a document - each success is recorded in the ledger by the
-# app (DeniDin.record_created_document), never by the model.
-DOCUMENT_CREATING_TOOLS = frozenset({
-    "create_invoice", "create_transaction_account", "create_combo_document", "create_credit_note",
-    "create_receipt", "create_combo_document_as_reference",
-})
-
 # OpenAI's error code for a previous_response_id it no longer knows (Gate Zero C4).
 CHAIN_NOT_FOUND_CODE = "previous_response_not_found"
 
@@ -882,9 +875,6 @@ class Backbone(AIManager):  # pylint: disable=too-many-instance-attributes
         new_mcp_calls = self._extract_mcp_call_items(response)
         self._turn_mcp_calls.extend(new_mcp_calls)
         self.record_mcp_tool_calls(self._turn_telemetry_builder, new_mcp_calls)  # telemetry, as they happen
-        # A Morning document created now is recorded in the ledger by the app itself.
-        if any(call["name"] in DOCUMENT_CREATING_TOOLS and not call["error"] for call in new_mcp_calls):
-            self.denidin.record_created_document()
         usage = getattr(response, "usage", None)
         if usage is not None:
             self._turn_tokens[0] += int(getattr(usage, "total_tokens", 0) or 0)

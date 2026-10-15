@@ -22,7 +22,6 @@ Exactly one shared sweep mechanism for the whole process - not one job per
 poll target (same guardrail as reminder_delivery_service.py).
 """
 import json
-import threading
 import re
 from datetime import timedelta
 from typing import Any, Dict, List, Optional
@@ -364,24 +363,6 @@ def _sweep_accounting_documents(global_context: Any, log_prefix: str = "") -> No
     """One sweep, for the scheduler and the startup catch-up: DeniDin's ledger, the AI
     implementation in use."""
     AccountingReconciler(global_context.ai_manager, global_context.ledger_event_manager).sweep(log_prefix)
-
-
-_DOCUMENT_SWEEP_LOCK = threading.Lock()
-
-
-def record_created_document(global_context: Any) -> None:
-    """A Morning document was just created through DeniDin: record it in the ledger now, in
-    the background (nothing waits on it). It is the same sweep the scheduler runs - it lists
-    what Morning holds since the watermark and captures what the ledger lacks, so the new
-    document is found by the code and not by the model; sweeps are serialized."""
-    def _run() -> None:
-        with _DOCUMENT_SWEEP_LOCK:
-            try:
-                _sweep_accounting_documents(global_context, log_prefix="[DOC-CREATED] ")
-            except Exception as exc:  # pylint: disable=broad-except
-                logger.error("[025] Sweep after a created document failed: %s", exc, exc_info=True)
-
-    threading.Thread(target=_run, name="ledger-record-created-document", daemon=True).start()
 
 
 def run_startup_accounting_reconciliation_sweep(global_context: Any) -> None:
