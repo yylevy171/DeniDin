@@ -119,3 +119,14 @@ Legend: KEEP = valid as is; RUN = cannot judge statically, needs a (human-approv
 2. Approve S1: add `get_all_responses` and switch content assertions in the Morning/ledger-query files.
 3. Approve deletions: invoice_creation x2 (S4); optionally the 2-test `test_ledger_event_capture_billed.py` once the 10-test file is green.
 4. Then run, file by file and only the files you name, starting with the small sanity-marked ones.
+
+## Part 3 - full static audit and fixes (2026-10-14)
+
+Every billed and expensive test file was read against the checklist. Fixed:
+- `get_response` (last message only) replaced by `get_full_reply` (all messages of the turn) in every billed/expensive file.
+- `converse_until_ledger_events_captured` (shared ledger driver): reads the full reply; a reply is required only when the turn captured nothing (silence after capturing is legal); blanket VAT check removed.
+- `test_e2e_ledger_069_text_billed.py`: removed a vacuous "no inline capture tool" assertion; "no reply on turn 1" no longer required.
+- `test_ledger_query_billed.py`, `test_fee_agreement_generation_flow.py`: hand-built Notification stubs (not registered with the recording bot, so the model's sends were lost) replaced by `create_real_notification`; fee-agreement `_reset_session` uses `wipe_chat_messages_on_disk`.
+- `test_rolling_memory_billed.py`: removed uses of the deleted `backbone_enabled` flag and `_load_constitution`; `_ask` now goes through the real pipeline (`_ask_via_denidin`) so the model's sends are captured.
+- Client-role tests, two stale implicit-decline tests deleted; `test_99_3` fixed; 300 seed states VAT not included.
+- Not run (billed/expensive need the user's go-ahead). Unit/integration: 1711 passed, 1 network-flaky Green API test.

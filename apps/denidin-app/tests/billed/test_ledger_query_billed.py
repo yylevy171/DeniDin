@@ -44,7 +44,7 @@ from pathlib import Path
 import pytest
 
 from src.models.config import AppConfiguration
-from tests.e2e_helpers import get_full_reply, sanity_worker_data_root
+from tests.e2e_helpers import create_real_notification, get_full_reply, sanity_worker_data_root
 from src.utils.time_utils import now_local
 
 logger = logging.getLogger(__name__)
@@ -225,24 +225,15 @@ class TestLedgerQueryBilled:
 
     @staticmethod
     def _create_notification(chat_id, sender, sender_name, text, msg_id):
-        from whatsapp_chatbot_python import Notification
-
-        notification = Notification.__new__(Notification)
-        notification.event = {
+        # Feature 067: the app sends everything by chat id through the bot, so the notification
+        # must be the shared test one (registered with the RecordingBot), not a bare stub.
+        return create_real_notification({
             'typeWebhook': 'incomingMessageReceived',
             'idMessage': msg_id,
             'timestamp': int(now_local().timestamp()),
             'senderData': {'chatId': chat_id, 'sender': sender, 'senderName': sender_name},
             'messageData': {'typeMessage': 'textMessage', 'textMessageData': {'textMessage': text}},
-        }
-        notification._test_sent_messages = []
-
-        def track_answer(message):
-            notification._test_sent_messages.append(message)
-            logger.info(f"Would send to user: {message}")
-
-        notification.answer = track_answer
-        return notification
+        })
 
     @staticmethod
     def _get_response(notification):

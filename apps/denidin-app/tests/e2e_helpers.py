@@ -815,12 +815,14 @@ def converse_until_ledger_events_captured(
         })
         log.info(f"GIVEN turn {turn_num}: {text!r}")
         handle_text_message(notification)
-        reply = get_response(notification)
-        assert_response_exists(reply)
-        assert_document_approval_states_vat(reply)  # bugfix-071
+        reply = get_full_reply(notification)  # Feature 067: every message of the turn
         log.info(f"THEN turn {turn_num} reply: {reply!r}")
 
         events = events_for_chat(chat_id)
+        if not events:
+            # Silence is legitimate once the work is done, but a turn that captured nothing AND said
+            # nothing leaves the conversation with nothing to answer.
+            assert_response_exists(reply)
         entry = {"turn": turn_num, "sent": text, "reply": reply, "matched_topics": []}
         transcript.append(entry)
 

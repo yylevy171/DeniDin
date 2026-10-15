@@ -63,11 +63,6 @@ class TestLedgerPostTurnCaptureText:
         assert_ledger_event_matches_manifest(
             denidin_app, events, "agreement_us1", trigger_epoch,
         )
-        last = denidin_app.last_response
-        if last is not None:
-            assert not any(
-                c["name"] == "capture_ledger_event" for c in last.mcp_calls
-            ), "capture_ledger_event must not exist as an inline tool anymore (mechanism move)"
 
     # ---- US3: false-positive / regression guards ---------------------------
     def test_us3_regression_guard_ordinary_turn_no_capture(self, denidin_app):
@@ -158,7 +153,7 @@ class TestLedgerPostTurnCaptureText:
             denidin_app, "agreement_us6", first_text=text, id_prefix="F069_US6",
             max_turns=3,
         )
-        assert transcript and transcript[0]["reply"], "no reply on turn 1"
+        assert transcript, "no turn was driven"  # Feature 067: silence after capturing is legitimate
         assert_ledger_event_matches_manifest(
             denidin_app, events, "agreement_us6", trigger_epoch,
         )
