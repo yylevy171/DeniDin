@@ -101,8 +101,8 @@ Same config/command as above; runs after `10-clients.spec.ts`. One test per appr
 seeds eight more real sandbox clients (`names[1:9]`; Feature 087's `names[0]` is untouched):
 - a debt line, a fully paid line and a past line;
 - two mapping targets;
-- three lines whose comments carry the legacy `לבדוק` / `לקוח פעיל` / `לסגור` keywords, with no
-  `migrations.json`, so UAT 5 observes a real first-run migration;
+- three lines whose comments carry the old `לבדוק` / `לקוח פעיל` / `לסגור` keywords (UAT 5: they route
+  nothing - comments are free text);
 - three no-name ledger events (→ `Unknown-<event_id>`), a `Yisrael I` bank name with a note, and a
   name for the "הסר מהרשימה" test.
 - two yellow ("חסר הסכם") clients for manual testing only, one paid with no agreement and one

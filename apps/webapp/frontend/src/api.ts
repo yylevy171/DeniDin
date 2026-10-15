@@ -144,9 +144,6 @@ export interface ClientRow {
   agreements_total: number;
   deposits_total: number;
   invoices_net: number;
-  manual_agreement_amount: number | null;
-  agreed_status: "WHITE" | "YELLOW" | "GRAY";
-  paid_status: "WHITE" | "YELLOW" | "GRAY";
   display_agreed: number;
   display_paid: number;
   status: "active" | "settled" | "debt" | "missing_agreement" | "check" | "past";
@@ -158,6 +155,7 @@ export interface ClientRow {
   // raw_names that are explicit mappings of this client (the only ones that can be unlinked).
   line_status: "closed" | "check" | "active" | null;
   mapped_aliases: string[];
+  auto_aliases: string[];
 }
 export type LineAction = "close" | "reopen" | "check" | "active";
 export interface SuggestedMatch {
@@ -222,6 +220,10 @@ export async function setClientLineStatus(clientId: string, action: LineAction):
 export async function unlinkClientMapping(rawName: string): Promise<void> {
   await postJson("/api/clients/mapping/unlink", { raw_name: rawName });
 }
+// 2026-10-14: the red x on an automatically matched name; it returns to the resolve list.
+export async function rejectAutoMatch(rawName: string): Promise<void> {
+  await postJson("/api/clients/mapping/reject", { raw_name: rawName });
+}
 // Feature 092: "הסר מהרשימה" - permanently drop a name from the resolve list.
 export async function hideUnmatched(rawName: string): Promise<void> {
   await postJson("/api/clients/unmatched/hide", { raw_name: rawName });
@@ -234,4 +236,90 @@ export async function fetchMediaObjectUrl(path: string): Promise<{ url: string; 
   if (!resp.ok) throw new Error(`media ${resp.status}`);
   const blob = await resp.blob();
   return { url: URL.createObjectURL(blob), isPdf: blob.type === "application/pdf" };
+}
+
+// ---- Feature 089: Agreements (proxied by the webapp backend to denidin-app's Agreements API) ----
+export type ComponentStatus = "Pending" | "Active" | "Completed" | "Cancelled";
+export type AgreementStatus = "Active" | "Completed" | "Cancelled";
+export interface AgreementComponent {
+  component_key: string;
+  component_id: string;
+  label: string;
+  description: string | null;
+  amount: number | null;
+  percent: number | null;
+  percent_base: string | null;
+  trigger_condition: string | null;
+  vat_status: string | null;
+  status: ComponentStatus;
+  locked: boolean;
+}
+export interface Agreement {
+  agreement_id: string;
+  client_name: string;
+  title: string;
+  agreement_description: string | null;
+  created_at: string;
+  updated_at: string;
+  payer_name: string | null;
+  partner_name: string | null;
+  partner_percent: number | null;
+  status: AgreementStatus;
+  components: AgreementComponent[];
+}
+export class AgreementsApiError extends Error {
+  code: string;
+  fields: Record<string, string>;
+  constructor(code: string, message: string, fields: Record<string, string> = {}) {
+    super(message);
+    this.code = code;
+    this.fields = fields;
+  }
+}
+
+async function agreementsCall(method: string, path: string, body?: Record<string, unknown>): Promise<any> {
+  const resp = await request(path, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    const err = data.error || {};
+    throw new AgreementsApiError(err.code || `request_failed_${resp.status}`, err.message || "הפעולה נכשלה.", err.fields || {});
+  }
+  return data;
+}
+
+export async function fetchClientAgreements(clientId: string): Promise<Agreement[]> {
+  return (await agreementsCall("GET", `/api/clients/${encodeURIComponent(clientId)}/agreements`)).agreements;
+}
+export async function createAgreement(body: Record<string, unknown>): Promise<Agreement> {
+  return (await agreementsCall("POST", "/api/agreements", body)).agreement;
+}
+export async function editAgreement(agreementId: string, fields: Record<string, unknown>): Promise<Agreement> {
+  return (await agreementsCall("PATCH", `/api/agreements/${encodeURIComponent(agreementId)}`, fields)).agreement;
+}
+export async function setAgreementStatus(agreementId: string, action: "complete" | "cancel" | "reopen"): Promise<Agreement> {
+  return (await agreementsCall("POST", `/api/agreements/${encodeURIComponent(agreementId)}/status`, { action })).agreement;
+}
+export async function addComponent(agreementId: string, fields: Record<string, unknown>): Promise<Agreement> {
+  return (await agreementsCall("POST", `/api/agreements/${encodeURIComponent(agreementId)}/components`, fields)).agreement;
+}
+export async function editComponent(agreementId: string, key: string, fields: Record<string, unknown>): Promise<Agreement> {
+  return (await agreementsCall("PATCH", `/api/agreements/${encodeURIComponent(agreementId)}/components/${encodeURIComponent(key)}`, fields)).agreement;
+}
+export async function setAgreementStatusTo(agreementId: string, status: string): Promise<Agreement> {
+  return (await agreementsCall("POST", `/api/agreements/${encodeURIComponent(agreementId)}/status`, { status })).agreement;
+}
+export async function setComponentStatusTo(agreementId: string, key: string, status: string): Promise<Agreement> {
+  return (await agreementsCall("POST", `/api/agreements/${encodeURIComponent(agreementId)}/components/${encodeURIComponent(key)}/status`, { status })).agreement;
+}
+export async function setComponentStatus(
+  agreementId: string, key: string, action: "activate" | "complete" | "cancel" | "reopen"
+): Promise<Agreement> {
+  return (await agreementsCall("POST", `/api/agreements/${encodeURIComponent(agreementId)}/components/${encodeURIComponent(key)}/status`, { action })).agreement;
+}
+export async function deleteComponent(agreementId: string, key: string): Promise<Agreement> {
+  return (await agreementsCall("DELETE", `/api/agreements/${encodeURIComponent(agreementId)}/components/${encodeURIComponent(key)}`)).agreement;
 }

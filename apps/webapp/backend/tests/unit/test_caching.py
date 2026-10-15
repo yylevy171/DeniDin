@@ -141,3 +141,36 @@ class TestOrdering:
             (sdir / "messages" / f"{mid}.json").write_text(json.dumps(rec), encoding="utf-8")
         out = ContextReader(str(tmp_path)).build_context("s1", "new", 10)
         assert [m["message_id"] for m in out["messages"]] == ["old1", "old2", "new"]
+
+
+class TestInvalidateDuringCompute:
+    """2026-10-13: `invalidate_report` runs on the event loop right after an Agreements write; it used to wait for
+    the report lock, so a long compute froze the whole webapp. It must return at once and the stale result of the
+    compute it overlapped must not be cached."""
+
+    def test_invalidate_does_not_wait_for_a_running_compute_and_drops_its_result(self, tmp_path):
+        import threading
+        started, release = threading.Event(), threading.Event()
+        computes: list = []
+
+        def official():
+            computes.append(1)
+            if len(computes) == 1:
+                started.set()
+                assert release.wait(10)
+            return ["דנה"]
+
+        ledger = LedgerReader(str(tmp_path))
+        reader = ClientsReader(str(tmp_path), str(tmp_path / "clients"), official,
+                               events_fn=ledger.events, generation_fn=lambda: ledger.generation)
+        worker = threading.Thread(target=reader.get_report)
+        worker.start()
+        assert started.wait(10)
+
+        finished = threading.Event()
+        threading.Thread(target=lambda: (reader.invalidate_report(), finished.set())).start()
+        assert finished.wait(2), "invalidate_report blocked behind the running compute"
+
+        release.set()
+        worker.join(10)
+        assert reader._report_cache is None  # computed before the invalidation -> not cached

@@ -84,14 +84,6 @@ class TestMappedAliasesAndUnlink:
         assert "Yisrael I" in r["raw_names"] and "דנה כהנ" in r["raw_names"]
         assert r["mapped_aliases"] == ["Yisrael I"]
 
-    def test_merge_source_is_not_unlinkable(self, tmp_path):
-        events = self._events() + [agreement("A2", DAN, 100)]
-        reader = make_reader(
-            tmp_path, OFFICIAL, events, comments={DAN: f'לאחד עם "{DANA}"'}, mapping={"Yisrael I": DANA}
-        )
-        r = row(reader.get_report(), DANA)
-        assert DAN in r["raw_names"]
-        assert DAN not in r["mapped_aliases"]
 
     def test_unlink_restores_unmatched_row_with_note_and_reverts_totals(self, tmp_path):
         reader = make_reader(
@@ -138,12 +130,53 @@ class TestHideUnmatched:
         make_reader(tmp_path, OFFICIAL, events).hide_unmatched("בית")
         assert "בית" not in _unmatched(make_reader(tmp_path, OFFICIAL, events).get_report())
 
-    def test_existing_note_keyword_hiding_still_works(self, tmp_path):
-        events = [payment("C1", "בית", 10)]
-        report = make_reader(tmp_path, OFFICIAL, events, notes={"בית": "להסיר"}).get_report()
-        assert "בית" not in _unmatched(report)
+    def test_no_note_text_ever_hides_a_name(self, tmp_path):
+        """2026-10-15: the "הסר מהרשימה" button is the ONLY way a name leaves the list."""
+        notes = {"א": "להסיר", "ב": "אוחד לתוך X", "ג": "צריך לייצר לקוח חדש במורנינג", "ד": "לא לקוחה",
+                 "ה": "שיניתי את השם", "ו": "remove from the list", "ז": "need a new morning client"}
+        events = [payment(f"C{i}", name, 10) for i, name in enumerate(notes)]
+        report = make_reader(tmp_path, OFFICIAL, events, notes=notes).get_report()
+        assert set(notes) <= set(_unmatched(report))
 
     def test_delete_word_in_a_note_does_not_hide(self, tmp_path):
         events = [payment("C1", "בית", 10)]
         report = make_reader(tmp_path, OFFICIAL, events, notes={"בית": "למחוק"}).get_report()
         assert "בית" in _unmatched(report)
+
+
+class TestRejectAutoMatch:
+    """2026-10-14: the red x on an automatically (fuzzy) matched name."""
+
+    def _events(self):
+        return [agreement("A1", DANA, 10000), payment("C2", "דנה כהנ", 300), payment("C1", "Yisrael I", 2000)]
+
+    def test_auto_aliases_list_fuzzy_names_only(self, tmp_path):
+        reader = make_reader(tmp_path, OFFICIAL, self._events(), mapping={"Yisrael I": DANA})
+        r = row(reader.get_report(), DANA)
+        assert r["auto_aliases"] == ["דנה כהנ"] and r["mapped_aliases"] == ["Yisrael I"]
+
+
+    def test_reject_returns_the_name_to_the_list_and_it_stays_there(self, tmp_path):
+        reader = make_reader(tmp_path, OFFICIAL, self._events(), notes={"דנה כהנ": "הערה"})
+        assert row(reader.get_report(), DANA)["display_paid"] == 300
+        assert reader.reject_auto_match("דנה כהנ") == {"raw_name": "דנה כהנ", "unlinked_from": DANA}
+        report = reader.get_report()
+        assert row(report, DANA)["display_paid"] == 0 and "דנה כהנ" not in row(report, DANA)["raw_names"]
+        assert _unmatched(report)["דנה כהנ"]["note"] == "הערה"
+        assert read_json(tmp_path / "clients" / "rejected_matches.json") == ["דנה כהנ"]
+        # a brand-new reader (a restart) still does not re-match it
+        again = make_reader(tmp_path, OFFICIAL, self._events()).get_report()
+        assert "דנה כהנ" in _unmatched(again)
+
+    def test_an_explicit_mapping_overrides_a_rejection(self, tmp_path):
+        reader = make_reader(tmp_path, OFFICIAL, self._events())
+        reader.reject_auto_match("דנה כהנ")
+        reader.save_mapping("דנה כהנ", official_name=DANA)
+        r = row(reader.get_report(), DANA)
+        assert r["display_paid"] == 300 and r["mapped_aliases"] == ["דנה כהנ"]
+
+    def test_only_auto_matched_names_can_be_rejected(self, tmp_path):
+        reader = make_reader(tmp_path, OFFICIAL, self._events(), mapping={"Yisrael I": DANA})
+        for name in ("Yisrael I", "לא קיים"):
+            with pytest.raises(MappingNotFoundError):
+                reader.reject_auto_match(name)

@@ -221,12 +221,12 @@ class ReminderManager:
         Args:
             denidin: the DeniDin object (REQ-063-08). Reminders live under its
                 config's {data_root}/reminders/; the active-reminder cap (FR-006)
-                is its config's reminders.max_active_reminders (default 20).
+                is its config's reminders.max_active_reminders (default 100).
         """
         self.denidin = denidin
         config = denidin.config
         self.storage_dir = Path(config.data_root) / "reminders"
-        max_active_reminders = (getattr(config, 'reminders', {}) or {}).get('max_active_reminders', 20)
+        max_active_reminders = (getattr(config, 'reminders', {}) or {}).get('max_active_reminders', 100)
         self.storage_dir.mkdir(parents=True, exist_ok=True)
         self.max_active_reminders = max_active_reminders
         self._db_path = self.storage_dir / "reminders.db"

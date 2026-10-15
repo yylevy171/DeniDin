@@ -70,6 +70,7 @@ BACKBONE_FLOWS: Tuple[FlowTag, ...] = (
     FlowTag.GENERATE_FEE_AGREEMENT_DOCX,
     FlowTag.CREATE_REMINDER,
     FlowTag.MODIFY_REMINDER,
+    FlowTag.AGREEMENT_MANAGEMENT,
 )
 
 # Information reaches the user ONLY through tools (send_to_user, approval_with_yes_no_buttons,

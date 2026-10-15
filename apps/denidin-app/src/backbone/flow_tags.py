@@ -34,6 +34,7 @@ class FlowTag(str, Enum):
     GENERATE_FEE_AGREEMENT_DOCX = "flow_generate_fee_agreement_docx"
     CREATE_REMINDER = "flow_create_reminder"
     MODIFY_REMINDER = "flow_modify_reminder"
+    AGREEMENT_MANAGEMENT = "flow_agreement_management"
 
 
 @dataclass(frozen=True)
@@ -117,22 +118,23 @@ FLOW_INFO: tuple = (
         "The user reports or forwards a fee agreement (הסכם) - as text or as an image - made with a"
         " client, or logs hours worked for a client (e.g. \"רן אורפני 4 שעות על היום\" - a work-log"
         " entry, never a reminder request). An agreement must never belong to a client Morning does"
-        " not manage, so this makes sure the client exists first. Recording the agreement in the"
-        " ledger happens automatically after the turn."
+        " not manage, so this makes sure the client exists first. It records the agreement in the"
+        " ledger itself, once it is complete. Changing the terms of an EXISTING agreement is flow_agreement_management, not this flow."
     ),
     FlowInfo(
         FlowTag.DEPOSIT_PROVIDED_BY_USER,
         "The user reports or forwards a bank deposit or a payment received - as text, or as a bank"
         " slip or payment screenshot. Reads the slip, makes sure the client exists in Morning, and"
         " when the user asks for a Morning document for it (or it is unclear whether they do), "
-        "hands over to flow_morning_document_write. Recording the deposit in the ledger happens "
-        "automatically after the turn."
+        "hands over to flow_morning_document_write. It records the deposit in the ledger itself, right after "
+        "the client is resolved. Changing the terms of an EXISTING agreement is flow_agreement_management, not this flow."
     ),
     FlowInfo(
         FlowTag.USER_QUESTION,
         "Answering a question about the user's clients, past agreements, deposits, or amounts owed "
         "and paid. Decides where the answer lives (the ledger first, Morning when it may hold it), "
-        "and never answers that nothing exists before checking Morning where Morning could hold it."
+        "and never answers that nothing exists before checking Morning where Morning could hold it. "
+        "What an EXISTING agreement currently says (its components, terms, statuses) is flow_agreement_management, not this flow."
     ),
     FlowInfo(
         FlowTag.INVOICING_QUERY,
@@ -144,7 +146,8 @@ FLOW_INFO: tuple = (
         FlowTag.GENERATE_FEE_AGREEMENT_DOCX,
         "Generating a fee agreement document (הסכם שכר טרחה) as a .docx file to send to a "
         "prospective client. The client does not exist yet, so no client lookup is involved. "
-        "Recording an agreement the user reports belongs to flow_fee_agreement_provided_by_user."
+        "Recording an agreement the user reports belongs to flow_fee_agreement_provided_by_user; "
+        "changing an EXISTING agreement belongs to flow_agreement_management."
     ),
     FlowInfo(
         FlowTag.CREATE_REMINDER,
@@ -159,6 +162,16 @@ FLOW_INFO: tuple = (
         "up the user's real reminders to identify the exact one before modifying or deleting it, "
         "with approval. Adding a brand-new reminder belongs to flow_create_reminder. "
         "Use the reminder flows, not cap_reminders_write directly."
+    ),
+    FlowInfo(
+        FlowTag.AGREEMENT_MANAGEMENT,
+        "Asking about, or changing, an EXISTING fee agreement with a client in the Agreements database "
+        "(\"מה ההסכם שלנו עם X\", \"תעלה את הריטיינר ל-6,000\", \"X שילם את הריטיינר\", "
+        "\"תסגור את ההסכם\"). Identifies the exact client and the exact agreement (asking when "
+        "more than one fits), shows the current terms, and changes them only with approval. Not for "
+        "recording a NEW agreement the user reports signing (flow_fee_agreement_provided_by_user), "
+        "not for creating a fee agreement document, not for payments owed/received "
+        "(flow_user_question), and not for invoices, clients or reminders."
     ),
 )
 

@@ -10,7 +10,6 @@ from utils.time_utils import now_local
 
 from webapp_backend.clients_reader import ClientsReader
 
-MIGRATION_KEY = "092_comment_line_status"
 PAID_SUBTYPE = "חשבונית מס קבלה"
 
 
@@ -62,10 +61,7 @@ def make_reader(
     status: Optional[Dict[str, str]] = None,
     mapping: Optional[Dict[str, str]] = None,
     notes: Optional[Dict[str, str]] = None,
-    migrated: bool = True,
 ) -> ClientsReader:
-    """``migrated=True`` pre-writes the 092 migration marker so a test exercises steady-state
-    routing only; ``migrated=False`` leaves it absent so the first compute migrates."""
     clients_dir = tmp_path / "clients"
     clients_dir.mkdir(parents=True, exist_ok=True)
     if comments is not None:
@@ -76,8 +72,6 @@ def make_reader(
         write_json(clients_dir / "client_mapping.json", mapping)
     if notes is not None:
         write_json(clients_dir / "mapping_notes.json", notes)
-    if migrated:
-        write_json(clients_dir / "migrations.json", {MIGRATION_KEY: "2026-10-01T00:00:00+03:00"})
     official_list = list(official)
     return ClientsReader(
         str(tmp_path), str(clients_dir), lambda: list(official_list), events_fn=lambda: list(events)
