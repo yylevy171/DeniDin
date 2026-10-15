@@ -1,7 +1,7 @@
 # Feature Specification: Processing Multiple Media Images (and Other "Multiple" Requests)
 
-**Feature ID**: 102
-**Feature Branch**: `feature/102-multiple-media-images`
+**Feature ID**: 104
+**Feature Branch**: `feature/104-multiple-media-images`
 **Created**: 2026-10-12
 **Status**: Placeholder — not yet specified/clarified. Spun out of Feature 067 (realistic message
 handling), which deliberately leaves media out ("media is left out for now" — product owner,

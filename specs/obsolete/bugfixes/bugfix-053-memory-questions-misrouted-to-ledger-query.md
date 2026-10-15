@@ -1,1 +1,1 @@
-../repo/bugfixes/bugfix-053-memory-questions-misrouted-to-ledger-query.md
+../../repo/bugfixes/bugfix-053-memory-questions-misrouted-to-ledger-query.md
