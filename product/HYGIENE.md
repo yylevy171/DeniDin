@@ -5,6 +5,7 @@ Architectural refactoring, prompt/constitution optimizations, code health, and d
 
 ## Features
 
+- **103**: `103-agent-sdk-migration-evaluation` — Status: Backlog
 - **085**: `085-refactor-runtime-const` — Status: Obsolete
 - **073**: `073-optimize-runtime-constitution` — Status: Obsolete
 - **063**: `063-refactor-oversized-handlers` — Status: Done (v0.8.0)
