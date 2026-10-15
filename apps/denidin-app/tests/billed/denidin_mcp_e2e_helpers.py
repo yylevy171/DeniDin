@@ -1018,7 +1018,9 @@ def _send_turn_and_approve_receipt(
     )
 
     pre_approve_response, pre_approve_ai_response = ask_response, ask_ai_response
-    if not pre_approve_response or "לאישור" not in pre_approve_response:
+    # Feature 067: a real pending approval is the buttons message on screen - the word "לאישור"
+    # also appears in progress messages ("מכין את הפרטים לאישור") that precede a question.
+    if approval_buttons_on_screen(chat_id) is None:
         pre_approve_response, pre_approve_ai_response = _send_turn(
             chat_id, date_answer, id_prefix=f"{id_prefix}_DATE"
         )
