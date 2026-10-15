@@ -45,3 +45,16 @@ linger up to ~20s. The keep-alive jobs themselves are removed on time (verified 
   user receives at least one plain-Hebrew progress message BEFORE the first long step, and the closing
   summary arrives separately and is not itself a progress message.
 - A simple question -> one answer, no progress message.
+
+
+## Addendum 2026-10-15 - a completed write is never repeated
+
+A failed reaction (every reaction fails in tests) once made the model redo a flow that had already created a
+Morning tax document. Duplicate tax documents have legal consequences. The reaction failure is not the bug; the model
+treating an unrelated error as a reason to repeat an irreversible write is.
+Decision (PM): guidance only, no code. The backbone ("Behavioral Guidelines"), `cap_invoicing_write.md` ("A document
+that was created is final") and the top of all eight document-writing flows now say that a successful create/cancel
+cannot be undone and is never repeated because of anything that follows; when unsure, check Morning, then ask.
+The tool result for a failed reaction is deliberately unchanged (hiding the error was rejected). Not added: a
+morning-mcp-app duplicate-document backstop (offered, declined).
+Tests: `tests/unit/test_created_documents_are_final_077.py` (structure only).

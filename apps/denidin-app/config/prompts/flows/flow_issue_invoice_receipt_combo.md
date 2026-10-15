@@ -7,6 +7,8 @@ Flows it may load: `flow_add_client`, `flow_modify_client`.
 
 Progress updates (`cap_send_progress_update`) can be sent between the steps, in plain words, so the user understands what is going on.
 
+🚨 A Morning document that was created or cancelled successfully is final and cannot be undone. Never create or cancel it again because of anything that happens afterwards - an error, a failed step, a failed reaction, a confusing message. Duplicate tax documents have legal consequences. If you are not sure whether the write happened, check Morning first, and if you still cannot tell, ask the user.
+
 🚨 A combo document (320) is ALWAYS fully paid with VAT included, unconditionally — state
 this plainly wherever you mention its VAT (the approval text and the final report alike),
 never derive that statement from a document's own returned `vat_rate`/`vat_amount` figures

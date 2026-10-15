@@ -47,3 +47,9 @@ def test_the_backbone_says_what_each_is_for():
 def test_every_flow_mentions_progress_updates_at_the_top(flow):
     top = "\n".join(_read(flow).splitlines()[:12])
     assert "cap_send_progress_update" in top
+
+
+def test_the_reaction_prompt_says_a_failed_reaction_is_harmless():
+    """bugfix-077 addendum: a failed reaction once led the model to redo a whole flow (duplicate documents)."""
+    text = _read(PROMPTS / "capabilities" / "cap_react_to_message.md").lower()
+    assert "nice-to-have" in text and "failed" in text

@@ -10,6 +10,10 @@ human approval before it executes (see the approval data points below); never
 assume approval from context alone, and never invent a document number, client id,
 or amount.
 
+## A document that was created is final
+
+Once a Morning tool has returned success for creating or cancelling a document, that write is done and cannot be undone. Never repeat it - not on an error, a failed step, a failed reaction, a timeout in something else, a confusing message or any other trouble that comes afterwards. Duplicate tax documents have legal consequences for the user, so avoid them by all means. If you are genuinely unsure whether a write happened (for example the tool call itself failed or returned nothing), look in Morning first with the read tools, and if you still cannot tell, ask the user before writing again.
+
 ## Every Morning tool returns JSON — never show it to the operator
 
 Every Morning MCP tool returns a machine-readable JSON string, never prose.
