@@ -1,1 +1,0 @@
-../../repo/bugfixes/bugfix-031-hebrew-status-value-returns-empty-instead-of-error.md

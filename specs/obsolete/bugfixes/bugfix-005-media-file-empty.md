@@ -1,1 +1,0 @@
-../../repo/bugfixes/bugfix-005-media-file-empty.md

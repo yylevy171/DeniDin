@@ -1,1 +1,0 @@
-../../repo/bugfixes/bugfix-015-image-extraction-vision-refusal.md

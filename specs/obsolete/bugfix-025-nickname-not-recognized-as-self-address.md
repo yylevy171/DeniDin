@@ -1,0 +1,1 @@
+../repo/bugfixes/bugfix-025-nickname-not-recognized-as-self-address.md
