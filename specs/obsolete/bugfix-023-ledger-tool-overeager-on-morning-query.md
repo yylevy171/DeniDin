@@ -1,0 +1,1 @@
+../repo/bugfixes/bugfix-023-ledger-tool-overeager-on-morning-query.md

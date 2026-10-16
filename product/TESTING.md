@@ -9,4 +9,4 @@ Test framework architecture, runners, test split strategies, and sanity verifica
 
 ## Bugfixes
 
-- **075**: `bugfix-075-docx-not-sent-to-whatsapp` — Status: Repo
+- **075**: `bugfix-075-docx-not-sent-to-whatsapp` — Status: Obsolete

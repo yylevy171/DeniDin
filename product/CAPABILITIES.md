@@ -96,12 +96,11 @@ Customer-facing functional features, conversational intelligence, and business c
 - **002**: `002-007-memory-system` — Status: Done (v0.0.1)
 - **002**: `002-chat-session-management` — Status: Done (v0.0.1)
 - **001**: `001-whatsapp-chatbot-passthrough` — Status: Done (v0.0.1)
-- **bundle**: `bundle-064-066-071-099` — Status: Repo
 
 ## Bugfixes
 
 - **074**: `bugfix-074-refresh-reloads-everything` — Status: Repo
-- **072**: `bugfix-072-bank-deposit-missing-txn-date` — Status: Repo
+- **072**: `bugfix-072-bank-deposit-missing-txn-date` — Status: Obsolete
 - **071**: `bugfix-071-morning-vat-zero-defect` — Status: Done (v0.8.0)
 - **070**: `bugfix-070-synthetic-media-turn-attributed-to-human-sender` — Status: Bugfixes
 - **069**: `bugfix-069-whatsapp-health-authorized` — Status: Done (v0.8.0)
@@ -129,29 +128,29 @@ Customer-facing functional features, conversational intelligence, and business c
 - **045**: `bugfix-045-refuses-to-create-new-client-despite-clear-request` — Status: Done (v0.5.3)
 - **044**: `bugfix-044-chat-context-lost-after-app-restart` — Status: Repo
 - **042**: `bugfix-042-reminders-invading-unrelated-turns` — Status: Obsolete
-- **041**: `bugfix-041-no-reply-silently-skips-ledger-relevant-content` — Status: Repo
+- **041**: `bugfix-041-no-reply-silently-skips-ledger-relevant-content` — Status: Obsolete
 - **040**: `bugfix-040-english-weekday-codes-in-reminder-approval` — Status: Done (v0.5.1)
 - **039**: `bugfix-039-artifacts` — Status: Done (v0.4.1)
 - **039**: `bugfix-039-list-invoices-skips-client-resolution` — Status: Done (v0.4.1)
 - **038**: `bugfix-038-group-b-approval-missing-reference-data` — Status: Done (v0.4.1)
 - **037**: `bugfix-037-mixed-timestamp-representation` — Status: Done (v0.4.0)
-- **034**: `bugfix-034-ledger-bugs` — Status: Repo
+- **034**: `bugfix-034-ledger-bugs` — Status: Obsolete
 - **033**: `bugfix-033-credit-notes-silently-dropped-from-financial-answers` — Status: Obsolete
 - **032**: `bugfix-032-phone-number-not-normalised` — Status: Done (v0.7.8)
-- **031**: `bugfix-031-hebrew-status-value-returns-empty-instead-of-error` — Status: Repo
-- **030**: `bugfix-030-message-sequencing-ambiguity` — Status: Repo
-- **029**: `bugfix-029-conversation-quality-p1-cluster` — Status: Repo
+- **031**: `bugfix-031-hebrew-status-value-returns-empty-instead-of-error` — Status: Obsolete
+- **030**: `bugfix-030-message-sequencing-ambiguity` — Status: Obsolete
+- **029**: `bugfix-029-conversation-quality-p1-cluster` — Status: Obsolete
 - **028**: `bugfix-028-invoicing-and-approval-gate-p0-cluster` — Status: Done (v0.4.1)
 - **027**: `bugfix-027-geresh-omitted-entirely-not-fuzzy-matched` — Status: Done (v0.7.8)
 - **026**: `bugfix-026-morning-documents-created-unsigned` — Status: Done (v0.3.0)
-- **025**: `bugfix-025-nickname-not-recognized-as-self-address` — Status: Repo
+- **025**: `bugfix-025-nickname-not-recognized-as-self-address` — Status: Obsolete
 - **024**: `bugfix-024-native-mention-by-phone-number` — Status: Done (v0.2.1)
-- **023**: `bugfix-023-ledger-tool-overeager-on-morning-query` — Status: Repo
+- **023**: `bugfix-023-ledger-tool-overeager-on-morning-query` — Status: Obsolete
 - **022**: `bugfix-022-openai-mcp-approval-duplicate-execution` — Status: Done (v0.2.0)
 - **021**: `bugfix-021-prod-active-env-json-mounted-as-directory` — Status: Done (v0.1.0)
 - **020**: `bugfix-020-green-api-empty-notification-response-crash` — Status: Done (v0.1.0)
 - **018**: `bugfix-018-ledger-event-parallel-followup-empty-response` — Status: Done (v0.0.1)
-- **015**: `bugfix-015-image-extraction-vision-refusal` — Status: Repo
+- **015**: `bugfix-015-image-extraction-vision-refusal` — Status: Obsolete
 - **014**: `bugfix-014-list-invoices-only-returns-one-of-many` — Status: Done (v0.0.1)
 - **013**: `bugfix-013-client-name-garbling-and-unrequested-date-narrowing` — Status: Repo
 - **012**: `bugfix-012-financial-summary-drops-nonallowlisted-invoice-types` — Status: Done (v0.0.1)
@@ -166,7 +165,7 @@ Customer-facing functional features, conversational intelligence, and business c
 - **006**: `bugfix-006-media-file-empty` — Status: Done (v0.0.1)
 - **005**: `bugfix-005-media-file-empty` — Status: Done (v0.0.1)
 - **005**: `bugfix-005-no-response-real-image` — Status: Done (v0.0.1)
-- **004**: `bugfix-004-data-root-ignored` — Status: Repo
+- **004**: `bugfix-004-data-root-ignored` — Status: Obsolete
 - **003**: `bugfix-003-poll-interval-unused` — Status: Done (v0.0.1)
 - **002**: `bugfix-002-max-retries-unused` — Status: Done (v0.0.1)
 - **001**: `bugfix-001-constitution-not-loaded` — Status: Done (v0.0.1)
