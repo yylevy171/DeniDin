@@ -6,9 +6,9 @@ Customer-facing functional features, conversational intelligence, and business c
 ## Features
 
 - **104**: `104-multiple-media-images` — Status: Backlog
-- **102**: `102-calendar-reminders-as-whatsapp-events` — Status: Backlog
+- **102**: `102-calendar-reminders-as-whatsapp-events` — Status: Done (v0.8.4)
 - **101**: `101-green-api-instance-host` — Status: Done (v0.8.1)
-- **100**: `100-client-resolution-caching` — Status: In-progress
+- **100**: `100-client-resolution-caching` — Status: Backlog
 - **099**: `099-dual-doc-cancellation-320` — Status: Done (v0.8.2)
 - **098**: `098-mandatory-id-above-5000-nis` — Status: Done (v0.8.1)
 - **097**: `097-ai-driven-e2e-testing` — Status: Backlog
@@ -37,7 +37,7 @@ Customer-facing functional features, conversational intelligence, and business c
 - **070**: `070-rolling-memory-window` — Status: Repo
 - **069**: `069-mandatory-client-resolution-before-ledger-event` — Status: Done (v0.7.0)
 - **068**: `068-ledger-ui-and-reports` — Status: Done (v0.7.0)
-- **067**: `067-realistic-message-handling` — Status: Repo
+- **067**: `067-realistic-message-handling` — Status: Done (v0.8.3)
 - **066**: `066-support-bit-and-paybox` — Status: Done (v0.8.2)
 - **064**: `064-bank-deposit-full-cycle` — Status: Done (v0.8.2)
 - **061**: `061-prod-morning-ledger-backfill` — Status: Done (v0.5.3)
@@ -99,7 +99,8 @@ Customer-facing functional features, conversational intelligence, and business c
 
 ## Bugfixes
 
-- **074**: `bugfix-074-refresh-reloads-everything` — Status: Repo
+- **077**: `bugfix-077-progress-updates-and-typing-dots` — Status: Done (v0.8.4)
+- **074**: `bugfix-074-refresh-reloads-everything` — Status: Done (v0.8.3)
 - **072**: `bugfix-072-bank-deposit-missing-txn-date` — Status: Obsolete
 - **071**: `bugfix-071-morning-vat-zero-defect` — Status: Done (v0.8.0)
 - **070**: `bugfix-070-synthetic-media-turn-attributed-to-human-sender` — Status: Bugfixes
